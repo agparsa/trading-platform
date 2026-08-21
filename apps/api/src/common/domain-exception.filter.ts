@@ -1,0 +1,163 @@
+import {
+  type ArgumentsHost,
+  Catch,
+  type ExceptionFilter,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
+import type { Response } from 'express';
+import type { RequestWithContext } from './request-context';
+import { ApiFailure, DomainError, TradingErrorCode } from '@tp/shared-types';
+
+/**
+ * Maps a domain error code onto an HTTP status.
+ *
+ * Kept as an explicit table rather than a heuristic: a business rejection
+ * (insufficient margin) is a 422 the client should show the trader, while a
+ * stale quote is a 409 it should retry. Guessing from the error name would get
+ * that wrong in both directions.
+ */
+const STATUS_BY_CODE: Readonly<Partial<Record<TradingErrorCode, HttpStatus>>> = {
+  [TradingErrorCode.UNAUTHENTICATED]: HttpStatus.UNAUTHORIZED,
+  [TradingErrorCode.TOKEN_EXPIRED]: HttpStatus.UNAUTHORIZED,
+  [TradingErrorCode.FORBIDDEN]: HttpStatus.FORBIDDEN,
+
+  [TradingErrorCode.VALIDATION_FAILED]: HttpStatus.BAD_REQUEST,
+  [TradingErrorCode.RESOURCE_NOT_FOUND]: HttpStatus.NOT_FOUND,
+  [TradingErrorCode.METHOD_NOT_ALLOWED]: HttpStatus.METHOD_NOT_ALLOWED,
+  [TradingErrorCode.UNKNOWN_SYMBOL]: HttpStatus.BAD_REQUEST,
+  [TradingErrorCode.INVALID_VOLUME]: HttpStatus.BAD_REQUEST,
+  [TradingErrorCode.INVALID_PRICE]: HttpStatus.BAD_REQUEST,
+  [TradingErrorCode.INVALID_ORDER_TYPE]: HttpStatus.BAD_REQUEST,
+  [TradingErrorCode.INVALID_STOP_LOSS]: HttpStatus.BAD_REQUEST,
+  [TradingErrorCode.INVALID_TAKE_PROFIT]: HttpStatus.BAD_REQUEST,
+  [TradingErrorCode.IDEMPOTENCY_KEY_REQUIRED]: HttpStatus.BAD_REQUEST,
+
+  [TradingErrorCode.ORDER_NOT_FOUND]: HttpStatus.NOT_FOUND,
+  [TradingErrorCode.POSITION_NOT_FOUND]: HttpStatus.NOT_FOUND,
+
+  [TradingErrorCode.INVALID_STATE_TRANSITION]: HttpStatus.CONFLICT,
+  [TradingErrorCode.POSITION_ALREADY_CLOSING]: HttpStatus.CONFLICT,
+  [TradingErrorCode.CONCURRENT_MODIFICATION]: HttpStatus.CONFLICT,
+  [TradingErrorCode.IDEMPOTENCY_KEY_CONFLICT]: HttpStatus.CONFLICT,
+  [TradingErrorCode.STALE_QUOTE]: HttpStatus.CONFLICT,
+
+  [TradingErrorCode.INSUFFICIENT_MARGIN]: HttpStatus.UNPROCESSABLE_ENTITY,
+  [TradingErrorCode.MAX_POSITION_SIZE_EXCEEDED]: HttpStatus.UNPROCESSABLE_ENTITY,
+  [TradingErrorCode.MAX_EXPOSURE_EXCEEDED]: HttpStatus.UNPROCESSABLE_ENTITY,
+  [TradingErrorCode.MAX_OPEN_POSITIONS_EXCEEDED]: HttpStatus.UNPROCESSABLE_ENTITY,
+  [TradingErrorCode.PARTIAL_CLOSE_EXCEEDS_VOLUME]: HttpStatus.UNPROCESSABLE_ENTITY,
+  [TradingErrorCode.MARKET_CLOSED]: HttpStatus.UNPROCESSABLE_ENTITY,
+  [TradingErrorCode.ACCOUNT_NOT_TRADEABLE]: HttpStatus.UNPROCESSABLE_ENTITY,
+  [TradingErrorCode.SYMBOL_NOT_TRADEABLE]: HttpStatus.UNPROCESSABLE_ENTITY,
+  [TradingErrorCode.ORDER_NOT_MODIFIABLE]: HttpStatus.UNPROCESSABLE_ENTITY,
+
+  [TradingErrorCode.RATE_LIMITED]: HttpStatus.TOO_MANY_REQUESTS,
+
+  [TradingErrorCode.NO_QUOTE_AVAILABLE]: HttpStatus.SERVICE_UNAVAILABLE,
+  [TradingErrorCode.SERVICE_UNAVAILABLE]: HttpStatus.SERVICE_UNAVAILABLE,
+  [TradingErrorCode.NOT_IMPLEMENTED]: HttpStatus.NOT_IMPLEMENTED,
+  [TradingErrorCode.INTERNAL_ERROR]: HttpStatus.INTERNAL_SERVER_ERROR,
+};
+
+export function statusForCode(code: TradingErrorCode): HttpStatus {
+  return STATUS_BY_CODE[code] ?? HttpStatus.INTERNAL_SERVER_ERROR;
+}
+
+/**
+ * Reverse mapping, for exceptions Nest raises before any domain code runs —
+ * an unmatched route, a rejected payload, a guard denial. Without this every
+ * 404 would reach the client labelled INTERNAL_ERROR, which is both wrong and
+ * alarming.
+ */
+const CODE_BY_STATUS: Readonly<Partial<Record<number, TradingErrorCode>>> = {
+  [HttpStatus.BAD_REQUEST]: TradingErrorCode.VALIDATION_FAILED,
+  [HttpStatus.UNAUTHORIZED]: TradingErrorCode.UNAUTHENTICATED,
+  [HttpStatus.FORBIDDEN]: TradingErrorCode.FORBIDDEN,
+  [HttpStatus.NOT_FOUND]: TradingErrorCode.RESOURCE_NOT_FOUND,
+  [HttpStatus.METHOD_NOT_ALLOWED]: TradingErrorCode.METHOD_NOT_ALLOWED,
+  [HttpStatus.CONFLICT]: TradingErrorCode.CONCURRENT_MODIFICATION,
+  [HttpStatus.UNPROCESSABLE_ENTITY]: TradingErrorCode.VALIDATION_FAILED,
+  [HttpStatus.TOO_MANY_REQUESTS]: TradingErrorCode.RATE_LIMITED,
+  [HttpStatus.SERVICE_UNAVAILABLE]: TradingErrorCode.SERVICE_UNAVAILABLE,
+  [HttpStatus.NOT_IMPLEMENTED]: TradingErrorCode.NOT_IMPLEMENTED,
+};
+
+export function codeForStatus(status: number): TradingErrorCode {
+  return CODE_BY_STATUS[status] ?? TradingErrorCode.INTERNAL_ERROR;
+}
+
+/**
+ * The only place an exception becomes an HTTP response.
+ *
+ * An unrecognised error is logged in full server-side and reported to the
+ * client as a bare INTERNAL_ERROR with a request id. Stack traces, SQL and
+ * driver messages never cross this boundary.
+ */
+@Catch()
+export class DomainExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(DomainExceptionFilter.name);
+
+  catch(exception: unknown, host: ArgumentsHost): void {
+    const http = host.switchToHttp();
+    const request = http.getRequest<RequestWithContext>();
+    const response = http.getResponse<Response>();
+    const requestId = request.requestId ?? 'unknown';
+
+    const { status, body } = this.describe(exception, requestId);
+
+    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      this.logger.error(
+        { requestId, path: request.url, err: exception },
+        'Unhandled exception while serving request',
+      );
+    }
+
+    response.status(status).json(body);
+  }
+
+  private describe(
+    exception: unknown,
+    requestId: string,
+  ): { status: HttpStatus; body: ApiFailure } {
+    if (exception instanceof DomainError) {
+      const status = statusForCode(exception.code);
+      return {
+        status,
+        body: {
+          ok: false,
+          error: {
+            code: exception.code,
+            message: exception.message,
+            requestId,
+            ...(exception.details === undefined ? {} : { details: exception.details }),
+          },
+        },
+      };
+    }
+
+    if (exception instanceof HttpException) {
+      const status = exception.getStatus();
+      return {
+        status,
+        body: {
+          ok: false,
+          error: { code: codeForStatus(status), message: exception.message, requestId },
+        },
+      };
+    }
+
+    return {
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+      body: {
+        ok: false,
+        error: {
+          code: TradingErrorCode.INTERNAL_ERROR,
+          message: 'An unexpected error occurred',
+          requestId,
+        },
+      },
+    };
+  }
+}

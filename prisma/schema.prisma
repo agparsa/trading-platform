@@ -1,0 +1,632 @@
+// ---------------------------------------------------------------------------
+// Trading Platform — PostgreSQL schema
+//
+// Conventions used throughout:
+//
+//  * Public identifiers are UUIDs. Sequential keys are never exposed by the API.
+//  * Every monetary and price column is NUMERIC. There is no DOUBLE PRECISION
+//    anywhere in this file, by design — see docs/pnl.md.
+//      - money      NUMERIC(28,10)  account-currency amounts
+//      - price      NUMERIC(28,10)  instrument prices
+//      - volume     NUMERIC(18,8)   lots
+//  * Mutable rows that the trading engine races on carry a `version` column for
+//    optimistic concurrency.
+//  * `*_events` and `balance_ledger` are append-only. Nothing updates or deletes
+//    them; corrections are compensating entries.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity & access
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  USER
+  SUPPORT
+  OPERATOR
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  /// Argon2id hash. The plaintext password never reaches the database or a log.
+  passwordHash  String    @map("password_hash")
+  displayName   String    @map("display_name")
+  role          UserRole  @default(USER)
+  emailVerified Boolean   @default(false) @map("email_verified")
+  totpSecret    String?   @map("totp_secret")
+  isActive      Boolean   @default(true) @map("is_active")
+  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  accounts      Account[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  /// SHA-256 of the token. A database leak must not yield usable sessions.
+  tokenHash  String    @unique @map("token_hash")
+  /// Rotation chain: the token this one replaced. Reuse of a rotated token is
+  /// a theft signal and revokes the whole family.
+  replacedBy String?   @map("replaced_by") @db.Uuid
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
+  userAgent  String?   @map("user_agent")
+  ipAddress  String?   @map("ip_address")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Accounts
+// ---------------------------------------------------------------------------
+
+enum AccountStatus {
+  ACTIVE
+  RESTRICTED
+  CLOSE_ONLY
+  SUSPENDED
+  CLOSED
+}
+
+enum AccountType {
+  LIVE
+  DEMO
+}
+
+model Account {
+  id       String        @id @default(uuid()) @db.Uuid
+  userId   String        @map("user_id") @db.Uuid
+  /// Human-facing account number, e.g. 'TP-100284'. Not the primary key.
+  number   String        @unique
+  type     AccountType   @default(DEMO)
+  status   AccountStatus @default(ACTIVE)
+  currency String        @db.VarChar(3)
+
+  /// Authoritative cash balance. Derived from balance_ledger and reconciled
+  /// against it by a scheduled job; the ledger is the source of truth.
+  balance  Decimal @default(0) @db.Decimal(28, 10)
+  leverage Int     @default(100)
+
+  version   Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  settings  AccountSettings?
+  orders    Order[]
+  positions Position[]
+  trades    Trade[]
+  ledger    BalanceLedger[]
+  snapshots AccountSnapshot[]
+  riskEvents RiskEvent[]
+
+  @@index([userId, status])
+  @@map("accounts")
+}
+
+model AccountSettings {
+  accountId String @id @map("account_id") @db.Uuid
+
+  marginCallLevelPercent Decimal @default(100) @map("margin_call_level_percent") @db.Decimal(10, 4)
+  stopOutLevelPercent    Decimal @default(50) @map("stop_out_level_percent") @db.Decimal(10, 4)
+
+  /// Null means "not enforced". No limit here is ever defaulted in code.
+  maxPositionVolume  Decimal? @map("max_position_volume") @db.Decimal(18, 8)
+  maxOpenPositions   Int?     @map("max_open_positions")
+  maxGrossNotional   Decimal? @map("max_gross_notional") @db.Decimal(28, 10)
+  maxSymbolNetVolume Decimal? @map("max_symbol_net_volume") @db.Decimal(18, 8)
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("account_settings")
+}
+
+// ---------------------------------------------------------------------------
+// Instruments & market data
+// ---------------------------------------------------------------------------
+
+model Symbol {
+  id            String  @id @default(uuid()) @db.Uuid
+  code          String  @unique
+  description   String
+  quoteCurrency String  @map("quote_currency") @db.VarChar(3)
+  enabled       Boolean @default(true)
+  /// Display grouping for the watchlist: 'Metals', 'Crypto', 'FX'.
+  category      String
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  spec     SymbolSpec?
+  sessions MarketSession[]
+  orders   Order[]
+  positions Position[]
+  trades   Trade[]
+
+  @@map("symbols")
+}
+
+model SymbolSpec {
+  symbolId String @id @map("symbol_id") @db.Uuid
+
+  contractSize    Decimal @map("contract_size") @db.Decimal(28, 10)
+  tickSize        Decimal @map("tick_size") @db.Decimal(28, 10)
+  pricePrecision  Int     @map("price_precision")
+  volumeStep      Decimal @map("volume_step") @db.Decimal(18, 8)
+  volumePrecision Int     @map("volume_precision")
+  minVolume       Decimal @map("min_volume") @db.Decimal(18, 8)
+  maxVolume       Decimal @map("max_volume") @db.Decimal(18, 8)
+  /// Initial margin as a fraction of notional. 0.01 = 1% = 100:1.
+  marginRate      Decimal @map("margin_rate") @db.Decimal(18, 8)
+  commissionPerLot Decimal @default(0) @map("commission_per_lot") @db.Decimal(28, 10)
+  swapLongPerLot   Decimal @default(0) @map("swap_long_per_lot") @db.Decimal(28, 10)
+  swapShortPerLot  Decimal @default(0) @map("swap_short_per_lot") @db.Decimal(28, 10)
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  symbol Symbol @relation(fields: [symbolId], references: [id], onDelete: Cascade)
+
+  @@map("symbol_specs")
+}
+
+model MarketSession {
+  id       String @id @default(uuid()) @db.Uuid
+  symbolId String @map("symbol_id") @db.Uuid
+  /// IANA zone the window is expressed in. Stored explicitly so a server
+  /// timezone change can never silently move every session.
+  timezone String @default("UTC")
+  /// 0 = Sunday .. 6 = Saturday.
+  dayOfWeek   Int @map("day_of_week")
+  openMinute  Int @map("open_minute")
+  closeMinute Int @map("close_minute")
+
+  symbol Symbol @relation(fields: [symbolId], references: [id], onDelete: Cascade)
+
+  @@unique([symbolId, dayOfWeek, openMinute])
+  @@map("market_sessions")
+}
+
+model Candle {
+  symbolCode String   @map("symbol_code")
+  resolution String
+  /// Bucket start, UTC, aligned to the resolution grid.
+  time       DateTime @db.Timestamptz(6)
+  open       Decimal  @db.Decimal(28, 10)
+  high       Decimal  @db.Decimal(28, 10)
+  low        Decimal  @db.Decimal(28, 10)
+  close      Decimal  @db.Decimal(28, 10)
+  volume     Decimal  @db.Decimal(28, 10)
+
+  @@id([symbolCode, resolution, time])
+  @@index([symbolCode, resolution, time(sort: Desc)])
+  @@map("candles")
+}
+
+// ---------------------------------------------------------------------------
+// Trading
+// ---------------------------------------------------------------------------
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+  STOP
+  STOP_LIMIT
+}
+
+enum OrderStatus {
+  NEW
+  PENDING
+  ACCEPTED
+  TRIGGERED
+  PARTIALLY_FILLED
+  FILLED
+  MODIFY_REQUESTED
+  CANCEL_REQUESTED
+  CANCELLED
+  REJECTED
+  EXPIRED
+}
+
+enum TimeInForce {
+  GTC
+  IOC
+  FOK
+  DAY
+  GTD
+}
+
+enum OrderEventType {
+  CREATED
+  VALIDATED
+  ACCEPTED
+  REJECTED
+  TRIGGERED
+  PARTIALLY_FILLED
+  FILLED
+  MODIFY_REQUESTED
+  MODIFIED
+  CANCEL_REQUESTED
+  CANCELLED
+  EXPIRED
+}
+
+enum PositionStatus {
+  OPEN
+  CLOSING
+  CLOSED
+}
+
+enum CloseReason {
+  MANUAL
+  STOP_LOSS
+  TAKE_PROFIT
+  TRAILING_STOP
+  LIQUIDATION
+  REVERSE
+  SYSTEM
+}
+
+model Order {
+  id        String @id @default(uuid()) @db.Uuid
+  accountId String @map("account_id") @db.Uuid
+  symbolId  String @map("symbol_id") @db.Uuid
+
+  side        OrderSide
+  type        OrderType
+  status      OrderStatus @default(NEW)
+  timeInForce TimeInForce @default(GTC) @map("time_in_force")
+
+  volume       Decimal @db.Decimal(18, 8)
+  filledVolume Decimal @default(0) @map("filled_volume") @db.Decimal(18, 8)
+
+  price     Decimal? @db.Decimal(28, 10)
+  stopPrice Decimal? @map("stop_price") @db.Decimal(28, 10)
+  stopLoss   Decimal? @map("stop_loss") @db.Decimal(28, 10)
+  takeProfit Decimal? @map("take_profit") @db.Decimal(28, 10)
+
+  /// Set once an opening order fills, or on creation for a closing order.
+  positionId String? @map("position_id") @db.Uuid
+
+  /// Populated only when the order was rejected; a code from TradingErrorCode.
+  rejectionCode String? @map("rejection_code")
+
+  version   Int       @default(0)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  account    Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  symbol     Symbol       @relation(fields: [symbolId], references: [id], onDelete: Restrict)
+  position   Position?    @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  events     OrderEvent[]
+  executions Execution[]
+
+  @@index([accountId, status])
+  @@index([accountId, createdAt(sort: Desc)])
+  /// Partial index for the trigger engine's hot query: resting orders only.
+  @@index([symbolId, status])
+  @@map("orders")
+}
+
+/// Append-only. One row per state change, with the full before/after snapshot.
+model OrderEvent {
+  id      String         @id @default(uuid()) @db.Uuid
+  orderId String         @map("order_id") @db.Uuid
+  type    OrderEventType
+  fromStatus OrderStatus? @map("from_status")
+  toStatus   OrderStatus  @map("to_status")
+  /// Structured, non-sensitive context: prices, volumes, reject codes.
+  payload    Json         @default("{}")
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("order_events")
+}
+
+model Position {
+  id        String @id @default(uuid()) @db.Uuid
+  accountId String @map("account_id") @db.Uuid
+  symbolId  String @map("symbol_id") @db.Uuid
+
+  side   OrderSide
+  status PositionStatus @default(OPEN)
+
+  volume        Decimal @db.Decimal(18, 8)
+  initialVolume Decimal @map("initial_volume") @db.Decimal(18, 8)
+
+  entryPrice   Decimal  @map("entry_price") @db.Decimal(28, 10)
+  /// Last executable exit price the engine marked this position at.
+  currentPrice Decimal? @map("current_price") @db.Decimal(28, 10)
+
+  stopLoss             Decimal? @map("stop_loss") @db.Decimal(28, 10)
+  takeProfit           Decimal? @map("take_profit") @db.Decimal(28, 10)
+  trailingStopDistance Decimal? @map("trailing_stop_distance") @db.Decimal(28, 10)
+  highWaterPrice       Decimal? @map("high_water_price") @db.Decimal(28, 10)
+
+  /// Initial margin held, in the account's currency.
+  margin      Decimal @db.Decimal(28, 10)
+  commission  Decimal @default(0) @db.Decimal(28, 10)
+  swap        Decimal @default(0) @db.Decimal(28, 10)
+  realizedPnl Decimal @default(0) @map("realized_pnl") @db.Decimal(28, 10)
+
+  closeReason CloseReason? @map("close_reason")
+
+  version   Int       @default(0)
+  openedAt  DateTime  @default(now()) @map("opened_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  closedAt  DateTime? @map("closed_at") @db.Timestamptz(6)
+
+  account Account         @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  symbol  Symbol          @relation(fields: [symbolId], references: [id], onDelete: Restrict)
+  orders  Order[]
+  events  PositionEvent[]
+  trades  Trade[]
+
+  @@index([accountId, status])
+  @@index([symbolId, status])
+  @@map("positions")
+}
+
+/// Append-only history of everything that happened to a position.
+model PositionEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  positionId String   @map("position_id") @db.Uuid
+  type       String
+  fromStatus PositionStatus? @map("from_status")
+  toStatus   PositionStatus  @map("to_status")
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
+
+  @@index([positionId, createdAt])
+  @@map("position_events")
+}
+
+/// One fill. Immutable. Retains the quote it executed against for disputes.
+model Execution {
+  id        String @id @default(uuid()) @db.Uuid
+  orderId   String @map("order_id") @db.Uuid
+  accountId String @map("account_id") @db.Uuid
+
+  side   OrderSide
+  volume Decimal @db.Decimal(18, 8)
+  price  Decimal @db.Decimal(28, 10)
+
+  quoteBid Decimal @map("quote_bid") @db.Decimal(28, 10)
+  quoteAsk Decimal @map("quote_ask") @db.Decimal(28, 10)
+  /// Timestamp of the quote used, distinct from when we wrote the row.
+  quoteAt  DateTime @map("quote_at") @db.Timestamptz(6)
+
+  executedAt DateTime @default(now()) @map("executed_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([accountId, executedAt(sort: Desc)])
+  @@index([orderId])
+  @@map("executions")
+}
+
+/// A completed round trip. Written once when a position (or part of one) closes.
+model Trade {
+  id         String @id @default(uuid()) @db.Uuid
+  accountId  String @map("account_id") @db.Uuid
+  positionId String @map("position_id") @db.Uuid
+  symbolId   String @map("symbol_id") @db.Uuid
+
+  side   OrderSide
+  volume Decimal @db.Decimal(18, 8)
+
+  entryPrice Decimal  @map("entry_price") @db.Decimal(28, 10)
+  exitPrice  Decimal  @map("exit_price") @db.Decimal(28, 10)
+  entryTime  DateTime @map("entry_time") @db.Timestamptz(6)
+  exitTime   DateTime @map("exit_time") @db.Timestamptz(6)
+
+  grossPnl   Decimal @map("gross_pnl") @db.Decimal(28, 10)
+  commission Decimal @db.Decimal(28, 10)
+  swap       Decimal @db.Decimal(28, 10)
+  netPnl     Decimal @map("net_pnl") @db.Decimal(28, 10)
+
+  closeReason CloseReason @map("close_reason")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  account  Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  position Position @relation(fields: [positionId], references: [id], onDelete: Restrict)
+  symbol   Symbol   @relation(fields: [symbolId], references: [id], onDelete: Restrict)
+
+  @@index([accountId, exitTime(sort: Desc)])
+  @@index([positionId])
+  @@map("trades")
+}
+
+// ---------------------------------------------------------------------------
+// Money movement — immutable ledger
+// ---------------------------------------------------------------------------
+
+enum LedgerEntryType {
+  DEPOSIT
+  WITHDRAWAL
+  TRADE_PROFIT
+  TRADE_LOSS
+  COMMISSION
+  SWAP
+  FEE
+  ADJUSTMENT
+}
+
+/// Append-only. Nothing in the application updates or deletes a ledger row;
+/// a mistake is corrected with a compensating ADJUSTMENT entry that references
+/// the original. `balanceAfter` is stored so any historical balance is
+/// readable without replaying the whole account.
+model BalanceLedger {
+  id        String          @id @default(uuid()) @db.Uuid
+  accountId String          @map("account_id") @db.Uuid
+  type      LedgerEntryType
+  /// Signed: positive credits the account, negative debits it.
+  amount       Decimal @db.Decimal(28, 10)
+  balanceAfter Decimal @map("balance_after") @db.Decimal(28, 10)
+  currency     String  @db.VarChar(3)
+
+  /// What caused the entry: a trade, a position, an admin action.
+  referenceType String? @map("reference_type")
+  referenceId   String? @map("reference_id") @db.Uuid
+  /// Set on an ADJUSTMENT that reverses an earlier entry.
+  compensatesId String? @map("compensates_id") @db.Uuid
+
+  /// Deduplication key. A retried webhook or job cannot double-credit.
+  idempotencyKey String? @unique @map("idempotency_key")
+
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([accountId, createdAt(sort: Desc)])
+  @@index([referenceType, referenceId])
+  @@map("balance_ledger")
+}
+
+/// Periodic point-in-time account state. Used for charts, reconciliation and
+/// the daily reset that a future evaluation product would build on.
+model AccountSnapshot {
+  id        String   @id @default(uuid()) @db.Uuid
+  accountId String   @map("account_id") @db.Uuid
+  takenAt   DateTime @map("taken_at") @db.Timestamptz(6)
+
+  balance     Decimal  @db.Decimal(28, 10)
+  equity      Decimal  @db.Decimal(28, 10)
+  usedMargin  Decimal  @map("used_margin") @db.Decimal(28, 10)
+  freeMargin  Decimal  @map("free_margin") @db.Decimal(28, 10)
+  /// Null when no margin is committed — the ratio is undefined, not infinite.
+  marginLevel Decimal? @map("margin_level") @db.Decimal(18, 6)
+  floatingPnl Decimal  @map("floating_pnl") @db.Decimal(28, 10)
+  openPositions Int    @map("open_positions")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, takenAt])
+  @@index([accountId, takenAt(sort: Desc)])
+  @@map("account_snapshots")
+}
+
+// ---------------------------------------------------------------------------
+// Risk & audit
+// ---------------------------------------------------------------------------
+
+/// Named, versioned risk rule configuration. Rules are data, never constants.
+model RiskRuleConfig {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String   @unique
+  enabled    Boolean  @default(true)
+  /// Rule-specific parameters, validated against the rule's schema on write.
+  parameters Json     @default("{}")
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("risk_rules")
+}
+
+/// Every risk decision worth remembering: a rejection, a margin call, a stop-out.
+model RiskEvent {
+  id        String  @id @default(uuid()) @db.Uuid
+  accountId String  @map("account_id") @db.Uuid
+  rule      String
+  code      String
+  severity  String  @default("WARNING")
+  message   String
+  /// Account state at the instant of the decision, so it can be re-examined.
+  snapshot  Json    @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt(sort: Desc)])
+  @@index([rule, createdAt(sort: Desc)])
+  @@map("risk_events")
+}
+
+/// Append-only audit trail. Secrets, tokens and passwords are never written here.
+model AuditLog {
+  id       String  @id @default(uuid()) @db.Uuid
+  actorId  String? @map("actor_id") @db.Uuid
+  /// 'USER' | 'ADMIN' | 'SYSTEM' — who acted, when actorId is absent.
+  actorType String  @map("actor_type")
+  action    String
+  resourceType String  @map("resource_type")
+  resourceId   String? @map("resource_id")
+  /// State before and after, redacted of anything sensitive.
+  before Json?
+  after  Json?
+
+  requestId String?  @map("request_id")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([resourceType, resourceId])
+  @@index([action, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Delivery guarantees
+// ---------------------------------------------------------------------------
+
+/// Idempotency records for mutating endpoints.
+///
+/// The unique constraint on (scope, key) is what actually prevents a retried
+/// order from becoming two trades: the second request loses the insert race and
+/// is served the stored response instead of executing again.
+model IdempotencyKey {
+  id    String @id @default(uuid()) @db.Uuid
+  /// Namespaced per account so two users cannot collide on the same key.
+  scope String
+  key   String
+
+  /// Hash of the request body. A key reused with a *different* payload is a
+  /// client bug and must be rejected, not silently answered from cache.
+  requestHash String @map("request_hash")
+
+  status       String  @default("IN_PROGRESS")
+  responseCode Int?    @map("response_code")
+  responseBody Json?   @map("response_body")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}

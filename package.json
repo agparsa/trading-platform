@@ -1,0 +1,55 @@
+{
+  "name": "trading-platform",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter \"./packages/**\" build && pnpm -r --filter \"./apps/**\" build",
+    "build:packages": "pnpm -r --filter \"./packages/**\" build",
+    "dev": "pnpm -r --parallel dev",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yaml,yml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yaml,yml}\"",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset --force",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "clean": "rimraf \"packages/*/dist\" \"apps/*/dist\" \"apps/web/.next\" \"**/*.tsbuildinfo\"",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "prepare": "prisma generate",
+    "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
+    "check:schema": "tsx --env-file-if-exists=.env scripts/assert-no-float-columns.ts",
+    "smoke": "tsx --env-file-if-exists=.env scripts/smoke-api.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "catalog:",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "prisma": "catalog:",
+    "rimraf": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@prisma/client": "catalog:"
+  },
+  "prisma": {
+    "seed": "tsx --env-file-if-exists=.env prisma/seed.ts"
+  }
+}

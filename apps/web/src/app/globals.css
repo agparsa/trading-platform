@@ -1,0 +1,54 @@
+@import 'tailwindcss';
+
+/*
+ * Terminal palette.
+ *
+ * A trading terminal is a dark, dense surface where the only saturated colour
+ * is a number that moved. Light mode exists but the terminal is dark by
+ * default: it is looked at for hours.
+ */
+@theme {
+  --color-terminal-bg: #0b0e13;
+  --color-terminal-surface: #12161d;
+  --color-terminal-raised: #1a1f28;
+  --color-terminal-border: #232a35;
+  --color-terminal-text: #e6e9ef;
+  --color-terminal-muted: #8b94a3;
+  --color-terminal-long: #26a69a;
+  --color-terminal-short: #ef5350;
+  --color-terminal-warning: #f0b90b;
+
+  --font-mono:
+    ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+}
+
+:root {
+  --tp-bg: var(--color-terminal-bg);
+  --tp-surface: var(--color-terminal-surface);
+  --tp-surface-raised: var(--color-terminal-raised);
+  --tp-border: var(--color-terminal-border);
+  --tp-text: var(--color-terminal-text);
+  --tp-text-muted: var(--color-terminal-muted);
+  --tp-long: var(--color-terminal-long);
+  --tp-short: var(--color-terminal-short);
+  --tp-profit: var(--color-terminal-long);
+  --tp-loss: var(--color-terminal-short);
+  --tp-warning: var(--color-terminal-warning);
+  --tp-font-numeric: var(--font-mono);
+}
+
+html,
+body {
+  background: var(--tp-bg);
+  color: var(--tp-text);
+}
+
+/*
+ * Every changing number is rendered with tabular figures. Without this, digits
+ * have different widths and a live P&L column jitters horizontally on each tick.
+ */
+.numeric {
+  font-family: var(--tp-font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}

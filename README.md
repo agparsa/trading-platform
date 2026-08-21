@@ -1,0 +1,187 @@
+# Trading Platform
+
+A standalone, production-oriented trading platform: its own order engine,
+position engine, P&L engine, risk engine, market-data layer, API and terminal.
+No architectural dependency on TradingLocker, MetaTrader, or any other trading
+platform.
+
+**Status: Phase 0 and Phase 1 complete.** The domain foundations are real,
+tested and running. The trading terminal is not built yet, and this repository
+does not pretend otherwise — see [Build status](#build-status).
+
+---
+
+## What exists today
+
+|                   |                                                                                |
+| ----------------- | ------------------------------------------------------------------------------ |
+| Tests             | **174**, all passing                                                           |
+| Database          | 21 tables, **57 NUMERIC columns, 0 floating-point columns** (CI-enforced)      |
+| Verified          | `lint → typecheck → test → build` green; API boots and passes smoke checks     |
+| Reference vectors | 8 P&L / margin / equity figures reproduced exactly from a live broker terminal |
+
+Working, with tests:
+
+- **Money and precision** — `Money`, configured `Decimal`, explicit rounding and
+  tick/lot quantization. `toDecimal()` refuses inexact JS numbers outright.
+- **P&L** — executable-side selection, gross/net, commission, swap, FX conversion,
+  break-even. Checked against eight figures captured from a live terminal.
+- **Margin and account state** — effective margin rate, required margin, equity,
+  free margin, margin level, margin utilisation, margin call, stop-out.
+- **State machines** — order and position lifecycles as data, with illegal
+  transitions rejected at the attempt.
+- **Protective orders** — SL/TP validation and triggering on the correct side of
+  the book, trailing stops, and a defined resolution for a tick that spans both levels.
+- **Risk engine** — pure rule contract, six default rules, all violations reported at once.
+- **Market data** — provider port, seeded deterministic simulator, scripted
+  provider for tests, candle aggregation, quote-freshness policy.
+- **API** — NestJS with Zod-validated environment, response/error envelopes,
+  request-id tracing, structured logging with redaction, Prometheus metrics,
+  liveness and readiness probes, OpenAPI.
+- **Worker** — BullMQ registry (no processors yet, and it says so on startup).
+- **Web** — Next.js 15 with the terminal theme, serving an honest build-status page.
+
+Not built yet: authentication, trading endpoints, WebSocket streaming, the
+terminal UI, chart integration. Those are Phases 2–9.
+
+---
+
+## Quick start
+
+```bash
+cp .env.example .env                 # then set the two JWT secrets
+docker compose up -d                 # postgres, redis, api, worker, web
+pnpm install
+pnpm db:migrate
+pnpm db:seed
+pnpm verify
+```
+
+Generate secrets with `openssl rand -base64 48`. The API refuses to boot on
+anything weaker.
+
+|                          |                                   |
+| ------------------------ | --------------------------------- |
+| Web                      | http://localhost:3000             |
+| API                      | http://localhost:4000/api/v1      |
+| OpenAPI                  | http://localhost:4000/docs        |
+| Health / Ready / Metrics | `/health` · `/ready` · `/metrics` |
+
+Without Docker, run PostgreSQL 16 and Redis 7 yourself, point `DATABASE_URL` and
+`REDIS_URL` at them, and `pnpm dev`.
+
+---
+
+## Layout
+
+```
+apps/
+  api/         NestJS — HTTP, WebSocket, trading engine
+  worker/      BullMQ — deferred work only
+  web/         Next.js — the terminal
+packages/
+  shared-types/    enums, wire DTOs, error codes, WS contract
+  financial-core/  Money, Decimal, instrument specs, P&L / margin / account formulas
+  market-core/     MarketDataProvider port, clock, seeded RNG, candles, simulator
+  trading-core/    order & position state machines, protective orders
+  risk-core/       rule contract, rule engine, default rules
+  api-client/      typed REST client
+  ui/              presentation primitives and design tokens
+prisma/          schema, migrations, instrument seed
+docs/            architecture and design (Phase 0 deliverables)
+docker/          per-service Dockerfiles
+scripts/         schema guard, API smoke test
+```
+
+`financial-core`, `trading-core` and `risk-core` are pure: no React, no Next,
+no NestJS, no Prisma, no Redis, no Node I/O. **Enforced by ESLint**, not by
+convention.
+
+---
+
+## Scripts
+
+| Command                                                                        | Does                                      |
+| ------------------------------------------------------------------------------ | ----------------------------------------- |
+| `pnpm verify`                                                                  | lint → typecheck → test → build           |
+| `pnpm test` / `test:watch` / `test:coverage`                                   | Vitest                                    |
+| `pnpm dev`                                                                     | Every app in watch mode                   |
+| `pnpm build`                                                                   | Packages, then apps                       |
+| `pnpm db:migrate` / `db:migrate:deploy` / `db:seed` / `db:studio` / `db:reset` | Prisma                                    |
+| `pnpm check:schema`                                                            | Fails if any floating-point column exists |
+| `pnpm smoke`                                                                   | Boots the built API and probes it         |
+| `pnpm lint:fix` / `pnpm format`                                                | Fixers                                    |
+
+---
+
+## Environment
+
+Every variable is documented in [`.env.example`](./.env.example) and validated by
+a Zod schema at boot (`apps/api/src/config/env.schema.ts`). Missing or malformed
+configuration stops the process; error output names fields, never values.
+
+The ones worth knowing:
+
+| Variable                                   | Why it matters                                                   |
+| ------------------------------------------ | ---------------------------------------------------------------- |
+| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Minimum 32 characters, or the API will not start                 |
+| `MARKET_SIMULATOR_SEED`                    | Fixes the market. Same seed ⇒ same ticks ⇒ same fills ⇒ same P&L |
+| `TRADING_SERVER_TIMEZONE`                  | The single zone all trading-day logic uses                       |
+| `NEXT_PUBLIC_CHARTING_LIBRARY_PATH`        | Where the licensed TradingView library is unpacked               |
+
+---
+
+## Documentation
+
+[`docs/`](./docs/README.md) holds the Phase 0 design. Most useful first:
+
+- [architecture.md](./docs/architecture.md) — the rule everything else follows
+- [pnl.md](./docs/pnl.md) — formulas and the reference vectors
+- [trading-engine.md](./docs/trading-engine.md) — submission and tick paths
+- [database.md](./docs/database.md) — schema and the immutable ledger
+
+---
+
+## Build status
+
+| Phase |                                                |              |
+| ----- | ---------------------------------------------- | ------------ |
+| 0     | Product definition                             | **Complete** |
+| 1     | Project foundation                             | **Complete** |
+| 2     | Account system                                 | Planned      |
+| 3     | Market core (persisted)                        | Planned      |
+| 4     | Trading core                                   | Planned      |
+| 5     | Financial engine (wired)                       | Planned      |
+| 6     | SL/TP engine                                   | Planned      |
+| 7     | Realtime                                       | Planned      |
+| 8     | Trading terminal                               | Planned      |
+| 9     | Chart integration                              | Planned      |
+| 10–13 | Advanced UX, security, performance, production | Planned      |
+
+The first real milestone is not the chart. It is this, working end to end
+through automated tests:
+
+```
+User → Account → Market simulator → BUY XAUUSD → Order → Execution
+     → Position → Tick → P&L → SL/TP → Close → Ledger → Updated balance
+```
+
+---
+
+## Working rules
+
+Non-negotiable in this repository:
+
+1. **No fake functionality.** A feature is complete or it is marked incomplete.
+   No `TODO: implement later` behind a finished-looking surface.
+2. **No floating-point money.** `Decimal` in memory, `NUMERIC` in the database.
+   CI fails on a float column.
+3. **No polling as a substitute for realtime.** ESLint bans `setInterval`.
+4. **No silently swallowed errors.** Every failure is a typed, coded error.
+5. **No API timeout read as a rule breach.** A provider failure never closes a position.
+6. **Database transactions for every financial mutation.**
+7. **Tests for every financial calculation.**
+8. **UTC internally; timezone assumptions made explicit.**
+9. **The domain stays framework-free.**
+10. **No evaluation-program logic here.** This is a standalone trading platform;
+    that belongs in a separate product built on these seams.
