@@ -16,6 +16,7 @@ import { EmailModule } from './auth/email/email.module';
 import { AuthModule } from './auth/auth.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { UsersModule } from './users/users.module';
+import { MarketModule } from './market/market.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -71,6 +72,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AuthModule,
     AccountsModule,
     UsersModule,
+    MarketModule,
   ],
   providers: [
     // Order matters: rate limiting runs before authentication so an unauthenticated

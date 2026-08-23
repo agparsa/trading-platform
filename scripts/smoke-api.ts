@@ -65,6 +65,52 @@ const checks: Check[] = [
     },
   },
   {
+    name: 'authentication is on by default — a trading route needs a token',
+    run: async () => {
+      const { status, body } = await getJson('/api/v1/accounts');
+      assert(status === 401, `expected 401, got ${status}`);
+      const payload = body as { error: { code: string } };
+      assert(payload.error.code === 'UNAUTHENTICATED', `unexpected code ${payload.error.code}`);
+    },
+  },
+  {
+    name: 'the market feed is quoting at least one instrument',
+    run: async () => {
+      // Registration and login exercise the whole account-opening path, and
+      // give us a token to read the quote feed with.
+      const email = `smoke-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      const register = await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, displayName: 'Smoke Test' }),
+      });
+      assert(register.status === 202, `register returned ${register.status}`);
+
+      const login = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      assert(login.ok, `login returned ${login.status}`);
+      const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+
+      const accounts = await fetch(`${BASE}/api/v1/accounts`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const opened = ((await accounts.json()) as { data: Array<{ balance: string }> }).data;
+      assert(opened.length === 1, `expected one account, got ${opened.length}`);
+
+      const quotes = await fetch(`${BASE}/api/v1/market/quotes`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const priced = ((await quotes.json()) as { data: unknown[] }).data;
+      // At least one instrument must be inside its trading session and quoting;
+      // crypto never closes, so this holds at any hour.
+      assert(priced.length > 0, 'no instrument is currently quoting');
+    },
+  },
+  {
     name: 'metrics endpoint exposes the declared trading counters',
     run: async () => {
       const response = await fetch(`${BASE}/metrics`);

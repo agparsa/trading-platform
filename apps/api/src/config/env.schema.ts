@@ -46,6 +46,17 @@ export const envSchema = z.object({
   // ledger entry. Set to '0' to open demo accounts unfunded.
   DEMO_ACCOUNT_INITIAL_BALANCE: z.string().default('100000'),
 
+  // How old a quote may be before the engine refuses to trade on it.
+  QUOTE_MAX_AGE_MS: z.coerce.number().int().min(100).default(5_000),
+  // Resolutions the platform aggregates and persists.
+  CANDLE_RESOLUTIONS: z.string().default('1,5,15,60,240,1D'),
+  // Exactly one process may ingest market data: two would double-count candle
+  // volume. Disable it on additional API replicas.
+  MARKET_INGEST_ENABLED: z
+    .union([z.boolean(), z.enum(['true', 'false'])])
+    .default(true)
+    .transform((value) => value === true || value === 'true'),
+
   TRADING_SERVER_TIMEZONE: z.string().default('UTC'),
   DEFAULT_ACCOUNT_LEVERAGE: z.coerce.number().int().min(1).default(100),
   IDEMPOTENCY_KEY_TTL_SECONDS: z.coerce.number().int().min(60).default(86_400),
