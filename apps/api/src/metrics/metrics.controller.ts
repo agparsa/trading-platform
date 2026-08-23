@@ -1,5 +1,7 @@
 import { Controller, Get, Header, Res, VERSION_NEUTRAL } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
+import { Public } from '../common/decorators/public.decorator';
 import type { Response } from 'express';
 import { MetricsService } from './metrics.service';
 
@@ -8,6 +10,8 @@ import { MetricsService } from './metrics.service';
  * infrastructure, and in production it should be bound to an internal listener
  * or protected at the ingress rather than exposed with the trading API.
  */
+@Public()
+@SkipThrottle()
 @ApiExcludeController()
 @Controller({ path: 'metrics', version: VERSION_NEUTRAL })
 export class MetricsController {

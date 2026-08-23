@@ -1,12 +1,21 @@
 import { Controller, Get, VERSION_NEUTRAL, Version } from '@nestjs/common';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
+import { Public } from '../common/decorators/public.decorator';
 import { DatabaseHealthIndicator, RedisHealthIndicator } from './health.indicators';
 
 /**
  * Probes live outside the versioned API surface. An orchestrator's health
  * check must not break because the trading API moved from v1 to v2.
  */
+/**
+ * Probes are public and unthrottled: an orchestrator polls them constantly, and
+ * a rate-limited health check would report the service as down under load —
+ * the precise moment the reading needs to be trustworthy.
+ */
+@Public()
+@SkipThrottle()
 @ApiTags('health')
 @Controller({ version: VERSION_NEUTRAL })
 export class HealthController {

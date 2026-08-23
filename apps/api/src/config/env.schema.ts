@@ -31,6 +31,21 @@ export const envSchema = z.object({
   MARKET_SIMULATOR_TICK_MS: z.coerce.number().int().min(10).default(250),
   MARKET_SIMULATOR_SEED: z.coerce.number().int().default(20260821),
 
+  APP_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
+  // 'log' prints verification and reset links to the server log. It is a
+  // development stand-in and refuses to run under NODE_ENV=production.
+  EMAIL_PROVIDER: z.enum(['log', 'none']).default('log'),
+  EMAIL_FROM: z.string().default('no-reply@trading-platform.local'),
+  EMAIL_VERIFICATION_TTL_HOURS: z.coerce.number().int().min(1).default(24),
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).default(60),
+  LOGIN_MAX_FAILED_ATTEMPTS: z.coerce.number().int().min(1).default(10),
+  LOGIN_LOCKOUT_MINUTES: z.coerce.number().int().min(1).default(15),
+
+  DEFAULT_ACCOUNT_CURRENCY: z.string().length(3).default('USD'),
+  // Virtual funds credited to a new demo account, posted as a real DEPOSIT
+  // ledger entry. Set to '0' to open demo accounts unfunded.
+  DEMO_ACCOUNT_INITIAL_BALANCE: z.string().default('100000'),
+
   TRADING_SERVER_TIMEZONE: z.string().default('UTC'),
   DEFAULT_ACCOUNT_LEVERAGE: z.coerce.number().int().min(1).default(100),
   IDEMPOTENCY_KEY_TTL_SECONDS: z.coerce.number().int().min(60).default(86_400),

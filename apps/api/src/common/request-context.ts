@@ -11,6 +11,8 @@ import { REQUEST_ID_HEADER } from '@tp/shared-types';
  */
 export interface RequestWithContext extends Request {
   requestId?: string;
+  /** Attached by JwtAuthGuard. Absent on public routes. */
+  user?: { id: string; email: string; role: string };
 }
 
 /**

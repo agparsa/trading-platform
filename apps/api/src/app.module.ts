@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
@@ -9,6 +11,13 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { AuditModule } from './common/audit/audit.module';
+import { EmailModule } from './auth/email/email.module';
+import { AuthModule } from './auth/auth.module';
+import { AccountsModule } from './accounts/accounts.module';
+import { UsersModule } from './users/users.module';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
   imports: [
@@ -41,10 +50,35 @@ import { MetricsModule } from './metrics/metrics.module';
         },
       }),
     }),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<Env, true>) => ({
+        throttlers: [
+          {
+            name: 'default',
+            ttl: 60_000,
+            limit: config.get('RATE_LIMIT_API_PER_MINUTE', { infer: true }),
+          },
+        ],
+      }),
+    }),
     PrismaModule,
     RedisModule,
+    AuditModule,
+    EmailModule,
     HealthModule,
     MetricsModule,
+    AuthModule,
+    AccountsModule,
+    UsersModule,
+  ],
+  providers: [
+    // Order matters: rate limiting runs before authentication so an unauthenticated
+    // flood is rejected without a database read, and roles are checked only once
+    // a user has been established.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
 export class AppModule {}
