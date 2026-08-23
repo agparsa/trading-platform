@@ -29,7 +29,10 @@ export default tseslint.config(
         'error',
         { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
       ],
-      eqeqeq: ['error', 'always'],
+      // `== null` is permitted, and only that: it is the idiomatic way to test
+      // for null-or-undefined together, which matters where Prisma returns null
+      // and an absent field is undefined. Every other loose comparison is an error.
+      eqeqeq: ['error', 'always', { null: 'ignore' }],
       'no-console': ['error', { allow: ['warn', 'error'] }],
       'no-restricted-globals': [
         'error',

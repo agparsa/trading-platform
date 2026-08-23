@@ -4,12 +4,18 @@ This is a financial system. Tests are not a quality gate bolted on afterwards;
 the formulas were written against them.
 
 ```
-pnpm test              # 174 tests
+pnpm test              # 261 tests (65 integration)
 pnpm test:coverage     # thresholds enforced
 pnpm verify            # lint → typecheck → test → build
 pnpm check:schema      # no floating-point columns exist
-pnpm smoke             # boots the built API and probes it
+pnpm smoke             # boots the built API and drives a full trade round trip
 ```
+
+Integration tests run against a real PostgreSQL database named by
+`TEST_DATABASE_URL`, and skip themselves when it is unset so `pnpm test` still
+works offline. They use a real database on purpose: row locks, unique
+constraints and transaction boundaries are exactly what they check, and a mocked
+`FOR UPDATE` proves nothing.
 
 ## What is covered today
 

@@ -52,31 +52,56 @@ against fresh state_. Guessing from the error name would get both wrong.
 A unit test asserts that every code in the catalogue has an explicit status, so
 adding a code without deciding its status fails the build.
 
-## Planned surface
+## Surface
 
-Delivered in Phase 1: `/health`, `/ready`, `/metrics` (all version-neutral, so an
-orchestrator's probe does not break when the API moves to v2).
-
-Planned, phase by phase:
+Infrastructure probes are version-neutral, so an orchestrator's check does not
+break when the API moves to v2:
 
 ```
-Phase 2   POST   /auth/register  /auth/login  /auth/refresh  /auth/logout
-          GET    /users/me
-          GET    /accounts        /accounts/:id
-
-Phase 3   GET    /symbols         /symbols/:code
-          GET    /market/quotes   /market/candles
-
-Phase 4   POST   /orders                       (Idempotency-Key)
-          GET    /orders          /orders/:id
-          PATCH  /orders/:id                   (Idempotency-Key)
-          DELETE /orders/:id                   (Idempotency-Key)
-          GET    /positions       /positions/:id
-          POST   /positions/:id/close          (Idempotency-Key)
-          POST   /positions/:id/reverse        (Idempotency-Key)
-          PATCH  /positions/:id                (Idempotency-Key)
-          GET    /trades          /executions  /history
+GET  /health   /ready   /metrics
 ```
+
+Implemented under `/api/v1`:
+
+```
+Auth      POST   /auth/register              202, no body — see below
+          POST   /auth/login  /auth/refresh  /auth/logout
+          POST   /auth/verify-email
+          POST   /auth/password-reset  /auth/password-reset/confirm
+          POST   /auth/password              authenticated
+          GET    /auth/me
+
+Users     GET    /users/me       PATCH /users/me
+          GET    /users/me/sessions
+
+Accounts  GET    /accounts       /accounts/:id
+          GET    /accounts/:id/settings
+          GET    /accounts/:id/ledger        cursor-paginated
+          GET    /accounts/:id/state         live equity, margin, floating P&L
+
+Market    GET    /symbols        /symbols/:code
+          GET    /market/quotes  /market/candles
+
+Trading   POST   /orders                     ← Idempotency-Key
+          GET    /orders         /orders/:id/events
+          GET    /positions
+          POST   /positions/:id/close        ← Idempotency-Key
+          PATCH  /positions/:id              ← Idempotency-Key
+          POST   /positions/:id/reverse      ← Idempotency-Key
+          GET    /trades
+```
+
+Still to come: pending orders (`PATCH`/`DELETE /orders/:id`) in Phase 6, and the
+WebSocket surface in Phase 7.
+
+### Two endpoints that deliberately tell you nothing
+
+`POST /auth/register` and `POST /auth/password-reset` both return `202` with a
+generic message whether or not the address is registered. Both are
+unauthenticated; a truthful response would turn either into an
+account-enumeration oracle. Login returns one error for "no such user" and
+"wrong password", and spends a full Argon2 verification against a dummy hash on
+an unknown address so the timing matches too.
 
 ## Validation
 

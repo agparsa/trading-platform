@@ -1,0 +1,530 @@
+import { Injectable, Logger } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
+import {
+  commissionForLeg,
+  exitPriceFor,
+  grossPnl,
+  Money,
+  normalizePrice,
+  normalizeVolume,
+  toDecimal,
+} from '@tp/financial-core';
+import { validateProtectiveLevels } from '@tp/trading-core';
+import { CloseReason, DomainError, TradingErrorCode, type OrderSide } from '@tp/shared-types';
+import { PrismaService } from '../prisma/prisma.service';
+import { SymbolsService } from '../symbols/symbols.service';
+import { QuoteService } from '../market/quote.service';
+import { ConversionService } from '../market/conversion.service';
+import { LedgerService } from '../accounts/ledger.service';
+import { AuditService } from '../common/audit/audit.service';
+import { OrdersService } from './orders.service';
+import type { CloseResult, ModifyPositionRequest, OrderResult } from './trading.types';
+
+interface LoadedPosition {
+  id: string;
+  accountId: string;
+  accountCurrency: string;
+  symbolCode: string;
+  symbolId: string;
+  side: OrderSide;
+  status: string;
+  volume: string;
+  entryPrice: string;
+  margin: string;
+  commission: string;
+  swap: string;
+  realizedPnl: string;
+  stopLoss: string | null;
+  takeProfit: string | null;
+  version: number;
+  openedAt: Date;
+}
+
+@Injectable()
+export class PositionsService {
+  private readonly logger = new Logger(PositionsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly symbols: SymbolsService,
+    private readonly quotes: QuoteService,
+    private readonly conversion: ConversionService,
+    private readonly ledger: LedgerService,
+    private readonly audit: AuditService,
+    private readonly orders: OrdersService,
+  ) {}
+
+  /**
+   * Closes a position, in whole or in part.
+   *
+   * The first thing this does is move the position `OPEN -> CLOSING` with a
+   * conditional update. Whoever wins that update owns the close; a second
+   * request, a stop-loss trigger and a liquidation all lose it and stop. The
+   * guard is a database write, not an in-process flag, so it holds across
+   * multiple API instances.
+   *
+   * If anything after the guard fails — most likely a stale quote — the
+   * position is put back to OPEN. A position stranded in CLOSING would be
+   * untradeable and invisible to the stop-out check.
+   */
+  async close(
+    userId: string,
+    positionId: string,
+    requestedVolume: string | null,
+    reason: CloseReason = CloseReason.MANUAL,
+  ): Promise<CloseResult> {
+    const position = await this.loadOwned(userId, positionId);
+    if (position.status !== 'OPEN') {
+      throw new DomainError(
+        TradingErrorCode.POSITION_ALREADY_CLOSING,
+        `Position is ${position.status.toLowerCase()} and cannot be closed again`,
+        { positionId, status: position.status },
+      );
+    }
+
+    const spec = this.symbols.requireSpec(position.symbolCode);
+    const openVolume = toDecimal(position.volume);
+    const closeVolume =
+      requestedVolume == null ? openVolume : normalizeVolume(spec, requestedVolume);
+
+    if (closeVolume.lte(0)) {
+      throw new DomainError(TradingErrorCode.INVALID_VOLUME, 'Close volume must be positive');
+    }
+    if (closeVolume.gt(openVolume)) {
+      throw new DomainError(
+        TradingErrorCode.PARTIAL_CLOSE_EXCEEDS_VOLUME,
+        `Cannot close ${closeVolume.toString()} lots of a ${openVolume.toString()} lot position`,
+        { requested: closeVolume.toString(), open: openVolume.toString() },
+      );
+    }
+    const remaining = openVolume.minus(closeVolume);
+    // A remainder below the minimum tradeable size could never be closed
+    // afterwards, so the whole position goes instead.
+    const fullyClosed = remaining.lt(toDecimal(spec.minVolume));
+    const effectiveCloseVolume = fullyClosed ? openVolume : closeVolume;
+    const effectiveRemaining = fullyClosed ? toDecimal(0) : remaining;
+
+    const claimed = await this.prisma.position.updateMany({
+      where: { id: positionId, status: 'OPEN', version: position.version },
+      data: { status: 'CLOSING', version: { increment: 1 } },
+    });
+    if (claimed.count === 0) {
+      throw new DomainError(
+        TradingErrorCode.POSITION_ALREADY_CLOSING,
+        'Another request is already closing this position',
+        { positionId },
+      );
+    }
+
+    try {
+      const tick = await this.quotes.requireFresh(position.symbolCode);
+      const exitPrice = normalizePrice(spec, exitPriceFor(position.side, tick));
+      const rate = await this.conversion.rate(spec.quoteCurrency, position.accountCurrency);
+
+      const gross = grossPnl({
+        spec,
+        side: position.side,
+        volume: effectiveCloseVolume,
+        entryPrice: position.entryPrice,
+        exitPrice,
+        accountCurrency: position.accountCurrency,
+        quoteToAccountRate: rate,
+      });
+      const commission = commissionForLeg(
+        spec,
+        effectiveCloseVolume,
+        position.accountCurrency,
+        rate,
+      );
+      // Accrued swap is released in proportion to the volume being closed.
+      const closedFraction = effectiveCloseVolume.div(openVolume);
+      const swap = Money.of(position.swap, position.accountCurrency).times(closedFraction);
+      const net = gross.minus(commission).plus(swap);
+      const marginReleased = Money.of(position.margin, position.accountCurrency).times(
+        closedFraction,
+      );
+
+      const result = await this.prisma.$transaction(async (tx) => {
+        const closingOrder = await tx.order.create({
+          data: {
+            accountId: position.accountId,
+            symbolId: position.symbolId,
+            side: position.side === 'BUY' ? 'SELL' : 'BUY',
+            type: 'MARKET',
+            status: 'FILLED',
+            timeInForce: 'IOC',
+            volume: effectiveCloseVolume.toString(),
+            filledVolume: effectiveCloseVolume.toString(),
+            positionId: position.id,
+          },
+        });
+        await tx.orderEvent.createMany({
+          data: [
+            { orderId: closingOrder.id, type: 'CREATED', toStatus: 'NEW' },
+            { orderId: closingOrder.id, type: 'ACCEPTED', fromStatus: 'NEW', toStatus: 'ACCEPTED' },
+            {
+              orderId: closingOrder.id,
+              type: 'FILLED',
+              fromStatus: 'ACCEPTED',
+              toStatus: 'FILLED',
+              payload: { price: exitPrice.toString(), reason },
+            },
+          ],
+        });
+        await tx.execution.create({
+          data: {
+            orderId: closingOrder.id,
+            accountId: position.accountId,
+            side: position.side === 'BUY' ? 'SELL' : 'BUY',
+            volume: effectiveCloseVolume.toString(),
+            price: exitPrice.toString(),
+            quoteBid: tick.bid,
+            quoteAsk: tick.ask,
+            quoteAt: new Date(tick.timestamp),
+          },
+        });
+
+        await tx.trade.create({
+          data: {
+            accountId: position.accountId,
+            positionId: position.id,
+            symbolId: position.symbolId,
+            side: position.side,
+            volume: effectiveCloseVolume.toString(),
+            entryPrice: position.entryPrice,
+            exitPrice: exitPrice.toString(),
+            entryTime: position.openedAt,
+            exitTime: new Date(),
+            grossPnl: gross.round().toString(),
+            commission: commission.round().toString(),
+            swap: swap.round().toString(),
+            netPnl: net.round().toString(),
+            closeReason: reason,
+          },
+        });
+
+        // Price result and costs are separate ledger entries. Netting them into
+        // one line would make a statement unreadable and a commission dispute
+        // unanswerable.
+        if (!gross.isZero()) {
+          await this.ledger.post(tx, {
+            accountId: position.accountId,
+            type: gross.isPositive() ? 'TRADE_PROFIT' : 'TRADE_LOSS',
+            amount: gross,
+            referenceType: 'Position',
+            referenceId: position.id,
+            description: `${position.symbolCode} ${position.side} ${effectiveCloseVolume.toString()} lots`,
+          });
+        }
+        if (commission.isPositive()) {
+          await this.ledger.post(tx, {
+            accountId: position.accountId,
+            type: 'COMMISSION',
+            amount: commission.negated(),
+            referenceType: 'Position',
+            referenceId: position.id,
+            description: `Commission on closing ${position.symbolCode}`,
+          });
+        }
+        if (!swap.isZero()) {
+          await this.ledger.post(tx, {
+            accountId: position.accountId,
+            type: 'SWAP',
+            amount: swap,
+            referenceType: 'Position',
+            referenceId: position.id,
+            description: `Swap released on closing ${position.symbolCode}`,
+          });
+        }
+
+        const remainingMargin = Money.of(position.margin, position.accountCurrency).minus(
+          marginReleased,
+        );
+        await tx.position.update({
+          where: { id: position.id },
+          data: fullyClosed
+            ? {
+                status: 'CLOSED',
+                volume: '0',
+                margin: '0',
+                currentPrice: exitPrice.toString(),
+                realizedPnl: Money.of(position.realizedPnl, position.accountCurrency)
+                  .plus(net)
+                  .toString(),
+                closeReason: reason,
+                closedAt: new Date(),
+                version: { increment: 1 },
+              }
+            : {
+                status: 'OPEN',
+                volume: effectiveRemaining.toString(),
+                margin: remainingMargin.toString(),
+                swap: Money.of(position.swap, position.accountCurrency).minus(swap).toString(),
+                currentPrice: exitPrice.toString(),
+                realizedPnl: Money.of(position.realizedPnl, position.accountCurrency)
+                  .plus(net)
+                  .toString(),
+                version: { increment: 1 },
+              },
+        });
+
+        await tx.positionEvent.create({
+          data: {
+            positionId: position.id,
+            type: fullyClosed ? 'CLOSED' : 'PARTIALLY_CLOSED',
+            fromStatus: 'CLOSING',
+            toStatus: fullyClosed ? 'CLOSED' : 'OPEN',
+            payload: {
+              exitPrice: exitPrice.toString(),
+              volume: effectiveCloseVolume.toString(),
+              grossPnl: gross.round().toString(),
+              netPnl: net.round().toString(),
+              reason,
+            },
+          },
+        });
+
+        const account = await tx.account.findUniqueOrThrow({ where: { id: position.accountId } });
+        return {
+          balanceAfter: Money.of(account.balance.toString(), position.accountCurrency).toString(),
+        };
+      });
+
+      await this.audit.record({
+        actorId: userId,
+        actorType: 'USER',
+        action: 'POSITION_CLOSE',
+        resourceType: 'Position',
+        resourceId: position.id,
+        after: {
+          volume: effectiveCloseVolume.toString(),
+          exitPrice: exitPrice.toString(),
+          netPnl: net.round().toString(),
+          reason,
+        },
+      });
+
+      return {
+        positionId: position.id,
+        closedVolume: effectiveCloseVolume.toString(),
+        remainingVolume: effectiveRemaining.toString(),
+        exitPrice: exitPrice.toString(),
+        grossPnl: gross.round().toString(),
+        commission: commission.round().toString(),
+        swap: swap.round().toString(),
+        netPnl: net.round().toString(),
+        balanceAfter: result.balanceAfter,
+        closeReason: reason,
+        fullyClosed,
+      };
+    } catch (error) {
+      // Put the position back so it stays tradeable and visible to risk.
+      await this.prisma.position
+        .updateMany({
+          where: { id: positionId, status: 'CLOSING' },
+          data: { status: 'OPEN', version: { increment: 1 } },
+        })
+        .catch((releaseError: unknown) => {
+          this.logger.error(
+            { err: releaseError, positionId },
+            'Failed to release a position from CLOSING; it needs manual attention',
+          );
+        });
+      throw error;
+    }
+  }
+
+  /**
+   * Changes stop-loss and take-profit.
+   *
+   * Levels are validated against the current *executable exit* price, not the
+   * entry price: a stop that is already through the market would fire on the
+   * next tick, closing a position the trader was trying to protect.
+   */
+  async modify(userId: string, request: ModifyPositionRequest): Promise<Record<string, unknown>> {
+    const position = await this.loadOwned(userId, request.positionId);
+    if (position.status !== 'OPEN') {
+      throw new DomainError(
+        TradingErrorCode.POSITION_ALREADY_CLOSING,
+        'A position that is closing cannot be modified',
+        { positionId: position.id },
+      );
+    }
+
+    const spec = this.symbols.requireSpec(position.symbolCode);
+    const tick = await this.quotes.requireFresh(position.symbolCode);
+    const reference = normalizePrice(spec, exitPriceFor(position.side, tick));
+
+    const stopLoss = request.stopLoss === undefined ? position.stopLoss : request.stopLoss;
+    const takeProfit = request.takeProfit === undefined ? position.takeProfit : request.takeProfit;
+    validateProtectiveLevels(spec, position.side, reference.toString(), { stopLoss, takeProfit });
+
+    const updated = await this.prisma.position.updateMany({
+      where: { id: position.id, status: 'OPEN', version: position.version },
+      data: { stopLoss, takeProfit, version: { increment: 1 } },
+    });
+    if (updated.count === 0) {
+      throw new DomainError(
+        TradingErrorCode.CONCURRENT_MODIFICATION,
+        'The position changed while this modification was being prepared. Retry against the current state.',
+        { positionId: position.id },
+      );
+    }
+
+    await this.prisma.positionEvent.create({
+      data: {
+        positionId: position.id,
+        type: 'MODIFIED',
+        fromStatus: 'OPEN',
+        toStatus: 'OPEN',
+        payload: {
+          stopLoss: stopLoss ?? null,
+          takeProfit: takeProfit ?? null,
+          previousStopLoss: position.stopLoss,
+          previousTakeProfit: position.takeProfit,
+        },
+      },
+    });
+
+    await this.audit.record({
+      actorId: userId,
+      actorType: 'USER',
+      action: 'POSITION_MODIFY',
+      resourceType: 'Position',
+      resourceId: position.id,
+      before: { stopLoss: position.stopLoss, takeProfit: position.takeProfit },
+      after: { stopLoss: stopLoss ?? null, takeProfit: takeProfit ?? null },
+    });
+
+    return { positionId: position.id, stopLoss, takeProfit };
+  }
+
+  /**
+   * Reverses a position: close it, then open the same size the other way.
+   *
+   * These are two operations, not one, and that is a deliberate choice rather
+   * than an oversight. If the close succeeds and the reopen is rejected — no
+   * margin, market closed, risk limit — the trader ends up flat. Flat is the
+   * safe failure: it is the state they explicitly asked to leave, and it can be
+   * corrected with one more order. Making it atomic would mean holding the
+   * close hostage to whether the new position is permitted.
+   */
+  async reverse(
+    userId: string,
+    positionId: string,
+  ): Promise<{ closed: CloseResult; opened: OrderResult }> {
+    const position = await this.loadOwned(userId, positionId);
+    const volume = position.volume;
+    const closed = await this.close(userId, positionId, null, CloseReason.REVERSE);
+    const opened = await this.orders.openPosition(userId, {
+      accountId: position.accountId,
+      symbol: position.symbolCode,
+      side: position.side === 'BUY' ? 'SELL' : 'BUY',
+      volume,
+    });
+    return { closed, opened };
+  }
+
+  async list(userId: string, accountId: string, includeClosed: boolean, limit: number) {
+    const account = await this.prisma.account.findFirst({ where: { id: accountId, userId } });
+    if (account === null) {
+      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'Account not found', {
+        accountId,
+      });
+    }
+    const positions = await this.prisma.position.findMany({
+      where: {
+        accountId,
+        ...(includeClosed ? {} : { status: { in: ['OPEN', 'CLOSING'] } }),
+      },
+      include: { symbol: true },
+      orderBy: { openedAt: 'desc' },
+      take: limit,
+    });
+    return positions.map((position) => ({
+      id: position.id,
+      symbol: position.symbol.code,
+      side: position.side,
+      status: position.status,
+      volume: position.volume.toString(),
+      initialVolume: position.initialVolume.toString(),
+      entryPrice: position.entryPrice.toString(),
+      currentPrice: position.currentPrice?.toString() ?? null,
+      stopLoss: position.stopLoss?.toString() ?? null,
+      takeProfit: position.takeProfit?.toString() ?? null,
+      margin: position.margin.toString(),
+      commission: position.commission.toString(),
+      swap: position.swap.toString(),
+      realizedPnl: position.realizedPnl.toString(),
+      closeReason: position.closeReason,
+      openedAt: position.openedAt.toISOString(),
+      closedAt: position.closedAt?.toISOString() ?? null,
+    }));
+  }
+
+  async trades(userId: string, accountId: string, limit: number) {
+    const account = await this.prisma.account.findFirst({ where: { id: accountId, userId } });
+    if (account === null) {
+      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'Account not found', {
+        accountId,
+      });
+    }
+    const trades = await this.prisma.trade.findMany({
+      where: { accountId },
+      include: { symbol: true },
+      orderBy: { exitTime: 'desc' },
+      take: limit,
+    });
+    return trades.map((trade) => ({
+      id: trade.id,
+      symbol: trade.symbol.code,
+      side: trade.side,
+      volume: trade.volume.toString(),
+      entryPrice: trade.entryPrice.toString(),
+      exitPrice: trade.exitPrice.toString(),
+      entryTime: trade.entryTime.toISOString(),
+      exitTime: trade.exitTime.toISOString(),
+      grossPnl: trade.grossPnl.toString(),
+      commission: trade.commission.toString(),
+      swap: trade.swap.toString(),
+      netPnl: trade.netPnl.toString(),
+      closeReason: trade.closeReason,
+    }));
+  }
+
+  private async loadOwned(
+    userId: string,
+    positionId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<LoadedPosition> {
+    const position = await client.position.findUnique({
+      where: { id: positionId },
+      include: { account: true, symbol: true },
+    });
+    // Ownership failure reads as "not found", so position ids cannot be probed.
+    if (position === null || position.account.userId !== userId) {
+      throw new DomainError(TradingErrorCode.POSITION_NOT_FOUND, 'Position not found', {
+        positionId,
+      });
+    }
+    return {
+      id: position.id,
+      accountId: position.accountId,
+      accountCurrency: position.account.currency,
+      symbolCode: position.symbol.code,
+      symbolId: position.symbolId,
+      side: position.side,
+      status: position.status,
+      volume: position.volume.toString(),
+      entryPrice: position.entryPrice.toString(),
+      margin: position.margin.toString(),
+      commission: position.commission.toString(),
+      swap: position.swap.toString(),
+      realizedPnl: position.realizedPnl.toString(),
+      stopLoss: position.stopLoss?.toString() ?? null,
+      takeProfit: position.takeProfit?.toString() ?? null,
+      version: position.version,
+      openedAt: position.openedAt,
+    };
+  }
+}

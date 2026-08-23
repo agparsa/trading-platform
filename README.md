@@ -5,9 +5,11 @@ position engine, P&L engine, risk engine, market-data layer, API and terminal.
 No architectural dependency on TradingLocker, MetaTrader, or any other trading
 platform.
 
-**Status: Phase 0 and Phase 1 complete.** The domain foundations are real,
-tested and running. The trading terminal is not built yet, and this repository
-does not pretend otherwise — see [Build status](#build-status).
+**Status: Phases 0–4 complete.** The trading engine works end to end: a trader
+can register, be funded, open a position against a live price feed, watch it
+marked to market, close it in whole or in part, and see the result land in an
+immutable ledger. The terminal UI is not built yet, and this repository does not
+pretend otherwise — see [Build status](#build-status).
 
 ---
 
@@ -34,15 +36,27 @@ Working, with tests:
   the book, trailing stops, and a defined resolution for a tick that spans both levels.
 - **Risk engine** — pure rule contract, six default rules, all violations reported at once.
 - **Market data** — provider port, seeded deterministic simulator, scripted
-  provider for tests, candle aggregation, quote-freshness policy.
-- **API** — NestJS with Zod-validated environment, response/error envelopes,
-  request-id tracing, structured logging with redaction, Prometheus metrics,
-  liveness and readiness probes, OpenAPI.
+  provider for tests, candle aggregation and persistence, quote-freshness policy,
+  per-instrument session calendar evaluated in its own timezone.
+- **Authentication** — Argon2id, separate access/refresh secrets, refresh-token
+  families with reuse detection, per-account lockout, email verification and
+  password reset over an injected email port, global auth guard, RBAC.
+- **Accounts and ledger** — append-only balance ledger that is the only writer of
+  balances, row-locked against lost updates, idempotent, reversed by compensating
+  entries, and replayable for reconciliation.
+- **Trading** — market orders, executions retaining the exact quote they filled
+  against, positions, full and partial close, SL/TP modification, reverse. Every
+  mutation requires an `Idempotency-Key`; closes are serialised by an
+  `OPEN → CLOSING` database guard.
+- **API** — NestJS with Zod-validated environment and DTOs, response/error
+  envelopes, request-id tracing, structured logging with redaction, Prometheus
+  metrics, liveness and readiness probes, OpenAPI, per-endpoint rate limits.
 - **Worker** — BullMQ registry (no processors yet, and it says so on startup).
 - **Web** — Next.js 15 with the terminal theme, serving an honest build-status page.
 
-Not built yet: authentication, trading endpoints, WebSocket streaming, the
-terminal UI, chart integration. Those are Phases 2–9.
+Not built yet: pending orders, the server-side SL/TP trigger engine, nightly swap
+accrual, WebSocket streaming, the terminal UI, chart integration. Those are
+Phases 5–9.
 
 ---
 
@@ -158,13 +172,16 @@ The ones worth knowing:
 | 9     | Chart integration                              | Planned      |
 | 10–13 | Advanced UX, security, performance, production | Planned      |
 
-The first real milestone is not the chart. It is this, working end to end
-through automated tests:
+The first real milestone was never the chart. It is this, and it now works end to
+end through automated tests and against the running API:
 
 ```
 User → Account → Market simulator → BUY XAUUSD → Order → Execution
-     → Position → Tick → P&L → SL/TP → Close → Ledger → Updated balance
+     → Position → Tick → P&L → Close → Ledger → Updated balance
 ```
+
+What remains of it is the SL/TP trigger engine (Phase 6), which closes a position
+from a tick rather than from a request.
 
 ---
 

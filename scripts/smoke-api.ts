@@ -111,6 +111,83 @@ const checks: Check[] = [
     },
   },
   {
+    name: 'a full round trip: open a position, mark it, close it, check the ledger',
+    run: async () => {
+      const email = `smoke-trade-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, displayName: 'Smoke Trade' }),
+      });
+      const login = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+      const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+      const accountsResponse = await fetch(`${BASE}/api/v1/accounts`, { headers: auth });
+      const accountId = ((await accountsResponse.json()) as { data: Array<{ id: string }> }).data[0]
+        ?.id;
+      assert(accountId !== undefined, 'no account was opened at registration');
+
+      // Whichever instrument is currently inside its session; crypto is always one.
+      const quotesResponse = await fetch(`${BASE}/api/v1/market/quotes`, { headers: auth });
+      const quotes = ((await quotesResponse.json()) as { data: Array<{ symbol: string }> }).data;
+      assert(quotes.length > 0, 'nothing is quoting, so no order can be placed');
+      const symbol = quotes[0]!.symbol;
+
+      const open = await fetch(`${BASE}/api/v1/orders`, {
+        method: 'POST',
+        headers: { ...auth, 'Idempotency-Key': `smoke-open-${Date.now()}` },
+        body: JSON.stringify({ accountId, symbol, side: 'BUY', volume: '0.01' }),
+      });
+      const opened = (await open.json()) as {
+        ok: boolean;
+        data: { positionId: string };
+        error?: { code: string; message: string };
+      };
+      assert(opened.ok, `order rejected: ${opened.error?.code} ${opened.error?.message}`);
+
+      const stateResponse = await fetch(`${BASE}/api/v1/accounts/${accountId}/state`, {
+        headers: auth,
+      });
+      const state = (await stateResponse.json()) as {
+        data: { usedMargin: string; openPositions: number };
+      };
+      assert(state.data.openPositions === 1, 'the position is not reflected in account state');
+      assert(Number(state.data.usedMargin) > 0, 'no margin is being held against the position');
+
+      const close = await fetch(`${BASE}/api/v1/positions/${opened.data.positionId}/close`, {
+        method: 'POST',
+        headers: { ...auth, 'Idempotency-Key': `smoke-close-${Date.now()}` },
+        body: JSON.stringify({}),
+      });
+      const closed = (await close.json()) as {
+        ok: boolean;
+        data: { fullyClosed: boolean; netPnl: string };
+        error?: { code: string; message: string };
+      };
+      assert(closed.ok, `close rejected: ${closed.error?.code} ${closed.error?.message}`);
+      assert(closed.data.fullyClosed, 'the position did not fully close');
+
+      const ledgerResponse = await fetch(`${BASE}/api/v1/accounts/${accountId}/ledger`, {
+        headers: auth,
+      });
+      const ledger = (await ledgerResponse.json()) as {
+        data: { entries: Array<{ type: string }> };
+      };
+      const types = ledger.data.entries.map((entry) => entry.type);
+      assert(types.includes('DEPOSIT'), 'the opening deposit is missing from the ledger');
+      assert(
+        types.some((type) => type === 'TRADE_PROFIT' || type === 'TRADE_LOSS'),
+        'the closed trade did not reach the ledger',
+      );
+    },
+  },
+  {
     name: 'metrics endpoint exposes the declared trading counters',
     run: async () => {
       const response = await fetch(`${BASE}/metrics`);

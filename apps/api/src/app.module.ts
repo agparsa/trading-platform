@@ -17,6 +17,8 @@ import { AuthModule } from './auth/auth.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { UsersModule } from './users/users.module';
 import { MarketModule } from './market/market.module';
+import { TradingModule } from './trading/trading.module';
+import { IdempotencyModule } from './common/idempotency/idempotency.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -67,12 +69,14 @@ import { RolesGuard } from './common/guards/roles.guard';
     RedisModule,
     AuditModule,
     EmailModule,
+    IdempotencyModule,
     HealthModule,
     MetricsModule,
     AuthModule,
     AccountsModule,
     UsersModule,
     MarketModule,
+    TradingModule,
   ],
   providers: [
     // Order matters: rate limiting runs before authentication so an unauthenticated

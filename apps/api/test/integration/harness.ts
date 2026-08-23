@@ -113,3 +113,59 @@ export async function createAccount(
   }
   return { userId: user.id, accountId: account.id, currency };
 }
+
+/**
+ * Seeds XAUUSD with a round-the-clock session.
+ *
+ * Trading tests must not depend on what day it is. The real XAUUSD session
+ * closes at weekends, which would make the whole suite fail every Saturday —
+ * so the session calendar is tested directly (see market/session.test.ts) and
+ * neutralised here.
+ */
+export async function seedTradingSymbols(prisma: PrismaClient): Promise<void> {
+  await seedSymbols(prisma);
+  const symbol = await prisma.symbol.findUniqueOrThrow({ where: { code: 'XAUUSD' } });
+  await prisma.marketSession.deleteMany({ where: { symbolId: symbol.id } });
+  await prisma.marketSession.createMany({
+    data: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+      symbolId: symbol.id,
+      timezone: 'UTC',
+      dayOfWeek,
+      openMinute: 0,
+      closeMinute: 1440,
+    })),
+  });
+}
+
+/** Seeds an instrument whose session never opens, for the market-closed case. */
+export async function seedClosedSymbol(prisma: PrismaClient): Promise<void> {
+  const symbol = await prisma.symbol.upsert({
+    where: { code: 'CLOSEDX' },
+    create: {
+      code: 'CLOSEDX',
+      description: 'Permanently closed instrument',
+      category: 'Test',
+      quoteCurrency: 'USD',
+    },
+    update: {},
+  });
+  await prisma.symbolSpec.upsert({
+    where: { symbolId: symbol.id },
+    create: {
+      symbolId: symbol.id,
+      contractSize: '100',
+      tickSize: '0.01',
+      pricePrecision: 2,
+      volumeStep: '0.01',
+      volumePrecision: 2,
+      minVolume: '0.01',
+      maxVolume: '100',
+      marginRate: '0.01',
+      commissionPerLot: '0',
+      swapLongPerLot: '0',
+      swapShortPerLot: '0',
+    },
+    update: {},
+  });
+  await prisma.marketSession.deleteMany({ where: { symbolId: symbol.id } });
+}

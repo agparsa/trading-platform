@@ -37,6 +37,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://trading:ci_password@localhost:5432/trading_platform?schema=public
+      TEST_DATABASE_URL: postgresql://trading:ci_password@localhost:5432/trading_platform_test?schema=public
       REDIS_URL: redis://localhost:6379
       JWT_ACCESS_SECRET: ci_only_access_secret_at_least_32_characters
       JWT_REFRESH_SECRET: ci_only_refresh_secret_at_least_32_characters
@@ -66,11 +67,17 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Unit and integration tests
-        run: pnpm test
-
       - name: Apply migrations
         run: pnpm db:migrate:deploy
+
+      # Integration tests need their own database: they truncate between cases.
+      - name: Prepare the integration test database
+        run: |
+          PGPASSWORD=ci_password createdb -h localhost -U trading trading_platform_test
+          DATABASE_URL="$TEST_DATABASE_URL" pnpm db:migrate:deploy
+
+      - name: Unit and integration tests
+        run: pnpm test
 
       # The schema is the last line of defence for financial precision: a single
       # float column would silently corrupt every P&L calculation above it.
