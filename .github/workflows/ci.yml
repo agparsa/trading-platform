@@ -58,6 +58,12 @@ jobs:
       - name: Generate Prisma client
         run: pnpm db:generate
 
+      # Workspace packages must be compiled before anything typechecks against
+      # them: apps import @tp/* through dist/index.d.ts, which does not exist in
+      # a clean checkout.
+      - name: Build workspace packages
+        run: pnpm build:packages
+
       - name: Lint
         run: pnpm lint
 

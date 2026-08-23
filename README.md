@@ -62,17 +62,51 @@ Phases 5–9.
 
 ## Quick start
 
+Requires Node 22+ and Docker. Every block below is safe to paste as-is — there
+are no inline comments, because an interactive zsh does not treat `#` as one and
+will try to run the explanation.
+
+**1. Install pnpm** (skip if `pnpm -v` already works):
+
 ```bash
-cp .env.example .env                 # then set the two JWT secrets
-docker compose up -d                 # postgres, redis, api, worker, web
+corepack enable pnpm
+```
+
+If corepack is unavailable, `npm install -g pnpm` or `brew install pnpm` work too.
+The repo pins `pnpm@10.28.0` via `packageManager`, and corepack honours it.
+
+**2. Create `.env` and generate the two JWT secrets:**
+
+```bash
+cd ~/Documents/trading-platform
+cp .env.example .env
+sed -i '' "s|^JWT_ACCESS_SECRET=.*|JWT_ACCESS_SECRET=$(openssl rand -base64 48)|" .env
+sed -i '' "s|^JWT_REFRESH_SECRET=.*|JWT_REFRESH_SECRET=$(openssl rand -base64 48)|" .env
+```
+
+On Linux, drop the `''` after `-i`. The API refuses to start on a secret shorter
+than 32 characters, so this step is not optional.
+
+**3. Start PostgreSQL and Redis, then set up the database:**
+
+```bash
+docker compose up -d postgres redis
 pnpm install
 pnpm db:migrate
 pnpm db:seed
+```
+
+**4. Check everything works:**
+
+```bash
 pnpm verify
 ```
 
-Generate secrets with `openssl rand -base64 48`. The API refuses to boot on
-anything weaker.
+**5. Run it:**
+
+```bash
+pnpm dev
+```
 
 |                          |                                   |
 | ------------------------ | --------------------------------- |
@@ -81,10 +115,25 @@ anything weaker.
 | OpenAPI                  | http://localhost:4000/docs        |
 | Health / Ready / Metrics | `/health` · `/ready` · `/metrics` |
 
-Without Docker, run PostgreSQL 16 and Redis 7 yourself, point `DATABASE_URL` and
-`REDIS_URL` at them, and `pnpm dev`.
+`docker compose up -d` with no service names also builds and runs the api, worker
+and web containers. Starting only `postgres` and `redis` and running the apps
+with `pnpm dev` gives faster reloads while developing.
 
----
+### Running the integration tests
+
+65 of the 261 tests talk to a real PostgreSQL database. They skip themselves
+unless `TEST_DATABASE_URL` is set, so a fresh checkout gets a green `pnpm verify`
+with no extra setup — but that means they are not running yet.
+
+To enable them:
+
+```bash
+pnpm db:test:prepare
+```
+
+That creates a separate `trading_platform_test` database and migrates it, then
+prints the line to uncomment in `.env`. The suite truncates every table between
+cases, which is why it gets its own database and never points at your working one.
 
 ## Layout
 

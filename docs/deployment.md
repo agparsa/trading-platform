@@ -2,12 +2,23 @@
 
 ## Local development
 
+See the README's Quick start for paste-safe commands. In short:
+
 ```bash
-cp .env.example .env      # then fill in the two JWT secrets
-docker compose up -d      # postgres, redis, api, worker, web
-pnpm db:migrate           # apply migrations
-pnpm db:seed              # reference instruments
+corepack enable pnpm
+cp .env.example .env
+docker compose up -d postgres redis
+pnpm install
+pnpm db:migrate
+pnpm db:seed
+pnpm verify
 ```
+
+Fill in `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` before starting the API; it
+refuses to boot on anything shorter than 32 characters.
+
+Integration tests need their own database — `pnpm db:test:prepare` creates and
+migrates it, and prints the `TEST_DATABASE_URL` line to uncomment.
 
 - Web: http://localhost:3000
 - API: http://localhost:4000/api/v1

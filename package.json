@@ -27,11 +27,12 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "clean": "rimraf \"packages/*/dist\" \"apps/*/dist\" \"apps/web/.next\" \"**/*.tsbuildinfo\"",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "verify": "pnpm build:packages && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "prepare": "prisma generate",
     "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "check:schema": "tsx --env-file-if-exists=.env scripts/assert-no-float-columns.ts",
-    "smoke": "tsx --env-file-if-exists=.env scripts/smoke-api.ts"
+    "smoke": "tsx --env-file-if-exists=.env scripts/smoke-api.ts",
+    "db:test:prepare": "tsx --env-file-if-exists=.env scripts/prepare-test-db.ts"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",
