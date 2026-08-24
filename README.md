@@ -5,7 +5,7 @@ position engine, P&L engine, risk engine, market-data layer, API and terminal.
 No architectural dependency on TradingLocker, MetaTrader, or any other trading
 platform.
 
-**Status: Phases 0–4 and 6 complete.** The trading engine works end to end: a
+**Status: Phases 0–6 complete.** The trading engine works end to end: a
 trader can register, be funded, open a position against a live price feed, watch
 it marked to market, and close it — or have the platform close it, when a
 stop-loss, take-profit, trailing stop or stop-out fires. Every outcome lands in
@@ -56,12 +56,13 @@ Working, with tests:
 - **API** — NestJS with Zod-validated environment and DTOs, response/error
   envelopes, request-id tracing, structured logging with redaction, Prometheus
   metrics, liveness and readiness probes, OpenAPI, per-endpoint rate limits.
-- **Worker** — BullMQ registry (no processors yet, and it says so on startup).
+- **Worker** — real scheduled jobs: nightly swap accrual with weekend financing,
+  idempotency sweeping, and a reconciliation check that replays every ledger
+  against its cached balance and raises a CRITICAL risk event on any drift.
 - **Web** — Next.js 15 with the terminal theme, serving an honest build-status page.
 
-Not built yet: pending orders, nightly swap accrual and account snapshots,
-WebSocket streaming, the terminal UI, chart integration. Those are the remainder
-of Phase 5, and Phases 7–9.
+Not built yet: pending orders, account snapshots, WebSocket streaming, the
+terminal UI, chart integration. Those are Phases 7–9.
 
 ---
 

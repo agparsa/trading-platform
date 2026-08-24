@@ -2,7 +2,11 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { validateEnv } from './env';
+import { PrismaService } from './prisma.service';
 import { QueueRegistry } from './queue-registry';
+import { SwapAccrualService } from './jobs/swap-accrual.service';
+import { ReconciliationService } from './jobs/reconciliation.service';
+import { MaintenanceService } from './jobs/maintenance.service';
 
 @Module({
   imports: [
@@ -25,6 +29,12 @@ import { QueueRegistry } from './queue-registry';
       }),
     }),
   ],
-  providers: [QueueRegistry],
+  providers: [
+    PrismaService,
+    SwapAccrualService,
+    ReconciliationService,
+    MaintenanceService,
+    QueueRegistry,
+  ],
 })
 export class WorkerModule {}

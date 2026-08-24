@@ -28,6 +28,7 @@ Phase 0 deliverables — the design the implementation is held to.
 
 **Operations**
 
+- [worker.md](./worker.md) — scheduled jobs: swap accrual, reconciliation, sweeping
 - [database.md](./database.md) — schema conventions, the ledger, transactions, indexes
 - [security.md](./security.md) — boot refusal, credentials, logging, audit
 - [testing.md](./testing.md) — what is covered, reference vectors, what each phase adds

@@ -33,6 +33,7 @@ export default defineConfig({
       // Integration tests live inside the app so they resolve its dependencies
       // (NestJS, Prisma) the same way the application code does.
       'apps/api/test/**/*.{test,spec}.ts',
+      'apps/worker/test/**/*.{test,spec}.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**'],
     coverage: {
