@@ -10,13 +10,20 @@ import {
   toDecimal,
 } from '@tp/financial-core';
 import { validateProtectiveLevels } from '@tp/trading-core';
-import { CloseReason, DomainError, TradingErrorCode, type OrderSide } from '@tp/shared-types';
+import {
+  CloseReason,
+  DomainError,
+  DomainEvent,
+  TradingErrorCode,
+  type OrderSide,
+} from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from '../market/quote.service';
 import { ConversionService } from '../market/conversion.service';
 import { LedgerService } from '../accounts/ledger.service';
 import { AuditService } from '../common/audit/audit.service';
+import { EventsService } from '../realtime/events.service';
 import { OrdersService } from './orders.service';
 import type { CloseResult, ModifyPositionRequest, OrderResult } from './trading.types';
 
@@ -55,6 +62,7 @@ export class PositionsService {
     private readonly ledger: LedgerService,
     private readonly audit: AuditService,
     private readonly orders: OrdersService,
+    private readonly events: EventsService,
   ) {}
 
   /**
@@ -335,6 +343,21 @@ export class PositionsService {
         },
       });
 
+      await this.events.publish(DomainEvent.POSITION_CLOSED, position.accountId, {
+        positionId: position.id,
+        symbol: position.symbolCode,
+        closedVolume: effectiveCloseVolume.toString(),
+        remainingVolume: effectiveRemaining.toString(),
+        exitPrice: exitPrice.toString(),
+        netPnl: net.round().toString(),
+        reason,
+        fullyClosed,
+      });
+      await this.events.publish(DomainEvent.BALANCE_CHANGED, position.accountId, {
+        balance: result.balanceAfter,
+        cause: 'POSITION_CLOSE',
+      });
+
       return {
         positionId: position.id,
         closedVolume: effectiveCloseVolume.toString(),
@@ -440,6 +463,14 @@ export class PositionsService {
       resourceId: position.id,
       before: { stopLoss: position.stopLoss, takeProfit: position.takeProfit },
       after: { stopLoss: stopLoss ?? null, takeProfit: takeProfit ?? null },
+    });
+
+    await this.events.publish(DomainEvent.POSITION_MODIFIED, position.accountId, {
+      positionId: position.id,
+      symbol: position.symbolCode,
+      stopLoss: stopLoss ?? null,
+      takeProfit: takeProfit ?? null,
+      trailingStopDistance: trailing ?? null,
     });
 
     return { positionId: position.id, stopLoss, takeProfit, trailingStopDistance: trailing };

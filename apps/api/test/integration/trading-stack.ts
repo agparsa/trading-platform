@@ -11,6 +11,7 @@ import { PositionsService } from '../../src/trading/positions.service';
 import { TriggerEngineService } from '../../src/trading/trigger-engine.service';
 import { TickBus } from '../../src/market/tick-bus';
 import { LedgerService } from '../../src/accounts/ledger.service';
+import { EventsService } from '../../src/realtime/events.service';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { MetricsService } from '../../src/metrics/metrics.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
@@ -34,7 +35,11 @@ class FakeRedis {
     get: async (key: string) => this.store.get(key) ?? null,
   };
   readonly publisher = { publish: async () => 1 };
-  readonly subscriber = {};
+  readonly subscriber = {
+    subscribe: async () => 1,
+    on: () => undefined,
+    unsubscribe: async () => 1,
+  };
 }
 
 export interface TradingStack {
@@ -81,6 +86,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
   const ledger = new LedgerService();
   const metrics = new MetricsService();
   const audit = new AuditService(prismaService);
+  const events = new EventsService(redis);
 
   const orders = new OrdersService(
     prismaService,
@@ -92,6 +98,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     ledger,
     metrics,
     audit,
+    events,
   );
   const positions = new PositionsService(
     prismaService,
@@ -101,6 +108,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     ledger,
     audit,
     orders,
+    events,
   );
 
   const triggers = new TriggerEngineService(

@@ -12,7 +12,7 @@ import {
 } from '@tp/financial-core';
 import { validateProtectiveLevels } from '@tp/trading-core';
 import { DEFAULT_RISK_RULES, RiskEngine, type ProposedOrder } from '@tp/risk-core';
-import { DomainError, OrderStatus, TradingErrorCode } from '@tp/shared-types';
+import { DomainError, DomainEvent, OrderStatus, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from '../market/quote.service';
@@ -20,6 +20,7 @@ import { ConversionService } from '../market/conversion.service';
 import { LedgerService } from '../accounts/ledger.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { AuditService } from '../common/audit/audit.service';
+import { EventsService } from '../realtime/events.service';
 import { isSessionOpen } from '../market/session';
 import { AccountStateService } from './account-state.service';
 import { RiskContextBuilder } from './risk-context.builder';
@@ -48,6 +49,7 @@ export class OrdersService {
     private readonly ledger: LedgerService,
     private readonly metrics: MetricsService,
     private readonly audit: AuditService,
+    private readonly events: EventsService,
   ) {}
 
   async openPosition(userId: string, request: OpenPositionRequest): Promise<OrderResult> {
@@ -256,6 +258,24 @@ export class OrdersService {
     });
 
     this.metrics.ordersSubmitted.inc({ symbol: symbolCode, type: 'MARKET', outcome: 'filled' });
+
+    // Published after the transaction commits, never inside it. A subscriber
+    // must not be told about a fill that a rollback is about to erase.
+    await this.events.publish(DomainEvent.ORDER_FILLED, account.id, {
+      orderId: result.order.id,
+      symbol: symbolCode,
+      side: request.side,
+      volume: volume.toString(),
+      price: entryPrice.toString(),
+    });
+    await this.events.publish(DomainEvent.POSITION_OPENED, account.id, {
+      positionId: result.position.id,
+      symbol: symbolCode,
+      side: request.side,
+      volume: volume.toString(),
+      entryPrice: entryPrice.toString(),
+      margin: margin.toString(),
+    });
     await this.audit.record({
       actorId: userId,
       actorType: 'USER',

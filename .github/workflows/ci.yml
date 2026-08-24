@@ -99,6 +99,12 @@ jobs:
       - name: Smoke test the API
         run: pnpm smoke
 
+      # The gateway cannot be exercised from the unit suite — Vitest's esbuild
+      # transform drops the decorator metadata Nest needs — so this is the only
+      # place the realtime path is proven.
+      - name: Smoke test the WebSocket gateway
+        run: pnpm smoke:ws
+
   docker:
     name: Docker images build
     runs-on: ubuntu-latest

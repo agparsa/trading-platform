@@ -62,13 +62,14 @@ const PHASES: readonly Phase[] = [
   {
     id: '7',
     name: 'Realtime',
-    state: 'planned',
-    detail: 'WebSocket quotes, positions, P&L, account, reconnect.',
+    state: 'done',
+    detail:
+      'WebSocket gateway with sequenced frames, account-scoped channels, Redis fan-out and tick-driven P&L.',
   },
   {
     id: '8',
     name: 'Trading terminal',
-    state: 'planned',
+    state: 'in-progress',
     detail: 'Layout, chart, watchlist, order ticket, positions, history.',
   },
 ];

@@ -66,6 +66,10 @@ export const envSchema = z.object({
   // Lower bound between margin-level evaluations for one account.
   STOP_OUT_CHECK_INTERVAL_MS: z.coerce.number().int().min(0).default(1_000),
 
+  // Lower bound between account valuations pushed to one connected client.
+  // Throttling, not polling: nothing runs when the market is still.
+  REALTIME_VALUATION_INTERVAL_MS: z.coerce.number().int().min(0).default(500),
+
   TRADING_SERVER_TIMEZONE: z.string().default('UTC'),
   DEFAULT_ACCOUNT_LEVERAGE: z.coerce.number().int().min(1).default(100),
   IDEMPOTENCY_KEY_TTL_SECONDS: z.coerce.number().int().min(60).default(86_400),

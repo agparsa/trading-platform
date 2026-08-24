@@ -32,7 +32,8 @@
     "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "check:schema": "tsx --env-file-if-exists=.env scripts/assert-no-float-columns.ts",
     "smoke": "tsx --env-file-if-exists=.env scripts/smoke-api.ts",
-    "db:test:prepare": "tsx --env-file-if-exists=.env scripts/prepare-test-db.ts"
+    "db:test:prepare": "tsx --env-file-if-exists=.env scripts/prepare-test-db.ts",
+    "smoke:ws": "tsx --env-file-if-exists=.env scripts/smoke-ws.ts"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",
@@ -42,6 +43,7 @@
     "prettier": "catalog:",
     "prisma": "catalog:",
     "rimraf": "catalog:",
+    "socket.io-client": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",

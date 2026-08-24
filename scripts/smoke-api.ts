@@ -214,7 +214,29 @@ async function waitForBoot(): Promise<void> {
   throw new Error(`API did not become healthy within ${BOOT_TIMEOUT_MS}ms`);
 }
 
+/**
+ * Refuses to run if something is already listening.
+ *
+ * This script spawns its own API. If a stale instance already holds the port,
+ * the spawned one fails to bind, the checks quietly hit the old binary, and the
+ * run goes green against code that is not the code under test. That is the worst
+ * possible failure mode for a smoke test, so it is made impossible rather than
+ * documented.
+ */
+async function assertPortFree(): Promise<void> {
+  try {
+    await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(2_000) });
+  } catch {
+    return; // nothing listening, which is what we want
+  }
+  throw new Error(
+    `Something is already listening on ${BASE}. Stop it first — otherwise this smoke test would run against it instead of the build under test.`,
+  );
+}
+
 async function main(): Promise<void> {
+  await assertPortFree();
+
   const api = spawn('node', ['apps/api/dist/main.js'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,

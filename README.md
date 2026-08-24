@@ -5,7 +5,7 @@ position engine, P&L engine, risk engine, market-data layer, API and terminal.
 No architectural dependency on TradingLocker, MetaTrader, or any other trading
 platform.
 
-**Status: Phases 0–6 complete.** The trading engine works end to end: a
+**Status: Phases 0–7 complete.** The trading engine works end to end: a
 trader can register, be funded, open a position against a live price feed, watch
 it marked to market, and close it — or have the platform close it, when a
 stop-loss, take-profit, trailing stop or stop-out fires. Every outcome lands in
@@ -53,6 +53,9 @@ Working, with tests:
   take-profit on the executable exit price, trailing stops that ratchet and never
   retreat, and incremental liquidation at the stop-out level. Verified against
   the live feed, not only in tests.
+- **Realtime** — Socket.IO gateway on `/ws` with per-connection sequence numbers,
+  account-scoped private channels, Redis fan-out across instances, and
+  tick-driven account and P&L pushes throttled per account.
 - **API** — NestJS with Zod-validated environment and DTOs, response/error
   envelopes, request-id tracing, structured logging with redaction, Prometheus
   metrics, liveness and readiness probes, OpenAPI, per-endpoint rate limits.
@@ -61,8 +64,8 @@ Working, with tests:
   against its cached balance and raises a CRITICAL risk event on any drift.
 - **Web** — Next.js 15 with the terminal theme, serving an honest build-status page.
 
-Not built yet: pending orders, account snapshots, WebSocket streaming, the
-terminal UI, chart integration. Those are Phases 7–9.
+Not built yet: pending orders, account snapshots, the terminal UI, chart
+integration. Those are Phases 8–9.
 
 ---
 

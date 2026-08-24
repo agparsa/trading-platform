@@ -36,7 +36,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
-    await Promise.all([this.client.connect(), this.publisher.connect(), this.subscriber.connect()]);
+    await Promise.all([
+      ensureConnected(this.client),
+      ensureConnected(this.publisher),
+      ensureConnected(this.subscriber),
+    ]);
     this.logger.log('Redis connections established');
   }
 
@@ -47,5 +51,21 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async ping(): Promise<void> {
     const reply = await this.client.ping();
     if (reply !== 'PONG') throw new Error(`Unexpected Redis PING reply: ${reply}`);
+  }
+}
+
+/**
+ * Connects a lazy client only if it is not already connecting.
+ *
+ * These connections are `lazyConnect`, so ioredis dials on the first command.
+ * The WebSocket gateway subscribes during Nest's initialisation, which can run
+ * before this module's `onModuleInit` — and calling `connect()` on a socket
+ * that is already dialling throws "Redis is already connecting/connected",
+ * taking the whole process down at boot. Checking the status first makes the
+ * call idempotent and removes the dependency on hook ordering.
+ */
+async function ensureConnected(connection: Redis): Promise<void> {
+  if (connection.status === 'wait' || connection.status === 'end') {
+    await connection.connect();
   }
 }

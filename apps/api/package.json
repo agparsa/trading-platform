@@ -15,9 +15,11 @@
     "@nestjs/core": "catalog:",
     "@nestjs/jwt": "catalog:",
     "@nestjs/platform-express": "catalog:",
+    "@nestjs/platform-socket.io": "catalog:",
     "@nestjs/swagger": "catalog:",
     "@nestjs/terminus": "catalog:",
     "@nestjs/throttler": "catalog:",
+    "@nestjs/websockets": "catalog:",
     "@node-rs/argon2": "catalog:",
     "@prisma/client": "catalog:",
     "@tp/api-client": "workspace:*",
@@ -35,16 +37,18 @@
     "prom-client": "catalog:",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:",
+    "socket.io": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@nestjs/testing": "catalog:",
+    "@types/express": "catalog:",
     "@types/node": "catalog:",
     "pino-pretty": "catalog:",
     "rimraf": "catalog:",
+    "socket.io-client": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "@types/express": "catalog:"
+    "vitest": "catalog:"
   }
 }

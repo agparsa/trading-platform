@@ -10,6 +10,7 @@ pnpm test:coverage     # thresholds enforced
 pnpm verify            # lint → typecheck → test → build
 pnpm check:schema      # no floating-point columns exist
 pnpm smoke             # boots the built API and drives a full trade round trip
+pnpm smoke:ws          # boots it again and drives a real Socket.IO client
 ```
 
 Integration tests run against a real PostgreSQL database named by
