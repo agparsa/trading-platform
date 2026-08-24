@@ -6,6 +6,7 @@ import { AccountStateService } from './account-state.service';
 import { OrdersService } from './orders.service';
 import { PositionsService } from './positions.service';
 import { RiskContextBuilder } from './risk-context.builder';
+import { TriggerEngineService } from './trigger-engine.service';
 import { TradingController } from './trading.controller';
 
 @Module({
@@ -17,7 +18,14 @@ import { TradingController } from './trading.controller';
     RiskContextBuilder,
     OrdersService,
     PositionsService,
+    TriggerEngineService,
   ],
-  exports: [AccountStateService, OrdersService, PositionsService, ConversionService],
+  exports: [
+    AccountStateService,
+    OrdersService,
+    PositionsService,
+    ConversionService,
+    TriggerEngineService,
+  ],
 })
 export class TradingModule {}

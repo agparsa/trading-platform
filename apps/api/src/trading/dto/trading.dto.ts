@@ -42,11 +42,18 @@ export const modifyPositionSchema = z
     // are distinct, which is why neither defaults to the other.
     stopLoss: positiveDecimal.nullable().optional(),
     takeProfit: positiveDecimal.nullable().optional(),
+    // Distance in price units the trailing stop follows behind the best price
+    // seen. Setting it hands stop-loss management to the engine.
+    trailingStopDistance: positiveDecimal.nullable().optional(),
   })
   .strict()
-  .refine((value) => value.stopLoss !== undefined || value.takeProfit !== undefined, {
-    message: 'Provide stopLoss, takeProfit, or both',
-  });
+  .refine(
+    (value) =>
+      value.stopLoss !== undefined ||
+      value.takeProfit !== undefined ||
+      value.trailingStopDistance !== undefined,
+    { message: 'Provide stopLoss, takeProfit or trailingStopDistance' },
+  );
 
 export const listQuerySchema = z
   .object({

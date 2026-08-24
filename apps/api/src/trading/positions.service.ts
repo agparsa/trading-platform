@@ -23,6 +23,7 @@ import type { CloseResult, ModifyPositionRequest, OrderResult } from './trading.
 interface LoadedPosition {
   id: string;
   accountId: string;
+  ownerUserId: string;
   accountCurrency: string;
   symbolCode: string;
   symbolId: string;
@@ -36,6 +37,8 @@ interface LoadedPosition {
   realizedPnl: string;
   stopLoss: string | null;
   takeProfit: string | null;
+  trailingStopDistance: string | null;
+  highWaterPrice: string | null;
   version: number;
   openedAt: Date;
 }
@@ -74,6 +77,34 @@ export class PositionsService {
     reason: CloseReason = CloseReason.MANUAL,
   ): Promise<CloseResult> {
     const position = await this.loadOwned(userId, positionId);
+    return this.performClose(position, requestedVolume, reason, userId);
+  }
+
+  /**
+   * Closes a position on the platform's own initiative — a stop-loss firing, a
+   * take-profit, a liquidation.
+   *
+   * Skips the ownership check because there is no user making the request, and
+   * audits the action as SYSTEM. Everything after that is the same code path as
+   * a manual close, including the OPEN -> CLOSING guard, so an engine close and
+   * a trader's close cannot both settle the same position.
+   */
+  async closeForSystem(
+    positionId: string,
+    requestedVolume: string | null,
+    reason: CloseReason,
+  ): Promise<CloseResult> {
+    const position = await this.load(positionId);
+    return this.performClose(position, requestedVolume, reason, null);
+  }
+
+  private async performClose(
+    position: LoadedPosition,
+    requestedVolume: string | null,
+    reason: CloseReason,
+    actorUserId: string | null,
+  ): Promise<CloseResult> {
+    const positionId = position.id;
     if (position.status !== 'OPEN') {
       throw new DomainError(
         TradingErrorCode.POSITION_ALREADY_CLOSING,
@@ -291,8 +322,8 @@ export class PositionsService {
       });
 
       await this.audit.record({
-        actorId: userId,
-        actorType: 'USER',
+        actorId: actorUserId,
+        actorType: actorUserId === null ? 'SYSTEM' : 'USER',
         action: 'POSITION_CLOSE',
         resourceType: 'Position',
         resourceId: position.id,
@@ -357,11 +388,25 @@ export class PositionsService {
 
     const stopLoss = request.stopLoss === undefined ? position.stopLoss : request.stopLoss;
     const takeProfit = request.takeProfit === undefined ? position.takeProfit : request.takeProfit;
+    const trailing =
+      request.trailingStopDistance === undefined
+        ? position.trailingStopDistance
+        : request.trailingStopDistance;
     validateProtectiveLevels(spec, position.side, reference.toString(), { stopLoss, takeProfit });
 
     const updated = await this.prisma.position.updateMany({
       where: { id: position.id, status: 'OPEN', version: position.version },
-      data: { stopLoss, takeProfit, version: { increment: 1 } },
+      data: {
+        stopLoss,
+        takeProfit,
+        trailingStopDistance: trailing,
+        // The ratchet anchors on the current executable price when trailing is
+        // switched on, and the anchor is dropped when it is switched off, so a
+        // later re-enable does not inherit a high-water mark from last week.
+        highWaterPrice:
+          trailing === null ? null : (position.highWaterPrice ?? reference.toString()),
+        version: { increment: 1 },
+      },
     });
     if (updated.count === 0) {
       throw new DomainError(
@@ -380,6 +425,7 @@ export class PositionsService {
         payload: {
           stopLoss: stopLoss ?? null,
           takeProfit: takeProfit ?? null,
+          trailingStopDistance: trailing ?? null,
           previousStopLoss: position.stopLoss,
           previousTakeProfit: position.takeProfit,
         },
@@ -396,7 +442,7 @@ export class PositionsService {
       after: { stopLoss: stopLoss ?? null, takeProfit: takeProfit ?? null },
     });
 
-    return { positionId: position.id, stopLoss, takeProfit };
+    return { positionId: position.id, stopLoss, takeProfit, trailingStopDistance: trailing };
   }
 
   /**
@@ -452,6 +498,8 @@ export class PositionsService {
       currentPrice: position.currentPrice?.toString() ?? null,
       stopLoss: position.stopLoss?.toString() ?? null,
       takeProfit: position.takeProfit?.toString() ?? null,
+      trailingStopDistance: position.trailingStopDistance?.toString() ?? null,
+      highWaterPrice: position.highWaterPrice?.toString() ?? null,
       margin: position.margin.toString(),
       commission: position.commission.toString(),
       swap: position.swap.toString(),
@@ -497,12 +545,25 @@ export class PositionsService {
     positionId: string,
     client: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<LoadedPosition> {
+    const position = await this.load(positionId, client);
+    // Ownership failure reads as "not found", so position ids cannot be probed.
+    if (position.ownerUserId !== userId) {
+      throw new DomainError(TradingErrorCode.POSITION_NOT_FOUND, 'Position not found', {
+        positionId,
+      });
+    }
+    return position;
+  }
+
+  private async load(
+    positionId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<LoadedPosition> {
     const position = await client.position.findUnique({
       where: { id: positionId },
       include: { account: true, symbol: true },
     });
-    // Ownership failure reads as "not found", so position ids cannot be probed.
-    if (position === null || position.account.userId !== userId) {
+    if (position === null) {
       throw new DomainError(TradingErrorCode.POSITION_NOT_FOUND, 'Position not found', {
         positionId,
       });
@@ -510,6 +571,7 @@ export class PositionsService {
     return {
       id: position.id,
       accountId: position.accountId,
+      ownerUserId: position.account.userId,
       accountCurrency: position.account.currency,
       symbolCode: position.symbol.code,
       symbolId: position.symbolId,
@@ -523,6 +585,8 @@ export class PositionsService {
       realizedPnl: position.realizedPnl.toString(),
       stopLoss: position.stopLoss?.toString() ?? null,
       takeProfit: position.takeProfit?.toString() ?? null,
+      trailingStopDistance: position.trailingStopDistance?.toString() ?? null,
+      highWaterPrice: position.highWaterPrice?.toString() ?? null,
       version: position.version,
       openedAt: position.openedAt,
     };

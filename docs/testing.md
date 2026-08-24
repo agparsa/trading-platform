@@ -4,7 +4,7 @@ This is a financial system. Tests are not a quality gate bolted on afterwards;
 the formulas were written against them.
 
 ```
-pnpm test              # 261 tests (64 of them integration, opt-in)
+pnpm test              # 276 tests (79 of them integration, opt-in)
 pnpm db:test:prepare   # create + migrate the integration test database
 pnpm test:coverage     # thresholds enforced
 pnpm verify            # lint → typecheck → test → build

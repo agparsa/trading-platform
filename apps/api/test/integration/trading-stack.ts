@@ -8,6 +8,8 @@ import { AccountStateService } from '../../src/trading/account-state.service';
 import { RiskContextBuilder } from '../../src/trading/risk-context.builder';
 import { OrdersService } from '../../src/trading/orders.service';
 import { PositionsService } from '../../src/trading/positions.service';
+import { TriggerEngineService } from '../../src/trading/trigger-engine.service';
+import { TickBus } from '../../src/market/tick-bus';
 import { LedgerService } from '../../src/accounts/ledger.service';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { MetricsService } from '../../src/metrics/metrics.service';
@@ -42,6 +44,7 @@ export interface TradingStack {
   positions: PositionsService;
   accountState: AccountStateService;
   ledger: LedgerService;
+  triggers: TriggerEngineService;
   /** Puts a price into the quote cache, as the market feed would. */
   publishQuote: (symbol: string, bid: string, ask: string, atMs?: number) => Promise<void>;
 }
@@ -61,6 +64,10 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     DEFAULT_ACCOUNT_CURRENCY: 'USD',
     DEFAULT_ACCOUNT_LEVERAGE: 100,
     DEMO_ACCOUNT_INITIAL_BALANCE: '100000',
+    TRIGGER_ENGINE_ENABLED: true,
+    // No throttle in tests: every tick must be acted on, or a stop-out
+    // assertion would depend on how fast the test machine is.
+    STOP_OUT_CHECK_INTERVAL_MS: 0,
   } as never);
 
   const redis = new FakeRedis() as unknown as RedisService;
@@ -96,10 +103,20 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     orders,
   );
 
+  const triggers = new TriggerEngineService(
+    config as never,
+    prismaService,
+    symbols,
+    positions,
+    accountState,
+    new TickBus(),
+    metrics,
+  );
+
   const publishQuote = async (symbol: string, bid: string, ask: string, atMs = Date.now()) => {
     const tick: Tick = { symbol, bid, ask, timestamp: atMs, volume: '1' };
     await quotes.publish(tick);
   };
 
-  return { symbols, quotes, orders, positions, accountState, ledger, publishQuote };
+  return { symbols, quotes, orders, positions, accountState, ledger, triggers, publishQuote };
 }

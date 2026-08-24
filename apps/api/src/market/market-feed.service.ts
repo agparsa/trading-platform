@@ -22,6 +22,7 @@ import { RedisService } from '../redis/redis.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from './quote.service';
+import { TickBus } from './tick-bus';
 import { isSessionOpen } from './session';
 import type { Env } from '../config/env.schema';
 
@@ -55,6 +56,7 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly metrics: MetricsService,
+    private readonly ticks: TickBus,
   ) {}
 
   /**
@@ -153,6 +155,11 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
     await this.quotes.publish(tick);
     this.metrics.marketTicks.inc({ symbol: tick.symbol });
     await this.redis.publisher.publish(TICK_CHANNEL, JSON.stringify(tick));
+
+    // Local consumers (trigger engine, WebSocket gateway) run before the next
+    // tick is generated, so a stop is evaluated against every price the market
+    // actually printed rather than against a sample of them.
+    await this.ticks.publish(tick);
 
     for (const resolution of this.resolutions) {
       const key = `${tick.symbol}:${resolution}`;

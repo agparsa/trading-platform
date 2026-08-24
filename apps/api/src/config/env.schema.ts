@@ -57,6 +57,15 @@ export const envSchema = z.object({
     .default(true)
     .transform((value) => value === true || value === 'true'),
 
+  // Closes positions from price movement. Disabling it means stop-loss and
+  // take-profit never fire on that instance — it is not a performance knob.
+  TRIGGER_ENGINE_ENABLED: z
+    .union([z.boolean(), z.enum(['true', 'false'])])
+    .default(true)
+    .transform((value) => value === true || value === 'true'),
+  // Lower bound between margin-level evaluations for one account.
+  STOP_OUT_CHECK_INTERVAL_MS: z.coerce.number().int().min(0).default(1_000),
+
   TRADING_SERVER_TIMEZONE: z.string().default('UTC'),
   DEFAULT_ACCOUNT_LEVERAGE: z.coerce.number().int().min(1).default(100),
   IDEMPOTENCY_KEY_TTL_SECONDS: z.coerce.number().int().min(60).default(86_400),

@@ -5,11 +5,12 @@ position engine, P&L engine, risk engine, market-data layer, API and terminal.
 No architectural dependency on TradingLocker, MetaTrader, or any other trading
 platform.
 
-**Status: Phases 0–4 complete.** The trading engine works end to end: a trader
-can register, be funded, open a position against a live price feed, watch it
-marked to market, close it in whole or in part, and see the result land in an
-immutable ledger. The terminal UI is not built yet, and this repository does not
-pretend otherwise — see [Build status](#build-status).
+**Status: Phases 0–4 and 6 complete.** The trading engine works end to end: a
+trader can register, be funded, open a position against a live price feed, watch
+it marked to market, and close it — or have the platform close it, when a
+stop-loss, take-profit, trailing stop or stop-out fires. Every outcome lands in
+an immutable ledger. The terminal UI is not built yet, and this repository does
+not pretend otherwise — see [Build status](#build-status).
 
 ---
 
@@ -48,15 +49,19 @@ Working, with tests:
   against, positions, full and partial close, SL/TP modification, reverse. Every
   mutation requires an `Idempotency-Key`; closes are serialised by an
   `OPEN → CLOSING` database guard.
+- **Trigger engine** — closes positions from price movement: stop-loss and
+  take-profit on the executable exit price, trailing stops that ratchet and never
+  retreat, and incremental liquidation at the stop-out level. Verified against
+  the live feed, not only in tests.
 - **API** — NestJS with Zod-validated environment and DTOs, response/error
   envelopes, request-id tracing, structured logging with redaction, Prometheus
   metrics, liveness and readiness probes, OpenAPI, per-endpoint rate limits.
 - **Worker** — BullMQ registry (no processors yet, and it says so on startup).
 - **Web** — Next.js 15 with the terminal theme, serving an honest build-status page.
 
-Not built yet: pending orders, the server-side SL/TP trigger engine, nightly swap
-accrual, WebSocket streaming, the terminal UI, chart integration. Those are
-Phases 5–9.
+Not built yet: pending orders, nightly swap accrual and account snapshots,
+WebSocket streaming, the terminal UI, chart integration. Those are the remainder
+of Phase 5, and Phases 7–9.
 
 ---
 
@@ -226,11 +231,11 @@ end through automated tests and against the running API:
 
 ```
 User → Account → Market simulator → BUY XAUUSD → Order → Execution
-     → Position → Tick → P&L → Close → Ledger → Updated balance
+     → Position → Tick → P&L → SL/TP → Close → Ledger → Updated balance
 ```
 
-What remains of it is the SL/TP trigger engine (Phase 6), which closes a position
-from a tick rather than from a request.
+That is now complete, including the SL/TP leg: a position closes from a tick, not
+only from a request.
 
 ---
 

@@ -21,6 +21,7 @@ export interface ModifyPositionRequest {
   /** `undefined` leaves the level alone; `null` removes it. */
   readonly stopLoss?: string | null;
   readonly takeProfit?: string | null;
+  readonly trailingStopDistance?: string | null;
 }
 
 export interface OrderResult {

@@ -118,6 +118,9 @@ export class TradingController {
         positionId: id,
         ...(body.stopLoss === undefined ? {} : { stopLoss: body.stopLoss }),
         ...(body.takeProfit === undefined ? {} : { takeProfit: body.takeProfit }),
+        ...(body.trailingStopDistance === undefined
+          ? {}
+          : { trailingStopDistance: body.trailingStopDistance }),
       }),
     );
   }
