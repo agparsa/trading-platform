@@ -41,8 +41,14 @@ export interface CloseResult {
   remainingVolume: string;
   exitPrice: string;
   grossPnl: string;
+  /** Opening-leg commission apportioned to the closed volume. */
+  entryCommission: string;
+  /** Closing-leg commission, the only one this close charges. */
+  exitCommission: string;
+  /** entryCommission + exitCommission. */
   commission: string;
   swap: string;
+  /** grossPnl - commission + swap: the round trip's contribution to balance. */
   netPnl: string;
   balanceAfter: string;
   closeReason: string;

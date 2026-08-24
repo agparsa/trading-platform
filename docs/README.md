@@ -24,6 +24,7 @@ Phase 0 deliverables — the design the implementation is held to.
 - [market-data.md](./market-data.md) — the provider port, determinism, candles, sessions
 - [api.md](./api.md) — envelopes, error codes, status mapping, planned surface
 - [websocket.md](./websocket.md) — channels, frame shape, sequencing, reconnect
+- [terminal.md](./terminal.md) — the browser client: state split, gaps, what it may compute
 - [charting.md](./charting.md) — TradingView Advanced Charts and its licensing constraint
 
 **Operations**

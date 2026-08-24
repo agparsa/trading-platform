@@ -17,6 +17,10 @@ export default defineConfig({
       '@tp/trading-core': pkg('trading-core'),
       '@tp/risk-core': pkg('risk-core'),
       '@tp/api-client': pkg('api-client'),
+      '@tp/ui': pkg('ui'),
+      // The web app's own path alias, so its pure modules can be tested without
+      // a Next.js build. Only non-React modules are included below.
+      '@': fileURLToPath(new URL('./apps/web/src', import.meta.url)),
     },
   },
   test: {
@@ -29,6 +33,9 @@ export default defineConfig({
     include: [
       'packages/**/src/**/*.{test,spec}.ts',
       'apps/api/src/**/*.{test,spec}.ts',
+      // Pure logic only — the web app has no DOM test environment configured,
+      // so anything importing React or JSX belongs in a component test instead.
+      'apps/web/src/lib/**/*.{test,spec}.ts',
       'apps/worker/src/**/*.{test,spec}.ts',
       // Integration tests live inside the app so they resolve its dependencies
       // (NestJS, Prisma) the same way the application code does.

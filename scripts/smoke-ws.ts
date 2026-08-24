@@ -183,6 +183,60 @@ async function main(): Promise<void> {
       }
     });
 
+    await check('candles stream for the subscribed instrument and resolution', async () => {
+      const { socket, frames } = connect(alice.token);
+      sockets.push(socket);
+      await waitFor(() => (socket.connected ? true : undefined), 10_000, 'connection');
+
+      const quotes = await get<Array<{ symbol: string }>>('/api/v1/market/quotes', alice.token);
+      const symbol = quotes[0]?.symbol;
+      assert(symbol !== undefined, 'nothing is quoting');
+
+      socket.emit('subscribe', { channel: 'candles', symbols: [symbol!], resolutions: ['1'] });
+      const frame = await waitFor(
+        () => frames.find((f) => f.event === 'candle.update'),
+        30_000,
+        'a candle',
+      );
+      assert(frame.data['symbol'] === symbol, 'the bar was for a different instrument');
+      assert(frame.data['resolution'] === '1', 'the bar was at a different resolution');
+      for (const field of ['open', 'high', 'low', 'close', 'volume']) {
+        assert(typeof frame.data[field] === 'string', `${field} was not a decimal string`);
+      }
+      assert(
+        Number(frame.data['high']) >= Number(frame.data['low']),
+        'the bar high was below its low',
+      );
+    });
+
+    /**
+     * The live form of the unit test in realtime.gateway.test.ts. Quotes and
+     * candles carry separate symbol filters; charting one instrument must not
+     * silently stop the watchlist for every other one.
+     */
+    await check('charting one instrument does not narrow the quote stream', async () => {
+      const { socket, frames } = connect(alice.token);
+      sockets.push(socket);
+      await waitFor(() => (socket.connected ? true : undefined), 10_000, 'connection');
+
+      const quotes = await get<Array<{ symbol: string }>>('/api/v1/market/quotes', alice.token);
+      assert(quotes.length >= 2, 'this check needs at least two quoted instruments');
+      const charted = quotes[0]!.symbol;
+      const other = quotes[1]!.symbol;
+
+      socket.emit('subscribe', { channel: 'quotes' });
+      socket.emit('subscribe', { channel: 'candles', symbols: [charted], resolutions: ['1'] });
+
+      await waitFor(
+        () =>
+          frames.find((f) => f.event === 'quote.update' && f.data['symbol'] === other)
+            ? true
+            : undefined,
+        30_000,
+        `a quote for ${other} while charting ${charted}`,
+      );
+    });
+
     await check('opening a position pushes position, account and pnl frames', async () => {
       const { socket, frames } = connect(alice.token);
       sockets.push(socket);

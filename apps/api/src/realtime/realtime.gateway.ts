@@ -17,6 +17,7 @@ import { TokenService } from '../auth/token.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { QuoteService } from '../market/quote.service';
 import { TickBus } from '../market/tick-bus';
+import { CandleBus, type CandleUpdate } from '../market/candle-bus';
 import { MetricsService } from '../metrics/metrics.service';
 import { RedisService } from '../redis/redis.service';
 import { DOMAIN_EVENT_CHANNEL, EventsService, type DomainEventEnvelope } from './events.service';
@@ -33,8 +34,13 @@ const subscribeSchema = z
       WsChannel.PNL,
     ]),
     symbols: z.array(z.string().min(1).max(20)).max(100).optional(),
+    // Candle resolutions, e.g. ['1', '15']. Ignored on other channels.
+    resolutions: z.array(z.string().min(1).max(4)).max(10).optional(),
   })
   .strict();
+
+/** What a candle subscription gets when it does not name a resolution. */
+const DEFAULT_RESOLUTION = '1';
 
 /**
  * Maps a domain event onto the channel and wire event a client sees.
@@ -69,6 +75,7 @@ export class RealtimeGateway
   private readonly sockets = new Set<TradingSocket>();
   private unsubscribeTicks: (() => void) | null = null;
   private unsubscribeEvents: (() => void) | null = null;
+  private unsubscribeCandles: (() => void) | null = null;
 
   /**
    * Held for room-based broadcast in a later phase. Fan-out today is explicit:
@@ -84,6 +91,7 @@ export class RealtimeGateway
     private readonly prisma: PrismaService,
     private readonly quotes: QuoteService,
     private readonly ticks: TickBus,
+    private readonly candles: CandleBus,
     private readonly events: EventsService,
     private readonly redis: RedisService,
     private readonly metrics: MetricsService,
@@ -91,6 +99,7 @@ export class RealtimeGateway
 
   async afterInit(): Promise<void> {
     this.unsubscribeTicks = this.ticks.subscribe((tick) => this.onTick(tick));
+    this.unsubscribeCandles = this.candles.subscribe((update) => this.onCandle(update));
     this.unsubscribeEvents = this.events.onEvent((envelope) => this.onDomainEvent(envelope));
 
     // Frames produced by other API instances arrive here.
@@ -109,6 +118,7 @@ export class RealtimeGateway
 
   async onApplicationShutdown(): Promise<void> {
     this.unsubscribeTicks?.();
+    this.unsubscribeCandles?.();
     this.unsubscribeEvents?.();
     await this.redis.subscriber.unsubscribe(DOMAIN_EVENT_CHANNEL).catch(() => undefined);
   }
@@ -162,7 +172,7 @@ export class RealtimeGateway
     if (!parsed.success) {
       return { ok: false, error: 'Invalid subscribe message' };
     }
-    const { channel, symbols } = parsed.data;
+    const { channel, symbols, resolutions } = parsed.data;
 
     const isPublic = PUBLIC_CHANNELS.includes(channel);
     if (!isPublic && client.state.userId === null) {
@@ -170,6 +180,16 @@ export class RealtimeGateway
     }
 
     client.state.channels.add(channel);
+
+    if (channel === WsChannel.CANDLES) {
+      // Replaced, not accumulated: switching the chart from EURUSD 1m to
+      // XAUUSD 15m must stop the old stream, or a trader who has changed
+      // instrument four times is paying for four charts they cannot see.
+      client.state.candleSymbols = new Set((symbols ?? []).map((s) => s.toUpperCase()));
+      client.state.resolutions = new Set(resolutions ?? [DEFAULT_RESOLUTION]);
+      return { ok: true, channel };
+    }
+
     if (symbols !== undefined) {
       for (const symbol of symbols) client.state.symbols.add(symbol.toUpperCase());
     }
@@ -184,6 +204,10 @@ export class RealtimeGateway
     const parsed = subscribeSchema.safeParse(body);
     if (!parsed.success) return { ok: false };
     client.state.channels.delete(parsed.data.channel);
+    if (parsed.data.channel === WsChannel.CANDLES) {
+      client.state.candleSymbols.clear();
+      client.state.resolutions.clear();
+    }
     return { ok: true };
   }
 
@@ -210,6 +234,24 @@ export class RealtimeGateway
       // An empty symbol set means "everything"; a non-empty one filters.
       if (socket.state.symbols.size > 0 && !socket.state.symbols.has(tick.symbol)) continue;
       this.send(socket, 'quote.update', quote);
+    }
+  }
+
+  /**
+   * Relays candle updates to the charts that asked for them.
+   *
+   * Filtered on both symbol and resolution: a client watching one 1-minute
+   * chart has no use for the other five resolutions the feed maintains, and
+   * sending them would spend a trader's bandwidth on frames they discard.
+   */
+  private onCandle(update: CandleUpdate): void {
+    const { candle } = update;
+    for (const socket of this.sockets) {
+      if (!socket.state.channels.has(WsChannel.CANDLES)) continue;
+      if (socket.state.candleSymbols.size > 0 && !socket.state.candleSymbols.has(candle.symbol))
+        continue;
+      if (!socket.state.resolutions.has(candle.resolution)) continue;
+      this.send(socket, 'candle.update', { ...candle, closed: update.closed });
     }
   }
 

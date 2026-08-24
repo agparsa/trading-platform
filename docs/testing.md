@@ -39,6 +39,8 @@ constraints and transaction boundaries are exactly what they check, and a mocked
 | API client             | 8     | Envelope unwrap, error codes, idempotency header, token refresh                          |
 | API config & errors    | 15    | Boot refused on weak secrets, every error code has a status                              |
 | Worker                 | 6     | Queue names unique, failed jobs retained                                                 |
+| WS subscriptions       | 8     | Candle symbol/resolution filters, chart never narrows the quote stream, gapless `seq`    |
+| Terminal logic         | 23    | Ticket validation shares the engine's rules, cost estimates, live-bar merge              |
 
 ## Reference vectors
 
@@ -67,15 +69,44 @@ The same sequence must produce the same fills and the same P&L, on any machine,
 forever. `ManualClock` and `SeededRandom` cover the other two sources of
 nondeterminism.
 
+## Verification by breaking it
+
+A guard nobody has watched fail is a guard nobody knows works. Each of these was
+deliberately broken and the named test confirmed to fail before being restored:
+
+| Guard                           | Broken by                                | Result                           |
+| ------------------------------- | ---------------------------------------- | -------------------------------- |
+| Ledger row lock                 | removing `FOR UPDATE`                    | 10 deposits produced 1200        |
+| Close claim (`OPEN → CLOSING`)  | removing the state guard                 | duplicate trade rows             |
+| WebSocket account filter        | removing one `if`                        | Bob received Alice's frames      |
+| Candle/quote filter separation  | sharing one symbol set                   | watchlist stopped updating       |
+| Candle subscription replacement | accumulating instead of replacing        | four streams for one chart       |
+| Entry-commission apportionment  | dividing by remaining instead of initial | 12.10 charged where 7.00 was     |
+| Round-trip `netPnl`             | dropping the entry leg                   | report no longer matched balance |
+| Single entry-commission posting | re-posting the entry leg at close        | 21.00 charged where 14.00 was    |
+
+## End-to-end checks
+
+Two scripts drive a real build rather than a mock, and both refuse to run if
+something is already holding the port — a smoke test that silently passes against
+a stale binary is the worst failure mode there is.
+
+- `pnpm smoke` — 7 checks: envelopes, auth, a full trade round trip, the ledger.
+- `pnpm smoke:ws` — 8 checks: quote and candle streaming, gapless sequencing,
+  private-channel refusal, cross-account isolation.
+
+The rendered terminal is verified by driving a real browser (Playwright) against
+a running stack: register, open a position, watch floating P&L move, close it,
+and read the trade row back.
+
 ## Planned
 
-| Phase | Adds                                                                                   |
-| ----- | -------------------------------------------------------------------------------------- |
-| 4     | Integration: order → execution → position → close → ledger, against a real database    |
-| 6     | SL/TP trigger integration; tick-spans-both-levels resolution                           |
-| 7     | Realtime: tick → P&L → WebSocket frame; reconnect and re-snapshot                      |
-| 4–6   | Concurrency: double close, close racing SL, modify racing close, duplicate submissions |
-| 12    | Load: concurrent sockets, high tick rate, high order rate                              |
+| Phase | Adds                                                      |
+| ----- | --------------------------------------------------------- |
+| 9     | Chart integration against the licensed library            |
+| 10    | Pending orders; account snapshots                         |
+| 11    | Cookie-based sessions and CSRF                            |
+| 12    | Load: concurrent sockets, high tick rate, high order rate |
 
 ## Coverage
 

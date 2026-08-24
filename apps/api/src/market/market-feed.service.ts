@@ -23,6 +23,7 @@ import { MetricsService } from '../metrics/metrics.service';
 import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from './quote.service';
 import { TickBus } from './tick-bus';
+import { CandleBus } from './candle-bus';
 import { isSessionOpen } from './session';
 import type { Env } from '../config/env.schema';
 
@@ -57,6 +58,7 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
     private readonly redis: RedisService,
     private readonly metrics: MetricsService,
     private readonly ticks: TickBus,
+    private readonly candles: CandleBus,
   ) {}
 
   /**
@@ -161,6 +163,10 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
     // actually printed rather than against a sample of them.
     await this.ticks.publish(tick);
 
+    // Snapshotting the in-progress bars costs something, so it is skipped
+    // entirely when no chart is listening.
+    const broadcast = this.candles.subscriberCount > 0;
+
     for (const resolution of this.resolutions) {
       const key = `${tick.symbol}:${resolution}`;
       let aggregator = this.aggregators.get(key);
@@ -170,6 +176,14 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
       }
       const closed = aggregator.push(tick);
       if (closed !== null) await this.persistCandle(closed);
+      if (!broadcast) continue;
+
+      // A closed bucket produces two frames: the final state of the bar that
+      // ended, then the bar that opened. Sending only the new one would leave
+      // the chart's last completed candle showing a mid-bucket close forever.
+      if (closed !== null) await this.candles.publish({ candle: closed, closed: true });
+      const open = aggregator.peek();
+      if (open !== null) await this.candles.publish({ candle: open, closed: false });
     }
   }
 

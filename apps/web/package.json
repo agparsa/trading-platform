@@ -14,10 +14,12 @@
     "@tp/api-client": "workspace:*",
     "@tp/financial-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
+    "@tp/trading-core": "workspace:*",
     "@tp/ui": "workspace:*",
     "next": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "socket.io-client": "catalog:",
     "zustand": "catalog:"
   },
   "devDependencies": {

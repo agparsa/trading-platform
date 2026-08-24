@@ -32,6 +32,53 @@ That guarantee is one `if` in `onDomainEvent`, so it is verified by removing it:
 with the filter gone, a second trader's socket immediately received two
 `position.created` frames belonging to the first. See docs/testing.md.
 
+## Candles
+
+`candle.update` carries the bar the feed is currently building, plus the final
+state of a bar when its bucket closes. A closing bucket therefore produces two
+frames — the bar that ended, then the bar that opened. Sending only the new one
+would leave a chart's last completed candle showing a mid-bucket close forever.
+
+```jsonc
+{
+  "event": "candle.update",
+  "data": {
+    "symbol": "XAUUSD",
+    "resolution": "1",
+    "time": 1787307840000,
+    "open": "4583.10",
+    "high": "4584.02",
+    "low": "4582.88",
+    "close": "4583.58",
+    "volume": "42",
+    "closed": false,
+  },
+  "seq": 4413,
+}
+```
+
+A candle subscription names what it wants:
+
+```jsonc
+{ "channel": "candles", "symbols": ["XAUUSD"], "resolutions": ["1"] }
+```
+
+Three details, each deliberate:
+
+- **Candles carry their own symbol filter**, separate from `quotes`. A terminal
+  streams every quote for its watchlist while charting one instrument; sharing
+  one filter would silently narrow the watchlist to whatever the chart happened
+  to be showing. Verified by deleting the separation: the watchlist stopped
+  updating for every symbol but the charted one.
+- **Empty means _none_, not _everything_.** Six resolutions per symbol on every
+  tick is a firehose nobody asked for, so a subscription that names no resolution
+  gets `1` and nothing else.
+- **Subscribing replaces the previous chart** rather than adding to it. Changing
+  instrument four times must not leave four streams running.
+
+The feed skips snapshotting in-progress bars entirely when no socket is
+listening, so the cost is paid only when someone is looking.
+
 ## Frame shape
 
 ```jsonc

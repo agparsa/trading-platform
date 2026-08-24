@@ -467,10 +467,21 @@ model Trade {
   entryTime  DateTime @map("entry_time") @db.Timestamptz(6)
   exitTime   DateTime @map("exit_time") @db.Timestamptz(6)
 
-  grossPnl   Decimal @map("gross_pnl") @db.Decimal(28, 10)
-  commission Decimal @db.Decimal(28, 10)
-  swap       Decimal @db.Decimal(28, 10)
-  netPnl     Decimal @map("net_pnl") @db.Decimal(28, 10)
+  grossPnl Decimal @map("gross_pnl") @db.Decimal(28, 10)
+
+  /// Commission charged when the position was opened, apportioned to the volume
+  /// closed here. A partial close carries its share; the shares of every close
+  /// on one position sum to what was actually charged at entry.
+  entryCommission Decimal @map("entry_commission") @db.Decimal(28, 10)
+  /// Commission charged on this closing leg.
+  exitCommission  Decimal @map("exit_commission") @db.Decimal(28, 10)
+  /// entryCommission + exitCommission. The round trip's total cost of dealing.
+  commission      Decimal @db.Decimal(28, 10)
+
+  swap   Decimal @db.Decimal(28, 10)
+  /// grossPnl - commission + swap. The figure that reconciles with the balance
+  /// change this round trip caused.
+  netPnl Decimal @map("net_pnl") @db.Decimal(28, 10)
 
   closeReason CloseReason @map("close_reason")
 

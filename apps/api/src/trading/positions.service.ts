@@ -37,6 +37,8 @@ interface LoadedPosition {
   side: OrderSide;
   status: string;
   volume: string;
+  /** Volume the position opened with. Entry costs were charged against this. */
+  initialVolume: string;
   entryPrice: string;
   margin: string;
   commission: string;
@@ -169,15 +171,30 @@ export class PositionsService {
         accountCurrency: position.accountCurrency,
         quoteToAccountRate: rate,
       });
-      const commission = commissionForLeg(
+      const exitCommission = commissionForLeg(
         spec,
         effectiveCloseVolume,
         position.accountCurrency,
         rate,
       );
-      // Accrued swap is released in proportion to the volume being closed.
+      // Accrued swap is released in proportion to the volume still open, because
+      // that is the volume it accrued on.
       const closedFraction = effectiveCloseVolume.div(openVolume);
       const swap = Money.of(position.swap, position.accountCurrency).times(closedFraction);
+
+      // The entry commission is apportioned against the volume the position
+      // *opened* with, not the volume still open. It was charged once, on the
+      // whole position; splitting it by the remaining volume would charge more
+      // than was ever taken as the position is closed piece by piece.
+      const entryFraction = effectiveCloseVolume.div(toDecimal(position.initialVolume));
+      const entryCommission = Money.of(position.commission, position.accountCurrency).times(
+        entryFraction,
+      );
+      const commission = entryCommission.plus(exitCommission);
+
+      // Net is the round trip: what the trader actually kept. It must reconcile
+      // with the balance change this close produced, which includes the
+      // commission charged back when the position was opened.
       const net = gross.minus(commission).plus(swap);
       const marginReleased = Money.of(position.margin, position.accountCurrency).times(
         closedFraction,
@@ -235,6 +252,8 @@ export class PositionsService {
             entryTime: position.openedAt,
             exitTime: new Date(),
             grossPnl: gross.round().toString(),
+            entryCommission: entryCommission.round().toString(),
+            exitCommission: exitCommission.round().toString(),
             commission: commission.round().toString(),
             swap: swap.round().toString(),
             netPnl: net.round().toString(),
@@ -255,11 +274,13 @@ export class PositionsService {
             description: `${position.symbolCode} ${position.side} ${effectiveCloseVolume.toString()} lots`,
           });
         }
-        if (commission.isPositive()) {
+        // Only the closing leg moves money here. The opening leg was posted when
+        // the position was opened; posting it again would charge it twice.
+        if (exitCommission.isPositive()) {
           await this.ledger.post(tx, {
             accountId: position.accountId,
             type: 'COMMISSION',
-            amount: commission.negated(),
+            amount: exitCommission.negated(),
             referenceType: 'Position',
             referenceId: position.id,
             description: `Commission on closing ${position.symbolCode}`,
@@ -364,6 +385,8 @@ export class PositionsService {
         remainingVolume: effectiveRemaining.toString(),
         exitPrice: exitPrice.toString(),
         grossPnl: gross.round().toString(),
+        entryCommission: entryCommission.round().toString(),
+        exitCommission: exitCommission.round().toString(),
         commission: commission.round().toString(),
         swap: swap.round().toString(),
         netPnl: net.round().toString(),
@@ -564,6 +587,8 @@ export class PositionsService {
       entryTime: trade.entryTime.toISOString(),
       exitTime: trade.exitTime.toISOString(),
       grossPnl: trade.grossPnl.toString(),
+      entryCommission: trade.entryCommission.toString(),
+      exitCommission: trade.exitCommission.toString(),
       commission: trade.commission.toString(),
       swap: trade.swap.toString(),
       netPnl: trade.netPnl.toString(),
@@ -609,6 +634,7 @@ export class PositionsService {
       side: position.side,
       status: position.status,
       volume: position.volume.toString(),
+      initialVolume: position.initialVolume.toString(),
       entryPrice: position.entryPrice.toString(),
       margin: position.margin.toString(),
       commission: position.commission.toString(),

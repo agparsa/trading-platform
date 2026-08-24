@@ -39,6 +39,44 @@ Commission is stored as a positive magnitude and subtracted. Swap is stored
 **signed** — negative debits, positive credits — and added. Mixing the two
 conventions is the usual way a swap credit ends up charged as a cost.
 
+### `commission` is the round trip, not one leg
+
+Commission is charged twice: once when the position opens, once when it closes.
+Both postings hit the ledger at the moment they are incurred, so the balance has
+always been right. The **trade record** was not: it carried only the closing leg,
+which meant a trader summing `netPnl` over their history came out short by one
+commission per round trip and could not reconcile the report with the balance it
+was describing.
+
+A trade now records all three figures:
+
+| Field             | Meaning                                                         |
+| ----------------- | --------------------------------------------------------------- |
+| `entryCommission` | the opening leg, apportioned to the volume closed by this trade |
+| `exitCommission`  | the closing leg                                                 |
+| `commission`      | the two added together                                          |
+
+and `netPnl = grossPnl − commission + swap` is the round trip.
+
+The apportionment divides by the volume the position **opened** with, never by
+the volume still open:
+
+```
+entryCommission = position.commission × (closedVolume ÷ position.initialVolume)
+```
+
+Dividing by the remaining volume would charge the full entry commission against
+every partial close — 7 on the first close and 7 again on the second, when 7 was
+all that was ever taken. Because the divisor is constant, the shares across every
+close of one position add back up to exactly what was charged at entry.
+
+Only the closing leg is posted to the ledger when a position closes. The entry
+leg is already there from when it opened; posting it again would charge it twice.
+
+All three properties are asserted, and each was verified by breaking it: swapping
+the divisor for the remaining volume, dropping the entry leg from `netPnl`, and
+re-posting the entry leg at close each make a test fail.
+
 ## Reference vectors
 
 These come from a live TradeLocker session (XAUUSD and BTCUSD, 21 Aug 2026).

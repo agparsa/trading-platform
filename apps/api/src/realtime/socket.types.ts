@@ -16,6 +16,20 @@ export interface SocketState {
   channels: Set<WsChannel>;
   /** Symbols this socket wants quotes for. Empty means every symbol. */
   symbols: Set<string>;
+  /**
+   * Symbols and resolutions this socket wants candles for.
+   *
+   * Kept apart from `symbols` because the two subscriptions are independent: a
+   * terminal streams every quote for its watchlist while charting exactly one
+   * instrument, and folding them together would silently narrow the watchlist to
+   * whatever the chart happens to be showing.
+   *
+   * Unlike `symbols`, empty means *none*. Six resolutions per symbol on every
+   * tick is a firehose nobody asked for, so a candle subscription names what it
+   * wants or takes the default.
+   */
+  candleSymbols: Set<string>;
+  resolutions: Set<string>;
   seq: number;
 }
 
@@ -27,6 +41,8 @@ export function initialState(): SocketState {
     accountIds: new Set(),
     channels: new Set(),
     symbols: new Set(),
+    candleSymbols: new Set(),
+    resolutions: new Set(),
     seq: 0,
   };
 }

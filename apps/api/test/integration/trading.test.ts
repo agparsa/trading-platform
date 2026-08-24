@@ -237,6 +237,140 @@ suite('Trading core (integration)', () => {
     });
   });
 
+  /**
+   * Commission is charged twice on a round trip — once at entry, once at exit —
+   * and the trade record has to say so. It previously carried only the closing
+   * leg, so a trader adding up their history came out short by one commission
+   * per trade and could not reconcile it with their balance.
+   */
+  describe('commission accounting', () => {
+    const COMMISSION_PER_LOT = '7';
+
+    beforeEach(async () => {
+      const symbol = await prisma.symbol.findUniqueOrThrow({ where: { code: 'XAUUSD' } });
+      await prisma.symbolSpec.update({
+        where: { symbolId: symbol.id },
+        data: { commissionPerLot: COMMISSION_PER_LOT },
+      });
+      await stack.symbols.reload();
+      stack = await buildTradingStack(prisma);
+      await stack.publishQuote('XAUUSD', BID, ASK);
+    });
+
+    it('reports the round trip, not just the closing leg', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+
+      await stack.publishQuote('XAUUSD', '4600.00', '4600.14');
+      const closed = await stack.positions.close(userId, opened.positionId!, null);
+
+      expect(closed.grossPnl).toBe('1628.00');
+      expect(closed.entryCommission).toBe('7.00');
+      expect(closed.exitCommission).toBe('7.00');
+      expect(closed.commission).toBe('14.00');
+      expect(closed.netPnl).toBe('1614.00');
+      expect(closed.balanceAfter).toBe('101614.00');
+    });
+
+    /** The point of the whole exercise: the report has to match the money. */
+    it('reports a net figure that equals the balance change', async () => {
+      const { userId, accountId } = await openAccount();
+      const before = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
+
+      const opened = await buyOneLot(userId, accountId);
+      await stack.publishQuote('XAUUSD', '4600.00', '4600.14');
+      const closed = await stack.positions.close(userId, opened.positionId!, null);
+
+      const delta = Money.of(closed.balanceAfter, 'USD').minus(
+        Money.of(before.balance.toString(), 'USD'),
+      );
+      expect(delta.toString()).toBe(closed.netPnl);
+    });
+
+    it('charges the entry commission once, however many times the position is closed', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+      await stack.publishQuote('XAUUSD', '4600.00', '4600.14');
+
+      await stack.positions.close(userId, opened.positionId!, '0.30');
+      await stack.positions.close(userId, opened.positionId!, '0.30');
+      await stack.positions.close(userId, opened.positionId!, null);
+
+      const trades = await prisma.trade.findMany({ where: { positionId: opened.positionId! } });
+      const apportioned = trades.reduce(
+        (total, trade) => total.plus(Money.of(trade.entryCommission.toString(), 'USD')),
+        Money.zero('USD'),
+      );
+      // One lot at 7 per lot, split across three closes and adding back up.
+      expect(apportioned.toString()).toBe('7.00');
+
+      const charged = await prisma.balanceLedger.findMany({
+        where: { accountId, type: 'COMMISSION' },
+        orderBy: { createdAt: 'asc' },
+      });
+      // Four postings: one at open, one per close. The entry leg is not
+      // re-posted when the position is closed in pieces.
+      expect(charged).toHaveLength(4);
+      expect(charged[0]!.amount.toString()).toBe('-7');
+      // One lot in, one lot out, at 7 a lot each way.
+      const totalCharged = charged.reduce(
+        (total, entry) => total.plus(Money.of(entry.amount.toString(), 'USD')),
+        Money.zero('USD'),
+      );
+      expect(totalCharged.toString()).toBe('-14.00');
+    });
+
+    /**
+     * The apportionment divides by the volume the position *opened* with, not
+     * the volume still open. Dividing by the remainder would charge 7 on the
+     * first close and 7 again on the second — more than was ever taken.
+     */
+    it('apportions the entry commission against the opening volume', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+      await stack.publishQuote('XAUUSD', '4600.00', '4600.14');
+
+      const first = await stack.positions.close(userId, opened.positionId!, '0.50');
+      expect(first.entryCommission).toBe('3.50');
+
+      // Half the position is left. Closing half of *that* is a quarter of the
+      // original, so a quarter of the entry commission.
+      const second = await stack.positions.close(userId, opened.positionId!, '0.25');
+      expect(second.entryCommission).toBe('1.75');
+    });
+
+    it('keeps the ledger and the cached balance in agreement', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+      await stack.publishQuote('XAUUSD', '4570.00', '4570.14');
+      await stack.positions.close(userId, opened.positionId!, '0.40');
+      await stack.positions.close(userId, opened.positionId!, null);
+
+      const replay = await prisma.$transaction((tx) => ledger.replayBalance(tx, accountId));
+      expect(replay.matches).toBe(true);
+    });
+
+    it('sums every close on a position back to the position result', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+      await stack.publishQuote('XAUUSD', '4600.00', '4600.14');
+      await stack.positions.close(userId, opened.positionId!, '0.40');
+      await stack.positions.close(userId, opened.positionId!, null);
+
+      const trades = await prisma.trade.findMany({ where: { positionId: opened.positionId! } });
+      const netFromTrades = trades.reduce(
+        (total, trade) => total.plus(Money.of(trade.netPnl.toString(), 'USD')),
+        Money.zero('USD'),
+      );
+      const position = await prisma.position.findUniqueOrThrow({
+        where: { id: opened.positionId! },
+      });
+      expect(Money.of(position.realizedPnl.toString(), 'USD').toString()).toBe(
+        netFromTrades.toString(),
+      );
+    });
+  });
+
   describe('concurrency', () => {
     /**
      * The guard that stops a manual close, a stop-loss trigger and a

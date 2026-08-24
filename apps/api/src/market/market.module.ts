@@ -6,10 +6,11 @@ import { MarketFeedService } from './market-feed.service';
 import { QuoteService } from './quote.service';
 import { CandlesService } from './candles.service';
 import { TickBus } from './tick-bus';
+import { CandleBus } from './candle-bus';
 
 @Module({
   controllers: [SymbolsController, MarketController],
-  providers: [SymbolsService, QuoteService, MarketFeedService, CandlesService, TickBus],
-  exports: [SymbolsService, QuoteService, MarketFeedService, CandlesService, TickBus],
+  providers: [SymbolsService, QuoteService, MarketFeedService, CandlesService, TickBus, CandleBus],
+  exports: [SymbolsService, QuoteService, MarketFeedService, CandlesService, TickBus, CandleBus],
 })
 export class MarketModule {}
