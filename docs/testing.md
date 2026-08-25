@@ -40,7 +40,8 @@ constraints and transaction boundaries are exactly what they check, and a mocked
 | API config & errors    | 15    | Boot refused on weak secrets, every error code has a status                              |
 | Worker                 | 6     | Queue names unique, failed jobs retained                                                 |
 | WS subscriptions       | 8     | Candle symbol/resolution filters, chart never narrows the quote stream, gapless `seq`    |
-| Terminal logic         | 23    | Ticket validation shares the engine's rules, cost estimates, live-bar merge              |
+| Terminal logic         | 28    | Ticket validation shares the engine's rules, cost estimates, bar windows, live-bar merge |
+| Charting adapter       | 18    | Seconds-vs-milliseconds, price scales, session renumbering, exclusive `to`, countBack    |
 
 ## Reference vectors
 

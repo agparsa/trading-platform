@@ -1,37 +1,34 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import {
+  CandlestickSeries,
+  createChart,
+  type CandlestickData,
+  type IChartApi,
+  type ISeriesApi,
+  type UTCTimestamp,
+} from 'lightweight-charts';
 import { cn } from '@tp/ui';
 import { price as formatPrice } from '@/lib/format';
-import { mergeBars } from '@/lib/bars';
-import { useCandles, type CandleRow, type SymbolRow } from '@/lib/queries';
+import { RESOLUTIONS, RESOLUTION_LABEL, mergeBars, type ChartBar } from '@/lib/datafeed';
+import { useCandles, type SymbolRow } from '@/lib/queries';
 import { barKey, useRealtime } from '@/lib/realtime-store';
 import { EmptyState } from './primitives';
-
-export const RESOLUTIONS = ['1', '5', '15', '60', '240', '1D'] as const;
-export type Resolution = (typeof RESOLUTIONS)[number];
-
-const RESOLUTION_LABEL: Record<string, string> = {
-  '1': '1m',
-  '5': '5m',
-  '15': '15m',
-  '60': '1H',
-  '240': '4H',
-  '1D': '1D',
-};
 
 /**
  * Price history.
  *
- * Drawn from the server's own candles — the same rows `/market/candles` returns,
- * with the in-progress bar merged in from the `candle.update` stream. Nothing
- * here is synthesised: if the server has no bars for a window, the panel says so
- * rather than drawing a plausible-looking line.
+ * Bars come from the server's own candles, with the in-progress bar merged in
+ * from the `candle.update` stream. Nothing here is synthesised: when the server
+ * has no bars for a window the panel says so rather than drawing a plausible
+ * line.
  *
- * This is an SVG rendering of real data, not the finished charting surface.
- * TradingView Advanced Charts — indicators, drawing tools, order-from-chart —
- * is Phase 9, and needs the licensed library dropped into
- * `apps/web/public/charting_library/`.
+ * Rendered with `lightweight-charts` (Apache-2.0), behind the datafeed boundary
+ * in `lib/datafeed.ts`. TradingView Advanced Charts — indicators, drawing tools,
+ * order-from-chart — is licensed and not in this repository; its adapter is
+ * written and tested in `lib/tradingview-datafeed.ts` and drops in without an
+ * engine, API or WebSocket change. See docs/charting.md.
  */
 export function ChartPanel({
   symbol,
@@ -50,7 +47,12 @@ export function ChartPanel({
     symbol === undefined ? undefined : state.quotes[symbol.code],
   );
 
-  const bars = useMemo(() => mergeBars(history.data ?? [], liveBars), [history.data, liveBars]);
+  const bars = useMemo(
+    () => mergeBars((history.data ?? []) as ChartBar[], liveBars as Record<number, ChartBar>),
+    [history.data, liveBars],
+  );
+
+  const empty = !history.isLoading && bars.length === 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -82,138 +84,157 @@ export function ChartPanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1">
         {symbol === undefined ? (
           <EmptyState>Select an instrument.</EmptyState>
-        ) : history.isLoading ? (
-          <EmptyState>Loading bars…</EmptyState>
-        ) : bars.length === 0 ? (
-          <EmptyState>
-            No bars recorded for {symbol.code} at {RESOLUTION_LABEL[resolution]} in this window.
-          </EmptyState>
         ) : (
-          <Candlesticks bars={bars} precision={symbol.pricePrecision} />
+          <>
+            <Candles bars={bars} spec={symbol} />
+            {history.isLoading ? (
+              <Overlay>Loading bars…</Overlay>
+            ) : empty ? (
+              <Overlay>
+                No bars recorded for {symbol.code} at {RESOLUTION_LABEL[resolution]} in this window.
+              </Overlay>
+            ) : null}
+          </>
         )}
       </div>
 
       <p className="shrink-0 border-t border-terminal-border px-3 py-1 text-[10px] text-terminal-muted">
         Server candles, built from the bid. Indicators, drawing tools and order-from-chart arrive
-        with the licensed charting library in Phase 9.
+        with the licensed charting library.
       </p>
     </div>
   );
 }
 
-const VIEW_WIDTH = 1000;
-const VIEW_HEIGHT = 320;
-const PADDING = { top: 8, right: 62, bottom: 18, left: 6 };
-/** Fewer bars than this and the series would stretch into a bar chart. */
-const MIN_SLOTS = 60;
+/** Below this, stretching the series to fill the panel misrepresents the market. */
+const MIN_BARS_TO_FIT = 60;
+const DEFAULT_BAR_SPACING = 8;
+
+function Overlay({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-terminal-surface/80 text-center text-xs text-terminal-muted">
+      {children}
+    </div>
+  );
+}
 
 /**
- * Candlesticks in plain SVG.
+ * The chart surface.
  *
- * Coordinates are computed with JS numbers, which is fine and deliberate: these
- * are pixel positions, not money. Every *price* rendered as text comes from the
- * server's decimal string and is formatted, never arithmetic'd.
+ * Created once and then fed. Recreating it on every data change would throw away
+ * the trader's pan and zoom on every tick, which on a live chart is the
+ * difference between a tool and a slideshow.
  */
-function Candlesticks({ bars, precision }: { bars: readonly CandleRow[]; precision: number }) {
-  const geometry = useMemo(() => {
-    const highs = bars.map((bar) => Number(bar.high));
-    const lows = bars.map((bar) => Number(bar.low));
-    const max = Math.max(...highs);
-    const min = Math.min(...lows);
-    // A perfectly flat series would divide by zero; give it a nominal band.
-    const span = max - min || Math.max(Math.abs(max) * 0.001, 0.0001);
-    const pad = span * 0.08;
-    const top = max + pad;
-    const bottom = min - pad;
+function Candles({ bars, spec }: { bars: readonly ChartBar[]; spec: SymbolRow }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  // Which series is on screen, so a symbol or resolution change resets the view
+  // and a new bar does not.
+  const seriesKeyRef = useRef<string>('');
 
-    const plotWidth = VIEW_WIDTH - PADDING.left - PADDING.right;
-    const plotHeight = VIEW_HEIGHT - PADDING.top - PADDING.bottom;
-    // Laid out against a minimum number of slots and filled from the right, the
-    // way every chart does. A fresh instance with four bars would otherwise
-    // stretch them across the whole panel and read as a market that moves in
-    // enormous steps.
-    const slots = Math.max(bars.length, MIN_SLOTS);
-    const slot = plotWidth / slots;
-    const bodyWidth = Math.max(1, Math.min(slot * 0.65, 14));
-    const offset = slots - bars.length;
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container === null) return;
 
-    const y = (value: number) => PADDING.top + ((top - value) / (top - bottom)) * plotHeight;
-    const x = (index: number) => PADDING.left + slot * (offset + index + 0.5);
-
-    return { top, bottom, slot, bodyWidth, y, x, plotHeight };
-  }, [bars]);
-
-  const gridPrices = useMemo(() => {
-    const steps = 4;
-    return Array.from({ length: steps + 1 }, (_, index) => {
-      const value = geometry.bottom + ((geometry.top - geometry.bottom) * index) / steps;
-      return { value, y: geometry.y(value) };
+    const chart = createChart(container, {
+      layout: {
+        background: { color: 'transparent' },
+        textColor: '#8b94a3',
+        fontFamily:
+          "ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace",
+        fontSize: 11,
+        attributionLogo: false,
+      },
+      grid: {
+        vertLines: { color: '#232a35' },
+        horzLines: { color: '#232a35' },
+      },
+      crosshair: { mode: 0 },
+      rightPriceScale: { borderColor: '#232a35' },
+      timeScale: {
+        borderColor: '#232a35',
+        // Intraday bars are meaningless without the time of day on the axis.
+        timeVisible: true,
+        secondsVisible: false,
+      },
+      autoSize: true,
     });
-  }, [geometry]);
 
-  return (
-    <svg
-      viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
-      preserveAspectRatio="none"
-      className="h-full w-full"
-      role="img"
-      aria-label={`${bars.length} price bars`}
-    >
-      {gridPrices.map((line) => (
-        <g key={line.value}>
-          <line
-            x1={PADDING.left}
-            x2={VIEW_WIDTH - PADDING.right}
-            y1={line.y}
-            y2={line.y}
-            stroke="var(--tp-border)"
-            strokeWidth={1}
-          />
-          <text
-            x={VIEW_WIDTH - PADDING.right + 6}
-            y={line.y + 3.5}
-            fill="var(--tp-text-muted)"
-            fontSize={10}
-            fontFamily="var(--tp-font-numeric)"
-          >
-            {formatPrice(String(line.value), precision)}
-          </text>
-        </g>
-      ))}
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderVisible: false,
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+    });
 
-      {bars.map((bar, index) => {
-        const open = Number(bar.open);
-        const close = Number(bar.close);
-        const centre = geometry.x(index);
-        const up = close >= open;
-        const colour = up ? 'var(--tp-long)' : 'var(--tp-short)';
-        const bodyTop = geometry.y(Math.max(open, close));
-        const bodyBottom = geometry.y(Math.min(open, close));
+    chartRef.current = chart;
+    seriesRef.current = series;
 
-        return (
-          <g key={bar.time}>
-            <line
-              x1={centre}
-              x2={centre}
-              y1={geometry.y(Number(bar.high))}
-              y2={geometry.y(Number(bar.low))}
-              stroke={colour}
-              strokeWidth={1}
-            />
-            <rect
-              x={centre - geometry.bodyWidth / 2}
-              y={bodyTop}
-              width={geometry.bodyWidth}
-              // A doji has zero height; give it a visible line instead.
-              height={Math.max(1, bodyBottom - bodyTop)}
-              fill={colour}
-            />
-          </g>
-        );
-      })}
-    </svg>
-  );
+    return () => {
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+      seriesKeyRef.current = '';
+    };
+  }, []);
+
+  // Price formatting follows the instrument, so gold does not render to five
+  // decimals and a currency pair does not round away four of them.
+  useEffect(() => {
+    seriesRef.current?.applyOptions({
+      priceFormat: {
+        type: 'price',
+        precision: spec.pricePrecision,
+        minMove: Number(spec.tickSize),
+      },
+    });
+  }, [spec.pricePrecision, spec.tickSize, spec.code]);
+
+  useEffect(() => {
+    const series = seriesRef.current;
+    const chart = chartRef.current;
+    if (series === null || chart === null) return;
+
+    series.setData(bars.map(toCandlestickData));
+
+    const key = `${spec.code}:${bars.length === 0 ? '' : String(bars[0]?.time)}`;
+    if (seriesKeyRef.current === key) return;
+    seriesKeyRef.current = key;
+
+    // `fitContent` spreads whatever exists across the full width, so a fresh
+    // instance with three bars draws three enormous blocks and reads as a market
+    // that moves in steps. Below a screenful, hold a normal bar width and sit at
+    // the right edge instead — the same view, honestly scaled, with room for the
+    // bars still to come.
+    if (bars.length >= MIN_BARS_TO_FIT) {
+      chart.timeScale().fitContent();
+    } else {
+      chart.timeScale().applyOptions({ barSpacing: DEFAULT_BAR_SPACING });
+      chart.timeScale().scrollToRealTime();
+    }
+  }, [bars, spec.code]);
+
+  return <div ref={containerRef} className="h-full w-full" />;
+}
+
+/**
+ * Prices become JS numbers here, at the rendering boundary and nowhere else.
+ *
+ * A chart coordinate is not money: it cannot flow back into an order, and the
+ * decimal string it came from is still what any request would carry. The time
+ * axis takes seconds, while every bar on the wire is in milliseconds.
+ */
+function toCandlestickData(bar: ChartBar): CandlestickData<UTCTimestamp> {
+  return {
+    time: Math.floor(bar.time / 1000) as UTCTimestamp,
+    open: Number(bar.open),
+    high: Number(bar.high),
+    low: Number(bar.low),
+    close: Number(bar.close),
+  };
 }

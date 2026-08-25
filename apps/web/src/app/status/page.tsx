@@ -75,10 +75,10 @@ const PHASES: readonly Phase[] = [
   },
   {
     id: '9',
-    name: 'Charting library',
-    state: 'planned',
+    name: 'Charting',
+    state: 'in-progress',
     detail:
-      'TradingView Advanced Charts: indicators, drawing tools, order-from-chart. Needs the licensed library.',
+      'Datafeed boundary and lightweight-charts rendering are done. TradingView Advanced Charts: adapter written and tested, widget waiting on the licensed bundle.',
   },
   {
     id: '10',

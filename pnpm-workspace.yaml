@@ -57,6 +57,9 @@ catalog:
   '@tanstack/react-query': ^5.101.4
   zustand: ^5.0.15
   'socket.io-client': ^4.8.1
+  # Apache-2.0, on npm. The interim renderer behind the datafeed boundary while
+  # TradingView Advanced Charts (licensed, not on npm) is unavailable.
+  'lightweight-charts': ^5.2.1
   tailwindcss: ^4.3.3
   '@tailwindcss/postcss': ^4.3.3
   postcss: ^8.5.6

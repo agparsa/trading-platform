@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { ApiClient } from '@tp/api-client';
+import { barWindow, RESOLUTION_MINUTES } from './datafeed';
 import { useSession } from './session';
 
 /**
@@ -92,6 +93,25 @@ export interface SymbolRow {
   sessionOpen: boolean;
 }
 
+export interface SessionWindow {
+  /** 0 = Sunday .. 6 = Saturday. */
+  day: number;
+  openMinute: number;
+  closeMinute: number;
+}
+
+export interface TradingSession {
+  symbol: string;
+  /** IANA zone the windows are expressed in. */
+  timezone: string;
+  windows: SessionWindow[];
+}
+
+/** One instrument with its trading session, from `GET /symbols/:code`. */
+export interface SymbolDetail extends SymbolRow {
+  session: TradingSession;
+}
+
 export interface AccountSummary {
   id: string;
   number: string;
@@ -171,6 +191,23 @@ export function useSymbols() {
  * One snapshot of every quote, so the watchlist has prices before the first
  * tick arrives. After that the socket carries them.
  */
+/**
+ * One instrument in full, including its session.
+ *
+ * The list endpoint omits session windows — it is read on every terminal load
+ * and most callers do not need them. The chart does, so it asks for the one
+ * instrument it is showing.
+ */
+export function useSymbolDetail(code: string | null) {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['symbol', code ?? 'none'],
+    queryFn: () => api.get<SymbolDetail>(`/symbols/${code ?? ''}`),
+    enabled: code !== null && accessToken !== null,
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useQuoteSnapshot() {
   const { api, accessToken } = useSession();
   return useQuery({
@@ -357,16 +394,6 @@ export interface CandleRow {
   volume: string;
 }
 
-/** Minutes per bar, by resolution code. '1D' is a calendar day of minutes. */
-export const RESOLUTION_MINUTES: Readonly<Record<string, number>> = {
-  '1': 1,
-  '5': 5,
-  '15': 15,
-  '60': 60,
-  '240': 240,
-  '1D': 1440,
-};
-
 /**
  * Historical bars for one instrument.
  *
@@ -375,22 +402,19 @@ export const RESOLUTION_MINUTES: Readonly<Record<string, number>> = {
  * otherwise React Query would treat each render as a new query and refetch the
  * whole series continuously.
  */
-export function useCandles(symbol: string | null, resolution: string, bars = 150) {
+export function useCandles(symbol: string | null, resolution: string, bars = 400) {
   const { api } = useSession();
-  const minutes = RESOLUTION_MINUTES[resolution] ?? 1;
-  const bucketMs = minutes * 60_000;
-  const to = Math.ceil(Date.now() / bucketMs) * bucketMs;
-  const from = to - bars * bucketMs;
+  const { fromMs, toMs } = barWindow(resolution, bars, Date.now());
 
   return useQuery({
-    queryKey: ['candles', symbol ?? 'none', resolution, from],
+    queryKey: ['candles', symbol ?? 'none', resolution, fromMs],
     queryFn: () =>
       api.get<CandleRow[]>('/market/candles', {
-        query: { symbol: symbol ?? '', resolution, from, to },
+        query: { symbol: symbol ?? '', resolution, from: fromMs, to: toMs },
       }),
     enabled: symbol !== null,
     // The in-progress bar arrives over the socket; this series only needs
     // refetching when the window itself moves on.
-    staleTime: bucketMs,
+    staleTime: (RESOLUTION_MINUTES[resolution] ?? 1) * 60_000,
   });
 }

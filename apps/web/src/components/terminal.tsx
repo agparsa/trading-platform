@@ -136,7 +136,7 @@ export function Terminal() {
         <AccountHeader accountId={accountId} account={account} />
       </div>
 
-      <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden p-2 lg:grid-cols-[260px_minmax(0,1fr)_270px]">
+      <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden p-2 lg:grid-cols-[250px_minmax(0,1fr)_270px] xl:grid-cols-[310px_minmax(0,1fr)_280px]">
         <Panel title="Watchlist" className="hidden lg:flex">
           <Watchlist
             symbols={tradeableSymbols}
