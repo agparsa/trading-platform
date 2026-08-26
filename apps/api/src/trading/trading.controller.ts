@@ -12,6 +12,7 @@ import {
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IDEMPOTENCY_HEADER } from '@tp/shared-types';
+import { rateLimits, RATE_LIMIT_WINDOW_MS } from '../config/env.schema';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { IdempotencyKey } from '../common/decorators/idempotency-key.decorator';
 import { IdempotencyService } from '../common/idempotency/idempotency.service';
@@ -65,7 +66,7 @@ export class TradingController {
     private readonly idempotency: IdempotencyService,
   ) {}
 
-  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
   @Post('orders')
   @ApiOperation({ summary: 'Submit a market order and open a position' })
   async open(
@@ -85,7 +86,7 @@ export class TradingController {
     );
   }
 
-  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
   @Post('orders/pending')
   @ApiOperation({ summary: 'Place a resting LIMIT or STOP order' })
   async placePending(
@@ -115,7 +116,7 @@ export class TradingController {
     return this.orders.listPending(user.id, query.accountId);
   }
 
-  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
   @Patch('orders/:id')
   @ApiOperation({ summary: 'Change a resting order’s price, volume or levels' })
   async modifyPending(
@@ -135,7 +136,7 @@ export class TradingController {
     );
   }
 
-  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
   @Delete('orders/:id')
   @ApiOperation({ summary: 'Cancel a resting order' })
   async cancelPending(
@@ -166,7 +167,7 @@ export class TradingController {
     return this.positions.list(user.id, query.accountId, query.includeClosed, query.limit);
   }
 
-  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
   @Post('positions/:id/close')
   @ApiOperation({ summary: 'Close a position in whole or in part' })
   async close(
@@ -180,7 +181,7 @@ export class TradingController {
     );
   }
 
-  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
   @Patch('positions/:id')
   @ApiOperation({ summary: 'Change stop-loss or take-profit' })
   async modify(
@@ -201,7 +202,7 @@ export class TradingController {
     );
   }
 
-  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Throttle({ default: { limit: Math.ceil(rateLimits.orders / 2), ttl: RATE_LIMIT_WINDOW_MS } })
   @Post('positions/:id/reverse')
   @ApiOperation({ summary: 'Close a position and open the same size the other way' })
   async reverse(

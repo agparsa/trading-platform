@@ -9,6 +9,7 @@ import { RiskContextBuilder } from '../../src/trading/risk-context.builder';
 import { OrdersService } from '../../src/trading/orders.service';
 import { PositionsService } from '../../src/trading/positions.service';
 import { TriggerEngineService } from '../../src/trading/trigger-engine.service';
+import { SnapshotService } from '../../src/trading/snapshot.service';
 import { TickBus } from '../../src/market/tick-bus';
 import { LedgerService } from '../../src/accounts/ledger.service';
 import { EventsService } from '../../src/realtime/events.service';
@@ -50,6 +51,7 @@ export interface TradingStack {
   accountState: AccountStateService;
   ledger: LedgerService;
   triggers: TriggerEngineService;
+  snapshots: SnapshotService;
   /** Puts a price into the quote cache, as the market feed would. */
   publishQuote: (symbol: string, bid: string, ask: string, atMs?: number) => Promise<void>;
 }
@@ -70,6 +72,8 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     DEFAULT_ACCOUNT_LEVERAGE: 100,
     DEMO_ACCOUNT_INITIAL_BALANCE: '100000',
     TRADING_SERVER_TIMEZONE: 'UTC',
+    // Snapshots are driven explicitly in tests, never on a timer.
+    ACCOUNT_SNAPSHOT_INTERVAL_MS: 0,
     TRIGGER_ENGINE_ENABLED: true,
     // No throttle in tests: every tick must be acted on, or a stop-out
     // assertion would depend on how fast the test machine is.
@@ -129,5 +133,17 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     await quotes.publish(tick);
   };
 
-  return { symbols, quotes, orders, positions, accountState, ledger, triggers, publishQuote };
+  const snapshots = new SnapshotService(config as never, prismaService, accountState);
+
+  return {
+    symbols,
+    quotes,
+    orders,
+    positions,
+    accountState,
+    ledger,
+    triggers,
+    snapshots,
+    publishQuote,
+  };
 }

@@ -43,6 +43,38 @@ export class LedgerService {
    * and the second would overwrite the first — the classic lost update, and in
    * this table it means money that silently never existed.
    */
+  /**
+   * Take the account's write lock before anything else in a transaction.
+   *
+   * This is a lock-ordering fix, and it exists because of a real deadlock.
+   *
+   * Inserting an order or a position takes a `FOR KEY SHARE` lock on the parent
+   * account row — PostgreSQL does that automatically for a foreign key. `post`
+   * then wants `FOR UPDATE` on the same row. Two concurrent orders on one
+   * account therefore each hold a share lock and each wait for the other's
+   * exclusive lock: a cycle, which PostgreSQL breaks by killing one of them with
+   * `40P01 deadlock detected`.
+   *
+   * A load test found it — eight of ten simultaneous orders on one account
+   * failed, and the trader was told "an unexpected error occurred". Two quick
+   * clicks could have done the same.
+   *
+   * The cure is to acquire the strongest lock first, before any insert that
+   * references the account. A second transaction then blocks here, at the top,
+   * holding nothing — so there is no cycle to detect. Call this as the first
+   * statement of any transaction that will end up posting to the ledger.
+   */
+  async lockAccount(tx: Prisma.TransactionClient, accountId: string): Promise<void> {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM accounts WHERE id = ${accountId}::uuid FOR UPDATE
+    `;
+    if (locked.length === 0) {
+      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'Account not found', {
+        accountId,
+      });
+    }
+  }
+
   async post(tx: Prisma.TransactionClient, posting: LedgerPosting): Promise<LedgerResult> {
     if (posting.idempotencyKey !== undefined) {
       const existing = await tx.balanceLedger.findUnique({

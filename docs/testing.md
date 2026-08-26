@@ -103,6 +103,21 @@ The rendered terminal is verified by driving a real browser (Playwright) against
 a running stack: register, open a position, watch floating P&L move, close it,
 and read the trade row back.
 
+## Load
+
+`pnpm load` drives concurrent sockets, concurrent orders and the live feed
+against a real build, and reports what it measured. It fails only on
+correctness — sequence gaps, socket errors, rejected orders — because a latency
+threshold that passes here and fails on a busy CI runner teaches nobody
+anything.
+
+It has already earned its place. The first run reported eight of ten
+simultaneous orders on one account failing as `INTERNAL_ERROR`; the cause was a
+PostgreSQL deadlock between the share lock a foreign key takes on the account row
+and the exclusive lock the ledger takes on the same row. Fixing the lock order
+took p50 order latency from 3.4s to 0.3s and the failures to zero. See
+docs/database.md.
+
 ## Planned
 
 | Phase | Adds                                                      |

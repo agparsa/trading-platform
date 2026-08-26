@@ -11,7 +11,6 @@ export const QueueName = {
   /** Nightly swap accrual for positions held overnight. */
   SWAP_ACCRUAL: 'swap-accrual',
   /** Periodic account snapshots for charts and reconciliation. */
-  ACCOUNT_SNAPSHOT: 'account-snapshot',
   /** Cross-checks internal state against the market-data provider. */
   RECONCILIATION: 'reconciliation',
   /** Expires idempotency records past their TTL. */

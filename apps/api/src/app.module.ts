@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { REQUEST_ID_HEADER } from '@tp/shared-types';
 import { AppConfigModule } from './config/config.module';
-import type { Env } from './config/env.schema';
+import { RATE_LIMIT_WINDOW_MS, type Env } from './config/env.schema';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { HealthModule } from './health/health.module';
@@ -61,7 +61,7 @@ import { RolesGuard } from './common/guards/roles.guard';
         throttlers: [
           {
             name: 'default',
-            ttl: 60_000,
+            ttl: RATE_LIMIT_WINDOW_MS,
             limit: config.get('RATE_LIMIT_API_PER_MINUTE', { infer: true }),
           },
         ],

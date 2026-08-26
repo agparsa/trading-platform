@@ -472,6 +472,98 @@ suite('Trading core (integration)', () => {
     });
   });
 
+  /**
+   * Concurrent orders on one account.
+   *
+   * This is here because of a real deadlock that only a load test found. Every
+   * insert that references an account takes a `FOR KEY SHARE` lock on its row —
+   * PostgreSQL does that for the foreign key — and the ledger post then wants
+   * the row exclusively. Two orders in flight on one account each held a share
+   * lock and each waited for the other's exclusive lock, and PostgreSQL killed
+   * one with `40P01`. Eight of ten simultaneous orders failed, and the trader
+   * was told "an unexpected error occurred". Two quick clicks could do it.
+   *
+   * The cure is lock ordering: take the account's write lock first, before any
+   * insert that references it, so a second transaction blocks at the top holding
+   * nothing and there is no cycle.
+   */
+  describe('concurrent orders on one account', () => {
+    it('opens every position when ten are submitted at once', async () => {
+      const { userId, accountId } = await openAccount();
+
+      const results = await Promise.allSettled(
+        Array.from({ length: 10 }, () =>
+          stack.orders.openPosition(userId, {
+            accountId,
+            symbol: 'XAUUSD',
+            side: 'BUY',
+            volume: '0.01',
+          }),
+        ),
+      );
+
+      const rejected = results.filter((result) => result.status === 'rejected');
+      expect(rejected).toHaveLength(0);
+      expect(await prisma.position.count({ where: { accountId } })).toBe(10);
+    });
+
+    it('leaves the ledger and the cached balance in agreement afterwards', async () => {
+      const symbol = await prisma.symbol.findUniqueOrThrow({ where: { code: 'XAUUSD' } });
+      await prisma.symbolSpec.update({
+        where: { symbolId: symbol.id },
+        data: { commissionPerLot: '7' },
+      });
+      await stack.symbols.reload();
+      stack = await buildTradingStack(prisma);
+      await stack.publishQuote('XAUUSD', BID, ASK);
+
+      const { userId, accountId } = await openAccount();
+      await Promise.all(
+        Array.from({ length: 8 }, () =>
+          stack.orders.openPosition(userId, {
+            accountId,
+            symbol: 'XAUUSD',
+            side: 'BUY',
+            volume: '0.01',
+          }),
+        ),
+      );
+
+      // Eight commissions, each posted exactly once, and the balance matches the
+      // sum of the entries rather than whichever transaction committed last.
+      const commissions = await prisma.balanceLedger.count({
+        where: { accountId, type: 'COMMISSION' },
+      });
+      expect(commissions).toBe(8);
+
+      const replay = await prisma.$transaction((tx) => ledger.replayBalance(tx, accountId));
+      expect(replay.matches).toBe(true);
+    });
+
+    it('closes concurrently opened positions without deadlocking either', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await Promise.all(
+        Array.from({ length: 6 }, () =>
+          stack.orders.openPosition(userId, {
+            accountId,
+            symbol: 'XAUUSD',
+            side: 'BUY',
+            volume: '0.01',
+          }),
+        ),
+      );
+      await stack.publishQuote('XAUUSD', '4600.00', '4600.14');
+
+      const closes = await Promise.allSettled(
+        opened.map((order) => stack.positions.close(userId, order.positionId!, null)),
+      );
+      expect(closes.filter((result) => result.status === 'rejected')).toHaveLength(0);
+
+      const replay = await prisma.$transaction((tx) => ledger.replayBalance(tx, accountId));
+      expect(replay.matches).toBe(true);
+    });
+  });
+
   describe('rejections', () => {
     it('rejects an order with insufficient free margin and records why', async () => {
       const { userId, accountId } = await createAccount(prisma, { balance: '100' });

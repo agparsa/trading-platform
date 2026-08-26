@@ -71,6 +71,26 @@ export const envSchema = z.object({
   REALTIME_VALUATION_INTERVAL_MS: z.coerce.number().int().min(0).default(500),
 
   TRADING_SERVER_TIMEZONE: z.string().default('UTC'),
+  /**
+   * How long an interactive transaction may run before Prisma expires it.
+   *
+   * Writes to one account serialise on its ledger row, so a burst of orders on
+   * the same account queues. Prisma's 5s default expired transactions that were
+   * only waiting their turn — a load test showed orders failing that way. This
+   * is generous enough to absorb a realistic burst and still short enough that a
+   * genuinely stuck transaction does not hold a connection all day.
+   */
+  DATABASE_TRANSACTION_TIMEOUT_MS: z.coerce.number().int().min(1_000).default(15_000),
+  /** How long a request waits for a pooled connection before giving up. */
+  DATABASE_TRANSACTION_MAX_WAIT_MS: z.coerce.number().int().min(500).default(10_000),
+  /**
+   * How often account snapshots are taken. 0 disables them.
+   *
+   * Snapshots run inside the API rather than the worker because equity needs the
+   * live quote cache and `AccountStateService` — the single definition of what
+   * an account is worth. See snapshot.service.ts.
+   */
+  ACCOUNT_SNAPSHOT_INTERVAL_MS: z.coerce.number().int().min(0).default(300_000),
   DEFAULT_ACCOUNT_LEVERAGE: z.coerce.number().int().min(1).default(100),
   IDEMPOTENCY_KEY_TTL_SECONDS: z.coerce.number().int().min(60).default(86_400),
 
@@ -101,3 +121,41 @@ export function corsOrigins(value: string): string[] {
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
 }
+
+/**
+ * Rate limits, read at module-definition time.
+ *
+ * `@Throttle` is a decorator: it is evaluated when the controller class is
+ * defined, which is before the DI container — and therefore `ConfigService` —
+ * exists. Reading `process.env` here is the only way a per-route limit can be
+ * configuration rather than a literal.
+ *
+ * This does not skip validation. The same variable names are in the Zod schema
+ * above, so a malformed value still refuses to boot; these accessors only decide
+ * what the decorators see, and fall back to the schema's own defaults.
+ *
+ * The alternative — literals in the decorators — was what this codebase had, and
+ * it was worse than it looked: `RATE_LIMIT_LOGIN_PER_MINUTE` was declared,
+ * documented in `.env.example`, and read by nothing. An operator tightening it
+ * would have believed they had tightened it.
+ */
+function rateLimitFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
+export const RATE_LIMIT_WINDOW_MS = 60_000;
+
+export const rateLimits = {
+  get login(): number {
+    return rateLimitFromEnv('RATE_LIMIT_LOGIN_PER_MINUTE', 5);
+  },
+  get orders(): number {
+    return rateLimitFromEnv('RATE_LIMIT_ORDERS_PER_MINUTE', 120);
+  },
+  get api(): number {
+    return rateLimitFromEnv('RATE_LIMIT_API_PER_MINUTE', 600);
+  },
+};

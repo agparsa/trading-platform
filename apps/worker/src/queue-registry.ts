@@ -70,7 +70,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
 
     this.logger.log(`Queue registry ready: ${ALL_QUEUES.join(', ')}`);
     this.logger.warn(
-      `${QueueName.ACCOUNT_SNAPSHOT} and ${QueueName.NOTIFICATIONS} have no processor yet — jobs added to them will queue and wait`,
+      `${QueueName.NOTIFICATIONS} has no processor yet — jobs added to it will queue and wait`,
     );
   }
 

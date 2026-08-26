@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { corsOrigins, validateEnv } from './env.schema';
+import { afterEach, describe, expect, it } from 'vitest';
+import { corsOrigins, rateLimits, validateEnv } from './env.schema';
 
 const base = {
   DATABASE_URL: 'postgresql://trading:pw@localhost:5432/trading_platform?schema=public',
@@ -61,5 +61,48 @@ describe('corsOrigins', () => {
   it('drops empty entries instead of producing a wildcard', () => {
     expect(corsOrigins('http://a.test,,')).toEqual(['http://a.test']);
     expect(corsOrigins('')).toEqual([]);
+  });
+});
+
+describe('rateLimits', () => {
+  const original = { ...process.env };
+  afterEach(() => {
+    process.env = { ...original };
+  });
+
+  it('falls back to the schema’s defaults when nothing is set', () => {
+    delete process.env['RATE_LIMIT_LOGIN_PER_MINUTE'];
+    delete process.env['RATE_LIMIT_ORDERS_PER_MINUTE'];
+    expect(rateLimits.login).toBe(5);
+    expect(rateLimits.orders).toBe(120);
+  });
+
+  /**
+   * The defect this exists to prevent: `RATE_LIMIT_LOGIN_PER_MINUTE` was
+   * declared, documented and read by nothing, while the decorator carried a
+   * literal 5. An operator tightening it would have believed they had.
+   */
+  it('lets an operator actually change the login limit', () => {
+    process.env['RATE_LIMIT_LOGIN_PER_MINUTE'] = '3';
+    expect(rateLimits.login).toBe(3);
+  });
+
+  it('lets an operator actually change the order limit', () => {
+    process.env['RATE_LIMIT_ORDERS_PER_MINUTE'] = '600';
+    expect(rateLimits.orders).toBe(600);
+  });
+
+  /**
+   * A malformed value keeps the safe default rather than becoming NaN, which
+   * `@nestjs/throttler` would treat as a limit nothing can exceed — a typo would
+   * otherwise silently disable the limiter.
+   */
+  it('ignores a value that is not a positive integer', () => {
+    process.env['RATE_LIMIT_LOGIN_PER_MINUTE'] = 'lots';
+    expect(rateLimits.login).toBe(5);
+    process.env['RATE_LIMIT_LOGIN_PER_MINUTE'] = '0';
+    expect(rateLimits.login).toBe(5);
+    process.env['RATE_LIMIT_LOGIN_PER_MINUTE'] = '-1';
+    expect(rateLimits.login).toBe(5);
   });
 });

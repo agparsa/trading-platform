@@ -201,6 +201,11 @@ export class PositionsService {
       );
 
       const result = await this.prisma.$transaction(async (tx) => {
+        // The account's write lock first: the closing order and its execution
+        // both take a share lock on this row, and the ledger post wants it
+        // exclusively. See LedgerService.lockAccount.
+        await this.ledger.lockAccount(tx, position.accountId);
+
         const closingOrder = await tx.order.create({
           data: {
             accountId: position.accountId,

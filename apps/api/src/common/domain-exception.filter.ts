@@ -137,6 +137,22 @@ export class DomainExceptionFilter implements ExceptionFilter {
       };
     }
 
+    const contention = contentionCodeOf(exception);
+    if (contention !== null) {
+      return {
+        status: statusForCode(contention),
+        body: {
+          ok: false,
+          error: {
+            code: contention,
+            message:
+              'The account was busy with another write and this request could not be completed. Nothing was changed; try again.',
+            requestId,
+          },
+        },
+      };
+    }
+
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       return {
@@ -160,4 +176,55 @@ export class DomainExceptionFilter implements ExceptionFilter {
       },
     };
   }
+}
+
+/**
+ * Database contention, told apart from a genuine fault.
+ *
+ * Writes to one account serialise on its ledger row — that lock is what makes
+ * ten concurrent deposits total the right number instead of the wrong one. A
+ * burst of orders on the same account therefore queues, and a request at the
+ * back of the queue can exhaust its transaction budget or fail to get a
+ * connection at all.
+ *
+ * That is contention, not a fault: nothing was written, and retrying will very
+ * likely work. Reporting it as INTERNAL_ERROR — which is what this codebase did
+ * until a load test showed five orders failing that way — tells the trader
+ * nothing and tells the operator to go looking for a bug that is not there.
+ *
+ * | Code  | Prisma's meaning                                    |
+ * | ----- | --------------------------------------------------- |
+ * | P2024 | Timed out fetching a connection from the pool        |
+ * | P2028 | The interactive transaction expired                  |
+ * | P2034 | Write conflict or deadlock; the transaction rolled back |
+ */
+const CONTENTION_CODES = new Set(['P2024', 'P2028', 'P2034']);
+
+/** PostgreSQL's own codes, which Prisma passes through inside a P2010 message. */
+const CONTENTION_SQLSTATES = ['40P01', '40001'];
+
+function contentionCodeOf(exception: unknown): TradingErrorCode | null {
+  if (typeof exception !== 'object' || exception === null) return null;
+  const code = (exception as { code?: unknown }).code;
+  if (typeof code === 'string' && CONTENTION_CODES.has(code)) {
+    return TradingErrorCode.CONCURRENT_MODIFICATION;
+  }
+  // Prisma reports an expired interactive transaction through a message rather
+  // than a code on some paths, and a trader must not be told "internal error"
+  // because of which path it took.
+  const message = (exception as { message?: unknown }).message;
+  if (typeof message !== 'string') return null;
+  if (
+    message.includes('Transaction already closed') ||
+    message.includes('Unable to start a transaction in the given time')
+  ) {
+    return TradingErrorCode.CONCURRENT_MODIFICATION;
+  }
+  // A deadlock or serialisation failure arrives as P2010 with PostgreSQL's own
+  // code in the text. Lock ordering should prevent it; if one gets through, the
+  // trader is told to retry rather than that the platform is broken.
+  if (CONTENTION_SQLSTATES.some((sqlstate) => message.includes(sqlstate))) {
+    return TradingErrorCode.CONCURRENT_MODIFICATION;
+  }
+  return null;
 }

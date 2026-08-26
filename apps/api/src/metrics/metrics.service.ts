@@ -18,6 +18,7 @@ export class MetricsService {
   readonly ordersSubmitted: Counter<'symbol' | 'type' | 'outcome'>;
   readonly executionLatency: Histogram<'symbol'>;
   readonly websocketConnections: Counter<'event'>;
+  readonly ticksCoalesced: Counter<'symbol'>;
 
   constructor() {
     collectDefaultMetrics({ register: this.registry, prefix: 'tp_' });
@@ -56,6 +57,13 @@ export class MetricsService {
       help: 'Time from order acceptance to fill.',
       labelNames: ['symbol'] as const,
       buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
+      registers: [this.registry],
+    });
+
+    this.ticksCoalesced = new Counter({
+      name: 'tp_ticks_coalesced_total',
+      help: 'Ticks folded into a running trigger pass rather than starting their own. A rising rate means the engine is behind the feed.',
+      labelNames: ['symbol'],
       registers: [this.registry],
     });
 

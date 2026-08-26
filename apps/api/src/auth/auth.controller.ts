@@ -15,7 +15,7 @@ import type { Response } from 'express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { API_VERSION, DomainError, TradingErrorCode } from '@tp/shared-types';
-import { corsOrigins, type Env } from '../config/env.schema';
+import { corsOrigins, rateLimits, RATE_LIMIT_WINDOW_MS, type Env } from '../config/env.schema';
 import { parseDuration } from './token.service';
 import {
   clearRefreshCookie,
@@ -91,7 +91,7 @@ export class AuthController {
    * undo that, so nothing is returned at all.
    */
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: rateLimits.login, ttl: RATE_LIMIT_WINDOW_MS } })
   @Post('register')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Register and open a demo account' })
@@ -104,7 +104,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: rateLimits.login, ttl: RATE_LIMIT_WINDOW_MS } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -124,7 +124,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Throttle({ default: { limit: rateLimits.login * 6, ttl: RATE_LIMIT_WINDOW_MS } })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -176,7 +176,7 @@ export class AuthController {
 
   /** Always 202, registered or not — see AuthService.requestPasswordReset. */
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: rateLimits.login, ttl: RATE_LIMIT_WINDOW_MS } })
   @Post('password-reset')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Request a password-reset link' })
@@ -186,7 +186,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: rateLimits.login, ttl: RATE_LIMIT_WINDOW_MS } })
   @Post('password-reset/confirm')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Complete a password reset. Revokes every existing session.' })

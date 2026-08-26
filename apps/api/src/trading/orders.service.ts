@@ -173,6 +173,11 @@ export class OrdersService {
     const symbolId = this.symbols.requireId(symbolCode);
 
     const result = await this.prisma.$transaction(async (tx) => {
+      // First statement, deliberately. Inserting the order takes a share lock on
+      // this account row and the ledger post later wants it exclusively; two
+      // concurrent orders would deadlock on that pair. See LedgerService.lockAccount.
+      await this.ledger.lockAccount(tx, account.id);
+
       const order = await tx.order.create({
         data: {
           accountId: account.id,
@@ -614,6 +619,9 @@ export class OrdersService {
       }
 
       const result = await this.prisma.$transaction(async (tx) => {
+        // The account's write lock first, before any insert that references it.
+        await this.ledger.lockAccount(tx, order.accountId);
+
         await tx.order.update({
           where: { id: order.id },
           data: {

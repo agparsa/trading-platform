@@ -85,3 +85,50 @@ Hot paths are indexed explicitly rather than left to chance:
 - `trades(accountId, exitTime DESC)` — closed-trade history
 - `balance_ledger(accountId, createdAt DESC)` — statements
 - `candles(symbolCode, resolution, time DESC)` — chart backfill
+
+## Lock ordering
+
+Writes to one account serialise on its row. That is deliberate — the
+`SELECT … FOR UPDATE` in `LedgerService.post` is what makes ten concurrent
+deposits total the right number instead of the wrong one.
+
+What was not deliberate was the **order** in which locks were taken. Inserting an
+order, an execution or a position takes a `FOR KEY SHARE` lock on the parent
+account row; PostgreSQL does that automatically for the foreign key. The ledger
+post then wanted the same row `FOR UPDATE`. Two concurrent orders on one account
+therefore each held a share lock and each waited for the other's exclusive lock —
+a cycle, which PostgreSQL breaks by killing one transaction with
+`40P01 deadlock detected`.
+
+A load test found it: eight of ten simultaneous orders on one account failed, and
+the trader was told "an unexpected error occurred". Two quick clicks could have
+done the same.
+
+**The rule now: any transaction that will post to the ledger takes the account's
+write lock first, before any insert that references the account.**
+`LedgerService.lockAccount` exists for exactly that, and is the first statement of
+`openPosition`, `fillPending` and `close`. A second transaction then blocks at the
+top holding nothing, so there is no cycle to detect.
+
+The effect, measured on the same burst:
+
+|                                             | Before   | After     |
+| ------------------------------------------- | -------- | --------- |
+| Orders succeeding (10 at once, one account) | 2        | **10**    |
+| p50 latency                                 | ~5,000ms | **295ms** |
+| Deadlocks                                   | 8        | **0**     |
+
+Verified by putting it back: removing the up-front lock reproduces `40P01` in the
+integration suite.
+
+## When contention is not a fault
+
+A queued write that runs out of budget, loses a connection race, or is chosen as
+a deadlock victim has changed nothing and will very likely succeed on retry. Those
+are reported as `CONCURRENT_MODIFICATION` with a message saying so — not as
+`INTERNAL_ERROR`, which tells the trader nothing and sends the operator looking
+for a bug that is not there.
+
+`DATABASE_TRANSACTION_TIMEOUT_MS` and `DATABASE_TRANSACTION_MAX_WAIT_MS` bound
+how long a queued write waits. Prisma's 5s default expired transactions that were
+only waiting their turn.

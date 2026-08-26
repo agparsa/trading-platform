@@ -7,14 +7,16 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { isStopOut, toDecimal } from '@tp/financial-core';
-import type { Tick } from '@tp/market-core';
+import { TickWindow, type CoalescedTick, type Tick } from '@tp/market-core';
 import {
-  evaluateProtectiveTrigger,
+  bestExitInRange,
+  evaluateProtectiveTriggerOverRange,
+  favourableQuote,
   isExpired,
   isPendingOrderType,
   nextHighWater,
   nextTrailingStop,
-  shouldTriggerPending,
+  shouldTriggerPendingOverRange,
 } from '@tp/trading-core';
 import { CloseReason, isDomainError, OrderStatus, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
@@ -47,6 +49,24 @@ import type { Env } from '../config/env.schema';
  *
  * Stop-out runs last, on purpose: an order that just filled has consumed margin,
  * and the account has to be judged on the state it is actually in.
+ *
+ * ## Ticks arriving mid-pass
+ *
+ * They used to be dropped. That was fast and had a real cost: if the market
+ * printed a stop level on a dropped tick and moved on, the stop was never
+ * evaluated against the price that should have fired it — a guarantee failing at
+ * exactly the moment stops matter most.
+ *
+ * They are now **coalesced**. A tick arriving mid-pass folds into a per-symbol
+ * window holding the extremes since the last pass; when the pass finishes, the
+ * window is drained and another pass runs against those extremes. Memory is four
+ * decimals per symbol regardless of tick rate, and the engine never falls behind
+ * — the opposite failure a queue would have introduced.
+ *
+ * Detection asks "did the market trade through this level?", which the extremes
+ * answer exactly. Execution still happens at the current price: the extreme has
+ * already passed, and filling at a price nobody can deal at would be inventing a
+ * fill.
  */
 @Injectable()
 export class TriggerEngineService implements OnApplicationBootstrap, OnApplicationShutdown {
@@ -54,11 +74,13 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
   private unsubscribe: (() => void) | null = null;
 
   /**
-   * Symbols with a pass in flight. A tick arriving mid-pass is dropped rather
-   * than queued: the next tick carries a newer price, and processing a
-   * superseded one would fire stops against a market that has moved on.
+   * Symbols with a pass in flight. A tick arriving mid-pass folds into `window`
+   * instead of starting a second, overlapping pass.
    */
   private readonly inFlight = new Set<string>();
+
+  /** Everything the market printed while a pass was running. */
+  private readonly window = new TickWindow();
 
   /** Last stop-out evaluation per account, to bound repeated valuations. */
   private readonly lastStopOutCheck = new Map<string, number>();
@@ -92,16 +114,34 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
 
   /** Exposed so tests can drive the engine without a live feed. */
   async onTick(tick: Tick): Promise<void> {
+    this.window.observe(tick);
+    // A pass is already running for this symbol. The tick is recorded, not lost,
+    // and the running pass will pick it up when it drains again.
     if (this.inFlight.has(tick.symbol)) return;
+
     this.inFlight.add(tick.symbol);
     try {
-      await this.advanceTrailingStops(tick);
-      await this.fireProtectiveOrders(tick);
-      await this.workRestingOrders(tick);
-      await this.checkStopOuts(tick);
+      // Loop rather than return: ticks that arrived during a pass are drained by
+      // the next iteration, so the engine catches up instead of leaving the last
+      // of a burst unevaluated.
+      for (;;) {
+        const coalesced = this.window.drain(tick.symbol);
+        if (coalesced === null) return;
+        if (coalesced.observed > 1) {
+          this.metrics.ticksCoalesced.inc({ symbol: tick.symbol }, coalesced.observed - 1);
+        }
+        await this.runPass(coalesced);
+      }
     } finally {
       this.inFlight.delete(tick.symbol);
     }
+  }
+
+  private async runPass(coalesced: CoalescedTick): Promise<void> {
+    await this.advanceTrailingStops(coalesced);
+    await this.fireProtectiveOrders(coalesced);
+    await this.workRestingOrders(coalesced);
+    await this.checkStopOuts(coalesced.latest);
   }
 
   /**
@@ -112,7 +152,8 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
    * in the order they were placed — the only fair rule when both are reached by
    * the same tick.
    */
-  private async workRestingOrders(tick: Tick): Promise<void> {
+  private async workRestingOrders(coalesced: CoalescedTick): Promise<void> {
+    const tick = coalesced.latest;
     const spec = this.symbols.find(tick.symbol)?.spec;
     if (spec === undefined) return;
 
@@ -136,7 +177,7 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
       const price = order.price?.toString();
       if (price === undefined) continue;
       if (!isPendingOrderType(order.type)) continue;
-      if (!shouldTriggerPending(order.type, order.side, price, tick)) continue;
+      if (!shouldTriggerPendingOverRange(order.type, order.side, price, coalesced)) continue;
 
       // `fillPending` claims the order itself, so a concurrent pass loses
       // rather than opening a second position from one order. It counts its own
@@ -145,7 +186,8 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
     }
   }
 
-  private async advanceTrailingStops(tick: Tick): Promise<void> {
+  private async advanceTrailingStops(coalesced: CoalescedTick): Promise<void> {
+    const tick = coalesced.latest;
     const spec = this.symbols.find(tick.symbol)?.spec;
     if (spec === undefined) return;
 
@@ -169,11 +211,15 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
       const distance = position.trailingStopDistance?.toString();
       if (distance === undefined) continue;
 
-      const highWater = nextHighWater(
-        position.side,
-        position.highWaterPrice?.toString() ?? null,
-        tick,
-      );
+      // The best price in the window, not merely the latest: a trailing stop
+      // that missed a spike it was busy during would then sit further from the
+      // market than the trader asked for.
+      const best = bestExitInRange(position.side, coalesced);
+      const previous = position.highWaterPrice?.toString() ?? null;
+      const highWater =
+        previous === null
+          ? best
+          : nextHighWater(position.side, previous, favourableQuote(position.side, coalesced));
       const moved = nextTrailingStop(
         spec,
         position.side,
@@ -197,7 +243,8 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
     }
   }
 
-  private async fireProtectiveOrders(tick: Tick): Promise<void> {
+  private async fireProtectiveOrders(coalesced: CoalescedTick): Promise<void> {
+    const tick = coalesced.latest;
     const candidates = await this.prisma.position.findMany({
       where: {
         status: 'OPEN',
@@ -208,13 +255,13 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
     });
 
     for (const position of candidates) {
-      const reason = evaluateProtectiveTrigger(
+      const reason = evaluateProtectiveTriggerOverRange(
         position.side,
         {
           stopLoss: position.stopLoss?.toString() ?? null,
           takeProfit: position.takeProfit?.toString() ?? null,
         },
-        tick,
+        coalesced,
       );
       if (reason === null) continue;
       await this.closeTriggered(position.id, reason, tick);

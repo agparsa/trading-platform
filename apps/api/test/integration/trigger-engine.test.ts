@@ -74,6 +74,141 @@ suite('Trigger engine (integration)', () => {
     });
   };
 
+  /**
+   * A fast market must not be able to hide a level.
+   *
+   * Ticks arriving while a pass is running are coalesced into the extremes they
+   * reached, not dropped. These tests drive several `onTick` calls at once: the
+   * first takes the in-flight slot, the rest fold into a window that the running
+   * pass drains when it finishes. Under the old behaviour the last tick of a
+   * burst simply superseded the others and everything between was never
+   * evaluated.
+   */
+  describe('a burst of ticks', () => {
+    const burst = async (prices: ReadonlyArray<[string, string]>) => {
+      const at = Date.now();
+      await Promise.all(
+        prices.map(([bid, ask], index) =>
+          stack.triggers.onTick({
+            symbol: 'XAUUSD',
+            bid,
+            ask,
+            timestamp: at + index,
+            volume: '1',
+          }),
+        ),
+      );
+    };
+
+    it('fires a stop the market traded through and recovered from', async () => {
+      const { positionId } = await openLong('4550.00');
+      await stack.publishQuote('XAUUSD', '4540.00', '4540.14');
+
+      // 4583 is above the stop; 4540 goes through it; 4570 recovers. Only the
+      // middle price would have fired it, and only the last would have been seen.
+      await burst([
+        ['4583.58', '4583.72'],
+        ['4540.00', '4540.14'],
+        ['4570.00', '4570.14'],
+      ]);
+
+      const position = await prisma.position.findUniqueOrThrow({ where: { id: positionId } });
+      expect(position.status).toBe('CLOSED');
+      expect(position.closeReason).toBe('STOP_LOSS');
+    });
+
+    it('fires a take-profit the market reached and fell back from', async () => {
+      const { positionId } = await openLong(undefined, '4600.00');
+      await stack.publishQuote('XAUUSD', '4610.00', '4610.14');
+
+      await burst([
+        ['4583.58', '4583.72'],
+        ['4610.00', '4610.14'],
+        ['4590.00', '4590.14'],
+      ]);
+
+      const position = await prisma.position.findUniqueOrThrow({ where: { id: positionId } });
+      expect(position.status).toBe('CLOSED');
+      expect(position.closeReason).toBe('TAKE_PROFIT');
+    });
+
+    /**
+     * When one window spans both levels nobody can know which came first, so the
+     * stop wins — the same rule a single tick spanning both already follows.
+     */
+    it('gives the stop-loss to a burst that spanned both levels', async () => {
+      const { positionId } = await openLong('4550.00', '4600.00');
+      await stack.publishQuote('XAUUSD', '4580.00', '4580.14');
+
+      await burst([
+        ['4583.58', '4583.72'],
+        ['4610.00', '4610.14'],
+        ['4540.00', '4540.14'],
+      ]);
+
+      const position = await prisma.position.findUniqueOrThrow({ where: { id: positionId } });
+      expect(position.closeReason).toBe('STOP_LOSS');
+    });
+
+    it('fills a resting order the market traded through', async () => {
+      const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
+      await stack.publishQuote('XAUUSD', BID, ASK);
+      await stack.orders.placePending(userId, {
+        accountId,
+        symbol: 'XAUUSD',
+        side: 'BUY',
+        type: 'LIMIT',
+        volume: '1.00',
+        price: '4550.00',
+      });
+      await stack.publishQuote('XAUUSD', '4570.00', '4570.14');
+
+      await burst([
+        ['4583.58', '4583.72'],
+        ['4540.00', '4540.14'],
+        ['4570.00', '4570.14'],
+      ]);
+
+      const position = await prisma.position.findFirstOrThrow({ where: { accountId } });
+      expect(position.status).toBe('OPEN');
+    });
+
+    /**
+     * Execution happens at the current price, not at the extreme. The spike has
+     * already passed; filling there would be inventing a price nobody could deal
+     * at, and would flatter every stop-out in the book.
+     */
+    it('closes at the price available now, not at the extreme it detected', async () => {
+      const { positionId } = await openLong('4550.00');
+      await stack.publishQuote('XAUUSD', '4570.00', '4570.14');
+
+      await burst([
+        ['4583.58', '4583.72'],
+        ['4540.00', '4540.14'],
+        ['4570.00', '4570.14'],
+      ]);
+
+      const position = await prisma.position.findUniqueOrThrow({ where: { id: positionId } });
+      expect(position.closeReason).toBe('STOP_LOSS');
+      // The last published quote, which is what `close` reads — not 4540.
+      expect(position.currentPrice?.toString()).toBe('4570');
+    });
+
+    it('leaves a position alone when the burst never reached its levels', async () => {
+      const { positionId } = await openLong('4500.00', '4700.00');
+      await stack.publishQuote('XAUUSD', '4590.00', '4590.14');
+
+      await burst([
+        ['4583.58', '4583.72'],
+        ['4595.00', '4595.14'],
+        ['4590.00', '4590.14'],
+      ]);
+
+      const position = await prisma.position.findUniqueOrThrow({ where: { id: positionId } });
+      expect(position.status).toBe('OPEN');
+    });
+  });
+
   describe('stop-loss', () => {
     it('closes a long when the bid reaches the stop', async () => {
       const { positionId } = await openLong('4525.79');

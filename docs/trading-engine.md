@@ -131,3 +131,45 @@ State lives in PostgreSQL, not in process memory. On restart the API reloads ope
 orders and positions, re-subscribes to the market feed, and resumes. Executions
 already written are not replayed: the idempotency table and the append-only event
 log make the recovery path observable rather than a matter of trust.
+
+## Ticks that arrive while the engine is busy
+
+They used to be dropped. The reasoning was that the next tick carries a newer
+price, so acting on a superseded one would fire stops against a market that had
+moved on. That reasoning was half right, and the half it got wrong mattered: if
+the market printed a stop level on a dropped tick and moved away, the stop was
+never evaluated against the price that should have fired it. The guarantee failed
+at exactly the moment stops matter most.
+
+Queueing every tick instead would have traded one failure for another —
+unbounded memory, and an engine falling further behind until it fired stops
+against prices minutes old.
+
+Ticks are now **coalesced**. A tick arriving mid-pass folds into a per-symbol
+window holding the extremes since the last pass; when the pass finishes the
+window is drained and another pass runs. Memory is four decimals per symbol
+whatever the tick rate, and the engine cannot fall behind.
+
+**Detection uses the extremes; execution uses the current price.** "Did the
+market trade through this level?" is what a stop-loss has always really been
+asking, and the extremes answer it exactly. The extreme itself has already
+passed, so filling there would be inventing a price nobody could deal at — and
+would flatter every stop-out in the book.
+
+Each check reads the extreme in its own direction:
+
+| Check                              | Extreme used                  |
+| ---------------------------------- | ----------------------------- |
+| Long stop-loss / short take-profit | lowest bid / lowest ask       |
+| Long take-profit / short stop-loss | highest bid / highest ask     |
+| BUY LIMIT, SELL STOP               | lowest ask, lowest bid        |
+| SELL LIMIT, BUY STOP               | highest bid, highest ask      |
+| Trailing stop high-water           | best exit price in the window |
+
+When one window spans both a stop-loss and a take-profit, nobody can know which
+came first, and the **stop wins** — the same rule a single tick spanning both
+already followed. Deciding the other way would let a burst of ticks turn a losing
+position into a winning one on an ordering the engine never observed.
+
+`tp_ticks_coalesced_total` counts ticks folded into a running pass. A rising rate
+means the engine is behind the feed; it does not mean anything was lost.

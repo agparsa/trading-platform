@@ -94,6 +94,19 @@ const PHASES: readonly Phase[] = [
     detail:
       'Refresh tokens are httpOnly, SameSite=Strict cookies and never appear in a response body. RBAC and the admin audit surface remain.',
   },
+  {
+    id: '12',
+    name: 'Performance under load',
+    state: 'in-progress',
+    detail:
+      'Load harness, tick coalescing so a fast market cannot hide a level, and a lock-ordering fix for a deadlock it found. Sustained soak testing remains.',
+  },
+  {
+    id: '13',
+    name: 'Production readiness',
+    state: 'planned',
+    detail: 'Images, deployment, backup and restore, operational runbook.',
+  },
 ];
 
 const STATE_LABEL: Record<Phase['state'], string> = {
