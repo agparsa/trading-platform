@@ -70,3 +70,44 @@ export class OpenPositionDto extends createZodDto(openPositionSchema) {}
 export class ClosePositionDto extends createZodDto(closePositionSchema) {}
 export class ModifyPositionDto extends createZodDto(modifyPositionSchema) {}
 export class ListQueryDto extends createZodDto(listQuerySchema) {}
+
+export const placePendingSchema = z
+  .object({
+    accountId: z.string().uuid(),
+    symbol: z.string().trim().min(1).max(20),
+    side: z.enum(['BUY', 'SELL']),
+    type: z.enum(['LIMIT', 'STOP']),
+    volume: positiveDecimal,
+    price: positiveDecimal,
+    stopLoss: positiveDecimal.nullish(),
+    takeProfit: positiveDecimal.nullish(),
+    timeInForce: z.enum(['GTC', 'DAY', 'GTD']).default('GTC'),
+    // Epoch milliseconds. Required for GTD; the service rejects a missing or
+    // past value rather than silently turning the order into a GTC.
+    expiresAt: z.number().int().positive().nullish(),
+  })
+  .strict();
+
+export const modifyPendingSchema = z
+  .object({
+    price: positiveDecimal.optional(),
+    volume: positiveDecimal.optional(),
+    // `null` clears a level; omitting the field leaves it unchanged.
+    stopLoss: positiveDecimal.nullable().optional(),
+    takeProfit: positiveDecimal.nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.price !== undefined ||
+      value.volume !== undefined ||
+      value.stopLoss !== undefined ||
+      value.takeProfit !== undefined,
+    { message: 'Provide price, volume, stopLoss or takeProfit' },
+  );
+
+export const accountQuerySchema = z.object({ accountId: z.string().uuid() }).strict();
+
+export class PlacePendingDto extends createZodDto(placePendingSchema) {}
+export class ModifyPendingDto extends createZodDto(modifyPendingSchema) {}
+export class AccountQueryDto extends createZodDto(accountQuerySchema) {}

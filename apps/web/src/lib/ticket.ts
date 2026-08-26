@@ -1,6 +1,6 @@
 import { checkVolume, requiredMargin, toDecimal, type SymbolSpec } from '@tp/financial-core';
 import { DomainError } from '@tp/shared-types';
-import { validateProtectiveLevels } from '@tp/trading-core';
+import { validatePendingPrice, validateProtectiveLevels } from '@tp/trading-core';
 import { money } from './format';
 import type { AccountSummary, SymbolRow } from './queries';
 
@@ -126,5 +126,40 @@ export function estimateCosts(
   } catch {
     // A spec the browser cannot price is a display problem, not a trading one.
     return blank;
+  }
+}
+
+/**
+ * Pre-flight for a resting order's price.
+ *
+ * Runs the same `validatePendingPrice` the API runs, from the same package, so
+ * the browser cannot invent a rule the server lacks or miss one it has. Its
+ * whole job is to catch the mistake that matters: a price on the wrong side of
+ * the market is not a resting order at all — it fires on the next tick, and the
+ * trader gets a market order they never asked for.
+ *
+ * Returns the message rather than throwing, because a half-typed price is the
+ * normal state of an input the user is still filling in.
+ */
+export function validateRestingPrice(
+  spec: SymbolRow | undefined,
+  type: 'LIMIT' | 'STOP',
+  side: 'BUY' | 'SELL',
+  price: string,
+  quote: { bid: string; ask: string } | undefined,
+): string | null {
+  const trimmed = price.trim();
+  if (spec === undefined) return null;
+  if (trimmed === '') return 'Enter the price the order should rest at.';
+  if (!isDecimalString(trimmed)) return 'Price must be a decimal number.';
+  // Without a quote there is nothing to measure the side against; the server
+  // has one and will refuse the order if it is wrong.
+  if (quote === undefined) return null;
+
+  try {
+    validatePendingPrice(spec as SymbolSpec, type, side, trimmed, quote);
+    return null;
+  } catch (error) {
+    return error instanceof DomainError ? error.message : 'Invalid price.';
   }
 }

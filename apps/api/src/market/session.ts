@@ -53,3 +53,24 @@ export function zonedDayAndMinute(atMs: number, timeZone: string): { day: number
   const dayIndex = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekday);
   return { day: dayIndex === -1 ? 0 : dayIndex, minute: (hour % 24) * 60 + minute };
 }
+
+/**
+ * The instant a DAY order stops being valid: the next midnight in the trading
+ * server's timezone.
+ *
+ * Computed once, when the order is placed, and stored as a timestamp — so
+ * nothing downstream has to reason about what a "day" means, and a server that
+ * moves timezone cannot silently reinterpret an order already resting.
+ *
+ * Built from `zonedDayAndMinute` rather than date arithmetic because that is the
+ * one function here that knows about daylight saving. On the day a zone shifts,
+ * midnight is 23 or 25 hours away, not 24.
+ */
+export function endOfTradingDay(timeZone: string, atMs: number): number {
+  const { minute } = zonedDayAndMinute(atMs, timeZone);
+  const minutesLeft = 1440 - minute;
+  // Snap to the minute first: the remaining seconds within the current minute
+  // would otherwise push the expiry a fraction past midnight.
+  const startOfMinute = Math.floor(atMs / 60_000) * 60_000;
+  return startOfMinute + minutesLeft * 60_000;
+}

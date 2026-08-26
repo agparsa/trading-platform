@@ -188,6 +188,115 @@ const checks: Check[] = [
     },
   },
   {
+    name: 'a resting order: place it, list it, refuse the wrong side, cancel it',
+    run: async () => {
+      const email = `smoke-pending-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, displayName: 'Smoke Pending' }),
+      });
+      const login = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+      const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+      const accountsResponse = await fetch(`${BASE}/api/v1/accounts`, { headers: auth });
+      const accountId = ((await accountsResponse.json()) as { data: Array<{ id: string }> }).data[0]
+        ?.id;
+      assert(accountId !== undefined, 'registration did not open an account');
+
+      const quotesResponse = await fetch(`${BASE}/api/v1/market/quotes`, { headers: auth });
+      const quotes = (
+        (await quotesResponse.json()) as {
+          data: Array<{ symbol: string; bid: string; ask: string }>;
+        }
+      ).data;
+      const quote = quotes[0];
+      assert(quote !== undefined, 'nothing is quoting');
+
+      const specResponse = await fetch(`${BASE}/api/v1/symbols/${quote!.symbol}`, {
+        headers: auth,
+      });
+      const spec = (
+        (await specResponse.json()) as {
+          data: { tickSize: string; pricePrecision: number; minVolume: string };
+        }
+      ).data;
+
+      // Rest well below the market, snapped to the tick grid so the price is
+      // one the instrument can actually quote.
+      const tick = Number(spec.tickSize);
+      const restAt = (Math.floor((Number(quote!.bid) * 0.9) / tick) * tick).toFixed(
+        spec.pricePrecision,
+      );
+
+      const place = async (side: string, type: string, price: string) =>
+        fetch(`${BASE}/api/v1/orders/pending`, {
+          method: 'POST',
+          headers: { ...auth, 'Idempotency-Key': crypto.randomUUID() },
+          body: JSON.stringify({
+            accountId,
+            symbol: quote!.symbol,
+            side,
+            type,
+            volume: spec.minVolume,
+            price,
+          }),
+        });
+
+      const placed = await place('BUY', 'LIMIT', restAt);
+      const placedBody = (await placed.json()) as {
+        ok: boolean;
+        data: { orderId: string; status: string };
+        error?: { message: string };
+      };
+      assert(
+        placedBody.ok,
+        `placing a limit failed: ${placedBody.error?.message ?? placed.status}`,
+      );
+      assert(placedBody.data.status === 'PENDING', 'a resting order did not come back as PENDING');
+
+      const listed = await fetch(`${BASE}/api/v1/orders/pending?accountId=${accountId}`, {
+        headers: auth,
+      });
+      const listedBody = (await listed.json()) as { data: Array<{ orderId: string }> };
+      assert(
+        listedBody.data.some((order) => order.orderId === placedBody.data.orderId),
+        'the resting order was not listed',
+      );
+
+      // A buy limit above the market would fire on the next tick — that is a
+      // market order the trader did not ask for, and the engine must refuse it.
+      const wrongSide = await place(
+        'BUY',
+        'LIMIT',
+        (Number(quote!.ask) * 1.1).toFixed(spec.pricePrecision),
+      );
+      const wrongBody = (await wrongSide.json()) as { ok: boolean; error?: { code: string } };
+      assert(!wrongBody.ok, 'an immediately-fillable limit order was accepted');
+      assert(
+        wrongBody.error?.code === 'INVALID_PRICE',
+        `expected INVALID_PRICE, got ${wrongBody.error?.code}`,
+      );
+
+      const cancelled = await fetch(`${BASE}/api/v1/orders/${placedBody.data.orderId}`, {
+        method: 'DELETE',
+        headers: { ...auth, 'Idempotency-Key': crypto.randomUUID() },
+      });
+      const cancelledBody = (await cancelled.json()) as {
+        ok: boolean;
+        data: { status: string };
+      };
+      assert(cancelledBody.ok, 'cancelling the resting order failed');
+      assert(cancelledBody.data.status === 'CANCELLED', 'the order did not come back CANCELLED');
+    },
+  },
+  {
     name: 'metrics endpoint exposes the declared trading counters',
     run: async () => {
       const response = await fetch(`${BASE}/metrics`);

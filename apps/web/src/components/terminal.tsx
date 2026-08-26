@@ -10,6 +10,7 @@ import {
   invalidateTradingState,
   useAccounts,
   useAccountState,
+  usePendingOrders,
   usePositions,
   useSymbols,
 } from '@/lib/queries';
@@ -17,12 +18,13 @@ import { AccountHeader } from './account-header';
 import { ChartPanel } from './chart-panel';
 import { ConnectionBadge } from './connection-badge';
 import { HistoryPanel, type HistoryTab } from './history-panel';
+import { PendingPanel } from './pending-panel';
 import { OrderTicket } from './order-ticket';
 import { PositionsPanel } from './positions-panel';
 import { Button, Panel, Tabs } from './primitives';
 import { Watchlist } from './watchlist';
 
-type BottomTab = 'open' | HistoryTab;
+type BottomTab = 'open' | 'pending' | HistoryTab;
 
 /**
  * The trading terminal.
@@ -50,6 +52,7 @@ export function Terminal() {
   const symbols = useSymbols();
   const accounts = useAccounts();
   const openPositions = usePositions(accountId, false);
+  const pendingOrders = usePendingOrders(accountId);
   const accountState = useAccountState(accountId);
 
   const gapDetected = useRealtime((state) => state.gapDetected);
@@ -93,6 +96,7 @@ export function Terminal() {
   }, [gapDetected, resnapshot]);
 
   const positions = openPositions.data ?? [];
+  const pending = pendingOrders.data ?? [];
   const currency = account?.currency ?? 'USD';
 
   return (
@@ -163,6 +167,7 @@ export function Terminal() {
                 onChange={setBottomTab}
                 tabs={[
                   { id: 'open', label: 'Positions', count: positions.length },
+                  { id: 'pending', label: 'Pending', count: pending.length },
                   { id: 'trades', label: 'Trades' },
                   { id: 'closed', label: 'Closed' },
                   { id: 'orders', label: 'Orders' },
@@ -170,7 +175,9 @@ export function Terminal() {
               />
             }
           >
-            {bottomTab === 'open' ? (
+            {bottomTab === 'pending' ? (
+              <PendingPanel orders={pending} symbols={tradeableSymbols} accountId={accountId} />
+            ) : bottomTab === 'open' ? (
               <PositionsPanel
                 positions={positions}
                 symbols={tradeableSymbols}

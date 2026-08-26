@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IDEMPOTENCY_HEADER } from '@tp/shared-types';
@@ -9,10 +19,13 @@ import { AccountStateService } from './account-state.service';
 import { OrdersService } from './orders.service';
 import { PositionsService } from './positions.service';
 import {
+  AccountQueryDto,
   ClosePositionDto,
   ListQueryDto,
+  ModifyPendingDto,
   ModifyPositionDto,
   OpenPositionDto,
+  PlacePendingDto,
 } from './dto/trading.dto';
 import type { CloseResult, OrderResult } from './trading.types';
 
@@ -69,6 +82,69 @@ export class TradingController {
         stopLoss: body.stopLoss ?? null,
         takeProfit: body.takeProfit ?? null,
       }),
+    );
+  }
+
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @Post('orders/pending')
+  @ApiOperation({ summary: 'Place a resting LIMIT or STOP order' })
+  async placePending(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: PlacePendingDto,
+    @IdempotencyKey() key: string,
+  ) {
+    return idempotent(this.idempotency, `pending:${user.id}`, key, body, () =>
+      this.orders.placePending(user.id, {
+        accountId: body.accountId,
+        symbol: body.symbol,
+        side: body.side,
+        type: body.type,
+        volume: body.volume,
+        price: body.price,
+        stopLoss: body.stopLoss ?? null,
+        takeProfit: body.takeProfit ?? null,
+        timeInForce: body.timeInForce,
+        expiresAt: body.expiresAt ?? null,
+      }),
+    );
+  }
+
+  @Get('orders/pending')
+  @ApiOperation({ summary: 'Resting orders for an account' })
+  listPending(@CurrentUser() user: AuthenticatedUser, @Query() query: AccountQueryDto) {
+    return this.orders.listPending(user.id, query.accountId);
+  }
+
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @Patch('orders/:id')
+  @ApiOperation({ summary: 'Change a resting order’s price, volume or levels' })
+  async modifyPending(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ModifyPendingDto,
+    @IdempotencyKey() key: string,
+  ) {
+    return idempotent(this.idempotency, `pending-modify:${user.id}`, key, { id, ...body }, () =>
+      this.orders.modifyPending(user.id, {
+        orderId: id,
+        ...(body.price === undefined ? {} : { price: body.price }),
+        ...(body.volume === undefined ? {} : { volume: body.volume }),
+        ...(body.stopLoss === undefined ? {} : { stopLoss: body.stopLoss }),
+        ...(body.takeProfit === undefined ? {} : { takeProfit: body.takeProfit }),
+      }),
+    );
+  }
+
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @Delete('orders/:id')
+  @ApiOperation({ summary: 'Cancel a resting order' })
+  async cancelPending(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @IdempotencyKey() key: string,
+  ) {
+    return idempotent(this.idempotency, `pending-cancel:${user.id}`, key, { id }, () =>
+      this.orders.cancelPending(user.id, id),
     );
   }
 

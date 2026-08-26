@@ -92,7 +92,8 @@ Two scripts drive a real build rather than a mock, and both refuse to run if
 something is already holding the port — a smoke test that silently passes against
 a stale binary is the worst failure mode there is.
 
-- `pnpm smoke` — 7 checks: envelopes, auth, a full trade round trip, the ledger.
+- `pnpm smoke` — 8 checks: envelopes, auth, a full trade round trip, the ledger, a
+  resting order placed, listed, refused on the wrong side, and cancelled.
 - `pnpm smoke:ws` — 8 checks: quote and candle streaming, gapless sequencing,
   private-channel refusal, cross-account isolation.
 

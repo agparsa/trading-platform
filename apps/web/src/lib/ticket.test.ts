@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateCosts, stepVolume, validateTicket } from './ticket';
+import { estimateCosts, stepVolume, validateRestingPrice, validateTicket } from './ticket';
 import type { AccountSummary, SymbolRow } from './queries';
 
 const XAUUSD: SymbolRow = {
@@ -139,5 +139,44 @@ describe('estimateCosts', () => {
   it('does not let account leverage undercut the instrument margin rate', () => {
     const leveraged = { ...account, leverage: 500 };
     expect(estimateCosts(XAUUSD, leveraged, '0.10', '2000.00', true).margin).toBe('$200.00');
+  });
+});
+
+describe('validateRestingPrice', () => {
+  const quote = { bid: '2000.00', ask: '2000.20' };
+
+  it('accepts each of the four orders resting on its correct side', () => {
+    expect(validateRestingPrice(XAUUSD, 'LIMIT', 'BUY', '1990.00', quote)).toBeNull();
+    expect(validateRestingPrice(XAUUSD, 'LIMIT', 'SELL', '2010.00', quote)).toBeNull();
+    expect(validateRestingPrice(XAUUSD, 'STOP', 'BUY', '2010.00', quote)).toBeNull();
+    expect(validateRestingPrice(XAUUSD, 'STOP', 'SELL', '1990.00', quote)).toBeNull();
+  });
+
+  /** The mistake that turns a resting order into an unasked-for market order. */
+  it('rejects each of the four placed on the wrong side', () => {
+    expect(validateRestingPrice(XAUUSD, 'LIMIT', 'BUY', '2010.00', quote)).toContain('below');
+    expect(validateRestingPrice(XAUUSD, 'LIMIT', 'SELL', '1990.00', quote)).toContain('above');
+    expect(validateRestingPrice(XAUUSD, 'STOP', 'BUY', '1990.00', quote)).toContain('above');
+    expect(validateRestingPrice(XAUUSD, 'STOP', 'SELL', '2010.00', quote)).toContain('below');
+  });
+
+  it('asks for a price rather than complaining about an empty field', () => {
+    expect(validateRestingPrice(XAUUSD, 'LIMIT', 'BUY', '   ', quote)).toContain('Enter the price');
+  });
+
+  it('reports a half-typed price without pretending it is valid', () => {
+    expect(validateRestingPrice(XAUUSD, 'LIMIT', 'BUY', '19.', quote)).toContain('decimal');
+  });
+
+  it('rejects a price off the tick grid', () => {
+    expect(validateRestingPrice(XAUUSD, 'LIMIT', 'BUY', '1990.005', quote)).toContain('tick size');
+  });
+
+  /**
+   * With no quote there is nothing to measure the side against. Guessing would
+   * be worse than deferring: the server has a price and will refuse the order.
+   */
+  it('defers to the server when no quote has arrived', () => {
+    expect(validateRestingPrice(XAUUSD, 'LIMIT', 'BUY', '2010.00', undefined)).toBeNull();
   });
 });

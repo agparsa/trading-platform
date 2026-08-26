@@ -69,6 +69,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     DEFAULT_ACCOUNT_CURRENCY: 'USD',
     DEFAULT_ACCOUNT_LEVERAGE: 100,
     DEMO_ACCOUNT_INITIAL_BALANCE: '100000',
+    TRADING_SERVER_TIMEZONE: 'UTC',
     TRIGGER_ENGINE_ENABLED: true,
     // No throttle in tests: every tick must be acted on, or a stop-out
     // assertion would depend on how fast the test machine is.
@@ -99,6 +100,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     metrics,
     audit,
     events,
+    config as never,
   );
   const positions = new PositionsService(
     prismaService,
@@ -116,6 +118,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     prismaService,
     symbols,
     positions,
+    orders,
     accountState,
     new TickBus(),
     metrics,

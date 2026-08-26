@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TradingSession } from '@tp/market-core';
-import { isSessionOpen, zonedDayAndMinute } from './session';
+import { endOfTradingDay, isSessionOpen, zonedDayAndMinute } from './session';
 
 /** Sunday 22:00 → Friday 21:00 UTC, the usual metals and FX week. */
 const METALS: TradingSession = {
@@ -92,5 +92,49 @@ describe('isSessionOpen', () => {
 
   it('is closed when an instrument has no windows at all', () => {
     expect(isSessionOpen({ symbol: 'X', timezone: 'UTC', windows: [] }, Date.now())).toBe(false);
+  });
+});
+
+describe('endOfTradingDay', () => {
+  /**
+   * A DAY order's expiry is fixed when it is placed, so nothing downstream has
+   * to decide what a "day" means — and a server that changes timezone cannot
+   * reinterpret an order already resting.
+   */
+  it('returns the next midnight in the trading server timezone', () => {
+    // 2026-08-25T14:32:11Z
+    const at = Date.UTC(2026, 7, 25, 14, 32, 11);
+    const expiry = endOfTradingDay('UTC', at);
+    expect(new Date(expiry).toISOString()).toBe('2026-08-26T00:00:00.000Z');
+  });
+
+  it('is always in the future, even a second before midnight', () => {
+    const at = Date.UTC(2026, 7, 25, 23, 59, 59);
+    const expiry = endOfTradingDay('UTC', at);
+    expect(expiry).toBeGreaterThan(at);
+    expect(new Date(expiry).toISOString()).toBe('2026-08-26T00:00:00.000Z');
+  });
+
+  it('measures the day in the configured zone, not the host’s', () => {
+    // 23:30 UTC is 08:30 the next morning in Tokyo. UTC has half an hour of its
+    // day left; Tokyo has just started one, so Tokyo's expiry is much later.
+    const at = Date.UTC(2026, 7, 25, 23, 30, 0);
+    const utc = endOfTradingDay('UTC', at);
+    const tokyo = endOfTradingDay('Asia/Tokyo', at);
+    expect(utc - at).toBe(30 * 60_000);
+    expect(tokyo).toBeGreaterThan(utc);
+    expect(tokyo - at).toBe(15.5 * 3_600_000);
+  });
+
+  /**
+   * On the day a zone shifts, midnight is 23 or 25 hours away rather than 24.
+   * Date arithmetic would get this wrong; `zonedDayAndMinute` does not.
+   */
+  it('handles a daylight-saving transition', () => {
+    // 2026-10-25 is the UK clock change; 01:00 UTC is 01:00 local after it.
+    const at = Date.UTC(2026, 9, 25, 1, 0, 0);
+    const expiry = endOfTradingDay('Europe/London', at);
+    expect(expiry - at).toBeLessThanOrEqual(25 * 3_600_000);
+    expect(expiry - at).toBeGreaterThan(0);
   });
 });

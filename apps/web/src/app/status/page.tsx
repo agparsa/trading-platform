@@ -83,8 +83,9 @@ const PHASES: readonly Phase[] = [
   {
     id: '10',
     name: 'Advanced trading UX',
-    state: 'planned',
-    detail: 'Pending orders, one-click trading, keyboard workflow, account snapshots.',
+    state: 'in-progress',
+    detail:
+      'Resting LIMIT and STOP orders are live — placed, fired, expired, cancelled. Account snapshots and the keyboard workflow remain.',
   },
   {
     id: '11',

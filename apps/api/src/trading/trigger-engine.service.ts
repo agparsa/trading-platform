@@ -8,14 +8,22 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { isStopOut, toDecimal } from '@tp/financial-core';
 import type { Tick } from '@tp/market-core';
-import { evaluateProtectiveTrigger, nextHighWater, nextTrailingStop } from '@tp/trading-core';
-import { CloseReason, isDomainError, TradingErrorCode } from '@tp/shared-types';
+import {
+  evaluateProtectiveTrigger,
+  isExpired,
+  isPendingOrderType,
+  nextHighWater,
+  nextTrailingStop,
+  shouldTriggerPending,
+} from '@tp/trading-core';
+import { CloseReason, isDomainError, OrderStatus, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { SymbolsService } from '../symbols/symbols.service';
 import { TickBus } from '../market/tick-bus';
 import { MetricsService } from '../metrics/metrics.service';
 import { AccountStateService } from './account-state.service';
 import { PositionsService } from './positions.service';
+import { OrdersService } from './orders.service';
 import type { Env } from '../config/env.schema';
 
 /**
@@ -24,15 +32,21 @@ import type { Env } from '../config/env.schema';
  * This is the component that makes a stop-loss real: without it, SL and TP are
  * decorative fields that only take effect if the trader happens to be watching.
  *
- * Three things happen per tick, in this order:
+ * Four things happen per tick, in this order:
  *
  *   1. Trailing stops ratchet — a level that has improved is persisted before
  *      anything is evaluated against it.
  *   2. Protective levels are evaluated on the executable exit price.
- *   3. Accounts holding the symbol are checked for stop-out.
+ *   3. Resting orders are expired, then fired.
+ *   4. Accounts holding the symbol are checked for stop-out.
  *
- * Order matters: evaluating a stale trailing level would close a position at a
- * stop the trader had already moved away from.
+ * Order matters twice over. Evaluating a stale trailing level would close a
+ * position at a stop the trader had already moved away from. And resting orders
+ * are expired *before* they are fired, so an order that lapsed at midnight
+ * cannot open a position on the first tick after it.
+ *
+ * Stop-out runs last, on purpose: an order that just filled has consumed margin,
+ * and the account has to be judged on the state it is actually in.
  */
 @Injectable()
 export class TriggerEngineService implements OnApplicationBootstrap, OnApplicationShutdown {
@@ -54,6 +68,7 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
     private readonly prisma: PrismaService,
     private readonly symbols: SymbolsService,
     private readonly positions: PositionsService,
+    private readonly orders: OrdersService,
     private readonly accountState: AccountStateService,
     private readonly ticks: TickBus,
     private readonly metrics: MetricsService,
@@ -82,9 +97,51 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
     try {
       await this.advanceTrailingStops(tick);
       await this.fireProtectiveOrders(tick);
+      await this.workRestingOrders(tick);
       await this.checkStopOuts(tick);
     } finally {
       this.inFlight.delete(tick.symbol);
+    }
+  }
+
+  /**
+   * Expire and fire the resting orders on this symbol.
+   *
+   * One indexed read per tick against the partial index on (symbolId, status).
+   * Orders are fired oldest first, so two orders resting at the same price fill
+   * in the order they were placed — the only fair rule when both are reached by
+   * the same tick.
+   */
+  private async workRestingOrders(tick: Tick): Promise<void> {
+    const spec = this.symbols.find(tick.symbol)?.spec;
+    if (spec === undefined) return;
+
+    const resting = await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.PENDING,
+        symbol: { code: tick.symbol },
+        type: { in: ['LIMIT', 'STOP'] },
+      },
+      select: { id: true, side: true, type: true, price: true, expiresAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (resting.length === 0) return;
+
+    const now = Date.now();
+    for (const order of resting) {
+      if (isExpired({ timeInForce: '', expiresAt: order.expiresAt?.getTime() ?? null }, now)) {
+        await this.orders.expirePending(order.id);
+        continue;
+      }
+      const price = order.price?.toString();
+      if (price === undefined) continue;
+      if (!isPendingOrderType(order.type)) continue;
+      if (!shouldTriggerPending(order.type, order.side, price, tick)) continue;
+
+      // `fillPending` claims the order itself, so a concurrent pass loses
+      // rather than opening a second position from one order. It counts its own
+      // outcome against `ordersSubmitted`, including a risk rejection.
+      await this.orders.fillPending(order.id, tick);
     }
   }
 

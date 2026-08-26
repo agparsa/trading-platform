@@ -54,3 +54,44 @@ export interface CloseResult {
   closeReason: string;
   fullyClosed: boolean;
 }
+
+export interface PlacePendingRequest {
+  readonly accountId: string;
+  readonly symbol: string;
+  readonly side: OrderSide;
+  /** LIMIT rests on the favourable side of the market, STOP on the far side. */
+  readonly type: 'LIMIT' | 'STOP';
+  readonly volume: string;
+  /** The price the order rests at, as a decimal string. */
+  readonly price: string;
+  readonly stopLoss?: string | null;
+  readonly takeProfit?: string | null;
+  /** GTC rests indefinitely, DAY until the next trading-server midnight, GTD until `expiresAt`. */
+  readonly timeInForce?: 'GTC' | 'DAY' | 'GTD';
+  /** Required for GTD, ignored otherwise. Epoch milliseconds. */
+  readonly expiresAt?: number | null;
+}
+
+export interface ModifyPendingRequest {
+  readonly orderId: string;
+  /** `undefined` leaves a field alone; `null` clears a protective level. */
+  readonly price?: string;
+  readonly volume?: string;
+  readonly stopLoss?: string | null;
+  readonly takeProfit?: string | null;
+}
+
+export interface PendingOrderResult {
+  orderId: string;
+  status: string;
+  symbol: string;
+  side: OrderSide;
+  type: string;
+  volume: string;
+  price: string;
+  stopLoss: string | null;
+  takeProfit: string | null;
+  timeInForce: string;
+  expiresAt: string | null;
+  createdAt: string;
+}

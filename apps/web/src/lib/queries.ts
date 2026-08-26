@@ -155,6 +155,21 @@ export interface QuoteRow {
   timestamp: number;
 }
 
+export interface PendingOrderRow {
+  orderId: string;
+  status: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  type: string;
+  volume: string;
+  price: string;
+  stopLoss: string | null;
+  takeProfit: string | null;
+  timeInForce: string;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
 export const queryKeys = {
   symbols: ['symbols'] as const,
   quotes: ['quotes'] as const,
@@ -164,6 +179,7 @@ export const queryKeys = {
     ['positions', accountId, includeClosed] as const,
   trades: (accountId: string) => ['trades', accountId] as const,
   orders: (accountId: string) => ['orders', accountId] as const,
+  pending: (accountId: string) => ['pending-orders', accountId] as const,
 };
 
 /** Everything a trading event can invalidate, in one place. */
@@ -171,6 +187,7 @@ export function invalidateTradingState(client: QueryClient, accountId: string): 
   void client.invalidateQueries({ queryKey: ['positions', accountId] });
   void client.invalidateQueries({ queryKey: queryKeys.trades(accountId) });
   void client.invalidateQueries({ queryKey: queryKeys.orders(accountId) });
+  void client.invalidateQueries({ queryKey: queryKeys.pending(accountId) });
   void client.invalidateQueries({ queryKey: queryKeys.accountState(accountId) });
   void client.invalidateQueries({ queryKey: queryKeys.accounts });
 }
@@ -265,6 +282,17 @@ export function useOrders(accountId: string | null, enabled = true) {
     queryFn: () =>
       api.get<OrderRow[]>('/orders', { query: { accountId: accountId ?? '', limit: 200 } }),
     enabled: accountId !== null && enabled,
+  });
+}
+
+/** Resting LIMIT and STOP orders that have not fired. */
+export function usePendingOrders(accountId: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: queryKeys.pending(accountId ?? 'none'),
+    queryFn: () =>
+      api.get<PendingOrderRow[]>('/orders/pending', { query: { accountId: accountId ?? '' } }),
+    enabled: accountId !== null,
   });
 }
 
@@ -416,5 +444,65 @@ export function useCandles(symbol: string | null, resolution: string, bars = 400
     // The in-progress bar arrives over the socket; this series only needs
     // refetching when the window itself moves on.
     staleTime: (RESOLUTION_MINUTES[resolution] ?? 1) * 60_000,
+  });
+}
+
+export interface PlacePendingInput {
+  accountId: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  type: 'LIMIT' | 'STOP';
+  volume: string;
+  price: string;
+  stopLoss: string | null;
+  takeProfit: string | null;
+  timeInForce: 'GTC' | 'DAY' | 'GTD';
+}
+
+export function usePlacePending(accountId: string | null) {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: mutate<PlacePendingInput, unknown>(api, (client_, input, key) =>
+      client_.post('/orders/pending', input, { idempotencyKey: key }),
+    ),
+    onSuccess: () => {
+      if (accountId !== null) invalidateTradingState(client, accountId);
+    },
+  });
+}
+
+export function useCancelPending(accountId: string | null) {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: mutate<{ orderId: string }, unknown>(api, (client_, input, key) =>
+      client_.delete(`/orders/${input.orderId}`, { idempotencyKey: key }),
+    ),
+    onSuccess: () => {
+      if (accountId !== null) invalidateTradingState(client, accountId);
+    },
+  });
+}
+
+export interface ModifyPendingInput {
+  orderId: string;
+  price?: string;
+  volume?: string;
+  stopLoss?: string | null;
+  takeProfit?: string | null;
+}
+
+export function useModifyPending(accountId: string | null) {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: mutate<ModifyPendingInput, unknown>(api, (client_, input, key) => {
+      const { orderId, ...body } = input;
+      return client_.patch(`/orders/${orderId}`, body, { idempotencyKey: key });
+    }),
+    onSuccess: () => {
+      if (accountId !== null) invalidateTradingState(client, accountId);
+    },
   });
 }
