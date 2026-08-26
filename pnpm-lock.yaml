@@ -75,6 +75,9 @@ catalogs:
     clsx:
       specifier: ^2.1.1
       version: 2.1.1
+    cookie:
+      specifier: ^1.0.2
+      version: 1.1.1
     decimal.js:
       specifier: ^10.6.0
       version: 10.6.0
@@ -267,6 +270,9 @@ importers:
       '@tp/trading-core':
         specifier: workspace:*
         version: link:../../packages/trading-core
+      cookie:
+        specifier: 'catalog:'
+        version: 1.1.1
       helmet:
         specifier: 'catalog:'
         version: 8.3.0
@@ -2025,6 +2031,10 @@ packages:
   cookie@0.7.2:
     resolution: {integrity: sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==}
     engines: {node: '>= 0.6'}
+
+  cookie@1.1.1:
+    resolution: {integrity: sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==}
+    engines: {node: '>=18'}
 
   cors@2.8.6:
     resolution: {integrity: sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw==}
@@ -4612,6 +4622,8 @@ snapshots:
   cookie-signature@1.2.2: {}
 
   cookie@0.7.2: {}
+
+  cookie@1.1.1: {}
 
   cors@2.8.6:
     dependencies:

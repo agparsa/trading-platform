@@ -69,14 +69,18 @@ See [charting.md](./charting.md).
 
 ## Tokens
 
-The access token is held in memory. The refresh token is in `sessionStorage`, so
-a reload does not force a new login but closing the tab does.
+The access token is held in memory. The refresh token is **not held here at
+all** — the API issues it as an httpOnly, `SameSite=Strict` cookie scoped to the
+auth routes, and this code never sees its value.
 
-This is an interim position, written down rather than glossed: `sessionStorage`
-is readable by any script injected into the page, so the refresh token is exposed
-to XSS. The destination is an httpOnly, Secure, SameSite cookie issued by the
-API with CSRF protection on mutations — a server change, scheduled for Phase 11.
-See [security.md](./security.md).
+The result is visible in what the session module no longer contains: no storage
+reads, no storage writes, no try/catch around a private-browsing exception, and
+no token threaded through the refresh call. There is only
+`credentials: 'include'`.
+
+A reload still restores the session — the cookie survives it — and the session's
+lifetime is now the refresh token's rather than the tab's. See
+[security.md](./security.md) for the attributes and the CSRF threat model.
 
 ## Mutations
 

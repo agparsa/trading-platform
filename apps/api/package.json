@@ -28,6 +28,7 @@
     "@tp/risk-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
     "@tp/trading-core": "workspace:*",
+    "cookie": "catalog:",
     "helmet": "catalog:",
     "ioredis": "catalog:",
     "nestjs-pino": "catalog:",

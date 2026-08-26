@@ -297,6 +297,91 @@ const checks: Check[] = [
     },
   },
   {
+    name: 'the refresh token is issued only as an httpOnly cookie, and logout clears it',
+    run: async () => {
+      const email = `smoke-cookie-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, displayName: 'Smoke Cookie' }),
+      });
+
+      const login = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const setCookie = login.headers.get('set-cookie');
+      assert(setCookie !== null, 'login set no cookie');
+      assert(/HttpOnly/i.test(setCookie!), 'the refresh cookie is not HttpOnly');
+      assert(/SameSite=Strict/i.test(setCookie!), 'the refresh cookie is not SameSite=Strict');
+      assert(/Path=\/api\/v1\/auth/.test(setCookie!), 'the refresh cookie is not path-scoped');
+
+      // The whole point: nothing in the body hands the token to a script.
+      const loginBody = (await login.json()) as {
+        data: { accessToken: string; refreshToken?: string };
+      };
+      assert(
+        loginBody.data.refreshToken === undefined,
+        'the login response body still carries a refresh token',
+      );
+      assert(typeof loginBody.data.accessToken === 'string', 'login returned no access token');
+
+      const cookie = setCookie!.split(';')[0]!;
+
+      // The cookie alone is enough to rotate.
+      const refreshed = await fetch(`${BASE}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie },
+        body: '{}',
+      });
+      const refreshedBody = (await refreshed.json()) as {
+        ok: boolean;
+        data: { accessToken: string; refreshToken?: string };
+      };
+      assert(refreshedBody.ok, 'a cookie-only refresh was refused');
+      assert(
+        refreshedBody.data.refreshToken === undefined,
+        'the refresh response body still carries a refresh token',
+      );
+      const rotated = refreshed.headers.get('set-cookie');
+      assert(rotated !== null, 'the refresh did not rotate the cookie');
+      const rotatedCookie = rotated!.split(';')[0]!;
+
+      // A cross-site origin is refused even before SameSite would have stopped it.
+      const foreign = await fetch(`${BASE}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: rotatedCookie,
+          Origin: 'https://evil.example.com',
+        },
+        body: '{}',
+      });
+      assert(foreign.status === 403, `a foreign origin got ${foreign.status}, expected 403`);
+
+      const loggedOut = await fetch(`${BASE}/api/v1/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: rotatedCookie },
+        body: '{}',
+      });
+      const cleared = loggedOut.headers.get('set-cookie');
+      assert(cleared !== null, 'logout set no cookie');
+      assert(/Max-Age=0/i.test(cleared!), 'logout did not expire the cookie');
+      assert(/Path=\/api\/v1\/auth/.test(cleared!), 'the deletion did not repeat the path');
+
+      // And the token itself is revoked, not merely forgotten by the browser.
+      const afterLogout = await fetch(`${BASE}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: rotatedCookie },
+        body: '{}',
+      });
+      const afterBody = (await afterLogout.json()) as { ok: boolean };
+      assert(!afterBody.ok, 'a refresh token still worked after logout');
+    },
+  },
+  {
     name: 'metrics endpoint exposes the declared trading counters',
     run: async () => {
       const response = await fetch(`${BASE}/metrics`);

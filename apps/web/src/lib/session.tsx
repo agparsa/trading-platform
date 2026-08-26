@@ -8,22 +8,22 @@ const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000/api
 /**
  * Where the tokens live, and why.
  *
- * The access token is held in memory only. The refresh token goes in
- * sessionStorage, so a page reload does not force a new login but closing the
- * tab does.
+ * The access token is held in memory. The refresh token is **not held here at
+ * all** — the API issues it as an httpOnly, SameSite=Strict cookie scoped to the
+ * auth routes, and this code never sees its value. A script injected into the
+ * page cannot read what the browser will not hand over.
  *
- * This is an interim position, not the destination. sessionStorage is readable
- * by any script that gets injected into the page, so the refresh token is
- * exposed to XSS. The correct answer is an httpOnly, Secure, SameSite cookie
- * issued by the API, with CSRF protection on the mutation endpoints — that is a
- * server change and is scheduled for Phase 11 (docs/security.md). Until then the
- * exposure is real, written down, and limited to the tab's lifetime.
+ * That is the whole of the Phase 11 change. Before it, the refresh token was
+ * returned in the login response and kept in `sessionStorage`, where any XSS
+ * could take it and mint access tokens for a month.
+ *
+ * The consequences are visible in what is *missing* below: no storage reads, no
+ * storage writes, no try/catch around a private-browsing exception, and no token
+ * threaded through the refresh call. There is only `credentials: 'include'`.
  */
-const REFRESH_KEY = 'tp.refresh';
 
-interface TokenPair {
+interface AuthTokens {
   accessToken: string;
-  refreshToken: string;
   expiresIn: number;
 }
 
@@ -46,22 +46,27 @@ interface SessionValue {
 
 const SessionContext = createContext<SessionValue | null>(null);
 
-function readRefreshToken(): string | null {
+/**
+ * Rotate the refresh cookie for a fresh access token.
+ *
+ * Raw `fetch` rather than the API client, because this is the one call that must
+ * not be retried by the client's own token-expiry handler — a refresh that
+ * failed and then triggered a refresh would loop.
+ */
+async function rotate(): Promise<AuthTokens | null> {
   try {
-    return window.sessionStorage.getItem(REFRESH_KEY);
+    const response = await fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: '{}',
+    });
+    const payload = (await response.json()) as { ok: boolean; data?: AuthTokens };
+    return payload.ok && payload.data !== undefined ? payload.data : null;
   } catch {
-    // Private browsing and locked-down profiles both throw here rather than
-    // returning null, and neither is a reason to break the terminal.
+    // Offline, or the API is down. Neither is a signed-out session; the caller
+    // decides, and the cookie is still there for the next attempt.
     return null;
-  }
-}
-
-function writeRefreshToken(token: string | null): void {
-  try {
-    if (token === null) window.sessionStorage.removeItem(REFRESH_KEY);
-    else window.sessionStorage.setItem(REFRESH_KEY, token);
-  } catch {
-    /* nothing we can do; the session simply will not survive a reload */
   }
 }
 
@@ -80,28 +85,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     () =>
       new ApiClient({
         baseUrl: API_URL,
+        // The refresh cookie is path-scoped to /auth, so this does not attach it
+        // to a trading request.
+        credentials: 'include',
         getAccessToken: () => tokenHolder.current,
         onTokenExpired: async () => {
-          const refresh = readRefreshToken();
-          if (refresh === null) return null;
-          try {
-            const response = await fetch(`${API_URL}/auth/refresh`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ refreshToken: refresh }),
-            });
-            const payload = (await response.json()) as { ok: boolean; data?: TokenPair };
-            if (!payload.ok || payload.data === undefined) {
-              writeRefreshToken(null);
-              return null;
-            }
-            tokenHolder.current = payload.data.accessToken;
-            setAccessToken(payload.data.accessToken);
-            writeRefreshToken(payload.data.refreshToken);
-            return payload.data.accessToken;
-          } catch {
-            return null;
-          }
+          const tokens = await rotate();
+          if (tokens === null) return null;
+          tokenHolder.current = tokens.accessToken;
+          setAccessToken(tokens.accessToken);
+          return tokens.accessToken;
         },
       }),
     [tokenHolder],
@@ -114,54 +107,34 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setAccountId(accounts[0]?.id ?? null);
   }, [api]);
 
-  // Restore a session on load by rotating the stored refresh token.
+  // Restore a session on load. There is nothing to read first: if the cookie is
+  // there the rotation succeeds, and if it is not the user is signed out.
   useEffect(() => {
     let cancelled = false;
     const restore = async () => {
-      const refresh = readRefreshToken();
-      if (refresh === null) {
-        setReady(true);
-        return;
+      const tokens = await rotate();
+      if (tokens !== null && !cancelled) {
+        tokenHolder.current = tokens.accessToken;
+        setAccessToken(tokens.accessToken);
+        await loadProfile().catch(() => undefined);
       }
-      try {
-        const response = await fetch(`${API_URL}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken: refresh }),
-        });
-        const payload = (await response.json()) as { ok: boolean; data?: TokenPair };
-        if (!payload.ok || payload.data === undefined) {
-          writeRefreshToken(null);
-        } else if (!cancelled) {
-          tokenHolder.current = payload.data.accessToken;
-          setAccessToken(payload.data.accessToken);
-          writeRefreshToken(payload.data.refreshToken);
-          await loadProfile();
-        }
-      } catch {
-        writeRefreshToken(null);
-      } finally {
-        if (!cancelled) setReady(true);
-      }
+      if (!cancelled) setReady(true);
     };
     void restore();
     return () => {
       cancelled = true;
     };
-  }, [api, loadProfile, tokenHolder]);
+  }, [loadProfile, tokenHolder]);
 
   const signIn = useCallback(
     async (email: string, password: string) => {
-      const pair = await api.post<TokenPair>(
+      const tokens = await api.post<AuthTokens>(
         '/auth/login',
         { email, password },
-        {
-          idempotencyKey: crypto.randomUUID(),
-        },
+        { idempotencyKey: crypto.randomUUID() },
       );
-      tokenHolder.current = pair.accessToken;
-      setAccessToken(pair.accessToken);
-      writeRefreshToken(pair.refreshToken);
+      tokenHolder.current = tokens.accessToken;
+      setAccessToken(tokens.accessToken);
       await loadProfile();
     },
     [api, loadProfile, tokenHolder],
@@ -172,9 +145,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       await api.post(
         '/auth/register',
         { email, password, displayName },
-        {
-          idempotencyKey: crypto.randomUUID(),
-        },
+        { idempotencyKey: crypto.randomUUID() },
       );
       await signIn(email, password);
     },
@@ -182,13 +153,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    const refresh = readRefreshToken();
-    if (refresh !== null) {
-      await api
-        .post('/auth/logout', { refreshToken: refresh }, { idempotencyKey: crypto.randomUUID() })
-        .catch(() => undefined);
-    }
-    writeRefreshToken(null);
+    // The server clears the cookie and revokes the family; the client only has
+    // to forget the access token it holds in memory.
+    await api
+      .post('/auth/logout', {}, { idempotencyKey: crypto.randomUUID() })
+      .catch(() => undefined);
     tokenHolder.current = null;
     setAccessToken(null);
     setUser(null);

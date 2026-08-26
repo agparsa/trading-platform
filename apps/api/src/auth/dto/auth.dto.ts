@@ -25,7 +25,14 @@ export const registerSchema = z
 
 export const loginSchema = z.object({ email, password: z.string().min(1).max(256) }).strict();
 
-export const refreshSchema = z.object({ refreshToken: z.string().min(1).max(4096) }).strict();
+/**
+ * The token is optional in the body because the browser sends it as a cookie.
+ * It remains accepted here for non-browser clients that hold the value
+ * themselves; the controller rejects a request that presents neither.
+ */
+export const refreshSchema = z
+  .object({ refreshToken: z.string().min(1).max(4096).optional() })
+  .strict();
 
 export const verifyEmailSchema = z.object({ token: z.string().min(1).max(512) }).strict();
 

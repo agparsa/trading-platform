@@ -63,9 +63,57 @@ tightest of all. See [api.md](./api.md).
 committed. Deployments inject real values through the platform's secret manager.
 Nothing in this repository holds a real credential.
 
+## Browser sessions
+
+**Implemented in Phase 11.** The access token is held in the page's memory and
+sent as a bearer header. The refresh token is issued **only** as a cookie:
+
+| Attribute           | Why                                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HttpOnly`          | No script can read it. This is the point of the design.                                                                                     |
+| `SameSite=Strict`   | A cross-site page cannot cause it to be sent, which is the CSRF defence on the one route that authenticates by cookie.                      |
+| `Path=/api/v1/auth` | It never rides along on a trading request, so a proxy logging headers on those paths cannot capture it.                                     |
+| `Secure`            | In production. Omitted in development, because a Secure cookie is silently never stored over plain http and that looks like a broken login. |
+
+**No response body ever contains a refresh token.** Login and refresh return an
+access token and an expiry, and nothing else. That is what makes the `HttpOnly`
+flag meaningful: a flag on a cookie whose value was also printed in the JSON
+beside it would protect nothing.
+
+Before Phase 11 the token was returned in the body and kept in `sessionStorage`,
+where any injected script could take it and mint access tokens for a month. The
+change is visible in what the client no longer contains: no storage reads, no
+storage writes, and no token threaded through the refresh call.
+
+### The CSRF threat model, stated
+
+Only one endpoint authenticates by cookie: `POST /auth/refresh`. Every other
+mutation authenticates with an `Authorization` header, which a browser never
+attaches automatically and a cross-site page cannot set — so those endpoints are
+not forgeable, and a CSRF token on them would guard nothing.
+
+What could an attacker achieve by forging a refresh? Not theft: CORS prevents
+them reading the response, so the new access token never reaches them. They could
+force a rotation and log the user out — a nuisance, not a compromise. Against
+that, `SameSite=Strict` plus an `Origin` allowlist check is proportionate, and
+both are asserted by tests. A double-submit token scheme was considered and not
+adopted: it would add a moving part to defend against something the two existing
+controls already stop.
+
+A request with **no** `Origin` header is allowed through. That is not a
+cross-site form post — it is how non-browser clients and same-origin navigations
+arrive — and refusing them would break every API client to defend against
+something they cannot do.
+
+### Non-browser clients
+
+`POST /auth/refresh` still accepts a token in the request body. This is not a
+hole: the risk being addressed is a _script reading_ the token, and no response
+ever hands one out. A client that wants to manage the value itself must read it
+from the `Set-Cookie` header, which only a non-browser client can do.
+
 ## Not yet implemented
 
-Phase 1 delivers the foundations above. Authentication, RBAC and the audit
-writers land in Phase 2; rate limiting and the full audit surface complete in
-Phase 11. They are listed here as the contract those phases must meet, not as
-work already done.
+RBAC beyond the role field, the admin audit surface, and a penetration checklist
+are outstanding. They are listed here as the contract later phases must meet, not
+as work already done.

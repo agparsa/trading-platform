@@ -114,8 +114,7 @@ export default function LoginPage() {
         </form>
 
         <p className="mt-4 text-center text-[10px] leading-relaxed text-terminal-muted">
-          Sessions last until this tab is closed. Refresh tokens move to httpOnly cookies in Phase
-          11.
+          Your session is kept in a cookie this page cannot read.
         </p>
       </div>
     </main>

@@ -90,8 +90,9 @@ const PHASES: readonly Phase[] = [
   {
     id: '11',
     name: 'Security hardening',
-    state: 'planned',
-    detail: 'httpOnly refresh cookies, CSRF, admin audit surface, penetration checklist.',
+    state: 'in-progress',
+    detail:
+      'Refresh tokens are httpOnly, SameSite=Strict cookies and never appear in a response body. RBAC and the admin audit surface remain.',
   },
 ];
 

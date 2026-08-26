@@ -15,6 +15,13 @@ export interface ApiClientOptions {
   readonly onTokenExpired?: () => Promise<string | null>;
   readonly fetchImpl?: typeof fetch;
   readonly defaultTimeoutMs?: number;
+  /**
+   * Whether the browser attaches cookies. The web client sets `'include'` so the
+   * httpOnly refresh cookie reaches the auth routes across the dev origin split.
+   * The cookie is path-scoped to `/auth`, so this does not put it on a trading
+   * request.
+   */
+  readonly credentials?: 'omit' | 'same-origin' | 'include';
 }
 
 export interface RequestOptions {
@@ -97,6 +104,9 @@ export class ApiClient {
         headers: this.buildHeaders(body !== undefined, options.idempotencyKey),
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
+        ...(this.options.credentials === undefined
+          ? {}
+          : { credentials: this.options.credentials }),
       });
 
       const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null;
