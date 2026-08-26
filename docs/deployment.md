@@ -80,3 +80,27 @@ trading API.
 PostgreSQL is the only stateful component that matters. Point-in-time recovery,
 plus periodic restore drills. Redis holds no financial truth — losing it costs a
 cache warm-up and a round of client re-snapshots.
+
+## Before the first deploy
+
+Two things in this repository have never run outside CI, and both should be
+proven before anyone depends on them:
+
+1. **The images.** `.github/workflows` builds all three on every push, so they
+   are exercised where Docker exists — but they have not been _run_ in
+   production shape. Start a container from each and hit `/ready` before
+   cutting traffic over.
+2. **A restore.** See [runbook.md](./runbook.md). A backup nobody has restored is
+   a hope.
+
+The lockfile is enforced in the images: `pnpm install --frozen-lockfile` with no
+fallback. A stale lockfile fails the build rather than silently installing
+versions the test suite never saw.
+
+## Load
+
+`pnpm load` drives concurrent sockets and concurrent orders against a real build
+and reports what it measured, failing only on correctness. Run it against a
+staging environment that resembles production before committing to capacity
+numbers — the figures in [testing.md](./testing.md) came from a development
+container and describe its limits, not yours.

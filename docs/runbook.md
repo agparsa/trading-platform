@@ -1,0 +1,136 @@
+# Runbook
+
+What to do when something is wrong, written for whoever is on call at the time —
+which may be someone who has never read the rest of these documents.
+
+The one rule that overrides everything below: **never repair the ledger by
+editing it.** It is append-only, and a correcting entry is how a mistake is
+fixed. A `balance` that disagrees with the sum of its entries is evidence; erasing
+it destroys the only record of what went wrong.
+
+## First five minutes
+
+```bash
+curl -s localhost:4000/health          # process is alive
+curl -s localhost:4000/ready           # database and Redis are reachable
+curl -s localhost:4000/metrics | head  # counters are moving
+```
+
+`/ready` failing while `/health` passes means the process is up but a dependency
+is not. That is the usual shape of an outage, and it tells you where to look.
+
+## Symptoms
+
+### Traders say prices are frozen
+
+The feed has stopped. Check `tp_market_ticks_total` twice, thirty seconds apart.
+
+If it is not rising: exactly one process must ingest market data
+(`MARKET_INGEST_ENABLED=true`), and if that instance died no other one took over.
+Start one. Two would double-count candle volume, so do not simply set it on every
+replica.
+
+If it _is_ rising, the feed is fine and the sockets are not — see below.
+
+### Traders say the terminal is stale but prices move
+
+The WebSocket is delivering nothing, or the client has lost its connection and is
+showing what it last received. The terminal's connection badge is never
+optimistic: if it says `Live`, frames are arriving now.
+
+Check `tp_websocket_connections_total`. A large `disconnect` count against a small
+`connect` count is a proxy or load balancer closing idle upgrades — raise its
+timeout rather than restarting the API.
+
+### Stops are firing late
+
+Check `tp_ticks_coalesced_total`. A rising rate means the trigger engine is
+running behind the feed. **Nothing is being lost** — coalesced ticks are
+evaluated against their extremes, so a level the market traded through still
+fires — but detection is delayed by however long a pass takes.
+
+The pass is database-bound. Look at connection pool saturation and slow queries
+before anything else.
+
+### Orders are failing with CONCURRENT_MODIFICATION
+
+Contention, not a fault: nothing was written and a retry will very likely work.
+It means several writes are queuing on one account's row, which is the lock that
+keeps balances correct.
+
+If it is constant rather than bursty, raise `DATABASE_TRANSACTION_TIMEOUT_MS` and
+the pool size (`connection_limit` on `DATABASE_URL`). Every queued transaction
+holds a connection while it waits, so the pool must be larger than the expected
+queue depth, not merely larger than the core count.
+
+### Orders are failing with INTERNAL_ERROR
+
+This is a bug, not load. Find the `requestId` in the trader's error response and
+grep the logs for it; every request carries one end to end.
+
+### An account's balance looks wrong
+
+Do not adjust it. Replay the ledger:
+
+```sql
+SELECT SUM(amount) FROM balance_ledger WHERE account_id = $1;
+SELECT balance FROM accounts WHERE id = $1;
+```
+
+The reconciliation job compares these hourly and **records** drift without
+repairing it. If they disagree, the sum is the truth and the cached balance is
+the symptom. Find the transaction that produced the drift before changing
+anything.
+
+### A position will not close
+
+Check its status. `CLOSING` means a close is in flight and holding the claim; it
+is released when that attempt finishes or fails. A position stuck in `CLOSING`
+means a process died mid-close — the trade did not happen, and the position
+returns to `OPEN` on the next attempt.
+
+`SUSPENDED` accounts cannot trade at all, which is often the real answer.
+
+### The trigger engine is not firing anything
+
+`TRIGGER_ENGINE_ENABLED=false` disables stop-loss and take-profit entirely. It is
+not a performance knob, and the API logs a warning at boot when it is off. Check
+that first.
+
+## Deploys
+
+### Migrations
+
+`prisma migrate deploy` runs forward only and is safe to run on a live database
+for additive changes. A migration that drops or narrows a column is not; take the
+API down first, because the running instance is still writing the old shape.
+
+### Rolling back
+
+Roll back the **image**, not the migration. Every migration in this repository is
+additive so far, so an older image runs against a newer schema. Reversing a
+migration means deciding what happens to the rows it created, and that is a
+decision to make deliberately rather than at 3am.
+
+### Draining
+
+Both the API and the worker enable shutdown hooks. `SIGTERM` closes the market
+feed, unsubscribes the tick consumers, drains in-flight BullMQ jobs and closes
+the Redis and database connections. Give the container at least 30 seconds before
+`SIGKILL`; the default 10 is enough for the API and can cut a swap-accrual run in
+half.
+
+## What is safe to restart
+
+| Component  | Safe to restart?   | Why                                                                                                                                    |
+| ---------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| API        | Yes                | Stateless. Sockets reconnect and re-snapshot; the client contract requires it.                                                         |
+| Worker     | Yes                | Jobs are idempotent and BullMQ redelivers.                                                                                             |
+| Redis      | Yes, with a caveat | It carries no financial truth — quotes are re-published on the next tick and clients re-snapshot. In-flight WebSocket fan-out is lost. |
+| PostgreSQL | Only deliberately  | It _is_ the financial truth. Restore from backup rather than improvising.                                                              |
+
+## Backups
+
+`docs/deployment.md` covers the schedule. What matters here: a restore has to be
+**rehearsed**, and the rehearsal has to include replaying the ledger against the
+restored `accounts` table. A backup nobody has restored is a hope, not a backup.

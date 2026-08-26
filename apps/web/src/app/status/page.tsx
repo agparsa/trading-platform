@@ -104,8 +104,9 @@ const PHASES: readonly Phase[] = [
   {
     id: '13',
     name: 'Production readiness',
-    state: 'planned',
-    detail: 'Images, deployment, backup and restore, operational runbook.',
+    state: 'in-progress',
+    detail:
+      'Images build in CI, shutdown drains cleanly, and the runbook is written. A rehearsed restore and a production-shaped load run remain.',
   },
 ];
 

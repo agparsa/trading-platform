@@ -35,3 +35,4 @@ Phase 0 deliverables — the design the implementation is held to.
 - [testing.md](./testing.md) — what is covered, reference vectors, what each phase adds
 - [observability.md](./observability.md) — logs, metrics, health, what to alert on
 - [deployment.md](./deployment.md) — local setup, images, probes, migrations, scaling
+- [runbook.md](./runbook.md) — what to do when something is wrong, for whoever is on call

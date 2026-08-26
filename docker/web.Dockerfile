@@ -6,7 +6,11 @@ COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml .npmrc ./
 COPY tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/web ./apps/web
-RUN pnpm install --frozen-lockfile || pnpm install
+# No fallback. `|| pnpm install` was here, and it meant a drifted lockfile
+# silently installed different versions than the ones the test suite ran
+# against — in the production image, with nothing to show for it. A stale
+# lockfile is a build failure, not something to work around.
+RUN pnpm install --frozen-lockfile
 
 FROM base AS development
 ENV NODE_ENV=development
