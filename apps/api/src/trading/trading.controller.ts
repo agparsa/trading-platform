@@ -18,6 +18,7 @@ import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { IdempotencyKey } from '../common/decorators/idempotency-key.decorator';
 import { IdempotencyService } from '../common/idempotency/idempotency.service';
+import { AccountAccessService } from '../accounts/account-access.service';
 import { AccountStateService } from './account-state.service';
 import { OrdersService } from './orders.service';
 import { PositionsService } from './positions.service';
@@ -62,6 +63,7 @@ async function idempotent<T>(
 @Controller()
 export class TradingController {
   constructor(
+    private readonly access: AccountAccessService,
     private readonly orders: OrdersService,
     private readonly positions: PositionsService,
     private readonly accountState: AccountStateService,
@@ -239,9 +241,17 @@ export class TradingController {
   @Get('accounts/:id/state')
   @ApiOperation({ summary: 'Live balance, equity, margin and floating P&L' })
   async state(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
-    // valuate() checks nothing about ownership, so the account is resolved
-    // through the user-scoped query first.
-    await this.positions.list(user.id, id, false, 1);
+    /**
+     * `valuate()` takes an account id and checks nothing about who is asking —
+     * it is also called by the tick loop and the snapshot job, which have no
+     * caller to check. So the authorisation happens here, explicitly.
+     *
+     * This line used to be `await this.positions.list(user.id, id, false, 1)`,
+     * whose result was discarded: the call existed only for the throw inside
+     * it. That worked, and it was one "remove the unused call" away from
+     * turning this route into an IDOR with nothing in the diff to notice.
+     */
+    await this.access.resolve(user.id, id, Permission.ACCOUNTS_READ);
     const valuation = await this.accountState.valuate(id);
     return {
       ...this.accountState.toDto(valuation),

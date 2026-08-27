@@ -14,6 +14,7 @@ import {
   CloseReason,
   DomainError,
   DomainEvent,
+  Permission,
   TradingErrorCode,
   type OrderSide,
 } from '@tp/shared-types';
@@ -21,6 +22,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from '../market/quote.service';
 import { ConversionService } from '../market/conversion.service';
+import { AccountAccessService } from '../accounts/account-access.service';
 import { LedgerService } from '../accounts/ledger.service';
 import { AuditService } from '../common/audit/audit.service';
 import { EventsService } from '../realtime/events.service';
@@ -58,6 +60,7 @@ export class PositionsService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly access: AccountAccessService,
     private readonly symbols: SymbolsService,
     private readonly quotes: QuoteService,
     private readonly conversion: ConversionService,
@@ -86,7 +89,7 @@ export class PositionsService {
     requestedVolume: string | null,
     reason: CloseReason = CloseReason.MANUAL,
   ): Promise<CloseResult> {
-    const position = await this.loadOwned(userId, positionId);
+    const position = await this.loadOwned(userId, positionId, Permission.POSITIONS_CLOSE);
     return this.performClose(position, requestedVolume, reason, userId);
   }
 
@@ -424,7 +427,7 @@ export class PositionsService {
    * next tick, closing a position the trader was trying to protect.
    */
   async modify(userId: string, request: ModifyPositionRequest): Promise<Record<string, unknown>> {
-    const position = await this.loadOwned(userId, request.positionId);
+    const position = await this.loadOwned(userId, request.positionId, Permission.POSITIONS_MODIFY);
     if (position.status !== 'OPEN') {
       throw new DomainError(
         TradingErrorCode.POSITION_ALREADY_CLOSING,
@@ -518,7 +521,8 @@ export class PositionsService {
     userId: string,
     positionId: string,
   ): Promise<{ closed: CloseResult; opened: OrderResult }> {
-    const position = await this.loadOwned(userId, positionId);
+    // Reverse is a close and an open, so it needs the capability for both.
+    const position = await this.loadOwned(userId, positionId, Permission.POSITIONS_CLOSE);
     const volume = position.volume;
     const closed = await this.close(userId, positionId, null, CloseReason.REVERSE);
     const opened = await this.orders.openPosition(userId, {
@@ -531,12 +535,7 @@ export class PositionsService {
   }
 
   async list(userId: string, accountId: string, includeClosed: boolean, limit: number) {
-    const account = await this.prisma.account.findFirst({ where: { id: accountId, userId } });
-    if (account === null) {
-      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'Account not found', {
-        accountId,
-      });
-    }
+    await this.access.resolve(userId, accountId, Permission.POSITIONS_READ);
     const positions = await this.prisma.position.findMany({
       where: {
         accountId,
@@ -570,12 +569,7 @@ export class PositionsService {
   }
 
   async trades(userId: string, accountId: string, limit: number) {
-    const account = await this.prisma.account.findFirst({ where: { id: accountId, userId } });
-    if (account === null) {
-      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'Account not found', {
-        accountId,
-      });
-    }
+    await this.access.resolve(userId, accountId, Permission.POSITIONS_READ);
     const trades = await this.prisma.trade.findMany({
       where: { accountId },
       include: { symbol: true },
@@ -601,14 +595,28 @@ export class PositionsService {
     }));
   }
 
+  /**
+   * Loads a position the caller may act on.
+   *
+   * The account is resolved through `AccountAccessService` rather than by
+   * comparing `position.ownerUserId` here, so that whatever reaches an account
+   * — ownership today, a master link tomorrow — reaches its positions by the
+   * same decision. A second copy of the rule is a second thing to keep in step.
+   *
+   * A refusal reads as "position not found", not "account not found": the
+   * caller asked about a position and must not learn that the id is real but
+   * belongs to someone else.
+   */
   private async loadOwned(
     userId: string,
     positionId: string,
+    needs: Permission,
     client: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<LoadedPosition> {
     const position = await this.load(positionId, client);
-    // Ownership failure reads as "not found", so position ids cannot be probed.
-    if (position.ownerUserId !== userId) {
+    try {
+      await this.access.resolve(userId, position.accountId, needs, client);
+    } catch {
       throw new DomainError(TradingErrorCode.POSITION_NOT_FOUND, 'Position not found', {
         positionId,
       });

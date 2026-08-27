@@ -2,8 +2,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AccountType, Prisma } from '@prisma/client';
 import { Money, toDecimal } from '@tp/financial-core';
-import { DomainError, TradingErrorCode } from '@tp/shared-types';
+import { Permission } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
+import { AccountAccessService } from './account-access.service';
 import { LedgerService } from './ledger.service';
 import type { Env } from '../config/env.schema';
 
@@ -22,6 +23,7 @@ export interface AccountSummary {
 export class AccountsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly access: AccountAccessService,
     private readonly ledger: LedgerService,
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
   ) {}
@@ -95,17 +97,12 @@ export class AccountsService {
    * someone else is an information leak, and account ids are enumerable targets.
    */
   async getForUser(userId: string, accountId: string): Promise<AccountSummary> {
-    const account = await this.prisma.account.findFirst({ where: { id: accountId, userId } });
-    if (account === null) {
-      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'Account not found', {
-        accountId,
-      });
-    }
+    const { account } = await this.access.resolve(userId, accountId, Permission.ACCOUNTS_READ);
     return this.toSummary(account);
   }
 
   async getSettings(userId: string, accountId: string) {
-    await this.getForUser(userId, accountId);
+    await this.access.resolve(userId, accountId, Permission.ACCOUNTS_READ);
     const settings = await this.prisma.accountSettings.findUniqueOrThrow({
       where: { accountId },
     });
@@ -120,7 +117,7 @@ export class AccountsService {
   }
 
   async listLedger(userId: string, accountId: string, limit: number, cursor?: string) {
-    await this.getForUser(userId, accountId);
+    await this.access.resolve(userId, accountId, Permission.ACCOUNTS_READ);
     const entries = await this.prisma.balanceLedger.findMany({
       where: { accountId },
       orderBy: { createdAt: 'desc' },

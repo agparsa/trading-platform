@@ -11,6 +11,7 @@ import { PositionsService } from '../../src/trading/positions.service';
 import { TriggerEngineService } from '../../src/trading/trigger-engine.service';
 import { SnapshotService } from '../../src/trading/snapshot.service';
 import { TickBus } from '../../src/market/tick-bus';
+import { AccountAccessService } from '../../src/accounts/account-access.service';
 import { LedgerService } from '../../src/accounts/ledger.service';
 import { EventsService } from '../../src/realtime/events.service';
 import { AuditService } from '../../src/common/audit/audit.service';
@@ -44,6 +45,7 @@ class FakeRedis {
 }
 
 export interface TradingStack {
+  access: AccountAccessService;
   symbols: SymbolsService;
   quotes: QuoteService;
   orders: OrdersService;
@@ -89,12 +91,14 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
   const accountState = new AccountStateService(prismaService, symbols, quotes, conversion);
   const riskContext = new RiskContextBuilder(prismaService);
   const ledger = new LedgerService();
+  const access = new AccountAccessService(prismaService);
   const metrics = new MetricsService();
   const audit = new AuditService(prismaService);
   const events = new EventsService(redis);
 
   const orders = new OrdersService(
     prismaService,
+    access,
     symbols,
     quotes,
     conversion,
@@ -108,6 +112,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
   );
   const positions = new PositionsService(
     prismaService,
+    access,
     symbols,
     quotes,
     conversion,
@@ -136,6 +141,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
   const snapshots = new SnapshotService(config as never, prismaService, accountState);
 
   return {
+    access,
     symbols,
     quotes,
     orders,

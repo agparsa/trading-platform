@@ -17,6 +17,7 @@ import {
   DomainEvent,
   type OrderSide,
   OrderStatus,
+  Permission,
   TradingErrorCode,
 } from '@tp/shared-types';
 import { Prisma } from '@prisma/client';
@@ -24,6 +25,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from '../market/quote.service';
 import { ConversionService } from '../market/conversion.service';
+import { AccountAccessService } from '../accounts/account-access.service';
 import { LedgerService } from '../accounts/ledger.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { AuditService } from '../common/audit/audit.service';
@@ -58,6 +60,7 @@ export class OrdersService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly access: AccountAccessService,
     private readonly symbols: SymbolsService,
     private readonly quotes: QuoteService,
     private readonly conversion: ConversionService,
@@ -76,14 +79,11 @@ export class OrdersService {
     const instrument = this.symbols.require(symbolCode);
     const spec = instrument.spec;
 
-    const account = await this.prisma.account.findFirst({
-      where: { id: request.accountId, userId },
-    });
-    if (account === null) {
-      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'Account not found', {
-        accountId: request.accountId,
-      });
-    }
+    const { account } = await this.access.resolve(
+      userId,
+      request.accountId,
+      Permission.ORDERS_CREATE,
+    );
     if (account.status !== 'ACTIVE') {
       throw new DomainError(
         TradingErrorCode.ACCOUNT_NOT_TRADEABLE,
@@ -392,14 +392,11 @@ export class OrdersService {
     const instrument = this.symbols.require(symbolCode);
     const spec = instrument.spec;
 
-    const account = await this.prisma.account.findFirst({
-      where: { id: request.accountId, userId },
-    });
-    if (account === null) {
-      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'Account not found', {
-        accountId: request.accountId,
-      });
-    }
+    const { account } = await this.access.resolve(
+      userId,
+      request.accountId,
+      Permission.ORDERS_CREATE,
+    );
     if (account.status !== 'ACTIVE') {
       throw new DomainError(
         TradingErrorCode.ACCOUNT_NOT_TRADEABLE,
@@ -806,7 +803,7 @@ export class OrdersService {
   }
 
   async cancelPending(userId: string, orderId: string): Promise<PendingOrderResult> {
-    const order = await this.loadOwnedOrder(userId, orderId);
+    const order = await this.loadOwnedOrder(userId, orderId, Permission.ORDERS_CANCEL);
     if (order.status !== OrderStatus.PENDING) {
       throw new DomainError(
         TradingErrorCode.ORDER_NOT_MODIFIABLE,
@@ -885,7 +882,7 @@ export class OrdersService {
    * a stop on the wrong side of the order it protects.
    */
   async modifyPending(userId: string, request: ModifyPendingRequest): Promise<PendingOrderResult> {
-    const order = await this.loadOwnedOrder(userId, request.orderId);
+    const order = await this.loadOwnedOrder(userId, request.orderId, Permission.ORDERS_MODIFY);
     if (order.status !== OrderStatus.PENDING) {
       throw new DomainError(
         TradingErrorCode.ORDER_NOT_MODIFIABLE,
@@ -1003,13 +1000,28 @@ export class OrdersService {
     return orders.map((order) => this.toPendingResult(order, order.symbol.code));
   }
 
-  private async loadOwnedOrder(userId: string, orderId: string) {
+  /**
+   * Loads an order the caller may act on.
+   *
+   * The account is resolved through `AccountAccessService` rather than by
+   * comparing `order.account.userId` here, so that whatever reaches an account
+   * — ownership today, a master link tomorrow — reaches its orders by the same
+   * decision. A second copy of the rule is a second thing to keep in step.
+   *
+   * A refusal reads as "order not found", not "account not found": the caller
+   * asked about an order and must not learn that the id is real but foreign.
+   */
+  private async loadOwnedOrder(userId: string, orderId: string, needs: Permission) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { account: true, symbol: true },
     });
-    // Ownership failure reads as "not found", so order ids cannot be probed.
-    if (order === null || order.account.userId !== userId) {
+    if (order === null) {
+      throw new DomainError(TradingErrorCode.ORDER_NOT_FOUND, 'Order not found', { orderId });
+    }
+    try {
+      await this.access.resolve(userId, order.accountId, needs);
+    } catch {
       throw new DomainError(TradingErrorCode.ORDER_NOT_FOUND, 'Order not found', { orderId });
     }
     return order;
@@ -1069,13 +1081,8 @@ export class OrdersService {
   }
 
   async orderEvents(userId: string, orderId: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { id: orderId },
-      include: { account: true },
-    });
-    if (order === null || order.account.userId !== userId) {
-      throw new DomainError(TradingErrorCode.ORDER_NOT_FOUND, 'Order not found', { orderId });
-    }
+    // Resolved for its authorisation throw; the events are read by id below.
+    await this.loadOwnedOrder(userId, orderId, Permission.ORDERS_READ);
     const events = await this.prisma.orderEvent.findMany({
       where: { orderId },
       orderBy: { createdAt: 'asc' },
@@ -1090,12 +1097,7 @@ export class OrdersService {
   }
 
   private async assertOwnership(userId: string, accountId: string): Promise<void> {
-    const account = await this.prisma.account.findFirst({ where: { id: accountId, userId } });
-    if (account === null) {
-      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'Account not found', {
-        accountId,
-      });
-    }
+    await this.access.resolve(userId, accountId, Permission.ORDERS_READ);
   }
 
   private async recordRiskEvent(

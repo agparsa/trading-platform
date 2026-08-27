@@ -6,6 +6,7 @@ import { AuthService } from '../../src/auth/auth.service';
 import { TokenService } from '../../src/auth/token.service';
 import { PasswordService } from '../../src/auth/password.service';
 import { EmailPort } from '../../src/auth/email/email.port';
+import { AccountAccessService } from '../../src/accounts/account-access.service';
 import { AccountsService } from '../../src/accounts/accounts.service';
 import { LedgerService } from '../../src/accounts/ledger.service';
 import { AuditService } from '../../src/common/audit/audit.service';
@@ -70,7 +71,8 @@ suite('Auth (integration)', () => {
     const passwords = new PasswordService();
     tokens = new TokenService(new JwtService({}), config as any, prismaService);
     const ledger = new LedgerService();
-    const accounts = new AccountsService(prismaService, ledger, config as any);
+    const access = new AccountAccessService(prismaService);
+    const accounts = new AccountsService(prismaService, access, ledger, config as any);
     const audit = new AuditService(prismaService);
     auth = new AuthService(prismaService, passwords, tokens, accounts, audit, email, config as any);
   });
