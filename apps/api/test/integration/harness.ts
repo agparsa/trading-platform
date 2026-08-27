@@ -29,6 +29,7 @@ export function createTestClient(): PrismaClient {
 export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      master_account_links, master_accounts,
       audit_logs, risk_events, account_snapshots, balance_ledger,
       trades, executions, position_events, positions,
       order_events, orders, account_settings, accounts,

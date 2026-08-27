@@ -135,7 +135,14 @@ Two things this layer deliberately does not do:
   checked in the service against the authenticated user id, and always was.
   Permissions narrow what a role may attempt; they never widen what a user may
   reach.
-- **It does not grant cross-account access.** Holding `accounts.read_any` is
-  what makes support possible; acting on another person's account through a
-  master link is a separate grant with its own record. Knowing an account id has
-  never been, and must never become, a way to reach it.
+- **It does not grant cross-account access.** Acting on another person's account
+  goes through a master-account link — a separate grant, over one account, with
+  its own record. See [master-accounts.md](./master-accounts.md). Knowing an
+  account id has never been, and must never become, a way to reach it.
+
+One consequence to be honest about: `accounts.read_any` is in the catalogue and
+currently grants nothing. Every account read resolves through ownership or a
+link, and neither consults it. It is the capability a support surface will
+declare when there is one to declare it; until then it is a name with no
+enforcement behind it, which is worth stating plainly rather than leaving for
+someone to discover.

@@ -62,9 +62,10 @@ model User {
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  accounts      Account[]
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
+  accounts       Account[]
+  refreshTokens  RefreshToken[]
+  auditLogs      AuditLog[]
+  masterAccounts MasterAccount[]
 
   @@map("users")
 }
@@ -128,14 +129,15 @@ model Account {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user       User              @relation(fields: [userId], references: [id], onDelete: Restrict)
-  settings   AccountSettings?
-  orders     Order[]
-  positions  Position[]
-  trades     Trade[]
-  ledger     BalanceLedger[]
-  snapshots  AccountSnapshot[]
-  riskEvents RiskEvent[]
+  user        User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  settings    AccountSettings?
+  orders      Order[]
+  positions   Position[]
+  trades      Trade[]
+  ledger      BalanceLedger[]
+  snapshots   AccountSnapshot[]
+  riskEvents  RiskEvent[]
+  masterLinks MasterAccountLink[]
 
   @@index([userId, status])
   @@map("accounts")
@@ -657,4 +659,66 @@ model IdempotencyKey {
   @@unique([scope, key])
   @@index([expiresAt])
   @@map("idempotency_keys")
+}
+
+enum MasterAccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum MasterLinkStatus {
+  ACTIVE
+  REVOKED
+}
+
+/// A person acting on trading accounts that are not their own.
+///
+/// The master account is the *subject* of a delegation, never a shortcut around
+/// one: it holds no accounts by itself and confers nothing until a link exists.
+/// A master with no links can see exactly as much as a stranger.
+model MasterAccount {
+  id     String              @id @default(uuid()) @db.Uuid
+  userId String              @map("user_id") @db.Uuid
+  name   String
+  status MasterAccountStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user  User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  links MasterAccountLink[]
+
+  @@index([userId, status])
+  @@map("master_accounts")
+}
+
+/// One delegation: this master may do these things to this account.
+///
+/// Revocation is a status change and a timestamp, never a delete. "Who could
+/// have closed that position last March" is a question the table must still be
+/// able to answer after the answer has stopped being true.
+model MasterAccountLink {
+  id              String @id @default(uuid()) @db.Uuid
+  masterAccountId String @map("master_account_id") @db.Uuid
+  accountId       String @map("account_id") @db.Uuid
+
+  /// `resource.verb` capability names, the same vocabulary the permission
+  /// catalogue uses. Stored rather than derived from a role: a delegation is a
+  /// specific grant to a specific person over a specific account, and a role
+  /// would make every such grant move whenever the role did.
+  capabilities String[]
+
+  status MasterLinkStatus @default(ACTIVE)
+
+  grantedByUserId String    @map("granted_by_user_id") @db.Uuid
+  grantedAt       DateTime  @default(now()) @map("granted_at") @db.Timestamptz(6)
+  revokedByUserId String?   @map("revoked_by_user_id") @db.Uuid
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  master  MasterAccount @relation(fields: [masterAccountId], references: [id], onDelete: Restrict)
+  account Account       @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([masterAccountId, accountId])
+  @@index([accountId, status])
+  @@map("master_account_links")
 }

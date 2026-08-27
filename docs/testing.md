@@ -89,12 +89,32 @@ deliberately broken and the named test confirmed to fail before being restored:
 | Permission metadata key         | renaming it in the decorator only        | 6 of 8 guard tests failed        |
 | Permission `and` semantics      | `every` becoming `some`                  | catalogue and guard tests failed |
 | Global guard registration       | deleting the `APP_GUARD` provider        | coverage test failed             |
+| Account ownership check         | removing it from the resolver            | 5 of 7 isolation tests failed    |
+| One refusal for "not yours"     | giving it its own error code             | 3 of 7 failed                    |
+| Resolver's caller transaction   | ignoring the client it was handed        | 1 of 7 failed                    |
+| A service calling the resolver  | dropping the call in `positions.list`    | 1 of 7 failed                    |
+| Master link's owning master     | not checking whose link it is            | 2 of 12 master tests failed      |
+| Link revocation                 | dropping the status predicate            | 2 of 12 failed                   |
+| Delegation ceiling, on read     | trusting the stored capability list      | 1 of 12 failed                   |
+| Delegation ceiling, on grant    | accepting any capability                 | 1 of 12 failed                   |
+| Socket's link filter            | not checking whose link it is            | 1 of 12 failed _(see below)_     |
+| Socket's revocation filter      | dropping the status predicate            | 1 of 12 failed                   |
 
-The last of those is the one worth remembering. Emptying the permission guard
-left every one of the 205 API tests passing, because the catalogue was tested in
-isolation and the route declarations were tested as text, and nothing exercised
-the thing in between. Deleting its registration left the suite green for the
-same reason. Both are now covered, and both gaps were invisible to reading.
+Two of those are worth remembering.
+
+Emptying the permission guard left every one of the 205 API tests passing,
+because the catalogue was tested in isolation and the route declarations were
+tested as text, and nothing exercised the thing in between. Deleting its
+registration left the suite green for the same reason.
+
+The socket's link filter **survived** its first mutation. The test asserted that
+an unlinked account was not streamed — but the only link in the database belonged
+to the operator under test, so a gateway that had stopped asking _whose_ link it
+was still produced the right set. The fix was to the test: put another operator's
+delegation in the same table, and the assertion starts meaning what it says. The
+defect it would have hidden is every socket receiving every delegated account's
+private frames. A mutation that survives is the useful kind — it names a test
+that was agreeing with the code rather than checking it.
 
 ## End-to-end checks
 
@@ -109,6 +129,12 @@ a stale binary is the worst failure mode there is.
   demoting a user and logging in again.
 - `pnpm smoke:ws` — 8 checks: quote and candle streaming, gapless sequencing,
   private-channel refusal, cross-account isolation.
+
+Two integration suites carry the isolation guarantees:
+`account-access.test.ts` has one case per caller-scoped operation, so a new
+operation that forgets to authorise is caught rather than merely uncovered, and
+`master-accounts.test.ts` attacks delegated access from the outside — a real
+master, a real account, a real id, and no link.
 
 The rendered terminal is verified by driving a real browser (Playwright) against
 a running stack: register, open a position, watch floating P&L move, close it,

@@ -17,6 +17,7 @@ import { AuthModule } from './auth/auth.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { UsersModule } from './users/users.module';
 import { PermissionsModule } from './permissions/permissions.module';
+import { MasterModule } from './master/master.module';
 import { MarketModule } from './market/market.module';
 import { TradingModule } from './trading/trading.module';
 import { IdempotencyModule } from './common/idempotency/idempotency.module';
@@ -81,6 +82,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     AccountsModule,
     UsersModule,
     PermissionsModule,
+    MasterModule,
     MarketModule,
     TradingModule,
     RealtimeModule,

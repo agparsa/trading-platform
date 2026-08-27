@@ -33,6 +33,7 @@ Phase 0 deliverables — the design the implementation is held to.
 - [database.md](./database.md) — schema conventions, the ledger, transactions, indexes
 - [security.md](./security.md) — boot refusal, credentials, logging, audit
 - [permissions.md](./permissions.md) — the capability catalogue, and why ADMIN cannot trade
+- [master-accounts.md](./master-accounts.md) — delegated access, and why an account id is never enough
 - [testing.md](./testing.md) — what is covered, reference vectors, what each phase adds
 - [observability.md](./observability.md) — logs, metrics, health, what to alert on
 - [deployment.md](./deployment.md) — local setup, images, probes, migrations, scaling

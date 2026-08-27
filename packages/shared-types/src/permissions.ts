@@ -155,3 +155,36 @@ export function roleHasPermissions(role: UserRole, required: readonly Permission
   const held = new Set(permissionsFor(role));
   return required.every((permission) => held.has(permission));
 }
+
+/**
+ * What a master-account link may ever grant.
+ *
+ * A delegation is authority over *one account*, so nothing that reaches beyond
+ * that account can be delegated through one — no kill switch, no reconciliation
+ * runs, no audit access, no power to create further delegations. Without a
+ * ceiling, granting a link would be a way to mint any capability at all and
+ * call it account management.
+ *
+ * `accounts.read_any` is deliberately absent for the same reason: a link is
+ * permission to see *this* account, and a capability meaning "see every
+ * account" cannot be scoped to one.
+ */
+export const LINKABLE_CAPABILITIES: readonly Permission[] = [
+  Permission.ACCOUNTS_READ,
+  Permission.ACCOUNTS_MANAGE,
+  Permission.ORDERS_READ,
+  Permission.ORDERS_CREATE,
+  Permission.ORDERS_CANCEL,
+  Permission.ORDERS_MODIFY,
+  Permission.POSITIONS_READ,
+  Permission.POSITIONS_CLOSE,
+  Permission.POSITIONS_MODIFY,
+  Permission.RISK_READ,
+];
+
+const LINKABLE = new Set<string>(LINKABLE_CAPABILITIES);
+
+/** Is this a capability a link is allowed to carry at all? */
+export function isLinkableCapability(value: string): value is Permission {
+  return LINKABLE.has(value);
+}

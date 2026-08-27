@@ -141,14 +141,30 @@ export class RealtimeGateway
 
     try {
       const claims = await this.tokens.verifyAccessToken(token);
-      const accounts = await this.prisma.account.findMany({
-        where: { userId: claims.sub },
-        select: { id: true },
-      });
+      /**
+       * Two ways to reach an account, resolved the same way the REST resolver
+       * resolves them: the ones this user owns, and the ones an active link
+       * from an active master account they operate points at.
+       *
+       * Both are read from the database at connect and never taken from
+       * anything the client sends. A revoked link stops appearing on the next
+       * connection rather than the next frame — the set is a snapshot, as it
+       * always was for ownership, and the reconnect contract in
+       * docs/websocket.md is what refreshes it.
+       */
+      const [owned, linked] = await Promise.all([
+        this.prisma.account.findMany({ where: { userId: claims.sub }, select: { id: true } }),
+        this.prisma.masterAccountLink.findMany({
+          where: {
+            status: 'ACTIVE',
+            master: { userId: claims.sub, status: 'ACTIVE' },
+          },
+          select: { accountId: true },
+        }),
+      ]);
       client.state.userId = claims.sub;
-      // The account set is resolved from the database at connect, never taken
-      // from anything the client sends.
-      for (const account of accounts) client.state.accountIds.add(account.id);
+      for (const account of owned) client.state.accountIds.add(account.id);
+      for (const link of linked) client.state.accountIds.add(link.accountId);
     } catch (error) {
       this.metrics.websocketConnections.inc({ event: 'auth_failed' });
       client.emit('error', {

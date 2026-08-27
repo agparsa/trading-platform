@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import type { Account, Prisma } from '@prisma/client';
-import { DomainError, Permission, TradingErrorCode } from '@tp/shared-types';
+import { DomainError, isLinkableCapability, Permission, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** How a caller reached an account. Recorded so an action can be explained later. */
 export const AccountAccessRoute = {
   /** The caller owns it. */
   OWNER: 'OWNER',
+  /** The caller operates a master account holding an active link to it. */
+  MASTER_LINK: 'MASTER_LINK',
 } as const;
 export type AccountAccessRoute = (typeof AccountAccessRoute)[keyof typeof AccountAccessRoute];
 
@@ -28,6 +30,14 @@ export interface AccountGrant {
    */
   readonly account: Account;
   readonly via: AccountAccessRoute;
+  /**
+   * The link that granted this, when the caller is not the owner.
+   *
+   * Carried so an action taken on someone else's account can be explained
+   * afterwards by pointing at the specific delegation that allowed it, rather
+   * than by re-deriving who could have done it at the time.
+   */
+  readonly linkId: string | null;
   readonly capabilities: ReadonlySet<Permission>;
 }
 
@@ -98,24 +108,69 @@ export class AccountAccessService {
     client: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<AccountGrant> {
     const account = await client.account.findUnique({ where: { id: accountId } });
+    if (account === null) throw this.notFound(accountId);
 
-    if (account === null || account.userId !== userId) throw this.notFound(accountId);
+    if (account.userId === userId) {
+      return this.grant(account, AccountAccessRoute.OWNER, null, OWNER_CAPABILITIES, needs);
+    }
 
-    const capabilities = new Set(OWNER_CAPABILITIES);
+    /**
+     * The delegated path. Note what is *not* in this query: the account id is
+     * not enough on its own, and neither is operating a master account. Both
+     * must already be joined by a stored, active link, granted by somebody, at
+     * a recorded time. A master with a hundred links reaches exactly a hundred
+     * accounts.
+     *
+     * The master account's own status is part of the predicate rather than
+     * checked afterwards, so suspending a master stops every one of its links
+     * at once without touching them.
+     */
+    const link = await client.masterAccountLink.findFirst({
+      where: {
+        accountId,
+        status: 'ACTIVE',
+        master: { userId, status: 'ACTIVE' },
+      },
+      select: { id: true, capabilities: true },
+    });
+    if (link === null) throw this.notFound(accountId);
+
+    /**
+     * Filtered against the ceiling on the way out, not only on the way in.
+     * Validating at grant time protects against a bad request; filtering here
+     * protects against a row that got into the table some other way — a manual
+     * fix, a restored backup, a migration written before the ceiling existed.
+     */
+    return this.grant(
+      account,
+      AccountAccessRoute.MASTER_LINK,
+      link.id,
+      link.capabilities.filter(isLinkableCapability),
+      needs,
+    );
+  }
+
+  private grant(
+    account: Account,
+    via: AccountAccessRoute,
+    linkId: string | null,
+    granted: readonly Permission[],
+    needs: Permission,
+  ): AccountGrant {
+    const capabilities: ReadonlySet<Permission> = new Set(granted);
     if (!capabilities.has(needs)) {
       /**
-       * The owner of an account already knows it exists, so hiding it from them
-       * would be theatre. Naming the capability is the same courtesy the
-       * route-level guard extends.
+       * A caller who got this far can already see that the account exists —
+       * they own it, or they hold a link to it. Hiding it now would be theatre,
+       * so the refusal names the capability, as the route-level guard does.
        */
       throw new DomainError(
         TradingErrorCode.FORBIDDEN,
         `This operation needs ${needs} on this account, which you do not hold`,
-        { accountId, missing: needs },
+        { accountId: account.id, missing: needs },
       );
     }
-
-    return { account, via: AccountAccessRoute.OWNER, capabilities };
+    return { account, via, linkId, capabilities };
   }
 
   /**
