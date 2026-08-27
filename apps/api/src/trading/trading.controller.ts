@@ -12,7 +12,9 @@ import {
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IDEMPOTENCY_HEADER } from '@tp/shared-types';
+import { Permission } from '@tp/shared-types';
 import { rateLimits, RATE_LIMIT_WINDOW_MS } from '../config/env.schema';
+import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { IdempotencyKey } from '../common/decorators/idempotency-key.decorator';
 import { IdempotencyService } from '../common/idempotency/idempotency.service';
@@ -67,6 +69,7 @@ export class TradingController {
   ) {}
 
   @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
+  @RequirePermissions(Permission.ORDERS_CREATE)
   @Post('orders')
   @ApiOperation({ summary: 'Submit a market order and open a position' })
   async open(
@@ -87,6 +90,7 @@ export class TradingController {
   }
 
   @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
+  @RequirePermissions(Permission.ORDERS_CREATE)
   @Post('orders/pending')
   @ApiOperation({ summary: 'Place a resting LIMIT or STOP order' })
   async placePending(
@@ -110,6 +114,7 @@ export class TradingController {
     );
   }
 
+  @RequirePermissions(Permission.ORDERS_READ)
   @Get('orders/pending')
   @ApiOperation({ summary: 'Resting orders for an account' })
   listPending(@CurrentUser() user: AuthenticatedUser, @Query() query: AccountQueryDto) {
@@ -117,6 +122,7 @@ export class TradingController {
   }
 
   @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
+  @RequirePermissions(Permission.ORDERS_MODIFY)
   @Patch('orders/:id')
   @ApiOperation({ summary: 'Change a resting order’s price, volume or levels' })
   async modifyPending(
@@ -137,6 +143,7 @@ export class TradingController {
   }
 
   @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
+  @RequirePermissions(Permission.ORDERS_CANCEL)
   @Delete('orders/:id')
   @ApiOperation({ summary: 'Cancel a resting order' })
   async cancelPending(
@@ -149,18 +156,21 @@ export class TradingController {
     );
   }
 
+  @RequirePermissions(Permission.ORDERS_READ)
   @Get('orders')
   @ApiOperation({ summary: 'Recent orders for an account' })
   list(@CurrentUser() user: AuthenticatedUser, @Query() query: ListQueryDto) {
     return this.orders.listOrders(user.id, query.accountId, query.limit);
   }
 
+  @RequirePermissions(Permission.ORDERS_READ)
   @Get('orders/:id/events')
   @ApiOperation({ summary: 'Every recorded state change for one order' })
   events(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.orders.orderEvents(user.id, id);
   }
 
+  @RequirePermissions(Permission.POSITIONS_READ)
   @Get('positions')
   @ApiOperation({ summary: 'Positions for an account' })
   positionsFor(@CurrentUser() user: AuthenticatedUser, @Query() query: ListQueryDto) {
@@ -168,6 +178,7 @@ export class TradingController {
   }
 
   @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
+  @RequirePermissions(Permission.POSITIONS_CLOSE)
   @Post('positions/:id/close')
   @ApiOperation({ summary: 'Close a position in whole or in part' })
   async close(
@@ -182,6 +193,7 @@ export class TradingController {
   }
 
   @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
+  @RequirePermissions(Permission.POSITIONS_MODIFY)
   @Patch('positions/:id')
   @ApiOperation({ summary: 'Change stop-loss or take-profit' })
   async modify(
@@ -203,6 +215,7 @@ export class TradingController {
   }
 
   @Throttle({ default: { limit: Math.ceil(rateLimits.orders / 2), ttl: RATE_LIMIT_WINDOW_MS } })
+  @RequirePermissions(Permission.POSITIONS_CLOSE, Permission.ORDERS_CREATE)
   @Post('positions/:id/reverse')
   @ApiOperation({ summary: 'Close a position and open the same size the other way' })
   async reverse(
@@ -215,12 +228,14 @@ export class TradingController {
     );
   }
 
+  @RequirePermissions(Permission.POSITIONS_READ)
   @Get('trades')
   @ApiOperation({ summary: 'Completed round trips, newest first' })
   trades(@CurrentUser() user: AuthenticatedUser, @Query() query: ListQueryDto) {
     return this.positions.trades(user.id, query.accountId, query.limit);
   }
 
+  @RequirePermissions(Permission.ACCOUNTS_READ)
   @Get('accounts/:id/state')
   @ApiOperation({ summary: 'Live balance, equity, margin and floating P&L' })
   async state(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {

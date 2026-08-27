@@ -9,6 +9,7 @@
  */
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { PrismaClient } from '@prisma/client';
 
 const BASE = `http://127.0.0.1:${process.env.API_PORT ?? '4000'}`;
 const BOOT_TIMEOUT_MS = 60_000;
@@ -379,6 +380,106 @@ const checks: Check[] = [
       });
       const afterBody = (await afterLogout.json()) as { ok: boolean };
       assert(!afterBody.ok, 'a refresh token still worked after logout');
+    },
+  },
+  {
+    /**
+     * Permissions are enforced by the running application, not by a unit test.
+     *
+     * Every other permission test in this repository exercises the catalogue or
+     * the guard in isolation; none of them notices if the guard is never
+     * reached over HTTP. So this one demotes a real user, logs in again to get
+     * a token carrying the new role, and asks the server.
+     *
+     * SUPPORT is the useful role here because it holds `positions.read` and not
+     * `orders.create` — so a single user proves both halves: the refusal is a
+     * permission decision, not a broken session.
+     */
+    name: 'the permission guard refuses over HTTP, and refuses only what it should',
+    run: async () => {
+      const email = `smoke-perm-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, displayName: 'Smoke Perm' }),
+      });
+
+      const prisma = new PrismaClient();
+      try {
+        await prisma.user.update({ where: { email }, data: { role: 'SUPPORT' } });
+      } finally {
+        await prisma.$disconnect();
+      }
+
+      // Logging in after the change: the role travels in the token, so a
+      // session minted before the demotion would keep the old capabilities
+      // until it expired.
+      const login = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+      const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+      const mine = await fetch(`${BASE}/api/v1/permissions/me`, { headers: auth });
+      const capabilities = (await mine.json()) as {
+        data: { role: string; permissions: string[] };
+      };
+      assert(capabilities.data.role === 'SUPPORT', 'the token did not carry the new role');
+      assert(
+        !capabilities.data.permissions.includes('orders.create'),
+        'SUPPORT should not advertise orders.create',
+      );
+
+      const quotesResponse = await fetch(`${BASE}/api/v1/market/quotes`, { headers: auth });
+      const quotes = ((await quotesResponse.json()) as { data: Array<{ symbol: string }> }).data;
+      assert(quotes.length > 0, 'nothing is quoting, so no order can be attempted');
+
+      const refused = await fetch(`${BASE}/api/v1/orders`, {
+        method: 'POST',
+        headers: { ...auth, 'Idempotency-Key': `smoke-perm-${Date.now()}` },
+        body: JSON.stringify({
+          accountId: '00000000-0000-0000-0000-000000000000',
+          symbol: quotes[0]!.symbol,
+          side: 'BUY',
+          volume: '0.01',
+        }),
+      });
+      const body = (await refused.json()) as {
+        ok: boolean;
+        error?: { code: string; message: string };
+      };
+      assert(refused.status === 403, `expected 403, got ${refused.status}`);
+      assert(body.ok === false, 'a refused order came back inside a success envelope');
+      assert(body.error?.code === 'FORBIDDEN', `expected FORBIDDEN, got ${body.error?.code}`);
+      assert(
+        body.error?.message.includes('orders.create') === true,
+        `the refusal did not name the missing permission: ${body.error?.message}`,
+      );
+
+      // The account id above is a nonexistent UUID on purpose: the guard must
+      // refuse before the handler ever looks the account up. A 404 here would
+      // mean permission was checked too late, after the request had already
+      // reached data it was not entitled to touch.
+
+      // And the other half — a capability SUPPORT does hold must still get
+      // through. This asks for positions with no account id, so the request is
+      // rejected by validation rather than served; that is the point. A 400
+      // can only be produced downstream of the guard, so it proves the guard
+      // admitted the request, and it stays true no matter what accounts this
+      // user happens to own.
+      const allowed = await fetch(`${BASE}/api/v1/positions`, { headers: auth });
+      assert(
+        allowed.status === 400,
+        `positions.read should have reached validation, got ${allowed.status}`,
+      );
+      const allowedBody = (await allowed.json()) as { error?: { code: string } };
+      assert(
+        allowedBody.error?.code === 'VALIDATION_FAILED',
+        `expected a validation failure past the guard, got ${allowedBody.error?.code}`,
+      );
     },
   },
   {

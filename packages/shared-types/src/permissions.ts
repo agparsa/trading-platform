@@ -1,0 +1,157 @@
+import { UserRole } from './enums/account';
+
+/**
+ * What someone is allowed to do, named as a capability rather than a route.
+ *
+ * A role is a shorthand for a set of these, not a permission in itself. The
+ * distinction matters the first time a role has to be *narrowed*: with roles
+ * checked directly, narrowing SUPPORT means finding every route that mentions
+ * it; with permissions, it means removing one entry from one list.
+ *
+ * The names are `resource.verb` so a reader can tell at a glance what a route
+ * touches without reading its handler.
+ */
+export const Permission = {
+  // --- accounts ---
+  ACCOUNTS_READ: 'accounts.read',
+  ACCOUNTS_READ_ANY: 'accounts.read_any',
+  ACCOUNTS_MANAGE: 'accounts.manage',
+
+  // --- trading ---
+  ORDERS_READ: 'orders.read',
+  ORDERS_CREATE: 'orders.create',
+  ORDERS_CANCEL: 'orders.cancel',
+  ORDERS_MODIFY: 'orders.modify',
+  POSITIONS_READ: 'positions.read',
+  POSITIONS_CLOSE: 'positions.close',
+  POSITIONS_MODIFY: 'positions.modify',
+
+  // --- oversight ---
+  RISK_READ: 'risk.read',
+  RISK_MANAGE: 'risk.manage',
+  AUDIT_READ: 'audit.read',
+  INTEGRITY_READ: 'integrity.read',
+  INTEGRITY_MANAGE: 'integrity.manage',
+  RECONCILIATION_READ: 'reconciliation.read',
+  RECONCILIATION_RUN: 'reconciliation.run',
+
+  // --- master accounts ---
+  MASTER_READ: 'master.read',
+  MASTER_MANAGE: 'master.manage',
+
+  // --- system ---
+  SYSTEM_KILL_SWITCH: 'system.kill_switch',
+  SYSTEM_OPERATIONS: 'system.operations',
+} as const;
+export type Permission = (typeof Permission)[keyof typeof Permission];
+
+export const ALL_PERMISSIONS: readonly Permission[] = Object.values(Permission);
+
+/**
+ * What a trader may do — always to their **own** account.
+ *
+ * `ACCOUNTS_READ` means "read the accounts you own". Reading somebody else's is
+ * a separate permission (`ACCOUNTS_READ_ANY`), because the two are different
+ * powers and collapsing them is how a support tool quietly becomes a way to
+ * browse the whole book. Ownership itself is still enforced by every query;
+ * a permission is never a substitute for scoping a query to its owner.
+ */
+const TRADER: readonly Permission[] = [
+  Permission.ACCOUNTS_READ,
+  Permission.ORDERS_READ,
+  Permission.ORDERS_CREATE,
+  Permission.ORDERS_CANCEL,
+  Permission.ORDERS_MODIFY,
+  Permission.POSITIONS_READ,
+  Permission.POSITIONS_CLOSE,
+  Permission.POSITIONS_MODIFY,
+];
+
+/**
+ * Roles are sets, not a ladder.
+ *
+ * Each list is written out in full rather than spreading a "lower" role into a
+ * "higher" one. Ranking roles invites the assumption that a senior role can do
+ * everything a junior one can — which stops being true the moment a role exists
+ * to *restrict* someone, and by then the assumption is load-bearing.
+ *
+ * Note what ADMIN does **not** get: the ability to place or close trades on
+ * another person's account. That is `OPERATOR` and `RISK_MANAGER` work, granted
+ * per master-account link, and an administrator who needs it grants it to
+ * themselves in a way that leaves a record.
+ */
+export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
+  [UserRole.USER]: TRADER,
+
+  [UserRole.SUPPORT]: [
+    Permission.ACCOUNTS_READ_ANY,
+    Permission.ORDERS_READ,
+    Permission.POSITIONS_READ,
+    Permission.MASTER_READ,
+  ],
+
+  [UserRole.OPERATOR]: [
+    Permission.ACCOUNTS_READ_ANY,
+    Permission.ACCOUNTS_MANAGE,
+    Permission.ORDERS_READ,
+    Permission.ORDERS_CANCEL,
+    Permission.POSITIONS_READ,
+    Permission.POSITIONS_CLOSE,
+    Permission.POSITIONS_MODIFY,
+    Permission.RISK_READ,
+    Permission.MASTER_READ,
+    Permission.INTEGRITY_READ,
+    Permission.RECONCILIATION_READ,
+    Permission.SYSTEM_OPERATIONS,
+  ],
+
+  [UserRole.RISK_MANAGER]: [
+    Permission.ACCOUNTS_READ_ANY,
+    Permission.ACCOUNTS_MANAGE,
+    Permission.ORDERS_READ,
+    Permission.ORDERS_CANCEL,
+    Permission.POSITIONS_READ,
+    Permission.POSITIONS_CLOSE,
+    Permission.RISK_READ,
+    Permission.RISK_MANAGE,
+    Permission.AUDIT_READ,
+    Permission.MASTER_READ,
+    Permission.INTEGRITY_READ,
+    Permission.INTEGRITY_MANAGE,
+    Permission.RECONCILIATION_READ,
+    Permission.RECONCILIATION_RUN,
+    Permission.SYSTEM_OPERATIONS,
+    Permission.SYSTEM_KILL_SWITCH,
+  ],
+
+  [UserRole.ADMIN]: [
+    Permission.ACCOUNTS_READ,
+    Permission.ACCOUNTS_READ_ANY,
+    Permission.ACCOUNTS_MANAGE,
+    Permission.ORDERS_READ,
+    Permission.ORDERS_CANCEL,
+    Permission.POSITIONS_READ,
+    Permission.RISK_READ,
+    Permission.RISK_MANAGE,
+    Permission.AUDIT_READ,
+    Permission.MASTER_READ,
+    Permission.MASTER_MANAGE,
+    Permission.INTEGRITY_READ,
+    Permission.INTEGRITY_MANAGE,
+    Permission.RECONCILIATION_READ,
+    Permission.RECONCILIATION_RUN,
+    Permission.SYSTEM_OPERATIONS,
+    Permission.SYSTEM_KILL_SWITCH,
+  ],
+};
+
+export function permissionsFor(role: UserRole): readonly Permission[] {
+  return ROLE_PERMISSIONS[role] ?? [];
+}
+
+/** Does this role carry every permission listed? All of them, not any. */
+export function roleHasPermissions(role: UserRole, required: readonly Permission[]): boolean {
+  if (required.length === 0) return true;
+  const held = new Set(permissionsFor(role));
+  return required.every((permission) => held.has(permission));
+}

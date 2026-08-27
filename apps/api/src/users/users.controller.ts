@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { SelfService } from '../common/decorators/self-service.decorator';
 import { UsersService } from './users.service';
 
 const updateProfileSchema = z.object({ displayName: z.string().trim().min(1).max(120) }).strict();
@@ -19,6 +20,7 @@ export class UsersController {
     return this.users.profile(user.id);
   }
 
+  @SelfService()
   @Patch('me')
   @ApiOperation({ summary: 'Update your display name' })
   update(@CurrentUser() user: AuthenticatedUser, @Body() body: UpdateProfileDto) {

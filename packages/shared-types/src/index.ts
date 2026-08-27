@@ -6,3 +6,4 @@ export * from './events';
 export * from './enums/order';
 export * from './enums/position';
 export * from './enums/account';
+export * from './permissions';

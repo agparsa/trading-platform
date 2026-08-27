@@ -27,6 +27,7 @@ import {
 } from './refresh-cookie';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { SelfService } from '../common/decorators/self-service.decorator';
 import type { RequestWithContext } from '../common/request-context';
 import { AuthService, type AuthContext } from './auth.service';
 import {
@@ -194,6 +195,7 @@ export class AuthController {
     await this.auth.resetPassword(body.token, body.password);
   }
 
+  @SelfService()
   @Post('password')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Change your password. Revokes every existing session.' })

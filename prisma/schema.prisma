@@ -32,6 +32,7 @@ enum UserRole {
   USER
   SUPPORT
   OPERATOR
+  RISK_MANAGER
   ADMIN
 }
 

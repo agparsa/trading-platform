@@ -112,8 +112,15 @@ hole: the risk being addressed is a _script reading_ the token, and no response
 ever hands one out. A client that wants to manage the value itself must read it
 from the `Set-Cookie` header, which only a non-browser client can do.
 
+## Authorisation
+
+Roles are enforced as sets of `resource.verb` capabilities, checked in a global
+guard on every declared route, with a build-time test that no mutating route can
+be added without declaring what it requires. See
+[permissions.md](./permissions.md) — including why `ADMIN` deliberately cannot
+place an order.
+
 ## Not yet implemented
 
-RBAC beyond the role field, the admin audit surface, and a penetration checklist
-are outstanding. They are listed here as the contract later phases must meet, not
-as work already done.
+The admin audit surface and a penetration checklist are outstanding. They are
+listed here as the contract later phases must meet, not as work already done.

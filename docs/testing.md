@@ -85,6 +85,16 @@ deliberately broken and the named test confirmed to fail before being restored:
 | Entry-commission apportionment  | dividing by remaining instead of initial | 12.10 charged where 7.00 was     |
 | Round-trip `netPnl`             | dropping the entry leg                   | report no longer matched balance |
 | Single entry-commission posting | re-posting the entry leg at close        | 21.00 charged where 14.00 was    |
+| Permission guard refusal        | short-circuiting the role check          | 5 of 8 guard tests failed        |
+| Permission metadata key         | renaming it in the decorator only        | 6 of 8 guard tests failed        |
+| Permission `and` semantics      | `every` becoming `some`                  | catalogue and guard tests failed |
+| Global guard registration       | deleting the `APP_GUARD` provider        | coverage test failed             |
+
+The last of those is the one worth remembering. Emptying the permission guard
+left every one of the 205 API tests passing, because the catalogue was tested in
+isolation and the route declarations were tested as text, and nothing exercised
+the thing in between. Deleting its registration left the suite green for the
+same reason. Both are now covered, and both gaps were invisible to reading.
 
 ## End-to-end checks
 
@@ -92,10 +102,11 @@ Two scripts drive a real build rather than a mock, and both refuse to run if
 something is already holding the port — a smoke test that silently passes against
 a stale binary is the worst failure mode there is.
 
-- `pnpm smoke` — 9 checks: envelopes, auth, a full trade round trip, the ledger, a
-  resting order placed, listed, refused on the wrong side and cancelled, and the
-  refresh cookie's attributes, body absence, foreign-origin refusal and revocation
-  on logout.
+- `pnpm smoke` — 10 checks: envelopes, auth, a full trade round trip, the ledger,
+  a resting order placed, listed, refused on the wrong side and cancelled, the
+  refresh cookie's attributes, body absence, foreign-origin refusal and
+  revocation on logout, and a permission refusal driven over real HTTP by
+  demoting a user and logging in again.
 - `pnpm smoke:ws` — 8 checks: quote and candle streaming, gapless sequencing,
   private-channel refusal, cross-account isolation.
 

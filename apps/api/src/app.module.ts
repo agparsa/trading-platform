@@ -16,6 +16,7 @@ import { EmailModule } from './auth/email/email.module';
 import { AuthModule } from './auth/auth.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { UsersModule } from './users/users.module';
+import { PermissionsModule } from './permissions/permissions.module';
 import { MarketModule } from './market/market.module';
 import { TradingModule } from './trading/trading.module';
 import { IdempotencyModule } from './common/idempotency/idempotency.module';
@@ -23,6 +24,7 @@ import { EventsModule } from './realtime/events.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { PermissionsGuard } from './common/guards/permissions.guard';
 
 @Module({
   imports: [
@@ -78,6 +80,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AuthModule,
     AccountsModule,
     UsersModule,
+    PermissionsModule,
     MarketModule,
     TradingModule,
     RealtimeModule,
@@ -89,6 +92,8 @@ import { RolesGuard } from './common/guards/roles.guard';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    // After the role guard, so a route may narrow by role and by capability.
+    { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
 })
 export class AppModule {}
