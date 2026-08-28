@@ -211,6 +211,28 @@ async function main(): Promise<void> {
       if (!payload.ok) rejections.push(payload.error?.code ?? 'UNKNOWN');
     };
 
+    /**
+     * One order, on its own, before the burst.
+     *
+     * This is the number a trader actually experiences, and it is not the number
+     * the burst produces. Firing 120 orders simultaneously and reporting the
+     * spread of their round trips measures how long the *queue* took to drain,
+     * not how long an order takes to serve — and a reader who sees "p50 2005ms"
+     * will reasonably conclude that placing an order takes two seconds, which is
+     * false by a factor of forty.
+     *
+     * A metric that misleads is worse than no metric. So both are reported, and
+     * each is labelled as what it is.
+     */
+    const quiet: number[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const startedAt = Date.now();
+      await submit(traders[0]!, 100 + i);
+      quiet.push(Date.now() - startedAt);
+    }
+    latencies.length = 0;
+    rejections.length = 0;
+
     const orderStartedAt = Date.now();
     await Promise.all(
       traders.flatMap((trader) =>
@@ -257,10 +279,12 @@ async function main(): Promise<void> {
       ['Orders submitted', String(orders)],
       ['Orders rejected', String(rejections.length)],
       ['Order throughput (per second)', (orders / (orderElapsed / 1000)).toFixed(1)],
-      ['Order latency p50 (ms)', String(percentile(latencies, 50))],
-      ['Order latency p95 (ms)', String(percentile(latencies, 95))],
-      ['Order latency p99 (ms)', String(percentile(latencies, 99))],
-      ['Order latency max (ms)', String(Math.max(...latencies))],
+      ['Service time, unloaded p50 (ms)', String(percentile(quiet, 50))],
+      ['Service time, unloaded max (ms)', String(Math.max(...quiet))],
+      ['Round trip under burst p50 (ms)', String(percentile(latencies, 50))],
+      ['Round trip under burst p95 (ms)', String(percentile(latencies, 95))],
+      ['Round trip under burst p99 (ms)', String(percentile(latencies, 99))],
+      ['Round trip under burst max (ms)', String(Math.max(...latencies))],
       ['Market ticks ingested', String(ticks)],
       ['Ticks coalesced into a running pass', String(coalescedAfter - coalescedBefore)],
     ];
@@ -293,6 +317,18 @@ async function main(): Promise<void> {
       coalescedAfter > coalescedBefore
         ? `\n  The engine ran behind the feed and coalesced ${coalescedAfter - coalescedBefore} tick(s). None were dropped.`
         : '\n  The engine kept up with the feed; nothing needed coalescing.',
+    );
+
+    /**
+     * Say plainly what the two latency figures mean, because the difference
+     * between them is the difference between "orders are slow" and "this box
+     * served every order it was handed at once".
+     */
+    console.log(
+      `\n  An order placed on its own is served in ~${percentile(quiet, 50)}ms.\n` +
+        `  The burst figures above are queue depth: ${orders} orders fired simultaneously at\n` +
+        `  ${(orders / (orderElapsed / 1000)).toFixed(0)}/s take ${(orderElapsed / 1000).toFixed(1)}s to drain, and each one's round trip includes\n` +
+        `  the wait. They are a capacity measurement, not a latency a trader would see.`,
     );
   } catch (error) {
     failed = true;

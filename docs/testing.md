@@ -197,6 +197,23 @@ and read the trade row back.
 
 ## Load
 
+`pnpm load` reports **two** latency figures, and the difference between them is
+the difference between "orders are slow" and "this box served every order it was
+handed at once".
+
+_Service time, unloaded_ is five orders placed one after another: what a trader
+actually experiences. _Round trip under burst_ is 120 orders fired
+simultaneously, where each one's round trip includes waiting for the queue in
+front of it.
+
+They were one figure until a run reported `p50 2005ms` and the number was chased
+as a regression. It was not one: an order is served in ~43ms, and 2005ms was how
+long 120 simultaneous orders took to drain at ~58/s. A reader seeing one number
+would reasonably have concluded that placing an order takes two seconds — wrong
+by a factor of forty. **A metric that misleads is worse than no metric**, which
+is the same rule applied to reconciliation checks that cannot fire and integrity
+detectors that flag everything.
+
 `pnpm load` drives concurrent sockets, concurrent orders and the live feed
 against a real build, and reports what it measured. It fails only on
 correctness — sequence gaps, socket errors, rejected orders — because a latency
