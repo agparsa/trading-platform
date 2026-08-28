@@ -55,6 +55,54 @@ row read rather than a replay of the whole account.
 `idempotencyKey` on the ledger is unique: a retried webhook or job cannot
 double-credit an account.
 
+### Round once, then apply what was rounded
+
+The stored `amount` is the number that moves the balance. Not a rounded copy of
+it — the same number.
+
+This sounds like pedantry and is not. `post()` originally stored
+`amount.round()` and separately computed `(before + amount).round()`, which is
+the obvious spelling and rounds twice, independently. Whenever a posting did not
+land on a cent — a commission of 0.175, which is what 0.05 lots of a major pair
+actually costs — the two disagreed: the row said 0.18 while the balance moved
+0.17. Every account that had ever paid a fractional commission drifted by a cent
+per trade.
+
+Nothing would have caught it except the reconciliation job, reporting drift with
+no cause to point at, long after the trades that caused it. It was found by
+reading a real account's entries down the page and noticing that they did not
+add up to the balance printed beside them.
+
+The invariant now holds by construction: every stored amount is rounded, and the
+balance is a previous balance plus a stored amount, so `balance` is exactly
+`SUM(amount)` for ever. The sum is deliberately _not_ rounded a second time —
+doing so would reopen the same gap.
+
+The same rule applies one level up, where closing a position writes both a trade
+row and several ledger entries. Each component — gross, entry commission, exit
+commission, swap — is rounded once, at the point it is computed, and `netPnl` is
+derived from those rounded numbers. Rounding at the point of _use_ instead reads
+identically and is not: the ledger would move by
+`round(gross) − round(commission) + round(swap)` while the trade row recorded
+`round(gross − commission + swap)`, and those differ by a cent whenever a
+component lands off one. A trade report that disagrees with the ledger by a cent
+is a dispute nobody can settle — and realized P&L on the terminal is summed from
+those rows.
+
+**A partial close takes its share; the last close takes the remainder.** The
+entry commission was charged once, on the whole position. Rounding each share on
+its own invents money: three closes of a third of a 0.05 commission round to 0.02
+apiece and sum to 0.06 — a cent that was never charged, appearing in a report as
+though it had been. The final close is given whatever is left instead, so the
+shares sum to the charge exactly whatever the arithmetic in between.
+
+**Every trade writes a trade-result entry, including one that rounds to zero.** A
+break-even round trip is still a round trip, and "every trade has a ledger entry"
+is one of the reconciliation checks this platform owes itself. Making it "every
+trade except the break-even ones" turns a rule into a rule with an exception, and
+the exception is where a genuinely missing entry would hide. A `0.00` line is
+honest; an absent one is not.
+
 ## Transaction boundaries
 
 Opening a position writes, in one transaction:

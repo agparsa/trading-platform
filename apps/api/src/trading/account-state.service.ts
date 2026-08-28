@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Prisma } from '@prisma/client';
 import {
   computeAccountState,
@@ -11,9 +12,11 @@ import {
 import type { SymbolExposure } from '@tp/risk-core';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
+import type { Env } from '../config/env.schema';
 import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from '../market/quote.service';
 import { ConversionService } from '../market/conversion.service';
+import { startOfTradingDay } from '../market/session';
 
 export interface OpenPositionValuation {
   positionId: string;
@@ -23,9 +26,37 @@ export interface OpenPositionValuation {
   entryPrice: string;
   currentPrice: string | null;
   floatingPnl: Money;
+  /** Commission already charged on this position, entry leg. */
+  commission: Money;
+  /** Swap accrued on this position so far. */
+  swap: Money;
+  /**
+   * Floating P&L less the costs already charged against this position.
+   *
+   * Deliberately *not* an estimate of the round trip: the exit commission has
+   * not been charged and inventing it would put a number on screen that no
+   * ledger entry will ever match. This is the mark less what has actually been
+   * paid, which is a figure the ledger can be reconciled against today.
+   */
+  netPnl: Money;
   margin: Money;
   /** True when the position could not be marked because no fresh price exists. */
   stale: boolean;
+}
+
+/**
+ * Realized profit, which is history rather than a mark.
+ *
+ * Read from `trades` — the immutable record of closed round trips — and never
+ * from the balance, which also moves with deposits and withdrawals.
+ */
+export interface RealizedPnl {
+  /** Since the trading day began, in the trading server's timezone. */
+  today: Money;
+  /** Over the life of the account. */
+  total: Money;
+  /** The instant "today" started, so a client can say what window it is showing. */
+  since: number;
 }
 
 export interface AccountValuation {
@@ -53,6 +84,7 @@ export class AccountStateService {
     private readonly symbols: SymbolsService,
     private readonly quotes: QuoteService,
     private readonly conversion: ConversionService,
+    @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
   ) {}
 
   async valuate(
@@ -118,6 +150,8 @@ export class AccountStateService {
       }
 
       floating = floating.plus(pnl);
+      const commission = Money.of(position.commission.toString(), currency);
+      const swap = Money.of(position.swap.toString(), currency);
       valuations.push({
         positionId: position.id,
         symbol: position.symbol.code,
@@ -126,6 +160,12 @@ export class AccountStateService {
         entryPrice: position.entryPrice.toString(),
         currentPrice,
         floatingPnl: pnl,
+        commission,
+        swap,
+        // Swap is stored signed — a credit is positive — so it is added, and
+        // commission, always a charge, is subtracted. This mirrors `netPnl` on
+        // a closed trade exactly, minus the exit leg that has not happened.
+        netPnl: pnl.minus(commission).plus(swap),
         margin,
         stale,
       });
@@ -168,9 +208,57 @@ export class AccountStateService {
     };
   }
 
-  /** Wire representation of a valuation, for REST and WebSocket. */
-  toDto(valuation: AccountValuation): Record<string, unknown> {
+  /**
+   * Realized profit for an account.
+   *
+   * Kept out of `valuate()` on purpose. `valuate()` runs inside the
+   * transactions that open and close positions, and inside the tick loop; every
+   * query added to it lengthens a lock window or the per-tick cost. Realized
+   * P&L is display data — nothing decides anything from it — so it is a
+   * separate call made only by the surfaces that show it.
+   *
+   * Summed from `trades` rather than inferred from the balance: the balance
+   * also moves with deposits and withdrawals, and a "profit" figure that
+   * counts a deposit is worse than none.
+   */
+  async realized(
+    accountId: string,
+    currency: string,
+    nowMs = Date.now(),
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<RealizedPnl> {
+    const since = startOfTradingDay(
+      this.config.getOrThrow('TRADING_SERVER_TIMEZONE', { infer: true }),
+      nowMs,
+    );
+    const [today, total] = await Promise.all([
+      client.trade.aggregate({
+        where: { accountId, exitTime: { gte: new Date(since) } },
+        _sum: { netPnl: true },
+      }),
+      client.trade.aggregate({ where: { accountId }, _sum: { netPnl: true } }),
+    ]);
+    return {
+      today: Money.of(today._sum.netPnl?.toString() ?? '0', currency),
+      total: Money.of(total._sum.netPnl?.toString() ?? '0', currency),
+      since,
+    };
+  }
+
+  /**
+   * Wire representation of a valuation, for REST and WebSocket.
+   *
+   * `realized` is optional because the tick path does not pay for it. A client
+   * that receives a frame without it keeps the last value it had rather than
+   * showing a zero — the field is absent, not zero, and those mean different
+   * things.
+   */
+  toDto(valuation: AccountValuation, realized?: RealizedPnl): Record<string, unknown> {
     const { state } = valuation;
+    let grossExposure = Money.zero(valuation.currency);
+    for (const exposure of valuation.exposureBySymbol.values()) {
+      grossExposure = grossExposure.plus(exposure.grossNotional);
+    }
     return {
       accountId: valuation.accountId,
       currency: valuation.currency,
@@ -180,7 +268,29 @@ export class AccountStateService {
       usedMargin: state.usedMargin.toString(),
       freeMargin: state.freeMargin.toString(),
       marginLevel: formatRatio(state.marginLevel),
+      /**
+       * Margin in use as a share of equity — the inverse view of margin level,
+       * and the one traders read as "how much of the account is committed".
+       *
+       * `null` rather than a number when equity is not positive: a ratio over a
+       * non-positive denominator is not a percentage, and rendering one would
+       * be worse than rendering nothing.
+       */
+      marginUtilisation: formatRatio(
+        state.equity.amount.lte(0)
+          ? null
+          : state.usedMargin.amount.div(state.equity.amount).mul(100),
+      ),
+      /** Sum of absolute notional across open positions, in account currency. */
+      grossExposure: grossExposure.toString(),
       openPositions: valuation.openPositionCount,
+      ...(realized === undefined
+        ? {}
+        : {
+            realizedPnlToday: realized.today.toString(),
+            realizedPnlTotal: realized.total.toString(),
+            realizedSince: realized.since,
+          }),
       updatedAt: Date.now(),
     };
   }

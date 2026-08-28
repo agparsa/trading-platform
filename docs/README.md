@@ -10,6 +10,7 @@ Phase 0 deliverables — the design the implementation is held to.
 **Money**
 
 - [pnl.md](./pnl.md) — executable sides, formulas, reference vectors from a live terminal
+- [realtime-pnl.md](./realtime-pnl.md) — the account strip, and why absent is not zero
 - [margin.md](./margin.md) — margin rate, account state, the two "margin level" numbers
 
 **Trading**

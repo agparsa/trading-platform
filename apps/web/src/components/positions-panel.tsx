@@ -71,6 +71,7 @@ export function PositionsPanel({
           <th className="px-2 py-1.5 text-right font-medium">T/P</th>
           <th className="px-2 py-1.5 text-right font-medium">Swap</th>
           <th className="px-2 py-1.5 text-right font-medium">P&amp;L</th>
+          <th className="px-2 py-1.5 text-right font-medium">Net P&amp;L</th>
           <th className="px-3 py-1.5 text-right font-medium">Actions</th>
         </tr>
       </thead>
@@ -81,6 +82,10 @@ export function PositionsPanel({
           const live = livePnl[position.id];
           const fallback = snapshotPnl[position.id];
           const pnl = live?.floatingPnl ?? fallback?.floatingPnl ?? null;
+          // Also from the server. Net is the mark less the commission and swap
+          // already charged to this position — not a projection of the round
+          // trip, and not something the browser subtracts for itself.
+          const netPnl = live?.netPnl ?? fallback?.netPnl ?? null;
           const current = live?.currentPrice ?? fallback?.currentPrice ?? position.currentPrice;
           const stale = live?.stale ?? fallback?.stale ?? false;
 
@@ -128,6 +133,12 @@ export function PositionsPanel({
                 <td className={cn('numeric px-2 py-1.5 text-right', toneClass[toneOf(pnl)])}>
                   {signedMoney(pnl, currency)}
                 </td>
+                <td
+                  className={cn('numeric px-2 py-1.5 text-right', toneClass[toneOf(netPnl)])}
+                  title="Mark less the commission and swap already charged. The closing commission has not been charged and is not guessed at."
+                >
+                  {signedMoney(netPnl, currency)}
+                </td>
                 <td className="px-3 py-1.5 text-right">
                   <Button
                     variant="ghost"
@@ -140,7 +151,7 @@ export function PositionsPanel({
               </tr>
               {editing === position.id ? (
                 <tr className="border-t border-terminal-border/60">
-                  <td colSpan={10} className="bg-terminal-bg px-3 py-3">
+                  <td colSpan={11} className="bg-terminal-bg px-3 py-3">
                     <PositionEditor
                       position={position}
                       spec={spec}

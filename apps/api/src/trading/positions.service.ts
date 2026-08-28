@@ -8,6 +8,7 @@ import {
   normalizePrice,
   normalizeVolume,
   toDecimal,
+  type Decimal,
 } from '@tp/financial-core';
 import { validateProtectiveLevels } from '@tp/trading-core';
 import {
@@ -165,6 +166,17 @@ export class PositionsService {
       const exitPrice = normalizePrice(spec, exitPriceFor(position.side, tick));
       const rate = await this.conversion.rate(spec.quoteCurrency, position.accountCurrency);
 
+      /**
+       * Every component is rounded here, once, and every later use is of the
+       * rounded value — the trade row, the ledger posting and `net` alike.
+       *
+       * Rounding at the point of *use* instead looks identical and is not: the
+       * ledger would move by `round(gross) − round(exitCommission) + round(swap)`
+       * while the trade row recorded `round(gross − commission + swap)`, and
+       * those differ by a cent whenever a component lands off one. A trade
+       * report that disagrees with the ledger by a cent is a dispute nobody can
+       * settle, and realized P&L on the terminal is summed from these rows.
+       */
       const gross = grossPnl({
         spec,
         side: position.side,
@@ -173,31 +185,33 @@ export class PositionsService {
         exitPrice,
         accountCurrency: position.accountCurrency,
         quoteToAccountRate: rate,
-      });
+      }).round();
       const exitCommission = commissionForLeg(
         spec,
         effectiveCloseVolume,
         position.accountCurrency,
         rate,
-      );
+      ).round();
       // Accrued swap is released in proportion to the volume still open, because
       // that is the volume it accrued on.
       const closedFraction = effectiveCloseVolume.div(openVolume);
-      const swap = Money.of(position.swap, position.accountCurrency).times(closedFraction);
+      const swap = Money.of(position.swap, position.accountCurrency).times(closedFraction).round();
 
       // The entry commission is apportioned against the volume the position
       // *opened* with, not the volume still open. It was charged once, on the
       // whole position; splitting it by the remaining volume would charge more
       // than was ever taken as the position is closed piece by piece.
-      const entryFraction = effectiveCloseVolume.div(toDecimal(position.initialVolume));
-      const entryCommission = Money.of(position.commission, position.accountCurrency).times(
-        entryFraction,
-      );
+      const entryCommission = await this.apportionEntryCommission(position, {
+        closeVolume: effectiveCloseVolume,
+        fullyClosed,
+      });
       const commission = entryCommission.plus(exitCommission);
 
       // Net is the round trip: what the trader actually kept. It must reconcile
       // with the balance change this close produced, which includes the
-      // commission charged back when the position was opened.
+      // commission charged back when the position was opened. Every term is
+      // already at cent precision, so this sum needs no rounding of its own —
+      // and must not get one.
       const net = gross.minus(commission).plus(swap);
       const marginReleased = Money.of(position.margin, position.accountCurrency).times(
         closedFraction,
@@ -272,7 +286,20 @@ export class PositionsService {
         // Price result and costs are separate ledger entries. Netting them into
         // one line would make a statement unreadable and a commission dispute
         // unanswerable.
-        if (!gross.isZero()) {
+        /**
+         * Posted whether or not it moved anything.
+         *
+         * A round trip whose result rounds to zero — a 0.01-lot scalp inside
+         * the spread — is still a trade, and "every trade has a ledger entry"
+         * is one of the reconciliation checks this platform owes itself. Making
+         * it "every trade except the break-even ones" turns a rule into a rule
+         * with an exception, and the exception is where a genuinely missing
+         * entry would hide.
+         *
+         * A `0.00` line on a statement is honest: the trade produced no gain.
+         * An absent line is not.
+         */
+        {
           await this.ledger.post(tx, {
             accountId: position.accountId,
             type: gross.isPositive() ? 'TRADE_PROFIT' : 'TRADE_LOSS',
@@ -593,6 +620,44 @@ export class PositionsService {
       netPnl: trade.netPnl.toString(),
       closeReason: trade.closeReason,
     }));
+  }
+
+  /**
+   * This close's share of the commission charged when the position opened.
+   *
+   * Two rules, and the second exists because of the first.
+   *
+   * The share is against the volume the position *opened* with, never the
+   * volume still open: the commission was charged once, on the whole position,
+   * and dividing by what remains charges more than was ever taken as the
+   * position is closed piece by piece.
+   *
+   * And the **last** close takes whatever is left rather than its own
+   * proportion. Three closes of a third each, of a commission of 0.05, round to
+   * 0.02 apiece and sum to 0.06 — a cent that was never charged, appearing in a
+   * report as though it had been. Giving the final close the remainder makes the
+   * shares sum to the charge exactly, whatever the arithmetic in between.
+   */
+  private async apportionEntryCommission(
+    position: LoadedPosition,
+    close: { closeVolume: Decimal; fullyClosed: boolean },
+  ): Promise<Money> {
+    const charged = Money.of(position.commission, position.accountCurrency);
+
+    if (close.fullyClosed) {
+      const priorTrades = await this.prisma.trade.aggregate({
+        where: { positionId: position.id },
+        _sum: { entryCommission: true },
+      });
+      const alreadyApportioned = Money.of(
+        priorTrades._sum.entryCommission?.toString() ?? '0',
+        position.accountCurrency,
+      );
+      return charged.minus(alreadyApportioned);
+    }
+
+    const fraction = close.closeVolume.div(toDecimal(position.initialVolume));
+    return charged.times(fraction).round();
   }
 
   /**

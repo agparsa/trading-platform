@@ -132,6 +132,14 @@ export interface AccountStateResponse {
   usedMargin: string;
   freeMargin: string;
   marginLevel: string | null;
+  /** Used margin as a share of equity. `null` when there is no equity to divide by. */
+  marginUtilisation: string | null;
+  /** Sum of absolute notional across open positions, in account currency. */
+  grossExposure: string;
+  /** Present on the REST snapshot only; tick frames omit it. See realtime-store. */
+  realizedPnlToday?: string;
+  realizedPnlTotal?: string;
+  realizedSince?: number;
   openPositions: number;
   updatedAt: number;
   positions: Array<{
@@ -142,6 +150,9 @@ export interface AccountStateResponse {
     entryPrice: string;
     currentPrice: string | null;
     floatingPnl: string;
+    commission: string;
+    swap: string;
+    netPnl: string;
     margin: string;
     stale: boolean;
   }>;

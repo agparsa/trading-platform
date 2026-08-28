@@ -74,3 +74,28 @@ export function endOfTradingDay(timeZone: string, atMs: number): number {
   const startOfMinute = Math.floor(atMs / 60_000) * 60_000;
   return startOfMinute + minutesLeft * 60_000;
 }
+
+/**
+ * The instant the current trading day began, in the trading server's zone.
+ *
+ * The mirror of `endOfTradingDay`, and it exists for the same reason: "today's
+ * realized P&L" has to mean one thing across the API, the terminal and any
+ * later report, and that thing is a stored timestamp rather than each caller's
+ * idea of midnight.
+ *
+ * The naive subtraction lands an hour off on the day a zone shifts, because a
+ * daylight-saving day is 23 or 25 hours long while its wall clock still reads
+ * 1440 minutes. One correction is always enough: offsets move by whole hours,
+ * once per transition.
+ */
+export function startOfTradingDay(timeZone: string, atMs: number): number {
+  const { minute } = zonedDayAndMinute(atMs, timeZone);
+  const startOfMinute = Math.floor(atMs / 60_000) * 60_000;
+  const candidate = startOfMinute - minute * 60_000;
+
+  const drift = zonedDayAndMinute(candidate, timeZone).minute;
+  if (drift === 0) return candidate;
+  // Landing after midnight means subtract the excess; landing before it (late
+  // in the previous day) means add the shortfall back.
+  return candidate - (drift > 720 ? drift - 1440 : drift) * 60_000;
+}

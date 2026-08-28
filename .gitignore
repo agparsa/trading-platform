@@ -27,3 +27,7 @@ apps/web/public/datafeeds/
 
 prisma/generated/
 docker/volumes/
+
+# Redis writes its snapshot into the working directory when the dev stack runs.
+# It is a runtime artefact, not source; it was tracked by accident in Phase 5.
+dump.rdb

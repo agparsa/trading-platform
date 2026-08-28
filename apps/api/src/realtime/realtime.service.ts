@@ -109,6 +109,10 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
         positionId: position.positionId,
         symbol: position.symbol,
         floatingPnl: position.floatingPnl.toString(),
+        // Sent alongside the floating figure rather than derived in the browser:
+        // a net number the server never computed is a number nobody can
+        // reconcile against the ledger after a dispute.
+        netPnl: position.netPnl.toString(),
         currentPrice: position.currentPrice,
         stale: position.stale,
       });

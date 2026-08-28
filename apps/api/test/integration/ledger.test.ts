@@ -68,6 +68,59 @@ suite('LedgerService (integration)', () => {
    * transactions read the same starting balance and the second overwrites the
    * first — the account ends up 100 richer than the ledger says.
    */
+  /**
+   * The invariant the whole ledger exists to provide: the balance is the sum of
+   * the entries. Not approximately, not after a correction — exactly, on every
+   * account, for ever.
+   *
+   * It was broken. `post()` rounded the amount it stored and, separately,
+   * rounded `before + amount` to get the new balance. Given a sub-cent posting
+   * — a commission of 0.175, which is what 0.05 lots of a major pair actually
+   * costs — those two roundings disagreed: the row said 0.18 and the balance
+   * moved 0.17. Every account that had ever paid a fractional commission drifted
+   * by a cent per trade, silently, and the only thing that would ever have
+   * noticed is the reconciliation job flagging drift with no cause to point at.
+   */
+  it('keeps the balance exactly equal to the sum of the entries, at sub-cent precision', async () => {
+    const { accountId, currency } = await createAccount(prisma);
+
+    await prisma.$transaction(async (tx) => {
+      await ledger.lockAccount(tx, accountId);
+      await ledger.post(tx, {
+        accountId,
+        type: 'DEPOSIT',
+        amount: Money.of('100000', currency),
+      });
+      // Three of them: one cent of drift per entry is easy to miss, three is not.
+      for (let i = 0; i < 3; i += 1) {
+        await ledger.post(tx, {
+          accountId,
+          type: 'COMMISSION',
+          amount: Money.of('-0.175', currency),
+          description: 'a commission that does not land on a cent',
+        });
+      }
+    });
+
+    const entries = await prisma.balanceLedger.findMany({
+      where: { accountId },
+      orderBy: { createdAt: 'asc' },
+    });
+    const account = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
+
+    const summed = entries.reduce((total, entry) => total + Number(entry.amount), 0);
+    expect(Number(account.balance)).toBeCloseTo(summed, 10);
+
+    // And each row's own running total agrees with the amounts above it, so a
+    // human reading the ledger down the page arrives at the stored balance.
+    let running = 0;
+    for (const entry of entries) {
+      running += Number(entry.amount);
+      expect(Number(entry.balanceAfter)).toBeCloseTo(running, 10);
+    }
+    expect(Number(entries.at(-1)?.balanceAfter)).toBeCloseTo(Number(account.balance), 10);
+  });
+
   it('serialises concurrent postings instead of losing one', async () => {
     const { accountId } = await createAccount(prisma, { balance: '1000' });
 

@@ -159,6 +159,36 @@ export function OrderTicket({
         </SideButton>
       </div>
 
+      {/*
+        The two sides again, named, with the distance between them.
+
+        The buttons above show one price each and which one you get depends on
+        which button you are looking at — fine once you know the convention, and
+        opaque until then. The spread is the server's own figure from the quote
+        frame, not this browser's subtraction: the number a trader uses to judge
+        cost should be the number the server would quote them.
+      */}
+      <div className="flex items-baseline justify-between rounded border border-terminal-border/60 bg-terminal-raised/30 px-2 py-1 text-[10px] uppercase tracking-wider text-terminal-muted">
+        <span>
+          Bid{' '}
+          <span className="numeric normal-case tracking-normal text-terminal-text">
+            {quote === undefined ? '—' : formatPrice(quote.bid, symbol.pricePrecision)}
+          </span>
+        </span>
+        <span>
+          Ask{' '}
+          <span className="numeric normal-case tracking-normal text-terminal-text">
+            {quote === undefined ? '—' : formatPrice(quote.ask, symbol.pricePrecision)}
+          </span>
+        </span>
+        <span title="Ask less bid, as quoted by the server">
+          Spread{' '}
+          <span className="numeric normal-case tracking-normal text-terminal-text">
+            {quote === undefined ? '—' : formatPrice(quote.spread, symbol.pricePrecision)}
+          </span>
+        </span>
+      </div>
+
       <Field
         label="Volume (lots)"
         hint={

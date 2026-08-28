@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TradingSession } from '@tp/market-core';
-import { endOfTradingDay, isSessionOpen, zonedDayAndMinute } from './session';
+import { endOfTradingDay, isSessionOpen, startOfTradingDay, zonedDayAndMinute } from './session';
 
 /** Sunday 22:00 → Friday 21:00 UTC, the usual metals and FX week. */
 const METALS: TradingSession = {
@@ -136,5 +136,51 @@ describe('endOfTradingDay', () => {
     const expiry = endOfTradingDay('Europe/London', at);
     expect(expiry - at).toBeLessThanOrEqual(25 * 3_600_000);
     expect(expiry - at).toBeGreaterThan(0);
+  });
+});
+
+describe('startOfTradingDay', () => {
+  /**
+   * Paired with `endOfTradingDay` rather than tested against hand-written
+   * timestamps: the property that matters is that a day starts where the
+   * previous one ended, and asserting it directly is harder to get wrong than
+   * two independent literal expectations.
+   */
+  it('starts a day exactly where the previous one ended', () => {
+    for (const zone of ['UTC', 'Europe/London', 'America/New_York', 'Asia/Tokyo']) {
+      const at = Date.UTC(2026, 6, 15, 13, 47, 31);
+      const start = startOfTradingDay(zone, at);
+      expect(endOfTradingDay(zone, start)).toBe(start + 1440 * 60_000);
+      expect(start).toBeLessThanOrEqual(at);
+      expect(at - start).toBeLessThan(25 * 60 * 60_000);
+    }
+  });
+
+  it('lands on local midnight, not on UTC midnight', () => {
+    // 2026-07-15 13:47 UTC is 22:47 in Tokyo on the 15th, so the Tokyo day
+    // began at 15:00 UTC on the 14th — a different calendar date entirely.
+    const at = Date.UTC(2026, 6, 15, 13, 47, 0);
+    expect(startOfTradingDay('Asia/Tokyo', at)).toBe(Date.UTC(2026, 6, 14, 15, 0, 0));
+    expect(startOfTradingDay('UTC', at)).toBe(Date.UTC(2026, 6, 15, 0, 0, 0));
+  });
+
+  /**
+   * The case the correction pass exists for. On 2026-03-29 Europe/London
+   * springs forward at 01:00, so that local day is 23 hours long and a plain
+   * "subtract the wall-clock minutes elapsed" lands an hour before midnight.
+   */
+  it('lands on midnight on a day that loses an hour', () => {
+    const afterTheShift = Date.UTC(2026, 2, 29, 12, 0, 0);
+    const start = startOfTradingDay('Europe/London', afterTheShift);
+    expect(zonedDayAndMinute(start, 'Europe/London').minute).toBe(0);
+    expect(start).toBe(Date.UTC(2026, 2, 29, 0, 0, 0));
+  });
+
+  /** And the day that gains one: 2026-10-25, London falls back at 02:00. */
+  it('lands on midnight on a day that gains an hour', () => {
+    const afterTheShift = Date.UTC(2026, 9, 25, 12, 0, 0);
+    const start = startOfTradingDay('Europe/London', afterTheShift);
+    expect(zonedDayAndMinute(start, 'Europe/London').minute).toBe(0);
+    expect(start).toBe(Date.UTC(2026, 9, 24, 23, 0, 0));
   });
 });

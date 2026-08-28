@@ -253,8 +253,11 @@ export class TradingController {
      */
     await this.access.resolve(user.id, id, Permission.ACCOUNTS_READ);
     const valuation = await this.accountState.valuate(id);
+    // The snapshot carries realized P&L; the tick-driven frames do not, because
+    // nothing about realized P&L changes on a tick. See account-state.service.
+    const realized = await this.accountState.realized(id, valuation.currency);
     return {
-      ...this.accountState.toDto(valuation),
+      ...this.accountState.toDto(valuation, realized),
       positions: valuation.positions.map((position) => ({
         positionId: position.positionId,
         symbol: position.symbol,
@@ -263,6 +266,9 @@ export class TradingController {
         entryPrice: position.entryPrice,
         currentPrice: position.currentPrice,
         floatingPnl: position.floatingPnl.toString(),
+        commission: position.commission.toString(),
+        swap: position.swap.toString(),
+        netPnl: position.netPnl.toString(),
         margin: position.margin.toString(),
         stale: position.stale,
       })),

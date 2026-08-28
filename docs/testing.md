@@ -75,32 +75,39 @@ nondeterminism.
 A guard nobody has watched fail is a guard nobody knows works. Each of these was
 deliberately broken and the named test confirmed to fail before being restored:
 
-| Guard                           | Broken by                                | Result                           |
-| ------------------------------- | ---------------------------------------- | -------------------------------- |
-| Ledger row lock                 | removing `FOR UPDATE`                    | 10 deposits produced 1200        |
-| Close claim (`OPEN → CLOSING`)  | removing the state guard                 | duplicate trade rows             |
-| WebSocket account filter        | removing one `if`                        | Bob received Alice's frames      |
-| Candle/quote filter separation  | sharing one symbol set                   | watchlist stopped updating       |
-| Candle subscription replacement | accumulating instead of replacing        | four streams for one chart       |
-| Entry-commission apportionment  | dividing by remaining instead of initial | 12.10 charged where 7.00 was     |
-| Round-trip `netPnl`             | dropping the entry leg                   | report no longer matched balance |
-| Single entry-commission posting | re-posting the entry leg at close        | 21.00 charged where 14.00 was    |
-| Permission guard refusal        | short-circuiting the role check          | 5 of 8 guard tests failed        |
-| Permission metadata key         | renaming it in the decorator only        | 6 of 8 guard tests failed        |
-| Permission `and` semantics      | `every` becoming `some`                  | catalogue and guard tests failed |
-| Global guard registration       | deleting the `APP_GUARD` provider        | coverage test failed             |
-| Account ownership check         | removing it from the resolver            | 5 of 7 isolation tests failed    |
-| One refusal for "not yours"     | giving it its own error code             | 3 of 7 failed                    |
-| Resolver's caller transaction   | ignoring the client it was handed        | 1 of 7 failed                    |
-| A service calling the resolver  | dropping the call in `positions.list`    | 1 of 7 failed                    |
-| Master link's owning master     | not checking whose link it is            | 2 of 12 master tests failed      |
-| Link revocation                 | dropping the status predicate            | 2 of 12 failed                   |
-| Delegation ceiling, on read     | trusting the stored capability list      | 1 of 12 failed                   |
-| Delegation ceiling, on grant    | accepting any capability                 | 1 of 12 failed                   |
-| Socket's link filter            | not checking whose link it is            | 1 of 12 failed _(see below)_     |
-| Socket's revocation filter      | dropping the status predicate            | 1 of 12 failed                   |
+| Guard                            | Broken by                                | Result                           |
+| -------------------------------- | ---------------------------------------- | -------------------------------- |
+| Ledger row lock                  | removing `FOR UPDATE`                    | 10 deposits produced 1200        |
+| Close claim (`OPEN → CLOSING`)   | removing the state guard                 | duplicate trade rows             |
+| WebSocket account filter         | removing one `if`                        | Bob received Alice's frames      |
+| Candle/quote filter separation   | sharing one symbol set                   | watchlist stopped updating       |
+| Candle subscription replacement  | accumulating instead of replacing        | four streams for one chart       |
+| Entry-commission apportionment   | dividing by remaining instead of initial | 12.10 charged where 7.00 was     |
+| Round-trip `netPnl`              | dropping the entry leg                   | report no longer matched balance |
+| Single entry-commission posting  | re-posting the entry leg at close        | 21.00 charged where 14.00 was    |
+| Permission guard refusal         | short-circuiting the role check          | 5 of 8 guard tests failed        |
+| Permission metadata key          | renaming it in the decorator only        | 6 of 8 guard tests failed        |
+| Permission `and` semantics       | `every` becoming `some`                  | catalogue and guard tests failed |
+| Global guard registration        | deleting the `APP_GUARD` provider        | coverage test failed             |
+| Account ownership check          | removing it from the resolver            | 5 of 7 isolation tests failed    |
+| One refusal for "not yours"      | giving it its own error code             | 3 of 7 failed                    |
+| Resolver's caller transaction    | ignoring the client it was handed        | 1 of 7 failed                    |
+| A service calling the resolver   | dropping the call in `positions.list`    | 1 of 7 failed                    |
+| Master link's owning master      | not checking whose link it is            | 2 of 12 master tests failed      |
+| Link revocation                  | dropping the status predicate            | 2 of 12 failed                   |
+| Delegation ceiling, on read      | trusting the stored capability list      | 1 of 12 failed                   |
+| Delegation ceiling, on grant     | accepting any capability                 | 1 of 12 failed                   |
+| Socket's link filter             | not checking whose link it is            | 1 of 12 failed _(see below)_     |
+| Socket's revocation filter       | dropping the status predicate            | 1 of 12 failed                   |
+| Ledger rounds once               | rounding amount and balance separately   | the sub-cent ledger test failed  |
+| Trading day's DST correction     | assuming every day is 1440 minutes long  | 2 of 4 day-boundary tests failed |
+| Account view merge               | taking the live frame whole              | realized P&L read "—"            |
+| Trade components rounded once    | deriving `net` from unrounded terms      | 2 of 12 figure tests failed      |
+| Final close absorbs the residue  | giving it its own proportion instead     | 1 of 12 failed                   |
+| Every trade reaches the ledger   | skipping the entry when it rounds to 0   | 1 of 12 failed                   |
+| Realized P&L carried per account | carrying it across a change of account   | 1 store test failed              |
 
-Two of those are worth remembering.
+Three of those are worth remembering.
 
 Emptying the permission guard left every one of the 205 API tests passing,
 because the catalogue was tested in isolation and the route declarations were
@@ -115,6 +122,16 @@ delegation in the same table, and the assertion starts meaning what it says. The
 defect it would have hidden is every socket receiving every delegated account's
 private frames. A mutation that survives is the useful kind — it names a test
 that was agreeing with the code rather than checking it.
+
+The ledger's double-rounding was not found by a mutation at all. It was found by
+opening the terminal in a browser, noticing that "Realized today" read "—" when
+the API had plainly sent a figure, and then — while checking the number that
+_did_ appear — reading a real account's ledger entries down the page and seeing
+that they did not add up to the balance printed beside them. Two defects from
+one screenshot, neither reachable from the test suite as it stood: the seeded
+test instruments charge no commission, so no test had ever posted a sub-cent
+amount. The tests now do. **A suite that only ever exercises round numbers is not
+testing money.**
 
 ## End-to-end checks
 

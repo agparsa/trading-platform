@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@tp/ui';
+import { accountView } from '@/lib/account-view';
 import { money, percent, signedMoney, toneClass, toneOf } from '@/lib/format';
 import { useAccountSettings, useAccountState, type AccountSummary } from '@/lib/queries';
 import { useRealtime } from '@/lib/realtime-store';
@@ -25,10 +26,11 @@ export function AccountHeader({
   const live = useRealtime((state) => state.account);
   const settings = useAccountSettings(accountId);
 
-  // The live frame wins when it is for this account; otherwise the REST
-  // snapshot stands. Both are server valuations, so they cannot disagree about
-  // how a number was derived — only about how old it is.
-  const state = live !== null && live.accountId === accountId ? live : (snapshot.data ?? null);
+  // The frame's values over the snapshot's, field by field rather than
+  // wholesale — the snapshot is the only source of realized P&L, and taking
+  // the frame whole would blank it from the first tick onwards. See
+  // lib/account-view.ts, which is where that rule is tested.
+  const state = accountView(accountId, snapshot.data, live);
 
   const currency = state?.currency ?? account?.currency ?? 'USD';
   const marginCall = settings.data?.marginCallLevelPercent ?? null;
@@ -37,7 +39,7 @@ export function AccountHeader({
   const marginLevelTone = marginLevelToneOf(state?.marginLevel ?? null, marginCall, stopOut);
 
   return (
-    <div className="grid grid-cols-2 gap-x-6 gap-y-3 px-4 py-3 sm:grid-cols-4 lg:grid-cols-7">
+    <div className="grid grid-cols-2 gap-x-6 gap-y-3 px-4 py-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-10">
       <div className="min-w-0">
         <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Account</p>
         <p className="numeric mt-0.5 truncate text-sm text-terminal-text">
@@ -51,6 +53,25 @@ export function AccountHeader({
         value={signedMoney(state?.floatingPnl, currency)}
         tone={toneClass[toneOf(state?.floatingPnl)]}
       />
+      {/*
+        Realized P&L arrives with the REST snapshot and is carried across tick
+        frames by the store. An em dash means "not loaded yet", never "zero" —
+        the two are different claims and only one of them is ever true here.
+      */}
+      <Stat
+        label="Realized today"
+        value={
+          state?.realizedPnlToday === undefined
+            ? '—'
+            : signedMoney(state.realizedPnlToday, currency)
+        }
+        tone={toneClass[toneOf(state?.realizedPnlToday ?? null)]}
+        title={
+          state?.realizedSince === undefined
+            ? undefined
+            : `Closed trades since ${new Date(state.realizedSince).toISOString().replace('T', ' ').slice(0, 16)} UTC`
+        }
+      />
       <Stat label="Used margin" value={money(state?.usedMargin, currency)} />
       <Stat label="Free margin" value={money(state?.freeMargin, currency)} />
       <Stat
@@ -62,6 +83,16 @@ export function AccountHeader({
             ? undefined
             : `Margin call at ${marginCall}%, stop-out at ${stopOut}%`
         }
+      />
+      <Stat
+        label="Utilisation"
+        value={state?.marginUtilisation == null ? 'n/a' : percent(state.marginUtilisation)}
+        title="Margin in use as a share of equity"
+      />
+      <Stat
+        label="Exposure"
+        value={money(state?.grossExposure, currency)}
+        title="Gross notional across open positions, in account currency"
       />
     </div>
   );

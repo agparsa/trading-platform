@@ -174,7 +174,7 @@ the integrity engine consumes events the earlier steps emit.
 | ---- | ------------------------------------------------ | ---------- | ------------------------------------------------- |
 | 3    | RBAC and granular permissions                    | —          | done — [permissions.md](./permissions.md)         |
 | 4    | Master account domain and authorisation          | 3          | done — [master-accounts.md](./master-accounts.md) |
-| 5    | Realtime account and P&L UI completion           | —          |                                                   |
+| 5    | Realtime account and P&L UI completion           | —          | done — [realtime-pnl.md](./realtime-pnl.md)       |
 | 6    | Chart SL/TP interaction                          | 5          |                                                   |
 | 7    | One-click and keyboard trading                   | 6          |                                                   |
 | 8    | Reconciliation engine                            | —          |                                                   |

@@ -110,14 +110,31 @@ export class LedgerService {
       );
     }
 
+    /**
+     * Round once, then apply what was rounded.
+     *
+     * The obvious spelling — store `amount.round()` and separately compute
+     * `(before + amount).round()` — rounds twice, independently, and the two
+     * results disagree whenever the posting does not land on a cent. A
+     * commission of 0.175 was written to the row as 0.18 while the balance
+     * moved by 0.17, and every account that had ever paid a fractional
+     * commission drifted a cent per trade. Nothing would have caught it except
+     * the reconciliation job, reporting drift with no cause to point at.
+     *
+     * The ledger is the source of truth, so the ledger's number is the one
+     * that gets applied. `before` is itself a previously-stored balance and is
+     * therefore already at ledger precision, so the sum needs no second
+     * rounding — and must not get one, or this reintroduces the same gap.
+     */
+    const amount = posting.amount.round();
     const before = Money.of(account.balance, account.currency);
-    const after = before.plus(posting.amount).round();
+    const after = before.plus(amount);
 
     const entry = await tx.balanceLedger.create({
       data: {
         accountId: posting.accountId,
         type: posting.type,
-        amount: posting.amount.round().toString(),
+        amount: amount.toString(),
         balanceAfter: after.toString(),
         currency: account.currency,
         referenceType: posting.referenceType ?? null,

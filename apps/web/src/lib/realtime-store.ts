@@ -21,6 +21,17 @@ export interface AccountState {
   usedMargin: string;
   freeMargin: string;
   marginLevel: string | null;
+  marginUtilisation: string | null;
+  grossExposure: string;
+  /**
+   * Realized P&L, which arrives with the REST snapshot and not with tick
+   * frames — nothing about it changes on a tick, so paying for it 2× a second
+   * would buy nothing. Optional here for exactly that reason, and the store
+   * carries it forward rather than letting a frame erase it.
+   */
+  realizedPnlToday?: string;
+  realizedPnlTotal?: string;
+  realizedSince?: number;
   openPositions: number;
   updatedAt: number;
 }
@@ -29,6 +40,8 @@ export interface LivePnl {
   positionId: string;
   symbol: string;
   floatingPnl: string;
+  /** Mark less the costs already charged. Computed by the server, never here. */
+  netPnl: string;
   currentPrice: string | null;
   stale: boolean;
 }
@@ -110,7 +123,35 @@ export const useRealtime = create<RealtimeState>((set) => ({
       };
     }),
 
-  applyAccount: (account) => set({ account }),
+  /**
+   * A frame replaces the account state, except for the realized figures, which
+   * it carries forward when the frame does not name them.
+   *
+   * Absent and zero are different claims. A tick frame says nothing about
+   * realized P&L; treating its silence as "zero" would flash the number to
+   * nothing twice a second between snapshots, and a trader would reasonably
+   * believe their day's profit had been wiped.
+   */
+  applyAccount: (incoming) =>
+    set((state) => {
+      const previous = state.account;
+      const sameAccount = previous !== null && previous.accountId === incoming.accountId;
+      if (!sameAccount || incoming.realizedPnlToday !== undefined) {
+        return { account: incoming };
+      }
+      return {
+        account: {
+          ...incoming,
+          ...(previous.realizedPnlToday === undefined
+            ? {}
+            : {
+                realizedPnlToday: previous.realizedPnlToday,
+                realizedPnlTotal: previous.realizedPnlTotal,
+                realizedSince: previous.realizedSince,
+              }),
+        },
+      };
+    }),
 
   applyPnl: (pnl) => set((state) => ({ pnl: { ...state.pnl, [pnl.positionId]: pnl } })),
 

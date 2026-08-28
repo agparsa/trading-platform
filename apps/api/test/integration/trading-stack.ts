@@ -88,7 +88,13 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
 
   const quotes = new QuoteService(redis, config as never);
   const conversion = new ConversionService(symbols, quotes);
-  const accountState = new AccountStateService(prismaService, symbols, quotes, conversion);
+  const accountState = new AccountStateService(
+    prismaService,
+    symbols,
+    quotes,
+    conversion,
+    config as never,
+  );
   const riskContext = new RiskContextBuilder(prismaService);
   const ledger = new LedgerService();
   const access = new AccountAccessService(prismaService);
