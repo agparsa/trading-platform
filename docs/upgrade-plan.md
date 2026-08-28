@@ -178,7 +178,7 @@ the integrity engine consumes events the earlier steps emit.
 | 6    | Chart SL/TP interaction                          | 5          | done — [chart-trading.md](./chart-trading.md)         |
 | 7    | One-click and keyboard trading                   | 6          | done — [one-click-trading.md](./one-click-trading.md) |
 | 8    | Reconciliation engine                            | —          | done — [reconciliation.md](./reconciliation.md)       |
-| 9    | Integrity engine                                 | 3          |                                                       |
+| 9    | Integrity engine                                 | 3          | done — [anti-fraud.md](./anti-fraud.md)               |
 | 10   | Operations dashboard                             | 3, 8, 9    |                                                       |
 | 11   | Security hardening                               | 3, 4       |                                                       |
 | 12   | Load and soak                                    | all        |                                                       |

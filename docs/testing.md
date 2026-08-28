@@ -75,51 +75,58 @@ nondeterminism.
 A guard nobody has watched fail is a guard nobody knows works. Each of these was
 deliberately broken and the named test confirmed to fail before being restored:
 
-| Guard                            | Broken by                                | Result                           |
-| -------------------------------- | ---------------------------------------- | -------------------------------- |
-| Ledger row lock                  | removing `FOR UPDATE`                    | 10 deposits produced 1200        |
-| Close claim (`OPEN → CLOSING`)   | removing the state guard                 | duplicate trade rows             |
-| WebSocket account filter         | removing one `if`                        | Bob received Alice's frames      |
-| Candle/quote filter separation   | sharing one symbol set                   | watchlist stopped updating       |
-| Candle subscription replacement  | accumulating instead of replacing        | four streams for one chart       |
-| Entry-commission apportionment   | dividing by remaining instead of initial | 12.10 charged where 7.00 was     |
-| Round-trip `netPnl`              | dropping the entry leg                   | report no longer matched balance |
-| Single entry-commission posting  | re-posting the entry leg at close        | 21.00 charged where 14.00 was    |
-| Permission guard refusal         | short-circuiting the role check          | 5 of 8 guard tests failed        |
-| Permission metadata key          | renaming it in the decorator only        | 6 of 8 guard tests failed        |
-| Permission `and` semantics       | `every` becoming `some`                  | catalogue and guard tests failed |
-| Global guard registration        | deleting the `APP_GUARD` provider        | coverage test failed             |
-| Account ownership check          | removing it from the resolver            | 5 of 7 isolation tests failed    |
-| One refusal for "not yours"      | giving it its own error code             | 3 of 7 failed                    |
-| Resolver's caller transaction    | ignoring the client it was handed        | 1 of 7 failed                    |
-| A service calling the resolver   | dropping the call in `positions.list`    | 1 of 7 failed                    |
-| Master link's owning master      | not checking whose link it is            | 2 of 12 master tests failed      |
-| Link revocation                  | dropping the status predicate            | 2 of 12 failed                   |
-| Delegation ceiling, on read      | trusting the stored capability list      | 1 of 12 failed                   |
-| Delegation ceiling, on grant     | accepting any capability                 | 1 of 12 failed                   |
-| Socket's link filter             | not checking whose link it is            | 1 of 12 failed _(see below)_     |
-| Socket's revocation filter       | dropping the status predicate            | 1 of 12 failed                   |
-| Ledger rounds once               | rounding amount and balance separately   | the sub-cent ledger test failed  |
-| Trading day's DST correction     | assuming every day is 1440 minutes long  | 2 of 4 day-boundary tests failed |
-| Account view merge               | taking the live frame whole              | realized P&L read "—"            |
-| Trade components rounded once    | deriving `net` from unrounded terms      | 2 of 12 figure tests failed      |
-| Final close absorbs the residue  | giving it its own proportion instead     | 1 of 12 failed                   |
-| Every trade reaches the ledger   | skipping the entry when it rounds to 0   | 1 of 12 failed                   |
-| Chart drop uses the engine rule  | skipping `validateProtectiveLevels`      | 3 of 18 chart-level tests failed |
-| One level per modification       | naming both, with `null` for the other   | 2 of 18 failed                   |
-| Entry line is not draggable      | marking it draggable                     | 1 of 18 failed                   |
-| Levels belong to one instrument  | dropping the symbol filter               | 1 of 18 failed                   |
-| Chart drop snaps to the tick     | `toFixed` instead of `normalizePrice`    | 1 of 18 failed _(see below)_     |
-| Shortcuts stay out of fields     | dropping the text-entry check            | 1 of 22 shortcut tests failed    |
-| Modifiers cancel a shortcut      | ignoring ctrl/meta/alt                   | 1 of 22 failed                   |
-| Close-all always confirms        | letting it follow the preference         | 1 of 22 failed                   |
-| Stored preferences are checked   | spreading them over the defaults         | 5 of 22 failed                   |
-| Confirmation defaults on         | requiring an explicit `true`             | 2 of 22 failed                   |
-| Reconciliation records findings  | computing them and persisting none       | 2 of 38 failed                   |
-| Open-position costs added back   | comparing without them                   | 4 of 38 failed                   |
-| Resting orders are not faults    | flagging any order with no execution     | 3 of 38 failed                   |
-| Execution side nets volume       | summing every execution as an opening    | 1 of 38 failed _(see below)_     |
-| Realized P&L carried per account | carrying it across a change of account   | 1 store test failed              |
+| Guard                              | Broken by                                | Result                           |
+| ---------------------------------- | ---------------------------------------- | -------------------------------- |
+| Ledger row lock                    | removing `FOR UPDATE`                    | 10 deposits produced 1200        |
+| Close claim (`OPEN → CLOSING`)     | removing the state guard                 | duplicate trade rows             |
+| WebSocket account filter           | removing one `if`                        | Bob received Alice's frames      |
+| Candle/quote filter separation     | sharing one symbol set                   | watchlist stopped updating       |
+| Candle subscription replacement    | accumulating instead of replacing        | four streams for one chart       |
+| Entry-commission apportionment     | dividing by remaining instead of initial | 12.10 charged where 7.00 was     |
+| Round-trip `netPnl`                | dropping the entry leg                   | report no longer matched balance |
+| Single entry-commission posting    | re-posting the entry leg at close        | 21.00 charged where 14.00 was    |
+| Permission guard refusal           | short-circuiting the role check          | 5 of 8 guard tests failed        |
+| Permission metadata key            | renaming it in the decorator only        | 6 of 8 guard tests failed        |
+| Permission `and` semantics         | `every` becoming `some`                  | catalogue and guard tests failed |
+| Global guard registration          | deleting the `APP_GUARD` provider        | coverage test failed             |
+| Account ownership check            | removing it from the resolver            | 5 of 7 isolation tests failed    |
+| One refusal for "not yours"        | giving it its own error code             | 3 of 7 failed                    |
+| Resolver's caller transaction      | ignoring the client it was handed        | 1 of 7 failed                    |
+| A service calling the resolver     | dropping the call in `positions.list`    | 1 of 7 failed                    |
+| Master link's owning master        | not checking whose link it is            | 2 of 12 master tests failed      |
+| Link revocation                    | dropping the status predicate            | 2 of 12 failed                   |
+| Delegation ceiling, on read        | trusting the stored capability list      | 1 of 12 failed                   |
+| Delegation ceiling, on grant       | accepting any capability                 | 1 of 12 failed                   |
+| Socket's link filter               | not checking whose link it is            | 1 of 12 failed _(see below)_     |
+| Socket's revocation filter         | dropping the status predicate            | 1 of 12 failed                   |
+| Ledger rounds once                 | rounding amount and balance separately   | the sub-cent ledger test failed  |
+| Trading day's DST correction       | assuming every day is 1440 minutes long  | 2 of 4 day-boundary tests failed |
+| Account view merge                 | taking the live frame whole              | realized P&L read "—"            |
+| Trade components rounded once      | deriving `net` from unrounded terms      | 2 of 12 figure tests failed      |
+| Final close absorbs the residue    | giving it its own proportion instead     | 1 of 12 failed                   |
+| Every trade reaches the ledger     | skipping the entry when it rounds to 0   | 1 of 12 failed                   |
+| Chart drop uses the engine rule    | skipping `validateProtectiveLevels`      | 3 of 18 chart-level tests failed |
+| One level per modification         | naming both, with `null` for the other   | 2 of 18 failed                   |
+| Entry line is not draggable        | marking it draggable                     | 1 of 18 failed                   |
+| Levels belong to one instrument    | dropping the symbol filter               | 1 of 18 failed                   |
+| Chart drop snaps to the tick       | `toFixed` instead of `normalizePrice`    | 1 of 18 failed _(see below)_     |
+| Shortcuts stay out of fields       | dropping the text-entry check            | 1 of 22 shortcut tests failed    |
+| Modifiers cancel a shortcut        | ignoring ctrl/meta/alt                   | 1 of 22 failed                   |
+| Close-all always confirms          | letting it follow the preference         | 1 of 22 failed                   |
+| Stored preferences are checked     | spreading them over the defaults         | 5 of 22 failed                   |
+| Confirmation defaults on           | requiring an explicit `true`             | 2 of 22 failed                   |
+| Reconciliation records findings    | computing them and persisting none       | 2 of 38 failed                   |
+| Open-position costs added back     | comparing without them                   | 4 of 38 failed                   |
+| Resting orders are not faults      | flagging any order with no execution     | 3 of 38 failed                   |
+| Execution side nets volume         | summing every execution as an opening    | 1 of 38 failed _(see below)_     |
+| Volume norm needs a sample         | comparing against a one-order history    | 1 of 29 integrity tests failed   |
+| Median, not mean, for the norm     | averaging instead                        | 2 of 29 failed                   |
+| Concentration needs an alternative | counting a single position               | 1 of 29 failed                   |
+| Densest window for a burst         | a fixed last window                      | 1 of 29 failed                   |
+| A recurrence is not a new signal   | inserting a row each time                | 3 of 9 failed                    |
+| A dismissal is not overruled       | reopening on recurrence                  | 1 of 9 failed                    |
+| Signal history is append-only      | replacing events on a status change      | 1 of 9 failed                    |
+| Realized P&L carried per account   | carrying it across a change of account   | 1 store test failed              |
 
 Three of those are worth remembering.
 

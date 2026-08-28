@@ -129,15 +129,16 @@ model Account {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user        User                @relation(fields: [userId], references: [id], onDelete: Restrict)
-  settings    AccountSettings?
-  orders      Order[]
-  positions   Position[]
-  trades      Trade[]
-  ledger      BalanceLedger[]
-  snapshots   AccountSnapshot[]
-  riskEvents  RiskEvent[]
-  masterLinks MasterAccountLink[]
+  user             User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  settings         AccountSettings?
+  orders           Order[]
+  positions        Position[]
+  trades           Trade[]
+  ledger           BalanceLedger[]
+  snapshots        AccountSnapshot[]
+  riskEvents       RiskEvent[]
+  masterLinks      MasterAccountLink[]
+  integritySignals IntegritySignal[]
 
   @@index([userId, status])
   @@map("accounts")
@@ -721,4 +722,83 @@ model MasterAccountLink {
   @@unique([masterAccountId, accountId])
   @@index([accountId, status])
   @@map("master_account_links")
+}
+
+enum IntegritySignalStatus {
+  OPEN
+  ACKNOWLEDGED
+  INVESTIGATING
+  RESOLVED
+  FALSE_POSITIVE
+}
+
+enum IntegritySignalEventType {
+  RAISED
+  RECURRED
+  STATUS_CHANGED
+  NOTE_ADDED
+}
+
+/// An observation about an account's trading activity. Never a verdict.
+///
+/// One row per (account, code): a pattern that keeps recurring is the same
+/// signal seen again, not a queue of identical ones. `occurrences`,
+/// `firstSeenAt` and `lastSeenAt` say how persistent it is — which is exactly
+/// what a reviewer needs and what a thousand duplicate rows would hide.
+model IntegritySignal {
+  id        String @id @default(uuid()) @db.Uuid
+  accountId String @map("account_id") @db.Uuid
+
+  code     String
+  severity String
+  status   IntegritySignalStatus @default(OPEN)
+
+  /// The most recent observation. Every one of them, including this, is kept in
+  /// `events` — this field is the convenience, not the record.
+  message String
+
+  occurrences Int      @default(1)
+  firstSeenAt DateTime @default(now()) @map("first_seen_at") @db.Timestamptz(6)
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+
+  reviewedByUserId String?   @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt       DateTime? @map("reviewed_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  account Account                @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  events  IntegritySignalEvent[]
+
+  @@unique([accountId, code])
+  @@index([status, severity])
+  @@index([lastSeenAt(sort: Desc)])
+  @@map("integrity_signals")
+}
+
+/// Append-only history of one signal: every observation and every review step.
+///
+/// Nothing here is ever updated. Evidence that can be overwritten is evidence
+/// that cannot be relied on, and "what did this look like when it was raised"
+/// has to stay answerable after somebody has reviewed and closed it.
+model IntegritySignalEvent {
+  id       String                   @id @default(uuid()) @db.Uuid
+  signalId String                   @map("signal_id") @db.Uuid
+  type     IntegritySignalEventType
+
+  fromStatus IntegritySignalStatus? @map("from_status")
+  toStatus   IntegritySignalStatus? @map("to_status")
+
+  severity String?
+  message  String?
+  /// What the observation was made from, so a reviewer can check it.
+  evidence Json?
+
+  actorId   String?  @map("actor_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  signal IntegritySignal @relation(fields: [signalId], references: [id], onDelete: Restrict)
+
+  @@index([signalId, createdAt])
+  @@map("integrity_signal_events")
 }

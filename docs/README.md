@@ -34,6 +34,7 @@ Phase 0 deliverables — the design the implementation is held to.
 
 - [worker.md](./worker.md) — scheduled jobs: swap accrual, reconciliation, sweeping
 - [reconciliation.md](./reconciliation.md) — what is compared, what is never repaired
+- [anti-fraud.md](./anti-fraud.md) — integrity signals: observations, never verdicts
 - [database.md](./database.md) — schema conventions, the ledger, transactions, indexes
 - [security.md](./security.md) — boot refusal, credentials, logging, audit
 - [permissions.md](./permissions.md) — the capability catalogue, and why ADMIN cannot trade

@@ -24,6 +24,7 @@
     "@prisma/client": "catalog:",
     "@tp/api-client": "workspace:*",
     "@tp/financial-core": "workspace:*",
+    "@tp/integrity-core": "workspace:*",
     "@tp/market-core": "workspace:*",
     "@tp/risk-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
