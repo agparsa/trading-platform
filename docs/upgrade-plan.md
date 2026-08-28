@@ -177,7 +177,7 @@ the integrity engine consumes events the earlier steps emit.
 | 5    | Realtime account and P&L UI completion           | —          | done — [realtime-pnl.md](./realtime-pnl.md)           |
 | 6    | Chart SL/TP interaction                          | 5          | done — [chart-trading.md](./chart-trading.md)         |
 | 7    | One-click and keyboard trading                   | 6          | done — [one-click-trading.md](./one-click-trading.md) |
-| 8    | Reconciliation engine                            | —          |                                                       |
+| 8    | Reconciliation engine                            | —          | done — [reconciliation.md](./reconciliation.md)       |
 | 9    | Integrity engine                                 | 3          |                                                       |
 | 10   | Operations dashboard                             | 3, 8, 9    |                                                       |
 | 11   | Security hardening                               | 3, 4       |                                                       |

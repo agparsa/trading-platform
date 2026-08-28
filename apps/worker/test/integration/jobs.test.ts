@@ -52,6 +52,16 @@ suite('Worker jobs (integration)', () => {
   });
 
   /** Opens a position directly: these jobs do not care how it was created. */
+  /**
+   * A position, with the order and execution that opened it.
+   *
+   * The order and the execution used to be omitted — the position row alone was
+   * enough for a swap test, and creating the rest was noise. Reconciliation
+   * disagreed the first time it ran against this fixture: a position no
+   * execution ever opened is not a position any code path in this system can
+   * produce, and a test built on one is testing against a shape that cannot
+   * exist. It costs eight lines to be a real position instead.
+   */
   const openPosition = async (side: 'BUY' | 'SELL', volume: string, accountBalance = '100000') => {
     const { userId, accountId } = await createAccount(prisma, { balance: accountBalance });
     const symbol = await prisma.symbol.findUniqueOrThrow({ where: { code: 'XAUUSD' } });
@@ -65,6 +75,31 @@ suite('Worker jobs (integration)', () => {
         initialVolume: volume,
         entryPrice: '4583.72',
         margin: '4583.72',
+      },
+    });
+    const order = await prisma.order.create({
+      data: {
+        accountId,
+        symbolId: symbol.id,
+        positionId: position.id,
+        side,
+        type: 'MARKET',
+        status: 'FILLED',
+        timeInForce: 'IOC',
+        volume,
+        filledVolume: volume,
+      },
+    });
+    await prisma.execution.create({
+      data: {
+        orderId: order.id,
+        accountId,
+        side,
+        volume,
+        price: '4583.72',
+        quoteBid: '4583.58',
+        quoteAsk: '4583.72',
+        quoteAt: new Date(),
       },
     });
     return { userId, accountId, positionId: position.id };
@@ -243,7 +278,7 @@ suite('Worker jobs (integration)', () => {
 
       const reconciliation = new ReconciliationService(prismaService);
       const summary = await reconciliation.check();
-      expect(summary.drifted.filter((d) => d.accountId === accountId)).toHaveLength(0);
+      expect(summary.reports.filter((report) => report.accountId === accountId)).toHaveLength(0);
     });
   });
 
@@ -254,7 +289,8 @@ suite('Worker jobs (integration)', () => {
       await createAccount(prisma, { balance: '100000' });
       const summary = await service().check();
       expect(summary.checked).toBe(1);
-      expect(summary.drifted).toHaveLength(0);
+      expect(summary.findings).toBe(0);
+      expect(summary.reports).toHaveLength(0);
       expect(await prisma.riskEvent.count()).toBe(0);
     });
 
@@ -268,13 +304,14 @@ suite('Worker jobs (integration)', () => {
       await prisma.account.update({ where: { id: accountId }, data: { balance: '100500' } });
 
       const summary = await service().check();
-      expect(summary.drifted).toHaveLength(1);
-      expect(summary.drifted[0]?.stored).toBe('100500.00');
-      expect(summary.drifted[0]?.replayed).toBe('100000.00');
-      expect(summary.drifted[0]?.difference).toBe('500.00');
+      expect(summary.reports).toHaveLength(1);
+      const drift = summary.reports[0]?.findings.find((f) => f.code === 'LEDGER_DRIFT');
+      expect(drift?.actual).toBe('100500');
+      expect(drift?.expected).toBe('100000');
+      expect(drift?.difference).toBe('500');
 
       const event = await prisma.riskEvent.findFirstOrThrow({
-        where: { accountId, rule: 'ledger-reconciliation' },
+        where: { accountId, rule: 'reconciliation' },
       });
       expect(event.severity).toBe('CRITICAL');
       expect(event.code).toBe('LEDGER_DRIFT');
@@ -289,7 +326,110 @@ suite('Worker jobs (integration)', () => {
       await prisma.account.update({ where: { id: accountId }, data: { balance: '99000' } });
 
       const summary = await service().check();
-      expect(summary.drifted[0]?.difference).toBe('-1000.00');
+      const drift = summary.reports[0]?.findings.find((f) => f.code === 'LEDGER_DRIFT');
+      expect(drift?.difference).toBe('-1000');
+    });
+
+    /**
+     * The checks that need a real database, because the thing being verified is
+     * that the *loader* asks the right questions — a pure test can only prove
+     * the arithmetic, and the arithmetic was never the part likely to be wrong.
+     */
+    it('detects a filled order whose execution never happened', async () => {
+      const { accountId, positionId } = await openPosition('BUY', '1.00');
+      await prisma.execution.deleteMany({ where: { accountId } });
+
+      const summary = await service().check();
+      const codes = summary.reports[0]?.findings.map((f) => f.code) ?? [];
+      expect(codes).toContain('FILLED_ORDER_WITHOUT_EXECUTION');
+      expect(codes).toContain('POSITION_WITHOUT_OPENING_EXECUTION');
+      expect(positionId).toBeDefined();
+    });
+
+    it('detects a position holding volume its executions never opened', async () => {
+      const { positionId } = await openPosition('BUY', '1.00');
+      await prisma.position.update({ where: { id: positionId }, data: { volume: '2.00' } });
+
+      const summary = await service().check();
+      const found = summary.reports[0]?.findings.find((f) => f.code === 'POSITION_VOLUME_MISMATCH');
+      expect(found?.expected).toBe('1');
+      expect(found?.actual).toBe('2');
+    });
+
+    /**
+     * The closing side of the volume check.
+     *
+     * Without a position that has actually been closed into, netting is
+     * indistinguishable from summing — a loader that added every execution
+     * regardless of side passed the whole suite, because nothing in it had ever
+     * closed anything. This is the case that makes the distinction load-bearing.
+     */
+    it('nets a closing execution against the opening one', async () => {
+      const { accountId, positionId } = await openPosition('BUY', '1.00');
+      const symbol = await prisma.symbol.findUniqueOrThrow({ where: { code: 'XAUUSD' } });
+
+      // Half the position closed: an order on the opposite side, its execution,
+      // and the position reduced to match.
+      const closingOrder = await prisma.order.create({
+        data: {
+          accountId,
+          symbolId: symbol.id,
+          positionId,
+          side: 'SELL',
+          type: 'MARKET',
+          status: 'FILLED',
+          timeInForce: 'IOC',
+          volume: '0.40',
+          filledVolume: '0.40',
+        },
+      });
+      await prisma.execution.create({
+        data: {
+          orderId: closingOrder.id,
+          accountId,
+          side: 'SELL',
+          volume: '0.40',
+          price: '4590.00',
+          quoteBid: '4590.00',
+          quoteAsk: '4590.14',
+          quoteAt: new Date(),
+        },
+      });
+      await prisma.position.update({ where: { id: positionId }, data: { volume: '0.60' } });
+
+      const clean = await service().check();
+      expect(clean.reports.filter((r) => r.accountId === accountId)).toHaveLength(0);
+
+      // And the same books with the position left un-reduced — a close that
+      // wrote its execution but never took the volume off — must be caught.
+      await prisma.position.update({ where: { id: positionId }, data: { volume: '1.00' } });
+      const dirty = await service().check();
+      const found = dirty.reports
+        .find((r) => r.accountId === accountId)
+        ?.findings.find((f) => f.code === 'POSITION_VOLUME_MISMATCH');
+      expect(found?.expected).toBe('0.6');
+      expect(found?.actual).toBe('1');
+    });
+
+    it('records every finding, and corrects none of them', async () => {
+      const { accountId, positionId } = await openPosition('BUY', '1.00');
+      await prisma.account.update({ where: { id: accountId }, data: { balance: '99999' } });
+      await prisma.position.update({ where: { id: positionId }, data: { volume: '5.00' } });
+
+      await service().check();
+
+      const events = await prisma.riskEvent.findMany({
+        where: { accountId, rule: 'reconciliation' },
+      });
+      expect(events.length).toBeGreaterThanOrEqual(2);
+      expect(events.every((event) => event.severity === 'CRITICAL')).toBe(true);
+
+      // Everything is left exactly as it was found. DETECTED → RECORDED →
+      // ALERTED; the correction is a person's deliberate, audited act.
+      const account = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
+      const position = await prisma.position.findUniqueOrThrow({ where: { id: positionId } });
+      expect(account.balance.toString()).toBe('99999');
+      expect(position.volume.toString()).toBe('5');
     });
 
     it('checks every account, not just the first that drifts', async () => {
@@ -300,7 +440,7 @@ suite('Worker jobs (integration)', () => {
 
       const summary = await service().check();
       expect(summary.checked).toBe(2);
-      expect(summary.drifted).toHaveLength(2);
+      expect(summary.reports).toHaveLength(2);
     });
   });
 

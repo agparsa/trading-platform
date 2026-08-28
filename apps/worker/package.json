@@ -16,6 +16,7 @@
     "@prisma/client": "catalog:",
     "@tp/financial-core": "workspace:*",
     "@tp/market-core": "workspace:*",
+    "@tp/reconciliation-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
     "@tp/trading-core": "workspace:*",
     "bullmq": "catalog:",

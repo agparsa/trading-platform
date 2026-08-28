@@ -115,6 +115,10 @@ deliberately broken and the named test confirmed to fail before being restored:
 | Close-all always confirms        | letting it follow the preference         | 1 of 22 failed                   |
 | Stored preferences are checked   | spreading them over the defaults         | 5 of 22 failed                   |
 | Confirmation defaults on         | requiring an explicit `true`             | 2 of 22 failed                   |
+| Reconciliation records findings  | computing them and persisting none       | 2 of 38 failed                   |
+| Open-position costs added back   | comparing without them                   | 4 of 38 failed                   |
+| Resting orders are not faults    | flagging any order with no execution     | 3 of 38 failed                   |
+| Execution side nets volume       | summing every execution as an opening    | 1 of 38 failed _(see below)_     |
 | Realized P&L carried per account | carrying it across a change of account   | 1 store test failed              |
 
 Three of those are worth remembering.
@@ -132,6 +136,16 @@ delegation in the same table, and the assertion starts meaning what it says. The
 defect it would have hidden is every socket receiving every delegated account's
 private frames. A mutation that survives is the useful kind — it names a test
 that was agreeing with the code rather than checking it.
+
+Reconciliation's netting **survived** too, and its story is the plainest of the
+three: every fixture in the worker suite opened a position and none had ever
+closed one, so summing every execution and netting them by side gave the same
+answer. A position closed halfway now exists in the suite.
+
+Its very first run against those fixtures also reported two critical findings on
+an account the previous engine called clean — correctly. The swap tests created
+positions directly in the database with no order and no execution behind them, a
+shape no code path can produce. The fixture was fixed, not the check.
 
 Tick snapping **survived** its first mutation, for the same reason the socket's
 link filter did: the test could not tell the two behaviours apart. Gold trades in
