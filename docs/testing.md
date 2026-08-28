@@ -110,6 +110,11 @@ deliberately broken and the named test confirmed to fail before being restored:
 | Entry line is not draggable      | marking it draggable                     | 1 of 18 failed                   |
 | Levels belong to one instrument  | dropping the symbol filter               | 1 of 18 failed                   |
 | Chart drop snaps to the tick     | `toFixed` instead of `normalizePrice`    | 1 of 18 failed _(see below)_     |
+| Shortcuts stay out of fields     | dropping the text-entry check            | 1 of 22 shortcut tests failed    |
+| Modifiers cancel a shortcut      | ignoring ctrl/meta/alt                   | 1 of 22 failed                   |
+| Close-all always confirms        | letting it follow the preference         | 1 of 22 failed                   |
+| Stored preferences are checked   | spreading them over the defaults         | 5 of 22 failed                   |
+| Confirmation defaults on         | requiring an explicit `true`             | 2 of 22 failed                   |
 | Realized P&L carried per account | carrying it across a change of account   | 1 store test failed              |
 
 Three of those are worth remembering.

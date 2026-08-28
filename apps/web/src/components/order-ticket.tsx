@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@tp/ui';
 import { DomainError } from '@tp/shared-types';
 import { price as formatPrice } from '@/lib/format';
@@ -13,6 +13,9 @@ import {
   type SymbolRow,
 } from '@/lib/queries';
 import { useRealtime } from '@/lib/realtime-store';
+import { ShortcutAction } from '@/lib/shortcuts';
+import { needsConfirmation } from '@/lib/shortcuts';
+import type { TradingPreferences } from '@/lib/trading-preferences';
 import { Button, EmptyState, Field, inputClass } from './primitives';
 
 /**
@@ -34,10 +37,17 @@ export function OrderTicket({
   symbol,
   account,
   accountId,
+  preferences,
+  shortcut,
+  onShortcutHandled,
 }: {
   symbol: SymbolRow | undefined;
   account: AccountSummary | undefined;
   accountId: string | null;
+  preferences: TradingPreferences;
+  /** The last keyboard action, if any. Carries a timestamp so a repeat re-fires. */
+  shortcut: { action: ShortcutAction; at: number } | null;
+  onShortcutHandled: () => void;
 }) {
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [orderType, setOrderType] = useState<OrderType>('MARKET');
@@ -47,12 +57,31 @@ export function OrderTicket({
   const [stopLoss, setStopLoss] = useState('');
   const [takeProfit, setTakeProfit] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
+  /** A one-click order awaiting the confirmation the trader asked to keep. */
+  const [pendingConfirm, setPendingConfirm] = useState<'BUY' | 'SELL' | null>(null);
 
   const quote = useRealtime((state) =>
     symbol === undefined ? undefined : state.quotes[symbol.code],
   );
   const open = useOpenPosition(accountId);
   const place = usePlacePending(accountId);
+
+  /**
+   * Adopt the trader's defaults when they change.
+   *
+   * Deliberately not on every render: this must not fight a trader who has
+   * typed a different volume for this one order. It runs when the preference
+   * itself changes — including the moment it is first read out of storage.
+   */
+  useEffect(() => {
+    setVolume(preferences.defaultVolume);
+  }, [preferences.defaultVolume]);
+  useEffect(() => {
+    setStopLoss(preferences.defaultStopLoss);
+  }, [preferences.defaultStopLoss]);
+  useEffect(() => {
+    setTakeProfit(preferences.defaultTakeProfit);
+  }, [preferences.defaultTakeProfit]);
 
   const executable = quote === undefined ? null : side === 'BUY' ? quote.ask : quote.bid;
   const resting = orderType === 'MARKET' ? null : restingPrice.trim();
@@ -79,52 +108,124 @@ export function OrderTicket({
     [symbol, account, volume, executable, validation.volumeOk],
   );
 
+  const busy = open.isPending || place.isPending;
+
+  /**
+   * Why this ticket cannot be sent, or `null`.
+   *
+   * Computed here rather than inside the button's `disabled` prop because the
+   * keyboard path needs the same answer. A disabled button stops a click; it
+   * stops nothing at all about a keystroke, and a shortcut that skipped these
+   * checks would be a second, laxer way to place an order — sending the server
+   * requests the ticket already knows are wrong, and telling the trader only
+   * after a round trip.
+   */
+  const blockedReason = useMemo(() => {
+    if (accountId === null) return 'No account selected.';
+    if (symbol === undefined) return 'Select an instrument.';
+    if (!symbol.enabled) return `${symbol.code} is not tradeable right now.`;
+    if (validation.error !== null) return validation.error;
+    if (priceError !== null) return priceError;
+    if (executable === null) return 'No price yet for this instrument.';
+    return null;
+  }, [accountId, symbol, validation.error, priceError, executable]);
+
+  /**
+   * Sends one order. The only path that does.
+   *
+   * Hoisted above the early return so a keyboard shortcut can reach it — and
+   * kept as the single entry point for that reason. A shortcut that placed
+   * orders through its own code would be a second order path with a second set
+   * of rules to keep in step, which is precisely how the two drift apart.
+   */
+  const send = useCallback(
+    async (requestedSide: 'BUY' | 'SELL') => {
+      if (accountId === null || symbol === undefined) return;
+      if (blockedReason !== null) {
+        setSubmitError(blockedReason);
+        return;
+      }
+      setSubmitError(null);
+      const levels = {
+        stopLoss: stopLoss.trim() === '' ? null : stopLoss.trim(),
+        takeProfit: takeProfit.trim() === '' ? null : takeProfit.trim(),
+      };
+      try {
+        if (orderType === 'MARKET') {
+          await open.mutateAsync({
+            accountId,
+            symbol: symbol.code,
+            side: requestedSide,
+            volume,
+            ...levels,
+          });
+        } else {
+          await place.mutateAsync({
+            accountId,
+            symbol: symbol.code,
+            side: requestedSide,
+            type: orderType,
+            volume,
+            price: restingPrice.trim(),
+            timeInForce,
+            ...levels,
+          });
+          setRestingPrice('');
+        }
+        setStopLoss('');
+        setTakeProfit('');
+      } catch (error) {
+        setSubmitError(
+          error instanceof DomainError
+            ? error.message
+            : 'The order could not be submitted. It was not placed.',
+        );
+      }
+    },
+    [
+      accountId,
+      symbol,
+      stopLoss,
+      takeProfit,
+      orderType,
+      open,
+      place,
+      volume,
+      restingPrice,
+      timeInForce,
+    ],
+  );
+
+  /**
+   * A keyboard buy or sell.
+   *
+   * `handledAt` is why the effect carries a timestamp rather than the action
+   * alone: pressing `b` twice is two orders, and a state that only held the
+   * action would look unchanged the second time and send nothing.
+   */
+  const handledAt = useRef<number>(0);
+  useEffect(() => {
+    if (shortcut === null || shortcut.at === handledAt.current) return;
+    if (shortcut.action !== ShortcutAction.BUY && shortcut.action !== ShortcutAction.SELL) return;
+    handledAt.current = shortcut.at;
+    onShortcutHandled();
+
+    const requested = shortcut.action === ShortcutAction.BUY ? 'BUY' : 'SELL';
+    setSide(requested);
+    if (needsConfirmation(shortcut.action, preferences.confirm)) {
+      setPendingConfirm(requested);
+      return;
+    }
+    void send(requested);
+  }, [shortcut, preferences.confirm, send, onShortcutHandled]);
+
   if (symbol === undefined) {
     return <EmptyState>Select an instrument to trade.</EmptyState>;
   }
 
-  const busy = open.isPending || place.isPending;
-  const canSubmit =
-    accountId !== null &&
-    validation.error === null &&
-    priceError === null &&
-    executable !== null &&
-    symbol.enabled &&
-    !busy;
+  const canSubmit = blockedReason === null && !busy;
 
-  const submit = async () => {
-    if (accountId === null) return;
-    setSubmitError(null);
-    const levels = {
-      stopLoss: stopLoss.trim() === '' ? null : stopLoss.trim(),
-      takeProfit: takeProfit.trim() === '' ? null : takeProfit.trim(),
-    };
-    try {
-      if (orderType === 'MARKET') {
-        await open.mutateAsync({ accountId, symbol: symbol.code, side, volume, ...levels });
-      } else {
-        await place.mutateAsync({
-          accountId,
-          symbol: symbol.code,
-          side,
-          type: orderType,
-          volume,
-          price: restingPrice.trim(),
-          timeInForce,
-          ...levels,
-        });
-        setRestingPrice('');
-      }
-      setStopLoss('');
-      setTakeProfit('');
-    } catch (error) {
-      setSubmitError(
-        error instanceof DomainError
-          ? error.message
-          : 'The order could not be submitted. It was not placed.',
-      );
-    }
-  };
+  const submit = () => void send(side);
 
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -330,20 +431,66 @@ export function OrderTicket({
         <p className="text-[11px] text-terminal-short">{submitError}</p>
       )}
 
-      <Button
-        variant={side === 'BUY' ? 'long' : 'short'}
-        disabled={!canSubmit}
-        onClick={() => void submit()}
-        className="py-2 text-sm"
-      >
-        {busy
-          ? 'Submitting…'
-          : `${side} ${symbol.code}${orderType === 'MARKET' ? '' : ` ${orderType}`}`}
-      </Button>
+      {pendingConfirm === null ? (
+        <Button
+          variant={side === 'BUY' ? 'long' : 'short'}
+          disabled={!canSubmit}
+          onClick={() => void submit()}
+          className="py-2 text-sm"
+        >
+          {busy
+            ? 'Submitting…'
+            : `${side} ${symbol.code}${orderType === 'MARKET' ? '' : ` ${orderType}`}`}
+        </Button>
+      ) : (
+        /*
+         * The confirmation a keyboard order asked for.
+         *
+         * It states the whole order — side, volume, instrument — rather than
+         * "Are you sure?". A trader confirming a keystroke they may have half
+         * pressed needs to see what they are agreeing to, not be asked whether
+         * they meant something the dialog will not name.
+         */
+        <div className="rounded border border-terminal-warning/60 bg-terminal-warning/10 p-2">
+          <p className="mb-2 text-[11px] text-terminal-text">
+            Send{' '}
+            <span className="numeric font-medium">
+              {pendingConfirm} {volume} {symbol.code}
+            </span>
+            ?
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant={pendingConfirm === 'BUY' ? 'long' : 'short'}
+              disabled={!canSubmit}
+              onClick={() => {
+                const requested = pendingConfirm;
+                setPendingConfirm(null);
+                void send(requested);
+              }}
+              className="flex-1 py-1.5 text-xs"
+            >
+              Send
+            </Button>
+            <Button
+              variant="neutral"
+              onClick={() => setPendingConfirm(null)}
+              className="flex-1 py-1.5 text-xs"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
 
       <p className="text-[10px] leading-relaxed text-terminal-muted">
         Costs are estimates from the last quote received here. The server prices the fill against
         the quote current at execution.
+        {preferences.oneClick && !preferences.confirm ? (
+          <span className="mt-1 block text-terminal-warning">
+            One-click is armed: keyboard orders send immediately, with no confirmation.
+          </span>
+        ) : null}
       </p>
     </div>
   );

@@ -14,6 +14,9 @@ import {
   usePositions,
   useSymbols,
 } from '@/lib/queries';
+import { ShortcutAction } from '@/lib/shortcuts';
+import { useTradingPreferences } from '@/lib/use-trading-preferences';
+import { useTradingShortcuts } from '@/lib/use-trading-shortcuts';
 import { AccountHeader } from './account-header';
 import { ChartPanel } from './chart-panel';
 import { ConnectionBadge } from './connection-badge';
@@ -21,6 +24,7 @@ import { HistoryPanel, type HistoryTab } from './history-panel';
 import { PendingPanel } from './pending-panel';
 import { OrderTicket } from './order-ticket';
 import { PositionsPanel } from './positions-panel';
+import { TradingSettings } from './trading-settings';
 import { Button, Panel, Tabs } from './primitives';
 import { Watchlist } from './watchlist';
 
@@ -56,6 +60,32 @@ export function Terminal() {
   const accountState = useAccountState(accountId);
 
   const gapDetected = useRealtime((state) => state.gapDetected);
+  const { preferences, update: updatePreferences } = useTradingPreferences();
+  /**
+   * A keystroke asks the ticket to act rather than acting itself.
+   *
+   * The ticket already owns volume, side, protective levels and the validation
+   * that decides whether an order is worth sending. Routing a shortcut around
+   * it would create a second way to place an order, with a second set of rules
+   * to keep in step — which is exactly how the two drift apart.
+   */
+  const [shortcut, setShortcut] = useState<{ action: ShortcutAction; at: number } | null>(null);
+  const onShortcut = useCallback((action: ShortcutAction) => {
+    /**
+     * A close shortcut brings the positions up first.
+     *
+     * The panel that handles it is only mounted on its own tab, so without this
+     * the key would do nothing at all while the trader happened to be looking at
+     * pending orders — and a close shortcut that silently does nothing depending
+     * on which tab is showing is worse than one that does not exist. Showing
+     * them what they are about to act on is the better answer anyway.
+     */
+    if (action === ShortcutAction.CLOSE || action === ShortcutAction.CLOSE_ALL) {
+      setBottomTab('open');
+    }
+    setShortcut({ action, at: Date.now() });
+  }, []);
+  useTradingShortcuts(preferences, onShortcut);
 
   const account = useMemo(
     () => (accounts.data ?? []).find((row) => row.id === accountId),
@@ -123,6 +153,7 @@ export function Terminal() {
               </option>
             ))}
           </select>
+          <TradingSettings preferences={preferences} onChange={updatePreferences} />
           <Link
             href="/status"
             className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
@@ -187,6 +218,9 @@ export function Terminal() {
                 accountId={accountId}
                 currency={currency}
                 snapshot={accountState.data}
+                preferences={preferences}
+                shortcut={shortcut}
+                onShortcutHandled={() => setShortcut(null)}
               />
             ) : (
               <HistoryPanel
@@ -200,7 +234,14 @@ export function Terminal() {
         </div>
 
         <Panel title="Order" className="min-h-0">
-          <OrderTicket symbol={activeSymbol} account={account} accountId={accountId} />
+          <OrderTicket
+            symbol={activeSymbol}
+            account={account}
+            accountId={accountId}
+            preferences={preferences}
+            shortcut={shortcut}
+            onShortcutHandled={() => setShortcut(null)}
+          />
         </Panel>
       </main>
     </div>

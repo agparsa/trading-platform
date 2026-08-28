@@ -28,6 +28,7 @@ Phase 0 deliverables — the design the implementation is held to.
 - [terminal.md](./terminal.md) — the browser client: state split, gaps, what it may compute
 - [charting.md](./charting.md) — TradingView Advanced Charts and its licensing constraint
 - [chart-trading.md](./chart-trading.md) — SL/TP lines, dragging, and the line that never moves
+- [one-click-trading.md](./one-click-trading.md) — arming, keyboard keys, and what never fires while typing
 
 **Operations**
 
