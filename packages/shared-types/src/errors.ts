@@ -36,6 +36,15 @@ export const TradingErrorCode = {
   ORDER_NOT_FOUND: 'ORDER_NOT_FOUND',
   ORDER_NOT_MODIFIABLE: 'ORDER_NOT_MODIFIABLE',
   ACCOUNT_NOT_TRADEABLE: 'ACCOUNT_NOT_TRADEABLE',
+  /**
+   * The platform-wide halt is on.
+   *
+   * Distinct from `ACCOUNT_NOT_TRADEABLE`, which is about one account: a trader
+   * told "your account cannot trade" when the whole platform is halted will
+   * reasonably think something is wrong with *them*, and will call support to
+   * find out. The two situations need two answers.
+   */
+  TRADING_HALTED: 'TRADING_HALTED',
   SYMBOL_NOT_TRADEABLE: 'SYMBOL_NOT_TRADEABLE',
 
   // --- concurrency / delivery ---

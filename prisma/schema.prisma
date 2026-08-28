@@ -802,3 +802,17 @@ model IntegritySignalEvent {
   @@index([signalId, createdAt])
   @@map("integrity_signal_events")
 }
+
+/// Platform-wide operational settings that a person changes at runtime.
+///
+/// One row per setting, with the actor who last changed it. Deliberately not an
+/// environment variable: a kill switch that needs a deployment to flip is a kill
+/// switch that will not be flipped in the minute it is needed.
+model SystemSetting {
+  key             String   @id
+  value           Json
+  updatedByUserId String?  @map("updated_by_user_id") @db.Uuid
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("system_settings")
+}

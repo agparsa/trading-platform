@@ -50,6 +50,9 @@ const STATUS_BY_CODE: Readonly<Partial<Record<TradingErrorCode, HttpStatus>>> = 
   [TradingErrorCode.PARTIAL_CLOSE_EXCEEDS_VOLUME]: HttpStatus.UNPROCESSABLE_ENTITY,
   [TradingErrorCode.MARKET_CLOSED]: HttpStatus.UNPROCESSABLE_ENTITY,
   [TradingErrorCode.ACCOUNT_NOT_TRADEABLE]: HttpStatus.UNPROCESSABLE_ENTITY,
+  // 503, not 422: the request was fine and the service is deliberately not
+  // taking it. A client that retries later is doing the right thing.
+  [TradingErrorCode.TRADING_HALTED]: HttpStatus.SERVICE_UNAVAILABLE,
   [TradingErrorCode.SYMBOL_NOT_TRADEABLE]: HttpStatus.UNPROCESSABLE_ENTITY,
   [TradingErrorCode.ORDER_NOT_MODIFIABLE]: HttpStatus.UNPROCESSABLE_ENTITY,
 

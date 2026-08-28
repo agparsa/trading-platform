@@ -12,6 +12,7 @@ import { TriggerEngineService } from '../../src/trading/trigger-engine.service';
 import { SnapshotService } from '../../src/trading/snapshot.service';
 import { TickBus } from '../../src/market/tick-bus';
 import { AccountAccessService } from '../../src/accounts/account-access.service';
+import { KillSwitchService } from '../../src/operations/kill-switch.service';
 import { LedgerService } from '../../src/accounts/ledger.service';
 import { EventsService } from '../../src/realtime/events.service';
 import { AuditService } from '../../src/common/audit/audit.service';
@@ -46,6 +47,7 @@ class FakeRedis {
 
 export interface TradingStack {
   access: AccountAccessService;
+  killSwitch: KillSwitchService;
   symbols: SymbolsService;
   quotes: QuoteService;
   orders: OrdersService;
@@ -100,11 +102,13 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
   const access = new AccountAccessService(prismaService);
   const metrics = new MetricsService();
   const audit = new AuditService(prismaService);
+  const killSwitch = new KillSwitchService(prismaService, audit);
   const events = new EventsService(redis);
 
   const orders = new OrdersService(
     prismaService,
     access,
+    killSwitch,
     symbols,
     quotes,
     conversion,
@@ -119,6 +123,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
   const positions = new PositionsService(
     prismaService,
     access,
+    killSwitch,
     symbols,
     quotes,
     conversion,
@@ -148,6 +153,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
 
   return {
     access,
+    killSwitch,
     symbols,
     quotes,
     orders,

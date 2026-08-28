@@ -24,6 +24,7 @@ import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from '../market/quote.service';
 import { ConversionService } from '../market/conversion.service';
 import { AccountAccessService } from '../accounts/account-access.service';
+import { KillSwitchService } from '../operations/kill-switch.service';
 import { LedgerService } from '../accounts/ledger.service';
 import { AuditService } from '../common/audit/audit.service';
 import { EventsService } from '../realtime/events.service';
@@ -62,6 +63,7 @@ export class PositionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: AccountAccessService,
+    private readonly killSwitch: KillSwitchService,
     private readonly symbols: SymbolsService,
     private readonly quotes: QuoteService,
     private readonly conversion: ConversionService,
@@ -453,6 +455,16 @@ export class PositionsService {
    * entry price: a stop that is already through the market would fire on the
    * next tick, closing a position the trader was trying to protect.
    */
+  /**
+   * Protective levels stay modifiable during a halt, deliberately.
+   *
+   * The specification leaves this to policy, and the policy here follows from
+   * what a halt is for. A trader living through a market event most wants to
+   * *tighten* a stop, and refusing that would trap them in risk they were trying
+   * to reduce. The same door lets somebody widen one — which is a decision about
+   * their own position that they could equally make by closing and reopening
+   * once trading resumes.
+   */
   async modify(userId: string, request: ModifyPositionRequest): Promise<Record<string, unknown>> {
     const position = await this.loadOwned(userId, request.positionId, Permission.POSITIONS_MODIFY);
     if (position.status !== 'OPEN') {
@@ -548,6 +560,16 @@ export class PositionsService {
     userId: string,
     positionId: string,
   ): Promise<{ closed: CloseResult; opened: OrderResult }> {
+    /**
+     * Refused up front during a halt, not halfway through.
+     *
+     * Reverse is a close and then an open. Letting it start would close the
+     * position, hit the halt on the open, and leave the trader flat when they
+     * asked to be the other way round — a worse outcome than being told no. They
+     * can still close, which is the half a halt permits.
+     */
+    this.killSwitch.assertMayOpenRisk();
+
     // Reverse is a close and an open, so it needs the capability for both.
     const position = await this.loadOwned(userId, positionId, Permission.POSITIONS_CLOSE);
     const volume = position.volume;

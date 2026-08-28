@@ -26,6 +26,7 @@ import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from '../market/quote.service';
 import { ConversionService } from '../market/conversion.service';
 import { AccountAccessService } from '../accounts/account-access.service';
+import { KillSwitchService } from '../operations/kill-switch.service';
 import { LedgerService } from '../accounts/ledger.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { AuditService } from '../common/audit/audit.service';
@@ -61,6 +62,7 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: AccountAccessService,
+    private readonly killSwitch: KillSwitchService,
     private readonly symbols: SymbolsService,
     private readonly quotes: QuoteService,
     private readonly conversion: ConversionService,
@@ -74,6 +76,9 @@ export class OrdersService {
   ) {}
 
   async openPosition(userId: string, request: OpenPositionRequest): Promise<OrderResult> {
+    // Opening a position takes on risk, so the halt applies. Closing one does
+    // not, and deliberately does not consult this.
+    this.killSwitch.assertMayOpenRisk();
     const now = Date.now();
     const symbolCode = request.symbol.toUpperCase();
     const instrument = this.symbols.require(symbolCode);
@@ -387,6 +392,7 @@ export class OrdersService {
    * market order at a price the trader never chose.
    */
   async placePending(userId: string, request: PlacePendingRequest): Promise<PendingOrderResult> {
+    this.killSwitch.assertMayOpenRisk();
     const now = Date.now();
     const symbolCode = request.symbol.toUpperCase();
     const instrument = this.symbols.require(symbolCode);
@@ -882,6 +888,12 @@ export class OrdersService {
    * a stop on the wrong side of the order it protects.
    */
   async modifyPending(userId: string, request: ModifyPendingRequest): Promise<PendingOrderResult> {
+    /**
+     * Modifying a resting order is refused during a halt; cancelling one is not.
+     * A trader who wants their order gone must always be able to take it away,
+     * and moving it is a new decision about where risk sits.
+     */
+    this.killSwitch.assertMayOpenRisk();
     const order = await this.loadOwnedOrder(userId, request.orderId, Permission.ORDERS_MODIFY);
     if (order.status !== OrderStatus.PENDING) {
       throw new DomainError(
