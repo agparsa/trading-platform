@@ -1,18 +1,29 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CandlestickSeries,
   createChart,
+  LineStyle,
   type CandlestickData,
+  type AutoscaleInfo,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { cn } from '@tp/ui';
-import { price as formatPrice } from '@/lib/format';
+import { price as formatPrice, signedMoney } from '@/lib/format';
 import { RESOLUTIONS, RESOLUTION_LABEL, mergeBars, type ChartBar } from '@/lib/datafeed';
-import { useCandles, type SymbolRow } from '@/lib/queries';
+import {
+  LevelKind,
+  levelsFor,
+  modificationFor,
+  outcomeAt,
+  priceFromDrag,
+  type ChartLevel,
+} from '@/lib/chart-levels';
+import { useCandles, useModifyPosition, type PositionRow, type SymbolRow } from '@/lib/queries';
 import { barKey, useRealtime } from '@/lib/realtime-store';
 import { EmptyState } from './primitives';
 
@@ -34,10 +45,16 @@ export function ChartPanel({
   symbol,
   resolution,
   onResolutionChange,
+  positions,
+  accountId,
+  currency,
 }: {
   symbol: SymbolRow | undefined;
   resolution: string;
   onResolutionChange: (resolution: string) => void;
+  positions: readonly PositionRow[];
+  accountId: string | null;
+  currency: string;
 }) {
   const history = useCandles(symbol?.code ?? null, resolution);
   const liveBars = useRealtime((state) =>
@@ -89,7 +106,13 @@ export function ChartPanel({
           <EmptyState>Select an instrument.</EmptyState>
         ) : (
           <>
-            <Candles bars={bars} spec={symbol} />
+            <Candles
+              bars={bars}
+              spec={symbol}
+              positions={positions}
+              accountId={accountId}
+              currency={currency}
+            />
             {history.isLoading ? (
               <Overlay>Loading bars…</Overlay>
             ) : empty ? (
@@ -102,8 +125,8 @@ export function ChartPanel({
       </div>
 
       <p className="shrink-0 border-t border-terminal-border px-3 py-1 text-[10px] text-terminal-muted">
-        Server candles, built from the bid. Indicators, drawing tools and order-from-chart arrive
-        with the licensed charting library.
+        Server candles, built from the bid. Drag a stop or target to move it — the server decides.
+        Indicators and drawing tools arrive with the licensed charting library.
       </p>
     </div>
   );
@@ -128,7 +151,19 @@ function Overlay({ children }: { children: React.ReactNode }) {
  * the trader's pan and zoom on every tick, which on a live chart is the
  * difference between a tool and a slideshow.
  */
-function Candles({ bars, spec }: { bars: readonly ChartBar[]; spec: SymbolRow }) {
+function Candles({
+  bars,
+  spec,
+  positions,
+  accountId,
+  currency,
+}: {
+  bars: readonly ChartBar[];
+  spec: SymbolRow;
+  positions: readonly PositionRow[];
+  accountId: string | null;
+  currency: string;
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -219,7 +254,294 @@ function Candles({ bars, spec }: { bars: readonly ChartBar[]; spec: SymbolRow })
     }
   }, [bars, spec.code]);
 
-  return <div ref={containerRef} className="h-full w-full" />;
+  // ─── Levels ────────────────────────────────────────────────────────────────
+
+  const modify = useModifyPosition(accountId);
+  const quote = useRealtime((state) => state.quotes[spec.code]);
+  const levels = useMemo(() => levelsFor(positions, spec.code), [positions, spec.code]);
+  const byId = useMemo(
+    () => Object.fromEntries(positions.map((position) => [position.id, position])),
+    [positions],
+  );
+
+  /**
+   * The line being dragged, if any, and what it would mean.
+   *
+   * This is a *preview*. The drawn levels are the server's values and are never
+   * moved from here — which is why a rejected modification needs no revert:
+   * nothing authoritative was moved to begin with.
+   */
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const linesRef = useRef<Map<string, IPriceLine>>(new Map());
+  const dragRef = useRef<DragState | null>(null);
+  dragRef.current = drag;
+
+  /**
+   * Keep the drawn levels inside the visible price range.
+   *
+   * A stop drawn off the top or bottom of the chart is a stop the trader can
+   * neither see nor grab — and it is precisely the stop they most want to look
+   * at, because it is far from the market. The autoscale range is widened to
+   * include every level rather than only the bars, so a position's protection
+   * is always on screen.
+   *
+   * The bars' own range is still the floor: this only ever widens.
+   */
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (series === null) return;
+    const prices = levels.map((level) => Number(level.price)).filter(Number.isFinite);
+
+    series.applyOptions({
+      autoscaleInfoProvider: (original: () => AutoscaleInfo | null) => {
+        const base = original();
+        if (prices.length === 0) return base;
+        const candidates = [...prices];
+        if (base?.priceRange != null) {
+          candidates.push(base.priceRange.minValue, base.priceRange.maxValue);
+        }
+        return {
+          priceRange: { minValue: Math.min(...candidates), maxValue: Math.max(...candidates) },
+          ...(base?.margins === undefined ? {} : { margins: base.margins }),
+        };
+      },
+    });
+  }, [levels]);
+
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (series === null) return;
+
+    // Rebuilt wholesale on every change. A price line has no mutable price in
+    // this library, and a handful of lines is nothing to redraw — trying to
+    // diff them would be more code guarding a smaller cost.
+    for (const line of linesRef.current.values()) series.removePriceLine(line);
+    linesRef.current.clear();
+
+    for (const level of levels) {
+      const position = byId[level.positionId];
+      /**
+       * Always the outcome at *this line's own* price.
+       *
+       * Showing the dragged price's outcome here instead is tempting and wrong:
+       * the line would read "TP 4640.98  +$295.90" while 295.90 is what 4647.64
+       * would pay. A label whose two halves refer to different prices is how
+       * somebody misreads their own risk. The proposed number belongs on the
+       * preview, next to the proposed price.
+       */
+      const outcome =
+        position === undefined || level.kind === LevelKind.ENTRY
+          ? null
+          : outcomeAt(position, spec, level.price, currency);
+
+      linesRef.current.set(
+        levelKey(level),
+        series.createPriceLine({
+          price: Number(level.price),
+          color: LEVEL_COLOR[level.kind],
+          lineWidth: 1,
+          lineStyle: level.kind === LevelKind.ENTRY ? LineStyle.Solid : LineStyle.Dashed,
+          axisLabelVisible: true,
+          title:
+            outcome === null ? level.title : `${level.title}  ${signedMoney(outcome, currency)}`,
+        }),
+      );
+    }
+
+    // The preview, drawn beside the real one rather than instead of it, so the
+    // trader can see both where the stop is and where they are proposing to put
+    // it.
+    if (drag !== null) {
+      const position = byId[drag.level.positionId];
+      const proposed =
+        position === undefined ? null : outcomeAt(position, spec, drag.price, currency);
+      linesRef.current.set(
+        'preview',
+        series.createPriceLine({
+          price: Number(drag.price),
+          color: drag.error === null ? '#e0b341' : '#ef5350',
+          lineWidth: 2,
+          lineStyle: LineStyle.LargeDashed,
+          axisLabelVisible: true,
+          title:
+            drag.error !== null
+              ? drag.error
+              : proposed === null
+                ? `→ ${drag.price}`
+                : `→ ${drag.price}  ${signedMoney(proposed, currency)}`,
+        }),
+      );
+    }
+
+    return () => {
+      for (const line of linesRef.current.values()) series.removePriceLine(line);
+      linesRef.current.clear();
+    };
+  }, [levels, drag, byId, spec, currency]);
+
+  /**
+   * Which level, if any, is under the pointer.
+   *
+   * Within a few pixels rather than exactly on the line: a 1px hit target is
+   * unusable, and a stop that is hard to grab is a stop that gets left where it
+   * is.
+   */
+  const levelUnder = useCallback(
+    (offsetY: number): ChartLevel | null => {
+      const series = seriesRef.current;
+      if (series === null) return null;
+      let nearest: { level: ChartLevel; distance: number } | null = null;
+      for (const level of levels) {
+        if (!level.draggable) continue;
+        const y = series.priceToCoordinate(Number(level.price));
+        if (y === null) continue;
+        const distance = Math.abs(y - offsetY);
+        if (distance <= GRAB_RADIUS_PX && (nearest === null || distance < nearest.distance)) {
+          nearest = { level, distance };
+        }
+      }
+      return nearest?.level ?? null;
+    },
+    [levels],
+  );
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container === null) return;
+
+    /**
+     * Where the pointer is, measured against the chart container.
+     *
+     * Deliberately not `event.offsetY`, which is relative to whatever element
+     * the pointer happens to be over — and the library draws several canvases
+     * inside this container. The price scale is one of them, so `offsetY` would
+     * silently change origin as the cursor crossed into it and the level under
+     * the pointer would be computed from a different zero.
+     */
+    const yIn = (event: PointerEvent): number =>
+      event.clientY - container.getBoundingClientRect().top;
+
+    const priceAt = (y: number): number | null => {
+      const value = seriesRef.current?.coordinateToPrice(y);
+      return value === null || value === undefined ? null : Number(value);
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      const level = levelUnder(yIn(event));
+      if (level === null) return;
+      const position = byId[level.positionId];
+      if (position === undefined) return;
+
+      // Stops the chart panning under the drag; without this the price scale
+      // moves with the cursor and the level appears not to follow it.
+      event.preventDefault();
+      event.stopPropagation();
+      container.setPointerCapture(event.pointerId);
+      chartRef.current?.applyOptions({ handleScroll: false, handleScale: false });
+      setRefusal(null);
+      setDrag({ key: levelKey(level), level, price: level.price, error: null });
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      const current = dragRef.current;
+      if (current === null) {
+        container.style.cursor = levelUnder(yIn(event)) === null ? '' : 'ns-resize';
+        return;
+      }
+      const raw = priceAt(yIn(event));
+      if (raw === null) return;
+      const position = byId[current.level.positionId];
+      if (position === undefined) return;
+      const outcome = priceFromDrag(
+        spec,
+        position,
+        current.level.kind,
+        raw,
+        quote?.bid ?? position.currentPrice,
+      );
+      setDrag({ ...current, price: outcome.price, error: outcome.error });
+    };
+
+    const endDrag = (event: PointerEvent) => {
+      const current = dragRef.current;
+      chartRef.current?.applyOptions({ handleScroll: true, handleScale: true });
+      if (container.hasPointerCapture(event.pointerId)) {
+        container.releasePointerCapture(event.pointerId);
+      }
+      if (current === null) return;
+      setDrag(null);
+
+      if (current.error !== null) {
+        setRefusal(current.error);
+        return;
+      }
+      if (current.price === current.level.price) return;
+
+      /**
+       * The round trip. Nothing on screen has moved yet and nothing will until
+       * the server says so: on success the new value arrives through the
+       * position query and the `position.updated` frame, and on failure the
+       * line is already where it always was.
+       */
+      modify.mutate(
+        {
+          positionId: current.level.positionId,
+          ...modificationFor(current.level.kind, current.price),
+        },
+        {
+          onError: (error: unknown) =>
+            setRefusal(error instanceof Error ? error.message : 'The server refused that level.'),
+        },
+      );
+    };
+
+    container.addEventListener('pointerdown', onPointerDown);
+    container.addEventListener('pointermove', onPointerMove);
+    container.addEventListener('pointerup', endDrag);
+    container.addEventListener('pointercancel', endDrag);
+    return () => {
+      container.removeEventListener('pointerdown', onPointerDown);
+      container.removeEventListener('pointermove', onPointerMove);
+      container.removeEventListener('pointerup', endDrag);
+      container.removeEventListener('pointercancel', endDrag);
+    };
+  }, [levelUnder, byId, spec, quote?.bid, modify]);
+
+  return (
+    <div className="relative h-full w-full">
+      <div ref={containerRef} className="h-full w-full touch-none" />
+      {refusal === null ? null : (
+        <button
+          type="button"
+          onClick={() => setRefusal(null)}
+          className="absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded border border-terminal-short/50 bg-terminal-surface px-3 py-1 text-[11px] text-terminal-short"
+        >
+          {refusal} — dismiss
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface DragState {
+  key: string;
+  level: ChartLevel;
+  price: string;
+  error: string | null;
+}
+
+/** Within this many pixels counts as grabbing the line. A 1px target is unusable. */
+const GRAB_RADIUS_PX = 6;
+
+const LEVEL_COLOR: Record<LevelKind, string> = {
+  [LevelKind.ENTRY]: '#8b94a3',
+  [LevelKind.STOP_LOSS]: '#ef5350',
+  [LevelKind.TAKE_PROFIT]: '#26a69a',
+};
+
+function levelKey(level: ChartLevel): string {
+  return `${level.positionId}:${level.kind}`;
 }
 
 /**

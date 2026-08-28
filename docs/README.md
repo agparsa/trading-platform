@@ -27,6 +27,7 @@ Phase 0 deliverables — the design the implementation is held to.
 - [websocket.md](./websocket.md) — channels, frame shape, sequencing, reconnect
 - [terminal.md](./terminal.md) — the browser client: state split, gaps, what it may compute
 - [charting.md](./charting.md) — TradingView Advanced Charts and its licensing constraint
+- [chart-trading.md](./chart-trading.md) — SL/TP lines, dragging, and the line that never moves
 
 **Operations**
 

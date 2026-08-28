@@ -105,6 +105,11 @@ deliberately broken and the named test confirmed to fail before being restored:
 | Trade components rounded once    | deriving `net` from unrounded terms      | 2 of 12 figure tests failed      |
 | Final close absorbs the residue  | giving it its own proportion instead     | 1 of 12 failed                   |
 | Every trade reaches the ledger   | skipping the entry when it rounds to 0   | 1 of 12 failed                   |
+| Chart drop uses the engine rule  | skipping `validateProtectiveLevels`      | 3 of 18 chart-level tests failed |
+| One level per modification       | naming both, with `null` for the other   | 2 of 18 failed                   |
+| Entry line is not draggable      | marking it draggable                     | 1 of 18 failed                   |
+| Levels belong to one instrument  | dropping the symbol filter               | 1 of 18 failed                   |
+| Chart drop snaps to the tick     | `toFixed` instead of `normalizePrice`    | 1 of 18 failed _(see below)_     |
 | Realized P&L carried per account | carrying it across a change of account   | 1 store test failed              |
 
 Three of those are worth remembering.
@@ -122,6 +127,13 @@ delegation in the same table, and the assertion starts meaning what it says. The
 defect it would have hidden is every socket receiving every delegated account's
 private frames. A mutation that survives is the useful kind — it names a test
 that was agreeing with the code rather than checking it.
+
+Tick snapping **survived** its first mutation, for the same reason the socket's
+link filter did: the test could not tell the two behaviours apart. Gold trades in
+one-cent ticks and quotes two decimals, so `normalizePrice` and `toFixed(2)`
+agree on every input. The test now uses an instrument trading in five-cent ticks
+at two decimals, where they disagree — and the mutation fails. Both survivals
+came from a fixture that made the wrong answer look like the right one.
 
 The ledger's double-rounding was not found by a mutation at all. It was found by
 opening the terminal in a browser, noticing that "Realized today" read "—" when

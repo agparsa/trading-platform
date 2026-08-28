@@ -155,6 +155,9 @@ export function Terminal() {
               symbol={activeSymbol}
               resolution={resolution}
               onResolutionChange={setResolution}
+              positions={positions}
+              accountId={accountId}
+              currency={currency}
             />
           </Panel>
 
