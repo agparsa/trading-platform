@@ -183,6 +183,7 @@ convention.
 | `pnpm check:schema`                                                            | Fails if any floating-point column exists |
 | `pnpm smoke`                                                                   | Boots the built API and probes it         |
 | `pnpm pentest`                                                                 | Boots it again and attacks it             |
+| `pnpm soak`                                                                    | Boots it again and leaves it running      |
 | `pnpm keygen <id>`                                                             | Prints a secret-encryption key            |
 | `pnpm lint:fix` / `pnpm format`                                                | Fixers                                    |
 

@@ -12,6 +12,7 @@ pnpm check:schema      # no floating-point columns exist
 pnpm smoke             # boots the built API and drives a full trade round trip
 pnpm smoke:ws          # boots it again and drives a real Socket.IO client
 pnpm pentest           # boots it again and attacks it
+pnpm soak              # boots it again and leaves it running
 ```
 
 Integration tests run against a real PostgreSQL database named by
@@ -190,6 +191,13 @@ a stale binary is the worst failure mode there is.
   that succeeds fails the run. It was itself tested by breaking the API four
   times to see whether the probes noticed — two did not, and both gaps are now
   closed. See [penetration-checklist.md](./penetration-checklist.md).
+- `pnpm soak` — a steady, modest rate held for ten minutes (or
+  `SOAK_MINUTES=120`), sampling memory, event-loop lag, handles, database
+  backends and per-window latency, watching sequence continuity throughout, and
+  ending by summing every account's ledger against its balance. Memory is judged
+  by the _slope_ and the _fit_ of its trend, not by a before-and-after: a leak
+  climbs, it does not double, and V8's sawtooth produces a confident gradient
+  that means nothing. See [soak.md](./soak.md).
 
 Two integration suites carry the isolation guarantees:
 `account-access.test.ts` has one case per caller-scoped operation, so a new

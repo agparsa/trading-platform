@@ -37,9 +37,14 @@ Phase 0 deliverables — the design the implementation is held to.
 - [anti-fraud.md](./anti-fraud.md) — integrity signals: observations, never verdicts
 - [database.md](./database.md) — schema conventions, the ledger, transactions, indexes
 - [security.md](./security.md) — boot refusal, credentials, logging, audit
+- [two-factor.md](./two-factor.md) — TOTP proved against the RFC, and why a code works once
+- [encryption-at-rest.md](./encryption-at-rest.md) — the secret box, and the row a ciphertext is bound to
+- [sessions.md](./sessions.md) — where you are signed in, and what is deliberately not collected
+- [penetration-checklist.md](./penetration-checklist.md) — attacks attempted, and the two gaps it found in itself
 - [permissions.md](./permissions.md) — the capability catalogue, and why ADMIN cannot trade
 - [master-accounts.md](./master-accounts.md) — delegated access, and why an account id is never enough
 - [testing.md](./testing.md) — what is covered, reference vectors, what each phase adds
+- [soak.md](./soak.md) — what a leak looks like, and why a slope needs a fit
 - [observability.md](./observability.md) — logs, metrics, health, what to alert on
 - [operations.md](./operations.md) — the kill switch, and why closing is always allowed
 - [deployment.md](./deployment.md) — local setup, images, probes, migrations, scaling

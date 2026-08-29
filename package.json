@@ -36,7 +36,8 @@
     "smoke:ws": "tsx --env-file-if-exists=.env scripts/smoke-ws.ts",
     "load": "tsx --env-file-if-exists=.env scripts/load-test.ts",
     "keygen": "tsx scripts/keygen.ts",
-    "pentest": "tsx --env-file-if-exists=.env scripts/pentest.ts"
+    "pentest": "tsx --env-file-if-exists=.env scripts/pentest.ts",
+    "soak": "tsx --env-file-if-exists=.env scripts/soak.ts"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",
