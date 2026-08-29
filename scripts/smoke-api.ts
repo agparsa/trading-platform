@@ -10,9 +10,30 @@
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { PrismaClient } from '@prisma/client';
+import { base32Decode, codeForStep, stepFor } from '../apps/api/src/auth/totp';
+
+/** The code the user's authenticator app is showing right now. */
+function totpCode(secret: Buffer): string {
+  return codeForStep(secret, stepFor(Date.now()));
+}
+
+/**
+ * The code the app will show next.
+ *
+ * Needed because every code is spent when it is used, and this script enrols and
+ * then signs in inside the same thirty seconds. The server accepts one step
+ * ahead — that is the drift allowance a phone with a fast clock relies on — so
+ * this is a real code a real user could present, and it avoids padding the smoke
+ * run with a half-minute of sleeping.
+ */
+function nextTotpCode(secret: Buffer): string {
+  return codeForStep(secret, stepFor(Date.now()) + 1);
+}
 
 const BASE = `http://127.0.0.1:${process.env.API_PORT ?? '4000'}`;
 const BOOT_TIMEOUT_MS = 60_000;
+/** The login limit this run boots with. The last check spends exactly this many. */
+const LOGIN_LIMIT = 30;
 
 interface Check {
   name: string;
@@ -102,13 +123,27 @@ const checks: Check[] = [
       const opened = ((await accounts.json()) as { data: Array<{ balance: string }> }).data;
       assert(opened.length === 1, `expected one account, got ${opened.length}`);
 
-      const quotes = await fetch(`${BASE}/api/v1/market/quotes`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const priced = ((await quotes.json()) as { data: unknown[] }).data;
+      /**
+       * Wait for the feed rather than sampling it once.
+       *
+       * The API answers `/health` before the market simulator has published its
+       * first tick, so a single read here fails whenever this check happens to
+       * run in that gap — which it did, intermittently, and it looked like a
+       * dead feed rather than an early question. The wait is bounded, so a feed
+       * that really is dead still fails; it just fails for the right reason.
+       */
+      let priced: unknown[] = [];
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline && priced.length === 0) {
+        const quotes = await fetch(`${BASE}/api/v1/market/quotes`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        priced = ((await quotes.json()) as { data: unknown[] }).data;
+        if (priced.length === 0) await sleep(500);
+      }
       // At least one instrument must be inside its trading session and quoting;
       // crypto never closes, so this holds at any hour.
-      assert(priced.length > 0, 'no instrument is currently quoting');
+      assert(priced.length > 0, 'no instrument started quoting within 15s of boot');
     },
   },
   {
@@ -384,6 +419,142 @@ const checks: Check[] = [
   },
   {
     /**
+     * Two-factor authentication, over HTTP, from enrolment to a completed
+     * sign-in and a refused replay.
+     *
+     * The integration tests call the services directly. Nothing below them
+     * notices if the login route forgets to check the challenge, or if the
+     * controller returns tokens beside the challenge, or if the secret is
+     * handed back on a later request. This drives the real routes and reads the
+     * real database, and its most important assertion is the negative one: after
+     * enrolment, the password alone stops being enough.
+     */
+    name: 'two-factor authentication holds over HTTP, and a code cannot be replayed',
+    run: async () => {
+      const email = `smoke-2fa-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, displayName: 'Smoke 2FA' }),
+      });
+
+      const signIn = async () =>
+        fetch(`${BASE}/api/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+
+      const first = await signIn();
+      const token = ((await first.json()) as { data: { accessToken: string } }).data.accessToken;
+      const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+      const enrol = await fetch(`${BASE}/api/v1/auth/2fa/enrol`, { method: 'POST', headers: auth });
+      assert(enrol.ok, `enrolment returned ${enrol.status}`);
+      const offer = ((await enrol.json()) as { data: { secret: string; otpauthUri: string } }).data;
+      assert(offer.otpauthUri.startsWith('otpauth://totp/'), 'no otpauth URI was returned');
+
+      const secret = base32Decode(offer.secret);
+
+      // Still off until a code proves it. A user who stopped here has not
+      // locked themselves out.
+      const stillOpen = await signIn();
+      const stillOpenBody = (await stillOpen.json()) as { data: { accessToken?: string } };
+      assert(
+        typeof stillOpenBody.data.accessToken === 'string',
+        'an unconfirmed enrolment already blocked a sign-in',
+      );
+
+      const activate = await fetch(`${BASE}/api/v1/auth/2fa/activate`, {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify({ code: totpCode(secret) }),
+      });
+      assert(activate.ok, `activation returned ${activate.status}`);
+      const recoveryCodes = ((await activate.json()) as { data: { recoveryCodes: string[] } }).data
+        .recoveryCodes;
+      assert(
+        recoveryCodes.length === 10,
+        `expected 10 recovery codes, got ${recoveryCodes.length}`,
+      );
+
+      // The secret is now stored encrypted. Read the column directly: this is
+      // the assertion a mocked test cannot make.
+      const prisma = new PrismaClient();
+      try {
+        const row = await prisma.user.findUniqueOrThrow({ where: { email } });
+        assert(row.totpSecret !== null, 'no secret was stored');
+        assert(
+          !(row.totpSecret ?? '').includes(offer.secret),
+          'the TOTP secret is stored in plain text',
+        );
+        assert((row.totpSecret ?? '').startsWith('v1.'), 'the stored secret is not sealed');
+      } finally {
+        await prisma.$disconnect();
+      }
+
+      // The password alone no longer opens anything.
+      const challenged = await signIn();
+      const challengeBody = (await challenged.json()) as {
+        data: { twoFactorRequired?: boolean; challengeToken?: string; accessToken?: string };
+      };
+      assert(
+        challengeBody.data.twoFactorRequired === true,
+        'the password alone still completed a sign-in',
+      );
+      assert(
+        challengeBody.data.accessToken === undefined,
+        'a challenge response also carried an access token',
+      );
+      assert(
+        challenged.headers.get('set-cookie') === null,
+        'a challenge response also set a session cookie',
+      );
+
+      // Not `totpCode`: activation a moment ago spent the current step.
+      const code = nextTotpCode(secret);
+      const completed = await fetch(`${BASE}/api/v1/auth/login/2fa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeToken: challengeBody.data.challengeToken, code }),
+      });
+      assert(completed.ok, `completing the sign-in returned ${completed.status}`);
+      assert(completed.headers.get('set-cookie') !== null, 'the completed sign-in set no cookie');
+
+      // And the same code, still inside its thirty seconds, is refused.
+      const replayChallenge = (await (await signIn()).json()) as {
+        data: { challengeToken: string };
+      };
+      const replay = await fetch(`${BASE}/api/v1/auth/login/2fa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeToken: replayChallenge.data.challengeToken, code }),
+      });
+      const replayBody = (await replay.json()) as { error?: { code: string } };
+      assert(replay.status === 401, `a replayed code returned ${replay.status}, expected 401`);
+      assert(
+        replayBody.error?.code === 'TWO_FACTOR_INVALID',
+        `a replayed code returned ${replayBody.error?.code}`,
+      );
+
+      // A recovery code gets the user in without their phone.
+      const recoveryChallenge = (await (await signIn()).json()) as {
+        data: { challengeToken: string };
+      };
+      const recovered = await fetch(`${BASE}/api/v1/auth/login/2fa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          challengeToken: recoveryChallenge.data.challengeToken,
+          code: recoveryCodes[0],
+        }),
+      });
+      assert(recovered.ok, `a recovery code returned ${recovered.status}`);
+    },
+  },
+  {
+    /**
      * Permissions are enforced by the running application, not by a unit test.
      *
      * Every other permission test in this repository exercises the catalogue or
@@ -483,6 +654,47 @@ const checks: Check[] = [
     },
   },
   {
+    /**
+     * The login rate limiter, proved against the running binary.
+     *
+     * Runs last because it deliberately exhausts the bucket. Every attempt uses
+     * an address that was never registered, so nothing here trips the per-user
+     * lockout — this is measuring the limiter in front of the endpoint, not the
+     * counter behind it.
+     *
+     * Two assertions, and the second is the one that matters: that the limit
+     * exists, and that it is not so low it fires before the run's own sign-ins
+     * are done. A limiter nobody has counted is a limiter that either does
+     * nothing or breaks the product, and there is no way to tell which by
+     * reading it.
+     */
+    name: 'the login rate limiter refuses once the configured number of attempts is spent',
+    run: async () => {
+      const attempt = () =>
+        fetch(`${BASE}/api/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: `smoke-throttle-${Date.now()}-${Math.random()}@test.local`,
+            password: 'a-sufficiently-long-passphrase',
+          }),
+        });
+
+      let limited = 0;
+      let attempts = 0;
+      // A generous ceiling: enough to pass the limit from wherever the run left
+      // the bucket, and bounded so a broken limiter fails rather than hangs.
+      while (attempts < LOGIN_LIMIT * 2 && limited === 0) {
+        attempts += 1;
+        const response = await attempt();
+        if (response.status === 429) limited += 1;
+        await response.body?.cancel();
+      }
+
+      assert(limited === 1, `no request was rate limited within ${attempts} attempts`);
+    },
+  },
+  {
     name: 'metrics endpoint exposes the declared trading counters',
     run: async () => {
       const response = await fetch(`${BASE}/metrics`);
@@ -534,7 +746,17 @@ async function main(): Promise<void> {
 
   const api = spawn('node', ['apps/api/dist/main.js'], {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: process.env,
+    /**
+     * The login limiter is raised for this run, and then proved.
+     *
+     * Every check here that needs a session signs in, and at the production
+     * limit of five a minute the run starves itself — which is what happened
+     * the moment a check with several sign-ins was added, and it looked exactly
+     * like a broken login. Raising it silently would leave the limiter untested
+     * in the one place that runs the real binary, so the last check below
+     * deliberately exhausts this number and asserts a 429.
+     */
+    env: { ...process.env, RATE_LIMIT_LOGIN_PER_MINUTE: String(LOGIN_LIMIT) },
   });
   const output: string[] = [];
   api.stdout.on('data', (chunk: Buffer) => output.push(chunk.toString()));

@@ -53,6 +53,10 @@ const STATUS_BY_CODE: Readonly<Partial<Record<TradingErrorCode, HttpStatus>>> = 
   // 503, not 422: the request was fine and the service is deliberately not
   // taking it. A client that retries later is doing the right thing.
   [TradingErrorCode.TRADING_HALTED]: HttpStatus.SERVICE_UNAVAILABLE,
+  // 401, not 403: the request is not authenticated *yet*. A client seeing 403
+  // would conclude the credentials were rejected and stop asking.
+  [TradingErrorCode.TWO_FACTOR_REQUIRED]: HttpStatus.UNAUTHORIZED,
+  [TradingErrorCode.TWO_FACTOR_INVALID]: HttpStatus.UNAUTHORIZED,
   [TradingErrorCode.SYMBOL_NOT_TRADEABLE]: HttpStatus.UNPROCESSABLE_ENTITY,
   [TradingErrorCode.ORDER_NOT_MODIFIABLE]: HttpStatus.UNPROCESSABLE_ENTITY,
 

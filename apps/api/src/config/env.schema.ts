@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseEncryptionKeys } from '../common/crypto/secret-box';
 
 /**
  * Environment contract.
@@ -26,6 +27,35 @@ export const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32),
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL: z.string().default('30d'),
+
+  /**
+   * Keys for secrets that must be readable again, newest first:
+   * `<id>:<base64 32 bytes>,<id>:<base64 32 bytes>`.
+   *
+   * The first key writes; the rest exist so values sealed under a retired key
+   * still open. Validated with the same parser the application uses, so there
+   * is only ever one definition of a usable key list. `pnpm keygen` prints one.
+   */
+  SECRET_ENCRYPTION_KEYS: z.string().refine(
+    (raw) => {
+      try {
+        parseEncryptionKeys(raw);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    {
+      // No value, and no detail that would narrow a guess at the key. The
+      // operator has the format in .env.example and in this comment.
+      message: 'must be <id>:<base64 32-byte key>, newest first, comma-separated',
+    },
+  ),
+
+  /** The name an authenticator app shows beside the six digits. */
+  TOTP_ISSUER: z.string().min(1).default('Trading Platform'),
+  /** How long a user has to produce a code after their password was accepted. */
+  TWO_FACTOR_CHALLENGE_TTL: z.string().default('5m'),
 
   MARKET_DATA_PROVIDER: z.enum(['internal-simulator', 'external']).default('internal-simulator'),
   MARKET_SIMULATOR_TICK_MS: z.coerce.number().int().min(10).default(250),

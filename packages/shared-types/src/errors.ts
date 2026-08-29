@@ -9,6 +9,16 @@ export const TradingErrorCode = {
   UNAUTHENTICATED: 'UNAUTHENTICATED',
   FORBIDDEN: 'FORBIDDEN',
   TOKEN_EXPIRED: 'TOKEN_EXPIRED',
+  /**
+   * The password was right and a second factor is now required.
+   *
+   * Deliberately not `UNAUTHENTICATED`: the client has to tell "wrong password,
+   * ask again" apart from "right password, ask for the code", and a client that
+   * cannot tell them apart will show the wrong screen to everybody.
+   */
+  TWO_FACTOR_REQUIRED: 'TWO_FACTOR_REQUIRED',
+  /** The presented second factor was wrong, reused, or too late. */
+  TWO_FACTOR_INVALID: 'TWO_FACTOR_INVALID',
 
   // --- validation ---
   VALIDATION_FAILED: 'VALIDATION_FAILED',

@@ -27,6 +27,23 @@ interface AuthTokens {
   expiresIn: number;
 }
 
+/**
+ * What the server returns when a password alone is not enough.
+ *
+ * The two responses are told apart by a field rather than by an error, because
+ * a second factor being required is not a failed sign-in — the password was
+ * right — and a client that treats it as one shows "sign-in failed" to every
+ * user who turned 2FA on.
+ */
+interface TwoFactorChallenge {
+  twoFactorRequired: true;
+  challengeToken: string;
+  expiresIn: number;
+}
+
+export type SignInResult =
+  { kind: 'authenticated' } | { kind: 'twoFactorRequired'; challengeToken: string };
+
 export interface SessionUser {
   id: string;
   email: string;
@@ -39,7 +56,8 @@ interface SessionValue {
   ready: boolean;
   api: ApiClient;
   accessToken: string | null;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<SignInResult>;
+  completeTwoFactor: (challengeToken: string, code: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -126,18 +144,43 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     };
   }, [loadProfile, tokenHolder]);
 
-  const signIn = useCallback(
-    async (email: string, password: string) => {
-      const tokens = await api.post<AuthTokens>(
-        '/auth/login',
-        { email, password },
-        { idempotencyKey: crypto.randomUUID() },
-      );
+  const adopt = useCallback(
+    async (tokens: AuthTokens) => {
       tokenHolder.current = tokens.accessToken;
       setAccessToken(tokens.accessToken);
       await loadProfile();
     },
-    [api, loadProfile, tokenHolder],
+    [loadProfile, tokenHolder],
+  );
+
+  const signIn = useCallback(
+    async (email: string, password: string): Promise<SignInResult> => {
+      const response = await api.post<AuthTokens | TwoFactorChallenge>(
+        '/auth/login',
+        { email, password },
+        { idempotencyKey: crypto.randomUUID() },
+      );
+      if ('twoFactorRequired' in response) {
+        // Nothing is adopted and nothing is stored: the challenge is handed
+        // straight back to the caller, which is holding it for one screen.
+        return { kind: 'twoFactorRequired', challengeToken: response.challengeToken };
+      }
+      await adopt(response);
+      return { kind: 'authenticated' };
+    },
+    [adopt, api],
+  );
+
+  const completeTwoFactor = useCallback(
+    async (challengeToken: string, code: string) => {
+      const tokens = await api.post<AuthTokens>(
+        '/auth/login/2fa',
+        { challengeToken, code: code.trim() },
+        { idempotencyKey: crypto.randomUUID() },
+      );
+      await adopt(tokens);
+    },
+    [adopt, api],
   );
 
   const register = useCallback(
@@ -147,6 +190,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         { email, password, displayName },
         { idempotencyKey: crypto.randomUUID() },
       );
+      // A brand-new account cannot have a second factor yet, so this always
+      // completes; the result is ignored deliberately rather than by omission.
       await signIn(email, password);
     },
     [api, signIn],
@@ -165,8 +210,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [api, tokenHolder]);
 
   const value = useMemo<SessionValue>(
-    () => ({ user, accountId, ready, api, accessToken, signIn, register, signOut }),
-    [user, accountId, ready, api, accessToken, signIn, register, signOut],
+    () => ({
+      user,
+      accountId,
+      ready,
+      api,
+      accessToken,
+      signIn,
+      completeTwoFactor,
+      register,
+      signOut,
+    }),
+    [user, accountId, ready, api, accessToken, signIn, completeTwoFactor, register, signOut],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

@@ -26,6 +26,20 @@ export interface RefreshTokenClaims {
   typ: 'refresh';
 }
 
+/**
+ * The short-lived proof that a password was accepted and a second factor is
+ * still owed.
+ *
+ * Signed with the access secret and carrying its own `typ`, so
+ * `verifyAccessToken` rejects it — a challenge must never be usable as a
+ * session. It is a bearer token for one thing only: the right to be asked for a
+ * code. Holding one without the code achieves nothing.
+ */
+export interface TwoFactorChallengeClaims {
+  sub: string;
+  typ: '2fa';
+}
+
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;

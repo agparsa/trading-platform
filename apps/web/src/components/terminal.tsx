@@ -25,6 +25,7 @@ import { PendingPanel } from './pending-panel';
 import { OrderTicket } from './order-ticket';
 import { PositionsPanel } from './positions-panel';
 import { TradingSettings } from './trading-settings';
+import { SecuritySettings } from './security-settings';
 import { Button, Panel, Tabs } from './primitives';
 import { Watchlist } from './watchlist';
 
@@ -154,6 +155,7 @@ export function Terminal() {
             ))}
           </select>
           <TradingSettings preferences={preferences} onChange={updatePreferences} />
+          <SecuritySettings />
           <Link
             href="/status"
             className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"

@@ -5,7 +5,12 @@ import { JwtService } from '@nestjs/jwt';
 import { DomainError, TradingErrorCode, type UserRole } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Env } from '../config/env.schema';
-import type { AccessTokenClaims, RefreshTokenClaims, TokenPair } from './token.types';
+import type {
+  AccessTokenClaims,
+  RefreshTokenClaims,
+  TokenPair,
+  TwoFactorChallengeClaims,
+} from './token.types';
 
 export interface IssueContext {
   readonly userAgent?: string;
@@ -82,6 +87,50 @@ export class TokenService {
       refreshToken,
       expiresIn: this.accessTtlSeconds(),
     };
+  }
+
+  /**
+   * Issues the short-lived proof that a password was accepted.
+   *
+   * Nothing about it is stored. It is not a session — it grants only the right
+   * to be asked for a code — and a row per abandoned login attempt would be a
+   * table that grows with every mistyped code and is never read.
+   */
+  async issueTwoFactorChallenge(
+    userId: string,
+  ): Promise<{ challengeToken: string; expiresIn: number }> {
+    const claims: TwoFactorChallengeClaims = { sub: userId, typ: '2fa' };
+    const challengeToken = await this.jwt.signAsync(claims, {
+      secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
+      expiresIn: this.config.get('TWO_FACTOR_CHALLENGE_TTL', { infer: true }),
+    });
+    return {
+      challengeToken,
+      expiresIn: parseDuration(this.config.get('TWO_FACTOR_CHALLENGE_TTL', { infer: true })),
+    };
+  }
+
+  async verifyTwoFactorChallenge(token: string): Promise<TwoFactorChallengeClaims> {
+    let claims: TwoFactorChallengeClaims;
+    try {
+      claims = await this.jwt.verifyAsync<TwoFactorChallengeClaims>(token, {
+        secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }),
+      });
+    } catch (error) {
+      const expired = error instanceof Error && error.name === 'TokenExpiredError';
+      throw new DomainError(
+        TradingErrorCode.UNAUTHENTICATED,
+        expired
+          ? 'This sign-in attempt has expired. Enter your password again.'
+          : 'Invalid sign-in challenge',
+      );
+    }
+    // An access token must not stand in for a challenge any more than the
+    // reverse: the whole point of the discriminator is that it cuts both ways.
+    if (claims.typ !== '2fa') {
+      throw new DomainError(TradingErrorCode.UNAUTHENTICATED, 'Token is not a sign-in challenge');
+    }
+    return claims;
   }
 
   async verifyAccessToken(token: string): Promise<AccessTokenClaims> {

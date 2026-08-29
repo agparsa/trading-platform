@@ -39,6 +39,7 @@ jobs:
       DATABASE_URL: postgresql://trading:ci_password@localhost:5432/trading_platform?schema=public
       TEST_DATABASE_URL: postgresql://trading:ci_password@localhost:5432/trading_platform_test?schema=public
       REDIS_URL: redis://localhost:6379
+      SECRET_ENCRYPTION_KEYS: 1:Uv10aFLaolFY5n5NqtNGRGoWrrHpPdhRYnFaqt0BHPY=
       JWT_ACCESS_SECRET: ci_only_access_secret_at_least_32_characters
       JWT_REFRESH_SECRET: ci_only_refresh_secret_at_least_32_characters
 

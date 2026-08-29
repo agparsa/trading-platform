@@ -259,6 +259,7 @@ const SIMULATOR_START_PRICES: Readonly<Record<string, string>> = {
   XAUUSD: '4583.65',
   XAGUSD: '69.610',
   BTCUSD: '77650.00',
+  ETHUSD: '2985.40',
   EURUSD: '1.08750',
   AUDUSD: '0.71580',
 };
@@ -267,6 +268,7 @@ const SIMULATOR_VOLATILITY: Readonly<Record<string, number>> = {
   XAUUSD: 0.0002,
   XAGUSD: 0.0004,
   BTCUSD: 0.0006,
+  ETHUSD: 0.0009,
   EURUSD: 0.00008,
   AUDUSD: 0.0001,
 };
@@ -275,6 +277,7 @@ const SIMULATOR_HALF_SPREAD: Readonly<Record<string, string>> = {
   XAUUSD: '0.07',
   XAGUSD: '0.0125',
   BTCUSD: '2.50',
+  ETHUSD: '0.35',
   EURUSD: '0.00005',
   AUDUSD: '0.000005',
 };

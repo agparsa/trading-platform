@@ -36,7 +36,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
       audit_logs, risk_events, account_snapshots, balance_ledger,
       trades, executions, position_events, positions,
       order_events, orders, account_settings, accounts,
-      refresh_tokens, users, idempotency_keys
+      totp_recovery_codes, refresh_tokens, users, idempotency_keys
     RESTART IDENTITY CASCADE
   `);
 }

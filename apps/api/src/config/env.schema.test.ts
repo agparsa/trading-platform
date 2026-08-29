@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { corsOrigins, rateLimits, validateEnv } from './env.schema';
+import { generateEncryptionKey } from '../common/crypto/secret-box';
 
 const base = {
   DATABASE_URL: 'postgresql://trading:pw@localhost:5432/trading_platform?schema=public',
   REDIS_URL: 'redis://localhost:6379',
   JWT_ACCESS_SECRET: 'a'.repeat(48),
   JWT_REFRESH_SECRET: 'b'.repeat(48),
+  SECRET_ENCRYPTION_KEYS: generateEncryptionKey('1'),
 };
 
 describe('validateEnv', () => {
@@ -40,6 +42,40 @@ describe('validateEnv', () => {
 
   it('rejects an out-of-range port', () => {
     expect(() => validateEnv({ ...base, API_PORT: '70000' })).toThrow(/API_PORT/);
+  });
+
+  describe('SECRET_ENCRYPTION_KEYS', () => {
+    it('refuses to boot without one, rather than starting with nothing to encrypt with', () => {
+      const { SECRET_ENCRYPTION_KEYS: _omitted, ...withoutKeys } = base;
+      expect(() => validateEnv(withoutKeys)).toThrow(/SECRET_ENCRYPTION_KEYS/);
+    });
+
+    it('refuses a key of the wrong length', () => {
+      expect(() =>
+        validateEnv({
+          ...base,
+          SECRET_ENCRYPTION_KEYS: `1:${Buffer.alloc(16).toString('base64')}`,
+        }),
+      ).toThrow(/SECRET_ENCRYPTION_KEYS/);
+    });
+
+    it('accepts several keys, so a rotation does not need a flag day', () => {
+      const keys = `2:${generateEncryptionKey('2').split(':')[1]},1:${generateEncryptionKey('1').split(':')[1]}`;
+      expect(validateEnv({ ...base, SECRET_ENCRYPTION_KEYS: keys }).SECRET_ENCRYPTION_KEYS).toBe(
+        keys,
+      );
+    });
+
+    it('never echoes a key in the error message', () => {
+      const key = generateEncryptionKey('1');
+      try {
+        validateEnv({ ...base, SECRET_ENCRYPTION_KEYS: `${key},broken` });
+        throw new Error('expected validation to fail');
+      } catch (error) {
+        expect((error as Error).message).toContain('SECRET_ENCRYPTION_KEYS');
+        expect((error as Error).message).not.toContain(key.split(':')[1]);
+      }
+    });
   });
 
   it('never echoes a secret value in the error message', () => {

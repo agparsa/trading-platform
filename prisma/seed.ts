@@ -88,6 +88,32 @@ const INSTRUMENTS: SeedInstrument[] = [
     session: 'crypto',
   },
   {
+    /**
+     * A second always-open instrument.
+     *
+     * Not decoration: with only one crypto pair, every weekend leaves the
+     * platform with a single quoting instrument — one row in the watchlist, one
+     * choice on the chart, and no way to exercise anything that compares two
+     * markets. That is half of every week.
+     */
+    code: 'ETHUSD',
+    description: 'Ethereum vs US Dollar',
+    category: 'Crypto',
+    quoteCurrency: 'USD',
+    contractSize: '1',
+    tickSize: '0.01',
+    pricePrecision: 2,
+    volumeStep: '0.01',
+    volumePrecision: 2,
+    minVolume: '0.01',
+    maxVolume: '500',
+    marginRate: '0.02',
+    commissionPerLot: '0',
+    swapLongPerLot: '0',
+    swapShortPerLot: '0',
+    session: 'crypto',
+  },
+  {
     code: 'EURUSD',
     description: 'Euro vs US Dollar',
     category: 'FX',

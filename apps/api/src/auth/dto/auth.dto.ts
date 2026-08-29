@@ -53,3 +53,27 @@ export class VerifyEmailDto extends createZodDto(verifyEmailSchema) {}
 export class RequestPasswordResetDto extends createZodDto(requestPasswordResetSchema) {}
 export class ResetPasswordDto extends createZodDto(resetPasswordSchema) {}
 export class ChangePasswordDto extends createZodDto(changePasswordSchema) {}
+
+/**
+ * A second factor: either six digits or a recovery code.
+ *
+ * One field rather than two, because a user pasting the code they have should
+ * not first have to classify it, and the server can tell the shapes apart with
+ * certainty. The bound is generous enough for a spaced-out recovery code and
+ * far too small for anything else.
+ */
+const secondFactor = z.string().min(6).max(32);
+
+export const twoFactorLoginSchema = z
+  .object({ challengeToken: z.string().min(1).max(4096), code: secondFactor })
+  .strict();
+
+export const twoFactorActivateSchema = z.object({ code: z.string().regex(/^[0-9]{6}$/) }).strict();
+
+export const twoFactorDisableSchema = z
+  .object({ password: z.string().min(1).max(256), code: secondFactor })
+  .strict();
+
+export class TwoFactorLoginDto extends createZodDto(twoFactorLoginSchema) {}
+export class TwoFactorActivateDto extends createZodDto(twoFactorActivateSchema) {}
+export class TwoFactorDisableDto extends createZodDto(twoFactorDisableSchema) {}

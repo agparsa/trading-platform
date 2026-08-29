@@ -44,7 +44,18 @@ model User {
   displayName   String    @map("display_name")
   role          UserRole  @default(USER)
   emailVerified Boolean   @default(false) @map("email_verified")
+  /// The TOTP shared secret, sealed with AES-256-GCM and bound to this row —
+  /// see common/crypto/secret-box.ts. It is the one reversible secret in this
+  /// database, because verifying a six-digit code needs the secret itself.
   totpSecret    String?   @map("totp_secret")
+  /// Set only once a user has proved they can produce a code. A secret with no
+  /// timestamp is an enrolment somebody started and never finished; it must not
+  /// stop them signing in.
+  totpEnabledAt DateTime? @map("totp_enabled_at") @db.Timestamptz(6)
+  /// The last 30-second step accepted for this user. A code is valid for half a
+  /// minute, which is half a minute in which anyone who saw it can present it
+  /// again; refusing anything at or below this makes each code work once.
+  totpLastStep  BigInt?   @map("totp_last_step")
   isActive      Boolean   @default(true) @map("is_active")
   lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz(6)
 
@@ -65,9 +76,29 @@ model User {
   accounts       Account[]
   refreshTokens  RefreshToken[]
   auditLogs      AuditLog[]
+  recoveryCodes  TotpRecoveryCode[]
   masterAccounts MasterAccount[]
 
   @@map("users")
+}
+
+/// A single-use way back in for the user who has lost their phone.
+///
+/// Stored as SHA-256 rather than Argon2 for the same reason refresh tokens are:
+/// the code is 60 bits of randomness, so there is no low-entropy guess to slow
+/// down. Used codes are kept, not deleted — "when was my recovery code used"
+/// is a question worth being able to answer.
+model TotpRecoveryCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @unique @map("code_hash")
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@map("totp_recovery_codes")
 }
 
 model RefreshToken {

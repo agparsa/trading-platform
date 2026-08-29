@@ -34,7 +34,8 @@
     "smoke": "tsx --env-file-if-exists=.env scripts/smoke-api.ts",
     "db:test:prepare": "tsx --env-file-if-exists=.env scripts/prepare-test-db.ts",
     "smoke:ws": "tsx --env-file-if-exists=.env scripts/smoke-ws.ts",
-    "load": "tsx --env-file-if-exists=.env scripts/load-test.ts"
+    "load": "tsx --env-file-if-exists=.env scripts/load-test.ts",
+    "keygen": "tsx scripts/keygen.ts"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

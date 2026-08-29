@@ -30,6 +30,7 @@ import { CurrentUser, type AuthenticatedUser } from '../common/decorators/curren
 import { SelfService } from '../common/decorators/self-service.decorator';
 import type { RequestWithContext } from '../common/request-context';
 import { AuthService, type AuthContext } from './auth.service';
+import { TotpService, type TotpStatus } from './totp.service';
 import {
   ChangePasswordDto,
   LoginDto,
@@ -37,6 +38,9 @@ import {
   RegisterDto,
   RequestPasswordResetDto,
   ResetPasswordDto,
+  TwoFactorActivateDto,
+  TwoFactorDisableDto,
+  TwoFactorLoginDto,
   VerifyEmailDto,
 } from './dto/auth.dto';
 
@@ -53,6 +57,7 @@ function contextOf(request: RequestWithContext): AuthContext {
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly totp: TotpService,
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
   ) {}
 
@@ -116,12 +121,103 @@ export class AuthController {
     @Req() request: RequestWithContext,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const pair = await this.auth.login(body.email, body.password, contextOf(request));
-    setRefreshCookie(response, pair.refreshToken, this.cookieOptions());
+    const result = await this.auth.login(body.email, body.password, contextOf(request));
+    if (result.kind === 'twoFactorRequired') {
+      // No cookie is set and no access token is returned: nobody has signed in
+      // yet. The challenge is the only thing that crosses, and on its own it
+      // opens nothing.
+      return {
+        twoFactorRequired: true as const,
+        challengeToken: result.challengeToken,
+        expiresIn: result.expiresIn,
+      };
+    }
+    setRefreshCookie(response, result.pair.refreshToken, this.cookieOptions());
     // The refresh token is deliberately absent from the body. Returning it here
     // would put it back within reach of any injected script, which is the whole
     // thing this change exists to prevent.
+    return { accessToken: result.pair.accessToken, expiresIn: result.pair.expiresIn };
+  }
+
+  /**
+   * The second half of a two-factor sign-in.
+   *
+   * Rate-limited as tightly as the password endpoint. Six digits is a million
+   * possibilities, which sounds ample and is not: with three steps live at once
+   * and no limit, a determined attacker gets through in hours.
+   */
+  @Public()
+  @Throttle({ default: { limit: rateLimits.login, ttl: RATE_LIMIT_WINDOW_MS } })
+  @Post('login/2fa')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Complete a sign-in with a one-time or recovery code' })
+  async loginTwoFactor(
+    @Body() body: TwoFactorLoginDto,
+    @Req() request: RequestWithContext,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const pair = await this.auth.completeTwoFactor(
+      body.challengeToken,
+      body.code,
+      contextOf(request),
+    );
+    setRefreshCookie(response, pair.refreshToken, this.cookieOptions());
     return { accessToken: pair.accessToken, expiresIn: pair.expiresIn };
+  }
+
+  @SelfService()
+  @Get('2fa')
+  @ApiOperation({ summary: 'Whether two-factor authentication is on for the signed-in user' })
+  async twoFactorStatus(@CurrentUser() user: AuthenticatedUser): Promise<TotpStatus> {
+    return this.totp.status(user.id);
+  }
+
+  /**
+   * Begins enrolment. Returns the secret **once**.
+   *
+   * Nothing is switched on by this call: the user has an unproved secret until
+   * they come back with a code. Enrolling and enabling in one step is how people
+   * lock themselves out at the exact moment they were trying to be careful.
+   */
+  @SelfService()
+  @Throttle({ default: { limit: rateLimits.login, ttl: RATE_LIMIT_WINDOW_MS } })
+  @Post('2fa/enrol')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Begin two-factor enrolment' })
+  async beginTwoFactorEnrolment(@CurrentUser() user: AuthenticatedUser) {
+    return this.totp.beginEnrolment(user.id);
+  }
+
+  /**
+   * Proves the enrolment and returns the recovery codes.
+   *
+   * This is the only response in the system a user must write down: the codes
+   * are stored as hashes and cannot be shown again.
+   */
+  @SelfService()
+  @Throttle({ default: { limit: rateLimits.login, ttl: RATE_LIMIT_WINDOW_MS } })
+  @Post('2fa/activate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Confirm a code and switch two-factor authentication on' })
+  async activateTwoFactor(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: TwoFactorActivateDto,
+    @Req() request: RequestWithContext,
+  ) {
+    return this.totp.activate(user.id, body.code, request.requestId);
+  }
+
+  @SelfService()
+  @Throttle({ default: { limit: rateLimits.login, ttl: RATE_LIMIT_WINDOW_MS } })
+  @Post('2fa/disable')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Turn two-factor authentication off — password and a live code' })
+  async disableTwoFactor(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: TwoFactorDisableDto,
+    @Req() request: RequestWithContext,
+  ): Promise<void> {
+    await this.totp.disable(user.id, body.password, body.code, request.requestId);
   }
 
   @Public()

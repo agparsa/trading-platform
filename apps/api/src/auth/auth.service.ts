@@ -1,12 +1,13 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DomainError, TradingErrorCode } from '@tp/shared-types';
+import { DomainError, TradingErrorCode, type UserRole } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { AuditService } from '../common/audit/audit.service';
 import { PasswordService } from './password.service';
 import { TokenService, type IssueContext } from './token.service';
+import { TotpService } from './totp.service';
 import { EmailPort } from './email/email.port';
 import type { Env } from '../config/env.schema';
 import type { TokenPair } from './token.types';
@@ -20,6 +21,18 @@ export interface RegisterInput {
 export interface AuthContext extends IssueContext {
   requestId?: string;
 }
+
+/**
+ * What a correct password buys.
+ *
+ * A discriminated union rather than a `TokenPair | null`, because the caller has
+ * to render two different screens and a nullable pair does not say which. The
+ * challenge case is not a failure — the password *was* right — and typing it as
+ * one leads to clients that show "sign-in failed" to every user with 2FA on.
+ */
+export type LoginResult =
+  | { kind: 'authenticated'; pair: TokenPair }
+  | { kind: 'twoFactorRequired'; challengeToken: string; expiresIn: number };
 
 /**
  * A hash of a password that does not exist, used to keep the login timing of an
@@ -37,6 +50,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
+    private readonly totp: TotpService,
     private readonly accounts: AccountsService,
     private readonly audit: AuditService,
     private readonly email: EmailPort,
@@ -116,7 +130,7 @@ export class AuthService {
    * full Argon2 verification against a dummy hash. Without that, response time
    * alone tells an attacker which addresses are registered.
    */
-  async login(email: string, password: string, context: AuthContext = {}): Promise<TokenPair> {
+  async login(email: string, password: string, context: AuthContext = {}): Promise<LoginResult> {
     const user = await this.prisma.user.findUnique({ where: { email } });
 
     if (user === null) {
@@ -152,6 +166,84 @@ export class AuthService {
       throw new DomainError(TradingErrorCode.FORBIDDEN, 'This account is disabled');
     }
 
+    /**
+     * The password is right. If a second factor is on, the attempt stops here.
+     *
+     * Note what does *not* happen yet: no tokens are issued, the failure counter
+     * is not cleared, and `lastLoginAt` is not touched. Nobody has signed in.
+     * Clearing the counter here would let an attacker who knows the password
+     * hold the lockout open indefinitely while grinding at the six digits.
+     */
+    if (user.totpEnabledAt !== null) {
+      const challenge = await this.tokens.issueTwoFactorChallenge(user.id);
+      await this.audit.record({
+        actorId: user.id,
+        actorType: 'USER',
+        action: 'LOGIN_SECOND_FACTOR_REQUIRED',
+        resourceType: 'User',
+        resourceId: user.id,
+        requestId: context.requestId ?? null,
+        ipAddress: context.ipAddress ?? null,
+        userAgent: context.userAgent ?? null,
+      });
+      return { kind: 'twoFactorRequired', ...challenge };
+    }
+
+    return { kind: 'authenticated', pair: await this.completeLogin(user, context) };
+  }
+
+  /**
+   * Second half of a two-factor sign-in.
+   *
+   * The challenge proves the password; the code proves the device. Both are
+   * checked here rather than trusting the challenge alone, and a wrong code
+   * counts against the same lockout the password does — otherwise the second
+   * factor would be the one credential in the system an attacker may guess at
+   * without limit.
+   */
+  async completeTwoFactor(
+    challengeToken: string,
+    code: string,
+    context: AuthContext = {},
+  ): Promise<TokenPair> {
+    const claims = await this.tokens.verifyTwoFactorChallenge(challengeToken);
+    const user = await this.prisma.user.findUnique({ where: { id: claims.sub } });
+    if (user === null || !user.isActive) {
+      throw new DomainError(TradingErrorCode.UNAUTHENTICATED, 'Sign-in could not be completed');
+    }
+    if (user.lockedUntil !== null && user.lockedUntil.getTime() > Date.now()) {
+      throw new DomainError(
+        TradingErrorCode.RATE_LIMITED,
+        'Too many failed sign-in attempts. Try again later.',
+        { retryAfterSeconds: Math.ceil((user.lockedUntil.getTime() - Date.now()) / 1000) },
+      );
+    }
+
+    try {
+      await this.totp.consume(user.id, code);
+    } catch (error) {
+      await this.registerFailedAttempt(user.id, user.failedLoginAttempts + 1);
+      await this.audit.record({
+        actorId: user.id,
+        actorType: 'USER',
+        action: 'LOGIN_SECOND_FACTOR_FAILED',
+        resourceType: 'User',
+        resourceId: user.id,
+        requestId: context.requestId ?? null,
+        ipAddress: context.ipAddress ?? null,
+        userAgent: context.userAgent ?? null,
+      });
+      throw error;
+    }
+
+    return this.completeLogin(user, context);
+  }
+
+  /** Everything that happens once, and only once, a sign-in has actually succeeded. */
+  private async completeLogin(
+    user: { id: string; email: string; role: UserRole },
+    context: AuthContext,
+  ): Promise<TokenPair> {
     await this.prisma.user.update({
       where: { id: user.id },
       data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },

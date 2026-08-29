@@ -2,7 +2,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { PrismaClient } from '@prisma/client';
-import { AuthService } from '../../src/auth/auth.service';
+import { AuthService, type LoginResult } from '../../src/auth/auth.service';
+import { TotpService } from '../../src/auth/totp.service';
+import {
+  SecretBox,
+  generateEncryptionKey,
+  parseEncryptionKeys,
+} from '../../src/common/crypto/secret-box';
 import { TokenService } from '../../src/auth/token.service';
 import { PasswordService } from '../../src/auth/password.service';
 import { EmailPort } from '../../src/auth/email/email.port';
@@ -30,12 +36,27 @@ class CapturingEmailAdapter extends EmailPort {
   }
 }
 
+/**
+ * Unwraps a login that is expected to have completed.
+ *
+ * Not a cast: it asserts. A test that expected tokens and got a two-factor
+ * challenge has found something worth failing over, and silently reading
+ * `undefined` off the wrong branch of the union would hide it.
+ */
+function authenticated(result: LoginResult) {
+  if (result.kind !== 'authenticated') {
+    throw new Error(`expected a completed sign-in, got ${result.kind}`);
+  }
+  return result.pair;
+}
+
 const PASSWORD = 'a-sufficiently-long-passphrase';
 
 suite('Auth (integration)', () => {
   let prisma: PrismaClient;
   let auth: AuthService;
   let tokens: TokenService;
+  let totp: TotpService;
   let email: CapturingEmailAdapter;
 
   beforeAll(async () => {
@@ -65,6 +86,9 @@ suite('Auth (integration)', () => {
       DEFAULT_ACCOUNT_CURRENCY: 'USD',
       DEFAULT_ACCOUNT_LEVERAGE: 100,
       DEMO_ACCOUNT_INITIAL_BALANCE: '100000',
+      SECRET_ENCRYPTION_KEYS: generateEncryptionKey('test'),
+      TOTP_ISSUER: 'Trading Platform',
+      TWO_FACTOR_CHALLENGE_TTL: '5m',
     } as any);
 
     const prismaService = prisma as unknown as PrismaService;
@@ -74,7 +98,20 @@ suite('Auth (integration)', () => {
     const access = new AccountAccessService(prismaService);
     const accounts = new AccountsService(prismaService, access, ledger, config as any);
     const audit = new AuditService(prismaService);
-    auth = new AuthService(prismaService, passwords, tokens, accounts, audit, email, config as any);
+    const secrets = new SecretBox(
+      parseEncryptionKeys(config.get('SECRET_ENCRYPTION_KEYS') as string),
+    ) as any;
+    totp = new TotpService(prismaService, secrets, passwords, audit, config as any);
+    auth = new AuthService(
+      prismaService,
+      passwords,
+      tokens,
+      totp,
+      accounts,
+      audit,
+      email,
+      config as any,
+    );
   });
 
   afterAll(async () => {
@@ -134,7 +171,7 @@ suite('Auth (integration)', () => {
   describe('login', () => {
     it('issues a usable token pair', async () => {
       await register();
-      const pair = await auth.login('trader@test.local', PASSWORD);
+      const pair = authenticated(await auth.login('trader@test.local', PASSWORD));
       const claims = await tokens.verifyAccessToken(pair.accessToken);
       expect(claims.email).toBe('trader@test.local');
       expect(claims.typ).toBe('access');
@@ -182,7 +219,7 @@ suite('Auth (integration)', () => {
   describe('refresh rotation', () => {
     it('issues a new pair and retires the old token', async () => {
       await register();
-      const first = await auth.login('trader@test.local', PASSWORD);
+      const first = authenticated(await auth.login('trader@test.local', PASSWORD));
       const second = await auth.refresh(first.refreshToken);
       expect(second.refreshToken).not.toBe(first.refreshToken);
 
@@ -195,7 +232,7 @@ suite('Auth (integration)', () => {
 
     it('revokes the whole family when a rotated token is replayed', async () => {
       await register();
-      const first = await auth.login('trader@test.local', PASSWORD);
+      const first = authenticated(await auth.login('trader@test.local', PASSWORD));
       const second = await auth.refresh(first.refreshToken);
 
       await expect(auth.refresh(first.refreshToken)).rejects.toMatchObject({
@@ -213,8 +250,8 @@ suite('Auth (integration)', () => {
 
     it('keeps separate logins in separate families', async () => {
       await register();
-      const sessionA = await auth.login('trader@test.local', PASSWORD);
-      const sessionB = await auth.login('trader@test.local', PASSWORD);
+      const sessionA = authenticated(await auth.login('trader@test.local', PASSWORD));
+      const sessionB = authenticated(await auth.login('trader@test.local', PASSWORD));
 
       await auth.refresh(sessionA.refreshToken);
       await expect(auth.refresh(sessionA.refreshToken)).rejects.toThrow();
@@ -225,7 +262,7 @@ suite('Auth (integration)', () => {
 
     it('rejects an access token presented as a refresh token', async () => {
       await register();
-      const pair = await auth.login('trader@test.local', PASSWORD);
+      const pair = authenticated(await auth.login('trader@test.local', PASSWORD));
       await expect(auth.refresh(pair.accessToken)).rejects.toMatchObject({
         code: 'UNAUTHENTICATED',
       });
@@ -266,7 +303,7 @@ suite('Auth (integration)', () => {
   describe('password reset', () => {
     it('resets the password and revokes every existing session', async () => {
       await register();
-      const session = await auth.login('trader@test.local', PASSWORD);
+      const session = authenticated(await auth.login('trader@test.local', PASSWORD));
 
       await auth.requestPasswordReset('trader@test.local');
       const token = email.tokenFrom(/reset-password\?token=([\w-]+)/);
@@ -305,7 +342,7 @@ suite('Auth (integration)', () => {
   describe('change password', () => {
     it('requires the current password and revokes other sessions', async () => {
       const { userId } = await register();
-      const session = await auth.login('trader@test.local', PASSWORD);
+      const session = authenticated(await auth.login('trader@test.local', PASSWORD));
 
       await expect(
         auth.changePassword(userId, 'wrong', 'another-long-passphrase'),

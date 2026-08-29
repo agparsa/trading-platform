@@ -16,7 +16,11 @@ Validation errors print **field names only**. Values are secrets.
   sessions.
 - Token rotation: each refresh issues a new token and records `replacedBy`. Reuse
   of an already-rotated token is a theft signal and revokes the whole family.
-- 2FA: TOTP, secret stored per user.
+- 2FA: TOTP (RFC 6238), enforced at sign-in. The shared secret is the one
+  reversible secret in the database and is encrypted with AES-256-GCM, bound to
+  the row it belongs to. Recovery codes are SHA-256, single-use, and kept after
+  use so the event can be answered for. See [two-factor.md](./two-factor.md) and
+  [encryption-at-rest.md](./encryption-at-rest.md).
 
 ## Transport and headers
 

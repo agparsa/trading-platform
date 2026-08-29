@@ -219,8 +219,21 @@ async function main(): Promise<void> {
       sockets.push(socket);
       await waitFor(() => (socket.connected ? true : undefined), 10_000, 'connection');
 
-      const quotes = await get<Array<{ symbol: string }>>('/api/v1/market/quotes', alice.token);
-      assert(quotes.length >= 2, 'this check needs at least two quoted instruments');
+      /**
+       * Wait for a second instrument rather than assuming one is already there.
+       *
+       * The simulator brings instruments up over its first few ticks, so reading
+       * the list once can catch a moment when only one has quoted — which reads
+       * as "this check needs two instruments" and is really "asked too early".
+       * Bounded, so a feed that only ever quotes one still fails.
+       */
+      let quotes: Array<{ symbol: string }> = [];
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline && quotes.length < 2) {
+        quotes = await get<Array<{ symbol: string }>>('/api/v1/market/quotes', alice.token);
+        if (quotes.length < 2) await sleep(500);
+      }
+      assert(quotes.length >= 2, 'fewer than two instruments were quoting after 15s');
       const charted = quotes[0]!.symbol;
       const other = quotes[1]!.symbol;
 

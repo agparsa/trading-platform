@@ -11,6 +11,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { CryptoModule } from './common/crypto/crypto.module';
 import { AuditModule } from './common/audit/audit.module';
 import { EmailModule } from './auth/email/email.module';
 import { AuthModule } from './auth/auth.module';
@@ -74,6 +75,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     }),
     PrismaModule,
     RedisModule,
+    CryptoModule,
     AuditModule,
     EmailModule,
     IdempotencyModule,
