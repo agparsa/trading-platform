@@ -118,17 +118,47 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+
+      # `target: production`, not `target: build`.
+      #
+      # Stopping at `build` compiles the code and stops one instruction short of
+      # the stage that assembles the image that actually ships. That gap hid a
+      # real failure: web.Dockerfile's production stage copies apps/web/public,
+      # which did not exist, so the web image could not be built at all — and CI
+      # was green on every push, because it never reached the line.
+      #
+      # The build stage is a dependency of the production stage, so this is
+      # strictly more coverage rather than a second build.
       - name: Build api image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/api.Dockerfile
-          target: build
+          target: production
+          push: false
+      - name: Build worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/worker.Dockerfile
+          target: production
+          push: false
+      - name: Build nginx image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/nginx.Dockerfile
           push: false
       - name: Build web image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/web.Dockerfile
-          target: build
+          target: production
+          # The hostname is inlined into the client bundle at build time. This
+          # one is a placeholder that proves the argument is wired; a real
+          # deployment passes its own. See docs/deployment.md.
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://example.invalid/api/v1
+            NEXT_PUBLIC_WS_URL=https://example.invalid
           push: false

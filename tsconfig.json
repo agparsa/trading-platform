@@ -1,7 +1,17 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    /*
+     * These files are run by tsx and vitest as ES modules, not compiled to
+     * CommonJS like the applications are, so `import.meta.url` is available to
+     * them and the base module setting is wrong here. Without this the root
+     * project cannot be typechecked at all — which is how three genuine type
+     * errors sat in scripts/ unnoticed: `pnpm -r typecheck` walks workspace
+     * packages, and the repository root is not one.
+     */
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
   },
   "include": ["scripts/**/*.ts", "vitest.config.ts", "eslint.config.mjs"]
 }

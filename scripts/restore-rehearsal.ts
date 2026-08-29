@@ -45,7 +45,10 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { PrismaClient } from '@prisma/client';
 import { ReconciliationService } from '../apps/worker/src/jobs/reconciliation.service';
-import type { PrismaService } from '../apps/api/src/prisma/prisma.service';
+// The worker's PrismaService, because ReconciliationService is the worker's.
+// This pointed at the API's, which is a structurally different class — the cast
+// below silenced it, and the two would have drifted apart unnoticed.
+import type { PrismaService } from '../apps/worker/src/prisma.service';
 
 const run = promisify(execFile);
 

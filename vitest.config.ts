@@ -16,6 +16,8 @@ export default defineConfig({
       '@tp/market-core': pkg('market-core'),
       '@tp/trading-core': pkg('trading-core'),
       '@tp/risk-core': pkg('risk-core'),
+      '@tp/reconciliation-core': pkg('reconciliation-core'),
+      '@tp/integrity-core': pkg('integrity-core'),
       '@tp/api-client': pkg('api-client'),
       '@tp/ui': pkg('ui'),
       // The web app's own path alias, so its pure modules can be tested without
@@ -41,6 +43,9 @@ export default defineConfig({
       // (NestJS, Prisma) the same way the application code does.
       'apps/api/test/**/*.{test,spec}.ts',
       'apps/worker/test/**/*.{test,spec}.ts',
+      // Deployment artefacts — Dockerfiles, compose, the env example. They are
+      // not code, which is exactly why nothing else here checks them.
+      'scripts/**/*.{test,spec}.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**'],
     coverage: {

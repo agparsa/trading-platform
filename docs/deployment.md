@@ -96,6 +96,32 @@ in production is a way to run code nobody built or tested.
 **Migrations are a job.** Two API replicas racing `migrate deploy` is lock
 contention at best.
 
+### TLS, and what happens before you have a certificate
+
+`ssl_certificate` is not a conditional directive: Nginx refuses to start when the
+file is missing. Pointed straight at the operator's mount, that made a first
+bring-up on a fresh host start every service and then fail on the only container
+through which any of them could be reached — with the reason in a log nobody was
+watching yet.
+
+So the Nginx image runs one script before Nginx starts. If `TLS_CERT_DIR`
+contains `fullchain.pem` and `privkey.pem`, those are what gets served. If it
+does not, the script generates a self-signed certificate and prints a warning to
+stderr on every boot. The stack comes up reachable and obviously provisional,
+which is the honest state of a host with no certificate.
+
+Replace it before anyone signs in. HSTS is sent from the first response, so a
+browser that accepts the self-signed certificate once will refuse to speak plain
+HTTP to that hostname afterwards:
+
+```bash
+cp fullchain.pem privkey.pem "$TLS_CERT_DIR"/
+docker compose -f docker-compose.prod.yml --env-file .env.production restart nginx
+```
+
+The mounted directory stays read-only and is never written to. Nothing in
+`docker/nginx/certs/` is committed.
+
 ### The web image is built for one hostname
 
 Next.js inlines `NEXT_PUBLIC_*` into the client bundle, so `PUBLIC_API_URL` and
@@ -154,16 +180,35 @@ cache warm-up and a round of client re-snapshots.
 Two things in this repository have never run outside CI, and both should be
 proven before anyone depends on them:
 
-1. **The images.** `.github/workflows` builds all three on every push, so they
-   are exercised where Docker exists — but they have not been _run_ in
-   production shape. Start a container from each and hit `/ready` before
-   cutting traffic over.
+1. **The images.** `.github/workflows/ci.yml` builds all three — api, worker and
+   web — to the `production` target on every push, so they are exercised where
+   Docker exists. They have not been _run_ in production shape. Start a
+   container from each and hit `/ready` before cutting traffic over.
 2. **A restore.** See [runbook.md](./runbook.md). A backup nobody has restored is
    a hope.
 
 The lockfile is enforced in the images: `pnpm install --frozen-lockfile` with no
 fallback. A stale lockfile fails the build rather than silently installing
 versions the test suite never saw.
+
+`.dockerignore` keeps `node_modules` out of the build context. Without it the
+Dockerfiles copy `packages/` with whatever native binaries the machine running
+the build happens to have compiled — which is how an image built on a Mac fails
+at runtime on a Linux host, on a module that works locally.
+
+`scripts/deployment.test.ts` checks the parts of this that a typecheck cannot
+see: that every path the Dockerfiles copy exists, that no service runs as root,
+that no healthcheck touches the database, that ingest and the trigger engine are
+enabled for exactly one service, and that nothing but Nginx publishes a port. It
+runs as part of `pnpm test`, and it exists because each of those was wrong at
+least once.
+
+`apps/api/src/config/production-env.test.ts` does the same for
+`.env.production.example`: every variable the API or the worker cannot start
+without is declared in it, nothing is declared that nothing reads, and no secret
+ships with a value. That one caught a sealing key named `ENCRYPTION_KEYS` where
+the schema wanted `SECRET_ENCRYPTION_KEYS` — an operator would have generated a
+key, pasted it in, and watched the API refuse to start over a value it never saw.
 
 ## Load
 

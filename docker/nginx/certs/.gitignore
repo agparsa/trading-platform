@@ -1,0 +1,4 @@
+# A private key must never reach the repository, whatever it is called.
+*
+!.gitignore
+!README.md

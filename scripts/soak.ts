@@ -428,11 +428,15 @@ async function main(): Promise<void> {
         if (Date.now() > endsAt + 1_000) break;
 
         const metrics = await fetch(`${BASE}/metrics`).then((r) => r.text());
-        const [{ backends }] = await prisma.$queryRaw<Array<{ backends: bigint }>>`
+        const rows = await prisma.$queryRaw<Array<{ backends: bigint }>>`
           SELECT count(*)::bigint AS backends
             FROM pg_stat_activity
            WHERE datname = current_database()
         `;
+        // An aggregate always returns a row, but the sampler runs for hours and
+        // a connection lost mid-query must not take the whole soak down with a
+        // TypeError about destructuring undefined.
+        const backends = rows[0]?.backends ?? 0n;
 
         const sample: Sample = {
           atMs: Date.now() - startedAt,

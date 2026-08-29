@@ -1,0 +1,6 @@
+# A trading terminal is not a public document. Everything behind this host is
+# either a sign-in page or something only a signed-in trader may see, and none
+# of it belongs in a search index — least of all the admin console, whose URL is
+# worth nothing to an attacker but is worth nothing to anyone else either.
+User-agent: *
+Disallow: /

@@ -78,35 +78,49 @@ const PHASES: readonly Phase[] = [
     name: 'Charting',
     state: 'in-progress',
     detail:
-      'Datafeed boundary and lightweight-charts rendering are done. TradingView Advanced Charts: adapter written and tested, widget waiting on the licensed bundle.',
+      'Datafeed boundary, lightweight-charts rendering, chart trading and drag-to-modify are done, and both halves of the seam — datafeed and command adapter — are driven end to end by tests. TradingView Advanced Charts: the widget is waiting on the licensed bundle, and nothing else.',
   },
   {
     id: '10',
     name: 'Advanced trading UX',
-    state: 'in-progress',
+    state: 'done',
     detail:
-      'Resting LIMIT and STOP orders are live — placed, fired, expired, cancelled. Account snapshots and the keyboard workflow remain.',
+      'Resting orders placed, fired, expired, cancelled and modified from the table or the chart. Order command lifecycle, projected outcome and reward-to-risk on the ticket, keyboard trading with a help card, watchlist with change and favourites, notifications and toasts.',
   },
   {
     id: '11',
     name: 'Security hardening',
-    state: 'in-progress',
+    state: 'done',
     detail:
-      'Refresh tokens are httpOnly, SameSite=Strict cookies and never appear in a response body. RBAC and the admin audit surface remain.',
+      'Refresh tokens are httpOnly, SameSite=Strict cookies. Two-factor with replay prevention, sealed secrets, RBAC, an administrative surface where moving money needs a second factor and a reason, a readable audit trail, and a socket that re-checks its own authority every minute. 25 attacks attempted and refused.',
   },
   {
     id: '12',
     name: 'Performance under load',
-    state: 'in-progress',
+    state: 'done',
     detail:
-      'Load harness, tick coalescing so a fast market cannot hide a level, and a lock-ordering fix for a deadlock it found. Sustained soak testing remains.',
+      'A hundred traders, two hundred sockets, three phases. It found three real faults — the stop-out sweep back-pressuring the feed, the same mistake in realtime valuation, and simulator timestamps that drifted and never recovered. Idle feed staleness on a loaded platform: 7000ms to 350ms.',
   },
   {
     id: '13',
     name: 'Production readiness',
-    state: 'in-progress',
+    state: 'done',
     detail:
-      'Images build in CI, shutdown drains cleanly, and the runbook is written. A rehearsed restore and a production-shaped load run remain.',
+      'Split ingest and serving processes behind one Nginx door, migrations as a job, non-root images, a rehearsed restore that fingerprints the evidence tables as well as the money, and a failure-mode suite proving a dead feed closes nothing.',
+  },
+  {
+    id: '14',
+    name: 'Market data integrity',
+    state: 'done',
+    detail:
+      'Every tick passes a gate: crossed books, negative prices, out-of-order arrivals and future timestamps are refused outright; implausible spreads and spikes are refused and then followed, because a guard that never re-opens freezes the price. Conversion rates must be fresh.',
+  },
+  {
+    id: '15',
+    name: 'Administration and oversight',
+    state: 'done',
+    detail:
+      'User and account lifecycle, a risk console valuing accounts live, exposure by instrument, integrity signals, reconciliation runs and findings that reopen when a drift comes back, and an audit trail with no write path.',
   },
 ];
 

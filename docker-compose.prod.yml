@@ -150,7 +150,9 @@ services:
       - api
 
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: .
+      dockerfile: docker/nginx.Dockerfile
     restart: unless-stopped
     ports:
       - '${HTTP_PORT:-80}:80'
@@ -158,8 +160,8 @@ services:
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       # Certificates live outside the image. Mount whatever your issuer produces
-      # at /etc/nginx/certs/fullchain.pem and privkey.pem; without them Nginx
-      # serves HTTP only and says so in its log.
+      # at fullchain.pem and privkey.pem. Without them the stack still comes up,
+      # on a self-signed certificate, and says so on every boot.
       - ${TLS_CERT_DIR:-./docker/nginx/certs}:/etc/nginx/certs:ro
     depends_on:
       - api

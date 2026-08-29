@@ -1,0 +1,39 @@
+# The build context is not a copy of a developer's laptop.
+#
+# Without this file every `docker build` uploads node_modules — several
+# gigabytes of it, including native binaries compiled for whatever architecture
+# the developer happens to use — and the Dockerfiles then COPY packages/ with
+# those binaries inside, before `pnpm install` has had a chance to fetch the
+# right ones. An image built on a Mac and run on a Linux host is exactly how a
+# platform ends up failing at runtime on a module that "works locally".
+
+node_modules
+**/node_modules
+
+# Build output. Rebuilt inside the image from source; a stale copy from the host
+# would silently take precedence over the build that was actually verified.
+dist
+**/dist
+.next
+**/.next
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Never in an image, at any layer — a secret deleted in a later step is still in
+# the layer that added it. No Dockerfile here copies one, and none ever should:
+# configuration reaches a container at runtime, through env_file.
+.env
+.env.*
+
+# Certificates are mounted into Nginx at runtime, never built into an image.
+docker/nginx/certs
+
+.git
+.github
+.vscode
+.idea
+
+coverage
+**/coverage
+*.log
+.DS_Store

@@ -1,29 +1,40 @@
 # Trading Platform
 
 A standalone, production-oriented trading platform: its own order engine,
-position engine, P&L engine, risk engine, market-data layer, API and terminal.
-No architectural dependency on TradingLocker, MetaTrader, or any other trading
-platform.
+position engine, P&L engine, risk engine, market-data layer, API, terminal and
+administration console. No architectural dependency on TradingLocker, MetaTrader,
+or any other trading platform.
 
-**Status: Phases 0–7 complete.** The trading engine works end to end: a
-trader can register, be funded, open a position against a live price feed, watch
-it marked to market, and close it — or have the platform close it, when a
-stop-loss, take-profit, trailing stop or stop-out fires. Every outcome lands in
-an immutable ledger. The terminal UI is not built yet, and this repository does
-not pretend otherwise — see [Build status](#build-status).
+**Status: Phases 0–15 complete; deployable.** A trader can register, verify their
+email, enrol a second factor, fund an account, place market and resting orders
+against a live price feed, watch positions marked to market over a WebSocket,
+modify levels by dragging them on the chart, and close — or have the platform
+close, when a stop-loss, take-profit, trailing stop, expiry or stop-out fires.
+Every outcome lands in an immutable ledger. An administrator can search users and
+accounts, suspend either, see live risk exposure, read the audit trail, run a
+reconciliation, and post a balance adjustment — which requires a second factor, a
+written reason, and produces a ledger entry rather than an edited number.
+
+One thing is genuinely unfinished, and the build-status page says so on screen:
+the TradingView Advanced Charts _widget_ needs a licensed bundle this repository
+does not contain. The datafeed and trading-command adapters it plugs into are
+written and driven end to end by tests; the terminal ships on `lightweight-charts`
+until the bundle is dropped in.
 
 ---
 
 ## What exists today
 
-|                   |                                                                                |
-| ----------------- | ------------------------------------------------------------------------------ |
-| Tests             | **174**, all passing                                                           |
-| Database          | 21 tables, **57 NUMERIC columns, 0 floating-point columns** (CI-enforced)      |
-| Verified          | `lint → typecheck → test → build` green; API boots and passes smoke checks     |
-| Reference vectors | 8 P&L / margin / equity figures reproduced exactly from a live broker terminal |
+|                   |                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| Tests             | **1031** across 83 files, all passing                                               |
+| Database          | 30 tables, **59 NUMERIC columns, 0 floating-point columns** (CI-enforced)           |
+| Verified          | `lint → typecheck → test → build` green, plus smoke, WebSocket smoke, pentest, load |
+| Security          | **25** attacks attempted against a running instance, all refused                    |
+| Load              | 100 traders · 200 sockets · 1000 orders; newest price stays ~200ms old under it     |
+| Reference vectors | 8 P&L / margin / equity figures reproduced exactly from a live broker terminal      |
 
-Working, with tests:
+### Engine
 
 - **Money and precision** — `Money`, configured `Decimal`, explicit rounding and
   tick/lot quantization. `toDecimal()` refuses inexact JS numbers outright.
@@ -34,38 +45,78 @@ Working, with tests:
 - **State machines** — order and position lifecycles as data, with illegal
   transitions rejected at the attempt.
 - **Protective orders** — SL/TP validation and triggering on the correct side of
-  the book, trailing stops, and a defined resolution for a tick that spans both levels.
-- **Risk engine** — pure rule contract, six default rules, all violations reported at once.
-- **Market data** — provider port, seeded deterministic simulator, scripted
-  provider for tests, candle aggregation and persistence, quote-freshness policy,
-  per-instrument session calendar evaluated in its own timezone.
-- **Authentication** — Argon2id, separate access/refresh secrets, refresh-token
-  families with reuse detection, per-account lockout, email verification and
-  password reset over an injected email port, global auth guard, RBAC.
+  the book, trailing stops that ratchet and never retreat, and a defined
+  resolution for a tick that spans both levels.
+- **Risk engine** — pure rule contract, six default rules, all violations reported
+  at once.
 - **Accounts and ledger** — append-only balance ledger that is the only writer of
   balances, row-locked against lost updates, idempotent, reversed by compensating
   entries, and replayable for reconciliation.
-- **Trading** — market orders, executions retaining the exact quote they filled
-  against, positions, full and partial close, SL/TP modification, reverse. Every
-  mutation requires an `Idempotency-Key`; closes are serialised by an
-  `OPEN → CLOSING` database guard.
-- **Trigger engine** — closes positions from price movement: stop-loss and
-  take-profit on the executable exit price, trailing stops that ratchet and never
-  retreat, and incremental liquidation at the stop-out level. Verified against
-  the live feed, not only in tests.
+- **Trading** — market orders, resting LIMIT and STOP orders with expiry, executions
+  retaining the exact quote they filled against, positions, full and partial close,
+  SL/TP modification, reverse. Every mutation requires an `Idempotency-Key`; closes
+  are serialised by an `OPEN → CLOSING` database guard.
+- **Trigger engine** — closes positions from price movement, and works resting
+  orders. Verified against the live feed, not only in tests. Its stop-out sweep runs
+  off the tick path, so a large book cannot back-pressure the market feed.
+
+### Market data
+
+- **Provider port** — seeded deterministic simulator, scripted provider for tests,
+  candle aggregation and persistence, quote-freshness policy, per-instrument
+  session calendar evaluated in its own timezone.
+- **Integrity gate** — every tick is inspected before anything downstream sees it:
+  malformed, non-positive, crossed, out-of-order, future-dated, implausibly wide
+  or implausibly large moves are rejected and counted. A run of rejections
+  re-anchors only for the reasons where re-anchoring is safe; a crossed book never
+  re-anchors, because a crossed book is a broken feed, not a new price.
+- **Split ingest** — one instance ingests and relays over Redis; serving instances
+  scale horizontally behind it.
+- **Freshness as a first-class refusal** — `STALE_QUOTE` is a safe answer. A dead
+  feed refuses to open positions and refuses to close them; it never closes one on
+  its own and never writes a ledger entry.
+
+### Interfaces
+
 - **Realtime** — Socket.IO gateway on `/ws` with per-connection sequence numbers,
-  account-scoped private channels, Redis fan-out across instances, and
-  tick-driven account and P&L pushes throttled per account.
+  account-scoped private channels, Redis fan-out across instances, per-socket
+  message budgets, and a connection that re-checks its own authority every minute
+  and is downgraded when the token behind it expires or the account is revoked.
+- **Terminal** — order ticket with projected outcome and reward-to-risk, positions
+  and pending tables with server-side totals, chart trading with drag-to-modify,
+  watchlist with search, favourites and daily change, keyboard trading with a help
+  card, order-command log, toasts and a notification bell.
+- **Administration** — people, accounts, risk console, audit search and
+  reconciliation, each backed by its own capability. Moving money is one route,
+  gated on a second factor and a written reason, and it posts to the ledger.
 - **API** — NestJS with Zod-validated environment and DTOs, response/error
   envelopes, request-id tracing, structured logging with redaction, Prometheus
-  metrics, liveness and readiness probes, OpenAPI, per-endpoint rate limits.
-- **Worker** — real scheduled jobs: nightly swap accrual with weekend financing,
-  idempotency sweeping, and a reconciliation check that replays every ledger
-  against its cached balance and raises a CRITICAL risk event on any drift.
-- **Web** — Next.js 15 with the terminal theme, serving an honest build-status page.
+  metrics, liveness/readiness/market probes, OpenAPI, per-endpoint rate limits.
+- **Worker** — nightly swap accrual with weekend financing, idempotency sweeping,
+  reconciliation that replays every ledger against its cached balance and records
+  a finding on any drift, and notification delivery.
 
-Not built yet: pending orders, account snapshots, the terminal UI, chart
-integration. Those are Phases 8–9.
+### Operations
+
+- **Reconciliation** — runs are recorded before the work starts and closed either
+  way; findings are deduplicated per subject, counted, and reopened if they recur
+  after being resolved.
+- **Backup and restore** — `pnpm restore:rehearse` dumps, restores into a scratch
+  database, compares row counts and content fingerprints, and reconciles every
+  ledger. It is a rehearsal, not a claim.
+- **Production stack** — `docker-compose.prod.yml`: Postgres with data checksums,
+  Redis with `noeviction`, a one-shot migration container, a dedicated ingest
+  instance, scalable serving instances, worker, web, and nginx terminating TLS
+  with per-zone rate limits. Every application image runs as a non-root user.
+- **A first bring-up that works** — nginx generates a self-signed certificate and
+  says so, loudly, when none is mounted, because `ssl_certificate` is not
+  conditional and a missing file would otherwise stop the only container anybody
+  can reach the platform through. The deployment artefacts are themselves tested:
+  every path the Dockerfiles copy exists, no application image runs as root, no
+  healthcheck touches the database, ingest and the trigger engine are enabled for
+  exactly one service, nothing but nginx publishes a port, and
+  `.env.production.example` declares every variable the API and worker cannot
+  start without and nothing that nothing reads.
 
 ---
 
@@ -117,12 +168,14 @@ pnpm verify
 pnpm dev
 ```
 
-|                          |                                   |
-| ------------------------ | --------------------------------- |
-| Web                      | http://localhost:3000             |
-| API                      | http://localhost:4000/api/v1      |
-| OpenAPI                  | http://localhost:4000/docs        |
-| Health / Ready / Metrics | `/health` · `/ready` · `/metrics` |
+|                  |                                                      |
+| ---------------- | ---------------------------------------------------- |
+| Terminal         | http://localhost:3000                                |
+| Admin console    | http://localhost:3000/admin                          |
+| Build status     | http://localhost:3000/status                         |
+| API              | http://localhost:4000/api/v1                         |
+| OpenAPI          | http://localhost:4000/docs                           |
+| Probes / Metrics | `/health` · `/ready` · `/health/market` · `/metrics` |
 
 `docker compose up -d` with no service names also builds and runs the api, worker
 and web containers. Starting only `postgres` and `redis` and running the apps
@@ -130,9 +183,9 @@ with `pnpm dev` gives faster reloads while developing.
 
 ### Running the integration tests
 
-65 of the 261 tests talk to a real PostgreSQL database. They skip themselves
-unless `TEST_DATABASE_URL` is set, so a fresh checkout gets a green `pnpm verify`
-with no extra setup — but that means they are not running yet.
+A large share of the suite talks to a real PostgreSQL database. Those tests skip
+themselves unless `TEST_DATABASE_URL` is set, so a fresh checkout gets a green
+`pnpm verify` with no extra setup — but that means they are not running yet.
 
 To enable them:
 
@@ -144,106 +197,156 @@ That creates a separate `trading_platform_test` database and migrates it, then
 prints the line to uncomment in `.env`. The suite truncates every table between
 cases, which is why it gets its own database and never points at your working one.
 
+---
+
+## Deploying
+
+[`docs/deployment.md`](./docs/deployment.md) is the procedure. In outline:
+
+```bash
+cp .env.production.example .env.production
+pnpm keygen credentials
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
+```
+
+The `migrate` service runs `prisma migrate deploy` once and exits; `api` waits for
+it. Only `nginx` publishes ports. `MARKET_INGEST_ENABLED` and
+`TRIGGER_ENGINE_ENABLED` are true on exactly one instance — `api-ingest` — and
+false everywhere else, which is what makes `api` safe to scale with
+`--scale api=N`.
+
+Before pointing traffic at it, run the four checks the platform ships with
+against the real deployment: `pnpm smoke`, `pnpm smoke:ws`, `pnpm pentest` and
+`pnpm restore:rehearse`. Each of them boots or attacks something rather than
+reading a config file.
+
+---
+
 ## Layout
 
 ```
 apps/
-  api/         NestJS — HTTP, WebSocket, trading engine
+  api/         NestJS — HTTP, WebSocket, trading engine, admin
   worker/      BullMQ — deferred work only
-  web/         Next.js — the terminal
+  web/         Next.js — terminal and admin console
 packages/
-  shared-types/    enums, wire DTOs, error codes, WS contract
-  financial-core/  Money, Decimal, instrument specs, P&L / margin / account formulas
-  market-core/     MarketDataProvider port, clock, seeded RNG, candles, simulator
-  trading-core/    order & position state machines, protective orders
-  risk-core/       rule contract, rule engine, default rules
-  api-client/      typed REST client
-  ui/              presentation primitives and design tokens
+  shared-types/       enums, wire DTOs, error codes, permissions, WS contract
+  financial-core/     Money, Decimal, instrument specs, P&L / margin / account formulas
+  market-core/        MarketDataProvider port, clock, seeded RNG, candles, simulator, tick gate
+  trading-core/       order & position state machines, protective orders, pending validation
+  risk-core/          rule contract, rule engine, default rules
+  reconciliation-core/ ledger replay and drift detection
+  integrity-core/     anti-fraud and integrity signals
+  api-client/         typed REST client
+  ui/                 presentation primitives and design tokens
 prisma/          schema, migrations, instrument seed
-docs/            architecture and design (Phase 0 deliverables)
-docker/          per-service Dockerfiles
-scripts/         schema guard, API smoke test
+docs/            architecture, design, operations
+docker/          per-service Dockerfiles and the nginx config
+scripts/         schema guard, smoke, WebSocket smoke, pentest, load, soak, restore rehearsal
 ```
 
-`financial-core`, `trading-core` and `risk-core` are pure: no React, no Next,
-no NestJS, no Prisma, no Redis, no Node I/O. **Enforced by ESLint**, not by
-convention.
+`financial-core`, `market-core`, `trading-core`, `risk-core`,
+`reconciliation-core` and `integrity-core` are pure: no React, no Next, no NestJS,
+no Prisma, no Redis, no Node I/O. **Enforced by ESLint**, not by convention.
 
 ---
 
 ## Scripts
 
-| Command                                                                        | Does                                      |
-| ------------------------------------------------------------------------------ | ----------------------------------------- |
-| `pnpm verify`                                                                  | lint → typecheck → test → build           |
-| `pnpm test` / `test:watch` / `test:coverage`                                   | Vitest                                    |
-| `pnpm dev`                                                                     | Every app in watch mode                   |
-| `pnpm build`                                                                   | Packages, then apps                       |
-| `pnpm db:migrate` / `db:migrate:deploy` / `db:seed` / `db:studio` / `db:reset` | Prisma                                    |
-| `pnpm check:schema`                                                            | Fails if any floating-point column exists |
-| `pnpm smoke`                                                                   | Boots the built API and probes it         |
-| `pnpm pentest`                                                                 | Boots it again and attacks it             |
-| `pnpm soak`                                                                    | Boots it again and leaves it running      |
-| `pnpm restore:rehearse`                                                        | Dumps, restores, compares, reconciles     |
-| `pnpm keygen <id>`                                                             | Prints a secret-encryption key            |
-| `pnpm lint:fix` / `pnpm format`                                                | Fixers                                    |
+| Command                                                                        | Does                                             |
+| ------------------------------------------------------------------------------ | ------------------------------------------------ |
+| `pnpm verify`                                                                  | build packages → lint → typecheck → test → build |
+| `pnpm test` / `test:watch` / `test:coverage`                                   | Vitest                                           |
+| `pnpm dev`                                                                     | Every app in watch mode                          |
+| `pnpm build`                                                                   | Packages, then apps                              |
+| `pnpm db:migrate` / `db:migrate:deploy` / `db:seed` / `db:studio` / `db:reset` | Prisma                                           |
+| `pnpm check:schema`                                                            | Fails if any floating-point column exists        |
+| `pnpm smoke`                                                                   | Boots the built API and probes it                |
+| `pnpm smoke:ws`                                                                | Connects a real socket and checks the contract   |
+| `pnpm pentest`                                                                 | Boots it again and attacks it                    |
+| `pnpm load`                                                                    | 100 traders, 200 sockets, three phases           |
+| `pnpm soak`                                                                    | Boots it again and leaves it running             |
+| `pnpm restore:rehearse`                                                        | Dumps, restores, compares, reconciles            |
+| `pnpm keygen <id>`                                                             | Prints a secret-encryption key                   |
+| `pnpm lint:fix` / `pnpm format`                                                | Fixers                                           |
 
 ---
 
 ## Environment
 
-Every variable is documented in [`.env.example`](./.env.example) and validated by
-a Zod schema at boot (`apps/api/src/config/env.schema.ts`). Missing or malformed
-configuration stops the process; error output names fields, never values.
+Every variable is documented in [`.env.example`](./.env.example) (and
+[`.env.production.example`](./.env.production.example) for a host) and validated
+by a Zod schema at boot (`apps/api/src/config/env.schema.ts`). Missing or
+malformed configuration stops the process; error output names fields, never
+values.
 
 The ones worth knowing:
 
-| Variable                                   | Why it matters                                                   |
-| ------------------------------------------ | ---------------------------------------------------------------- |
-| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Minimum 32 characters, or the API will not start                 |
-| `MARKET_SIMULATOR_SEED`                    | Fixes the market. Same seed ⇒ same ticks ⇒ same fills ⇒ same P&L |
-| `TRADING_SERVER_TIMEZONE`                  | The single zone all trading-day logic uses                       |
-| `NEXT_PUBLIC_CHARTING_LIBRARY_PATH`        | Where the licensed TradingView library is unpacked               |
+| Variable                                   | Why it matters                                                       |
+| ------------------------------------------ | -------------------------------------------------------------------- |
+| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Minimum 32 characters, or the API will not start                     |
+| `CREDENTIALS_ENCRYPTION_KEY`               | Seals 2FA secrets and stored credentials at rest                     |
+| `MARKET_SIMULATOR_SEED`                    | Fixes the market. Same seed ⇒ same ticks ⇒ same fills ⇒ same P&L     |
+| `MARKET_INGEST_ENABLED`                    | True on exactly one instance. Everywhere else, prices arrive relayed |
+| `TRIGGER_ENGINE_ENABLED`                   | True on exactly one instance, or positions close more than once      |
+| `MARKET_MAX_SPREAD_RATIO` / `_JUMP_RATIO`  | What the integrity gate will accept from the feed                    |
+| `TRADING_SERVER_TIMEZONE`                  | The single zone all trading-day logic uses                           |
+| `CORS_ORIGINS`                             | Empty in production means the socket accepts no browser origin       |
+| `NEXT_PUBLIC_CHARTING_LIBRARY_PATH`        | Where the licensed TradingView library is unpacked                   |
 
 ---
 
 ## Documentation
 
-[`docs/`](./docs/README.md) holds the Phase 0 design. Most useful first:
+[`docs/`](./docs/README.md). Most useful first:
 
 - [architecture.md](./docs/architecture.md) — the rule everything else follows
+- [deployment.md](./docs/deployment.md) — how it goes on a host
+- [runbook.md](./docs/runbook.md) — what to do when it misbehaves
 - [pnl.md](./docs/pnl.md) — formulas and the reference vectors
 - [trading-engine.md](./docs/trading-engine.md) — submission and tick paths
+- [market-data.md](./docs/market-data.md) — the feed, freshness and the integrity gate
 - [database.md](./docs/database.md) — schema and the immutable ledger
+- [security.md](./docs/security.md) — auth, 2FA, sockets, and what is not covered
+- [capacity.md](./docs/capacity.md) — what the load run measured, and its limits
+- [reconciliation.md](./docs/reconciliation.md) — drift, findings and their lifecycle
 
 ---
 
 ## Build status
 
-| Phase |                                                |              |
-| ----- | ---------------------------------------------- | ------------ |
-| 0     | Product definition                             | **Complete** |
-| 1     | Project foundation                             | **Complete** |
-| 2     | Account system                                 | Planned      |
-| 3     | Market core (persisted)                        | Planned      |
-| 4     | Trading core                                   | Planned      |
-| 5     | Financial engine (wired)                       | Planned      |
-| 6     | SL/TP engine                                   | Planned      |
-| 7     | Realtime                                       | Planned      |
-| 8     | Trading terminal                               | Planned      |
-| 9     | Chart integration                              | Planned      |
-| 10–13 | Advanced UX, security, performance, production | Planned      |
+| Phase |                            |              |
+| ----- | -------------------------- | ------------ |
+| 0     | Product definition         | **Complete** |
+| 1     | Project foundation         | **Complete** |
+| 2     | Account system             | **Complete** |
+| 3     | Market core (persisted)    | **Complete** |
+| 4     | Trading core               | **Complete** |
+| 5     | Financial engine (wired)   | **Complete** |
+| 6     | SL/TP engine               | **Complete** |
+| 7     | Realtime                   | **Complete** |
+| 8     | Trading terminal           | **Complete** |
+| 9     | Charting                   | In progress  |
+| 10    | Advanced trading UX        | **Complete** |
+| 11    | Security hardening         | **Complete** |
+| 12    | Performance under load     | **Complete** |
+| 13    | Production readiness       | **Complete** |
+| 14    | Market data integrity      | **Complete** |
+| 15    | Administration & oversight | **Complete** |
 
-The first real milestone was never the chart. It is this, and it now works end to
-end through automated tests and against the running API:
+Phase 9 is in progress for one reason, stated plainly on `/status` as well: the
+TradingView Advanced Charts widget needs a licensed bundle. The seam it attaches
+to — `buildChartDatafeed` and `TradingCommandAdapter` — is complete and tested,
+and chart trading works today on `lightweight-charts`.
+
+The path that had to work before anything else does:
 
 ```
-User → Account → Market simulator → BUY XAUUSD → Order → Execution
+User → Account → Market feed → integrity gate → BUY XAUUSD → Order → Execution
      → Position → Tick → P&L → SL/TP → Close → Ledger → Updated balance
+     → Reconciliation → Audit
 ```
-
-That is now complete, including the SL/TP leg: a position closes from a tick, not
-only from a request.
 
 ---
 
@@ -257,9 +360,12 @@ Non-negotiable in this repository:
    CI fails on a float column.
 3. **No polling as a substitute for realtime.** ESLint bans `setInterval`.
 4. **No silently swallowed errors.** Every failure is a typed, coded error.
-5. **No API timeout read as a rule breach.** A provider failure never closes a position.
-6. **Database transactions for every financial mutation.**
-7. **Tests for every financial calculation.**
+5. **No API timeout read as a rule breach.** A provider failure never closes a
+   position, and a dead feed refuses to trade rather than guessing a price.
+6. **Database transactions for every financial mutation**, and no route that edits
+   a balance — only routes that post to the ledger.
+7. **Tests for every financial calculation**, and a guard is not trusted until
+   breaking it deliberately has been seen to fail a test.
 8. **UTC internally; timezone assumptions made explicit.**
 9. **The domain stays framework-free.**
 10. **No evaluation-program logic here.** This is a standalone trading platform;
