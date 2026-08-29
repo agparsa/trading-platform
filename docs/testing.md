@@ -13,6 +13,7 @@ pnpm smoke             # boots the built API and drives a full trade round trip
 pnpm smoke:ws          # boots it again and drives a real Socket.IO client
 pnpm pentest           # boots it again and attacks it
 pnpm soak              # boots it again and leaves it running
+pnpm restore:rehearse  # dumps it, restores it elsewhere, compares the two
 ```
 
 Integration tests run against a real PostgreSQL database named by
@@ -198,6 +199,10 @@ a stale binary is the worst failure mode there is.
   by the _slope_ and the _fit_ of its trend, not by a before-and-after: a leak
   climbs, it does not double, and V8's sawtooth produces a confident gradient
   that means nothing. See [soak.md](./soak.md).
+- `pnpm restore:rehearse` — dumps the database, restores it into an empty one,
+  runs migrations, compares the two by _value_ rather than by row count, and runs
+  the real reconciliation engine over the copy. A backup nobody has restored is a
+  hypothesis. See [backup-restore.md](./backup-restore.md).
 
 Two integration suites carry the isolation guarantees:
 `account-access.test.ts` has one case per caller-scoped operation, so a new
