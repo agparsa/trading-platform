@@ -170,20 +170,20 @@ Follows the specification's order, because each step is the foundation of the
 next: permissions gate master accounts, master accounts gate the dashboards, and
 the integrity engine consumes events the earlier steps emit.
 
-| Step | Work                                             | Depends on | State                                                 |
-| ---- | ------------------------------------------------ | ---------- | ----------------------------------------------------- |
-| 3    | RBAC and granular permissions                    | —          | done — [permissions.md](./permissions.md)             |
-| 4    | Master account domain and authorisation          | 3          | done — [master-accounts.md](./master-accounts.md)     |
-| 5    | Realtime account and P&L UI completion           | —          | done — [realtime-pnl.md](./realtime-pnl.md)           |
-| 6    | Chart SL/TP interaction                          | 5          | done — [chart-trading.md](./chart-trading.md)         |
-| 7    | One-click and keyboard trading                   | 6          | done — [one-click-trading.md](./one-click-trading.md) |
-| 8    | Reconciliation engine                            | —          | done — [reconciliation.md](./reconciliation.md)       |
-| 9    | Integrity engine                                 | 3          | done — [anti-fraud.md](./anti-fraud.md)               |
-| 10   | Operations dashboard                             | 3, 8, 9    | done — [operations.md](./operations.md)               |
-| 11   | Security hardening                               | 3, 4       |                                                       |
-| 12   | Load and soak                                    | all        |                                                       |
-| 13   | Backup and restore rehearsal                     | —          |                                                       |
-| 14   | Final browser, integration and concurrency audit | all        |                                                       |
+| Step | Work                                             | Depends on | State                                                                                                                         |
+| ---- | ------------------------------------------------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 3    | RBAC and granular permissions                    | —          | done — [permissions.md](./permissions.md)                                                                                     |
+| 4    | Master account domain and authorisation          | 3          | done — [master-accounts.md](./master-accounts.md)                                                                             |
+| 5    | Realtime account and P&L UI completion           | —          | done — [realtime-pnl.md](./realtime-pnl.md)                                                                                   |
+| 6    | Chart SL/TP interaction                          | 5          | done — [chart-trading.md](./chart-trading.md)                                                                                 |
+| 7    | One-click and keyboard trading                   | 6          | done — [one-click-trading.md](./one-click-trading.md)                                                                         |
+| 8    | Reconciliation engine                            | —          | done — [reconciliation.md](./reconciliation.md)                                                                               |
+| 9    | Integrity engine                                 | 3          | done — [anti-fraud.md](./anti-fraud.md)                                                                                       |
+| 10   | Operations dashboard                             | 3, 8, 9    | done — [operations.md](./operations.md)                                                                                       |
+| 11   | Security hardening                               | 3, 4       | done — [two-factor.md](./two-factor.md), [sessions.md](./sessions.md), [penetration-checklist.md](./penetration-checklist.md) |
+| 12   | Load and soak                                    | all        | done — [soak.md](./soak.md)                                                                                                   |
+| 13   | Backup and restore rehearsal                     | —          | done — [backup-restore.md](./backup-restore.md)                                                                               |
+| 14   | Final browser, integration and concurrency audit | all        |                                                                                                                               |
 
 `pnpm verify` must pass at the end of every step, and `pnpm smoke`,
 `pnpm smoke:ws` and `pnpm load` where the step touches what they cover. No step

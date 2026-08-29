@@ -47,12 +47,47 @@ import { Inject } from '@nestjs/common';
 import type { Env } from '../config/env.schema';
 
 /**
+ * Carries a risk rejection out of the transaction that discovered it.
+ *
+ * Risk is now evaluated inside the account's write lock, which means a rejection
+ * has to escape a transaction that must roll back. It cannot record the risk
+ * event on its way out — a write inside a rolled-back transaction is a write
+ * that never happened, and the rejection would leave no trace at all.
+ *
+ * So the decision travels out in this, and the caller records it once the
+ * rollback is complete.
+ */
+class RiskRejection extends Error {
+  constructor(
+    readonly violations: readonly { rule: string; code: string; message: string }[],
+    readonly valuation: { state: { equity: Money; freeMargin: Money; usedMargin: Money } },
+  ) {
+    super('Order rejected by risk');
+    this.name = 'RiskRejection';
+  }
+}
+
+/**
  * Market-order submission.
  *
- * The ordering below is not arbitrary. Everything that can reject — validation,
- * pricing, margin, risk — happens *before* the transaction opens, so a rejected
- * order costs one read-only pass and holds no row locks. The transaction only
- * contains writes that must succeed or fail together.
+ * The ordering below is not arbitrary, and it changed once for a reason worth
+ * knowing.
+ *
+ * Everything that can reject on the *request alone* — validation, session,
+ * volume, pricing — happens before the transaction opens, so a malformed order
+ * costs one read-only pass and holds no row locks.
+ *
+ * **Margin and risk cannot be checked there**, and for a long time they were.
+ * They read the account's free margin, which another order can spend between the
+ * read and the write. Two orders arriving together both saw the same free margin,
+ * both concluded they fitted, and both opened: a $5,000 account holding $9,167 of
+ * margin, past its stop-out level from the instant it was created. That check now
+ * happens inside the transaction, after the account's write lock, where the
+ * number it reads cannot change before it is spent.
+ *
+ * The cost is that a risk rejection now opens a transaction and rolls it back.
+ * That is the correct price: a lock held for the length of one evaluation, in
+ * exchange for an invariant that cannot be raced.
  */
 @Injectable()
 export class OrdersService {
@@ -147,8 +182,6 @@ export class OrdersService {
     ).convertTo(account.currency, rate);
     const commission = commissionForLeg(spec, volume, account.currency, rate);
 
-    const valuation = await this.accountState.valuate(account.id);
-    const context = await this.riskContext.build(valuation, now);
     const proposed: ProposedOrder = {
       symbol: symbolCode,
       spec,
@@ -159,29 +192,34 @@ export class OrdersService {
       notional,
     };
 
-    const decision = this.risk.evaluate(proposed, context);
-    if (!decision.allowed) {
-      const first = decision.violations[0];
-      await this.recordRiskEvent(account.id, decision.violations, valuation);
-      this.metrics.ordersSubmitted.inc({ symbol: symbolCode, type: 'MARKET', outcome: 'rejected' });
-      throw new DomainError(
-        first?.code ?? TradingErrorCode.VALIDATION_FAILED,
-        first?.message ?? 'Order rejected by risk',
-        {
-          // Every violation is reported, not just the first, so a trader fixes
-          // all of them in one attempt.
-          violations: decision.violations.map((v) => `${v.rule}: ${v.message}`).join('; '),
-        },
-      );
-    }
-
     const symbolId = this.symbols.requireId(symbolCode);
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.runGuarded(account.id, symbolCode, 'MARKET', async (tx) => {
       // First statement, deliberately. Inserting the order takes a share lock on
       // this account row and the ledger post later wants it exclusively; two
       // concurrent orders would deadlock on that pair. See LedgerService.lockAccount.
       await this.ledger.lockAccount(tx, account.id);
+
+      /**
+       * Risk is evaluated **under the lock**, and this is the whole reason the
+       * transaction is shaped this way.
+       *
+       * It used to be evaluated above, before the transaction opened. Two orders
+       * arriving together both read the same free margin, both concluded they
+       * fitted, and both then took the lock in turn and opened. A $5,000 account
+       * ended up holding $9,167 of margin — an account already past its stop-out
+       * level the instant it was created, on positions it should never have been
+       * allowed to take.
+       *
+       * A check outside the lock is a check of a number that can change before
+       * it is used. The account row has to be held from the moment its free
+       * margin is read to the moment that margin is spent, or the read means
+       * nothing.
+       */
+      const valuation = await this.accountState.valuate(account.id, tx);
+      const context = await this.riskContext.build(valuation, now, tx);
+      const decision = this.risk.evaluate(proposed, context);
+      if (!decision.allowed) throw new RiskRejection(decision.violations, valuation);
 
       const order = await tx.order.create({
         data: {
@@ -592,27 +630,107 @@ export class OrdersService {
       ).convertTo(order.account.currency, rate);
       const commission = commissionForLeg(spec, volume, order.account.currency, rate);
 
-      // Risk is evaluated now, against the account as it stands. Nothing was
-      // reserved when the order was placed, and the account may have spent its
-      // free margin since.
-      const valuation = await this.accountState.valuate(order.accountId);
-      const context = await this.riskContext.build(valuation, Date.now());
-      const decision = this.risk.evaluate(
-        {
-          symbol: symbolCode,
-          spec,
-          side,
-          volume: volume.toString(),
-          price: fillPrice.toString(),
-          requiredMargin: margin,
-          notional,
-        },
-        context,
-      );
+      const proposed = {
+        symbol: symbolCode,
+        spec,
+        side,
+        volume: volume.toString(),
+        price: fillPrice.toString(),
+        requiredMargin: margin,
+        notional,
+      };
 
-      if (!decision.allowed) {
-        await this.rejectTriggered(order.id, order.accountId, symbolCode, decision.violations);
-        await this.recordRiskEvent(order.accountId, decision.violations, valuation);
+      let result;
+      try {
+        result = await this.prisma.$transaction(async (tx) => {
+          // The account's write lock first, before any insert that references it.
+          await this.ledger.lockAccount(tx, order.accountId);
+
+          /**
+           * Risk is evaluated here, under the lock, against the account as it
+           * stands. Nothing was reserved when the order was placed and the
+           * account may have spent its free margin since — and, because a resting
+           * order fills from the tick loop while the owner may be submitting a
+           * market order by hand, "since" can mean "in the last millisecond".
+           *
+           * Evaluating this above the transaction, as it was, let a fill and a
+           * manual order each see free margin the other was about to spend.
+           */
+          const valuation = await this.accountState.valuate(order.accountId, tx);
+          const context = await this.riskContext.build(valuation, Date.now(), tx);
+          const decision = this.risk.evaluate(proposed, context);
+          if (!decision.allowed) throw new RiskRejection(decision.violations, valuation);
+
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              status: transitionOrder(OrderStatus.TRIGGERED, OrderStatus.FILLED),
+              filledVolume: volume.toString(),
+              version: { increment: 1 },
+            },
+          });
+          await tx.orderEvent.createMany({
+            data: [
+              {
+                orderId: order.id,
+                type: 'TRIGGERED',
+                fromStatus: OrderStatus.PENDING,
+                toStatus: OrderStatus.TRIGGERED,
+                payload: { restingPrice, bid: tick.bid, ask: tick.ask },
+              },
+              {
+                orderId: order.id,
+                type: 'FILLED',
+                fromStatus: OrderStatus.TRIGGERED,
+                toStatus: OrderStatus.FILLED,
+                payload: {
+                  restingPrice,
+                  price: fillPrice.toString(),
+                  // Positive means the fill was worse than the resting price.
+                  slippage: fillPrice.minus(toDecimal(restingPrice)).abs().toString(),
+                  bid: tick.bid,
+                  ask: tick.ask,
+                },
+              },
+            ],
+          });
+          await tx.execution.create({
+            data: {
+              orderId: order.id,
+              accountId: order.accountId,
+              side,
+              volume: volume.toString(),
+              price: fillPrice.toString(),
+              quoteBid: tick.bid,
+              quoteAsk: tick.ask,
+              quoteAt: new Date(tick.timestamp),
+            },
+          });
+
+          const position = await this.openPositionForOrder(tx, {
+            orderId: order.id,
+            accountId: order.accountId,
+            symbolId: order.symbolId,
+            symbolCode,
+            side,
+            volume: volume.toString(),
+            entryPrice: fillPrice.toString(),
+            stopLoss: order.stopLoss?.toString() ?? null,
+            takeProfit: order.takeProfit?.toString() ?? null,
+            margin,
+            commission,
+          });
+          return position;
+        });
+      } catch (error) {
+        if (!(error instanceof RiskRejection)) throw error;
+
+        // After the rollback, never inside it. Both of these are writes, and a
+        // write in a transaction that rolled back is a write that never
+        // happened — the order would stay TRIGGERED and the rejection would
+        // leave no trace.
+        await this.rejectTriggered(order.id, order.accountId, symbolCode, error.violations);
+        await this.recordRiskEvent(order.accountId, error.violations, error.valuation);
         this.metrics.ordersSubmitted.inc({
           symbol: symbolCode,
           type: order.type,
@@ -620,72 +738,6 @@ export class OrdersService {
         });
         return 'rejected';
       }
-
-      const result = await this.prisma.$transaction(async (tx) => {
-        // The account's write lock first, before any insert that references it.
-        await this.ledger.lockAccount(tx, order.accountId);
-
-        await tx.order.update({
-          where: { id: order.id },
-          data: {
-            status: transitionOrder(OrderStatus.TRIGGERED, OrderStatus.FILLED),
-            filledVolume: volume.toString(),
-            version: { increment: 1 },
-          },
-        });
-        await tx.orderEvent.createMany({
-          data: [
-            {
-              orderId: order.id,
-              type: 'TRIGGERED',
-              fromStatus: OrderStatus.PENDING,
-              toStatus: OrderStatus.TRIGGERED,
-              payload: { restingPrice, bid: tick.bid, ask: tick.ask },
-            },
-            {
-              orderId: order.id,
-              type: 'FILLED',
-              fromStatus: OrderStatus.TRIGGERED,
-              toStatus: OrderStatus.FILLED,
-              payload: {
-                restingPrice,
-                price: fillPrice.toString(),
-                // Positive means the fill was worse than the resting price.
-                slippage: fillPrice.minus(toDecimal(restingPrice)).abs().toString(),
-                bid: tick.bid,
-                ask: tick.ask,
-              },
-            },
-          ],
-        });
-        await tx.execution.create({
-          data: {
-            orderId: order.id,
-            accountId: order.accountId,
-            side,
-            volume: volume.toString(),
-            price: fillPrice.toString(),
-            quoteBid: tick.bid,
-            quoteAsk: tick.ask,
-            quoteAt: new Date(tick.timestamp),
-          },
-        });
-
-        const position = await this.openPositionForOrder(tx, {
-          orderId: order.id,
-          accountId: order.accountId,
-          symbolId: order.symbolId,
-          symbolCode,
-          side,
-          volume: volume.toString(),
-          entryPrice: fillPrice.toString(),
-          stopLoss: order.stopLoss?.toString() ?? null,
-          takeProfit: order.takeProfit?.toString() ?? null,
-          margin,
-          commission,
-        });
-        return position;
-      });
 
       this.metrics.ordersSubmitted.inc({ symbol: symbolCode, type: order.type, outcome: 'filled' });
 
@@ -1110,6 +1162,46 @@ export class OrdersService {
 
   private async assertOwnership(userId: string, accountId: string): Promise<void> {
     await this.access.resolve(userId, accountId, Permission.ORDERS_READ);
+  }
+
+  /**
+   * Runs a write that evaluates risk under the account lock.
+   *
+   * The transaction body throws `RiskRejection` when the decision goes against
+   * it. This catches that *after* the rollback and does the three things a
+   * rejection owes: record the risk event, count it, and tell the caller why in
+   * an error a client can act on.
+   *
+   * Every violation is reported, not just the first, so a trader fixes all of
+   * them in one attempt rather than discovering them one order at a time.
+   */
+  private async runGuarded<T>(
+    accountId: string,
+    symbolCode: string,
+    orderType: string,
+    body: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await this.prisma.$transaction(body);
+    } catch (error) {
+      if (!(error instanceof RiskRejection)) throw error;
+
+      await this.recordRiskEvent(accountId, error.violations, error.valuation);
+      this.metrics.ordersSubmitted.inc({
+        symbol: symbolCode,
+        type: orderType,
+        outcome: 'rejected',
+      });
+
+      const first = error.violations[0];
+      throw new DomainError(
+        (first?.code as TradingErrorCode) ?? TradingErrorCode.VALIDATION_FAILED,
+        first?.message ?? 'Order rejected by risk',
+        {
+          violations: error.violations.map((v) => `${v.rule}: ${v.message}`).join('; '),
+        },
+      );
+    }
   }
 
   private async recordRiskEvent(

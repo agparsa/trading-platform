@@ -101,11 +101,24 @@ export function Terminal() {
     [tradeableSymbols, selectedSymbol],
   );
 
-  // Pick something to look at as soon as the instrument list arrives.
+  /**
+   * Pick something to look at as soon as the instrument list arrives — and pick
+   * one that is actually trading.
+   *
+   * This used to take the first instrument in the list, which is alphabetical.
+   * At a weekend that is AUDUSD, and every market except crypto is shut: the
+   * trader's first sight of the platform was an empty chart, a price of "—", and
+   * an order ticket refusing to send. Nothing was broken and everything looked
+   * broken, for two days out of every seven.
+   *
+   * Falling back to the first instrument when nothing is open is deliberate. If
+   * the whole market is shut there is no better choice, and showing an empty
+   * selector would be worse than showing a closed instrument honestly labelled.
+   */
   useEffect(() => {
-    if (selectedSymbol === null && tradeableSymbols[0] !== undefined) {
-      setSelectedSymbol(tradeableSymbols[0].code);
-    }
+    if (selectedSymbol !== null) return;
+    const choice = tradeableSymbols.find((symbol) => symbol.sessionOpen) ?? tradeableSymbols[0];
+    if (choice !== undefined) setSelectedSymbol(choice.code);
   }, [selectedSymbol, tradeableSymbols]);
 
   const resnapshot = useCallback(() => {
