@@ -27,10 +27,23 @@ FROM node:22-alpine AS production
 RUN corepack enable && apk add --no-cache libc6-compat openssl
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/packages ./packages
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/apps/api/dist ./apps/api/dist
-COPY --from=build /app/apps/api/package.json ./apps/api/package.json
+
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/packages ./packages
+COPY --from=build --chown=node:node /app/prisma ./prisma
+COPY --from=build --chown=node:node /app/apps/api/dist ./apps/api/dist
+COPY --from=build --chown=node:node /app/apps/api/package.json ./apps/api/package.json
+
+# Runs as `node`, not root. A process that never needs to write outside its own
+# working directory has no business being able to.
+USER node
+
 EXPOSE 4000
+
+# Liveness only — it must not touch the database. A brief database blip would
+# otherwise make the orchestrator kill every healthy replica at once, which is
+# the last thing anybody wants during a database incident.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=40s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.API_PORT||4000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
 CMD ["node", "apps/api/dist/main.js"]

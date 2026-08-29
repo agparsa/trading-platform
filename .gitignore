@@ -10,6 +10,9 @@ coverage/
 .env
 .env.local
 .env.*.local
+# The filled-in production configuration. Every secret in it is generated once
+# for one deployment; the example beside it is what belongs in version control.
+.env.production
 !.env.example
 
 *.log

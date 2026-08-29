@@ -59,21 +59,89 @@ is split across two releases so a rollback never strands data.
 
 The production schema is never edited by hand.
 
+## Bringing it up in production
+
+```bash
+cp .env.production.example .env.production
+pnpm keygen                    # prints fresh JWT secrets and an encryption key
+$EDITOR .env.production        # every value; nothing here has a safe default
+
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+docker compose -f docker-compose.prod.yml --env-file .env.production ps
+```
+
+`migrate` runs to completion before anything that reads the schema starts, and
+everything else waits on it. To add serving capacity:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --scale api=3
+```
+
+### What the production stack does differently
+
+**Ingestion is its own process.** `api-ingest` pulls market data and runs the
+trigger engine and serves nobody; `api` serves everybody with
+`MARKET_INGEST_ENABLED=false` and relays prices over `market:ticks`. Exactly one
+process may ingest — two would double-count candle volume — and a process that
+does both starves its own feed. That is measured, not assumed: see
+[capacity.md](./capacity.md).
+
+**Nothing is exposed but Nginx.** Postgres, Redis, the API and the web app have
+no host ports. One door, one place TLS terminates, one place an edge rate limit
+goes.
+
+**No source volumes.** The image is what runs. A bind mount over `apps/api/src`
+in production is a way to run code nobody built or tested.
+
+**Migrations are a job.** Two API replicas racing `migrate deploy` is lock
+contention at best.
+
+### The web image is built for one hostname
+
+Next.js inlines `NEXT_PUBLIC_*` into the client bundle, so `PUBLIC_API_URL` and
+`PUBLIC_WS_URL` are **build arguments**, not runtime settings. Setting them at
+runtime changes nothing the browser ever sees — which produces a terminal
+talking to `localhost` in production, with no error anywhere to say why. Moving
+to a different hostname means rebuilding the web image.
+
 ## Scaling
 
-The API is stateless and scales horizontally: session state is in the token,
-hot market state is in Redis, financial truth is in PostgreSQL. WebSocket fan-out
-goes through Redis pub/sub, so any instance can serve any socket.
+The serving API is stateless and scales horizontally: session state is in the
+token, hot market state is in Redis, financial truth is in PostgreSQL. WebSocket
+fan-out goes through Redis pub/sub, so any instance can serve any socket.
 
-The worker scales independently. Market-data ingestion is the one component that
-must be singular per symbol — two ingesters would double-count candle volume.
+The worker scales independently.
+
+Two components must stay singular, and for different reasons:
+
+- **Market-data ingestion.** Two ingesters double-count candle volume.
+- **The trigger engine.** Two would race each other for the same position rows
+  when firing the same stop.
+
+Both live on `api-ingest`, which is deliberately not behind the load balancer.
+
+Per-tick cost scales with **platform-wide open interest**, not with how busy any
+one trader is — every open position is checked against every price, because that
+is what a stop-loss is. `tp_open_positions` is the gauge that predicts when the
+ingest process will need to be split by symbol.
 
 ## Observability
 
 Prometheus scrapes `/metrics`. Declared metrics (`tp_` prefix) are listed in
-[observability.md](./observability.md). In production `/metrics` should be bound
-to an internal listener or protected at the ingress rather than exposed with the
-trading API.
+[observability.md](./observability.md). The production Nginx config restricts
+`/metrics` to private ranges — it carries the shape of the whole platform, and
+it is neither a secret nor public.
+
+The one to alert on first is **`tp_market_feed_age_ms`**. It is the leading
+indicator of `STALE_QUOTE` refusals: the engine will not fill against a price it
+does not trust, so a rising feed age becomes rejected orders before anybody
+reports anything. `GET /health/market` says the same thing in words, and names
+the instruments currently being refused by the integrity gate.
+
+`/health/market` is deliberately _not_ part of `/ready`. A process pulled out of
+the load balancer because the upstream feed stopped is a process that cannot
+serve history, account state or the ledger either — and traders would lose the
+screen that tells them what has happened. Alert on it; do not route on it.
 
 ## Backups
 

@@ -126,8 +126,8 @@ exist is testing against something that cannot happen.
 ## Runs and findings
 
 Reconciliation used to leave its results as risk events and nothing else. That
-made two questions unanswerable: *how long has this been true*, and *did anybody
-check*.
+made two questions unanswerable: _how long has this been true_, and _did anybody
+check_.
 
 ### `reconciliation_runs`
 
@@ -168,7 +168,7 @@ and a reason. Keeping them apart is what stops "resolve" from quietly becoming
 ### Running one by hand
 
 `POST /reconciliation/runs` creates the run row and publishes a BullMQ job
-carrying its id, so the console can show a run that has been *requested* rather
+carrying its id, so the console can show a run that has been _requested_ rather
 than a button that appears to do nothing. The run id is the job id, so a retried
 request cannot queue it twice, and a run already in flight is returned rather
 than a second one being started — two concurrent passes over every account would

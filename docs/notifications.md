@@ -12,11 +12,11 @@ readers of one row.
 
 ## The three surfaces, and what each is for
 
-| Surface | What it is |
-| --- | --- |
-| `notifications` table | the record. Survives the browser being shut. |
-| The bell | the record, read. What is here when you come back. |
-| A toast | the nudge. Appears, fades, is not a record of anything. |
+| Surface               | What it is                                              |
+| --------------------- | ------------------------------------------------------- |
+| `notifications` table | the record. Survives the browser being shut.            |
+| The bell              | the record, read. What is here when you come back.      |
+| A toast               | the nudge. Appears, fades, is not a record of anything. |
 
 If the only place a trader could learn they were on margin call were a strip
 that faded after eight seconds, the platform would have told them nothing.
@@ -46,14 +46,14 @@ not as a failure — it looks up the winner and reports it.
 
 ## What raises one today
 
-| Kind | When |
-| --- | --- |
-| `risk.margin_call` | an account crosses into margin call |
-| `risk.stop_out` | an account reaches its stop-out level |
+| Kind               | When                                  |
+| ------------------ | ------------------------------------- |
+| `risk.margin_call` | an account crosses into margin call   |
+| `risk.stop_out`    | an account reaches its stop-out level |
 
 Recovering to normal deliberately raises nothing. It is good news that needs no
 chasing, and a bell that rings for every recovery teaches people to ignore it.
-The *toast* does mention a recovery, because it replaces the warning still on
+The _toast_ does mention a recovery, because it replaces the warning still on
 screen.
 
 ## Reading

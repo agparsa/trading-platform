@@ -134,6 +134,31 @@ const FINGERPRINTS: ReadonlyArray<{ name: string; sql: string }> = [
     name: 'audit_logs (id, action, resource)',
     sql: `SELECT md5(string_agg(id::text || action || resource_type, '|' ORDER BY id)) AS f FROM audit_logs`,
   },
+  /**
+   * The evidence tables.
+   *
+   * A restore that brought back the money and lost the record of *what somebody
+   * decided about it* has lost the half that matters in a dispute. A finding
+   * closed with a note, an integrity signal under review, a notice a trader was
+   * sent — all of them are the answer to "what did you know and when", and none
+   * of them can be recomputed from the balances.
+   */
+  {
+    name: 'reconciliation_findings (id, code, status, occurrences)',
+    sql: `SELECT md5(string_agg(id::text || code || status::text || occurrences::text, '|' ORDER BY id)) AS f FROM reconciliation_findings`,
+  },
+  {
+    name: 'reconciliation_runs (id, status, findings)',
+    sql: `SELECT md5(string_agg(id::text || status::text || findings_raised::text, '|' ORDER BY id)) AS f FROM reconciliation_runs`,
+  },
+  {
+    name: 'integrity_signals (id, code, status, occurrences)',
+    sql: `SELECT md5(string_agg(id::text || code || status::text || occurrences::text, '|' ORDER BY id)) AS f FROM integrity_signals`,
+  },
+  {
+    name: 'notifications (id, kind, read)',
+    sql: `SELECT md5(string_agg(id::text || kind || coalesce(read_at::text, '-'), '|' ORDER BY id)) AS f FROM notifications`,
+  },
 ];
 
 const COUNTED = [
@@ -151,6 +176,14 @@ const COUNTED = [
   'account_snapshots',
   'refresh_tokens',
   'totp_recovery_codes',
+  'integrity_signals',
+  'integrity_signal_events',
+  'reconciliation_runs',
+  'reconciliation_findings',
+  'notifications',
+  'master_accounts',
+  'master_account_links',
+  'idempotency_keys',
 ] as const;
 
 async function fingerprint(prisma: PrismaClient): Promise<Map<string, string>> {

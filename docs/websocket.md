@@ -207,7 +207,7 @@ delivered, and the server does not replay it.
 
 A resting order the engine refuses when it triggers — nearly always because the
 account cannot carry it by the time the market gets there — used to arrive as
-`order.updated`. That is how a client learns that *something* about an order
+`order.updated`. That is how a client learns that _something_ about an order
 changed and nothing whatever about what.
 
 It is now `order.rejected`, carrying `orderId`, `symbol`, `reason` and `code`.
@@ -222,6 +222,6 @@ names it too, and a subscriber that cares about one particular order should not
 have to correlate two events by arrival time to learn what became of it.
 
 The terminal uses exactly this: an order placed an hour ago fills, and the
-submission recorded in the browser advances from *accepted* to *filled* against
+submission recorded in the browser advances from _accepted_ to _filled_ against
 the order id, because nothing on the frame carries the idempotency key the
 submission was sent under and nothing should. See `lib/order-commands.ts`.

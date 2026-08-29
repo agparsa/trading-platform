@@ -154,17 +154,17 @@ administrator do" has one file as its answer.
 
 ### The split that runs through it
 
-| Power | Permission | Held by |
-| --- | --- | --- |
-| See any user | `users.read_any` | SUPPORT, OPERATOR, RISK_MANAGER, ADMIN |
-| Suspend, sign out, unlock | `users.manage` | RISK_MANAGER, ADMIN |
-| Freeze, restrict, close an account | `accounts.manage` | OPERATOR, RISK_MANAGER, ADMIN |
-| Change an account's risk thresholds | `risk.manage` | RISK_MANAGER, ADMIN |
-| **Post a ledger entry** | `accounts.adjust` | **ADMIN only** |
-| Read the audit trail | `audit.read` | RISK_MANAGER, ADMIN |
+| Power                               | Permission        | Held by                                |
+| ----------------------------------- | ----------------- | -------------------------------------- |
+| See any user                        | `users.read_any`  | SUPPORT, OPERATOR, RISK_MANAGER, ADMIN |
+| Suspend, sign out, unlock           | `users.manage`    | RISK_MANAGER, ADMIN                    |
+| Freeze, restrict, close an account  | `accounts.manage` | OPERATOR, RISK_MANAGER, ADMIN          |
+| Change an account's risk thresholds | `risk.manage`     | RISK_MANAGER, ADMIN                    |
+| **Post a ledger entry**             | `accounts.adjust` | **ADMIN only**                         |
+| Read the audit trail                | `audit.read`      | RISK_MANAGER, ADMIN                    |
 
 `accounts.adjust` is deliberately not implied by `accounts.manage`. Managing an
-account changes what it may *do*; adjusting it changes what it is *worth*, and
+account changes what it may _do_; adjusting it changes what it is _worth_, and
 there is no version of the second that is a smaller act than the first. It is
 also absent from `LINKABLE_CAPABILITIES`, so a master-account link cannot carry
 it.
@@ -183,7 +183,7 @@ compromised session is dead the instant they click.
 
 ### Three actions, not one
 
-- **suspend** — stop them signing in *and* end their sessions.
+- **suspend** — stop them signing in _and_ end their sessions.
 - **sign out** — end their sessions and let them straight back in. A stolen
   laptop.
 - **unlock** — clear a lockout from failed attempts. A forgotten password, not a
@@ -193,7 +193,7 @@ Collapsing them into one "disable" would make the wrong one convenient.
 
 ### Balance adjustments
 
-There is no endpoint anywhere that *sets* a balance. §37 forbids arbitrary
+There is no endpoint anywhere that _sets_ a balance. §37 forbids arbitrary
 balance editing, and the reason is worth stating rather than citing: a balance
 that can be written directly is a balance whose history is a lie.
 
@@ -219,6 +219,6 @@ and nothing downstream knows how to charge interest on it or collect it.
 
 `pnpm pentest` includes three probes that attempt the whole administrative
 surface with an ordinary trader's token: reading every user, changing another
-user's state, and crediting an account. Each asserts a 403 *and* that nothing
+user's state, and crediting an account. Each asserts a 403 _and_ that nothing
 moved — the last one checks the attacker's balance and that no
 `admin_adjustment` ledger row exists.

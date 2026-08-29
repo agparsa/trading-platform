@@ -110,7 +110,7 @@ instrument list and sessions from React Query.
 The library is not here, so nothing renders from that object yet. It is still
 driven end to end by `chart-datafeed.test.ts` — `onReady`, `resolveSymbol`,
 `getBars` against a stub API, `subscribeBars` against the real store,
-`unsubscribeBars` — because *written* and *works* are different claims and only
+`unsubscribeBars` — because _written_ and _works_ are different claims and only
 one of them can be made without running it.
 
 **Writing.** `lib/chart-commands.ts` is `TradingCommandAdapter`: move a stop or a

@@ -44,7 +44,7 @@ engine was right to refuse. The price was late because of the sweep that was
 judging it.
 
 The three price comparisons — trailing stops, protective levels, resting orders —
-stayed on the tick path, because they *are* the tick: "did the market trade
+stayed on the tick path, because they _are_ the tick: "did the market trade
 through this level" is answered exactly from the coalesced range, and answering
 it late means firing at a price the market has left. The stop-out sweep moved to
 its own loop. It was already throttled per account by
@@ -59,8 +59,8 @@ changed is that it now values against a price that is current.
 same reason and with the same effect. It now records which instruments moved and
 drains on its own cadence, valuing a few accounts at a time.
 
-The failure mode that remains is the right one: under load the *frames* thin out
-while the *prices* stay current, rather than the other way round.
+The failure mode that remains is the right one: under load the _frames_ thin out
+while the _prices_ stay current, rather than the other way round.
 
 ### The simulator's timestamps drifted
 
@@ -76,14 +76,14 @@ hundreds of back-dated ticks in one pass.
 
 ## Measured on a two-CPU container, platform holding ~750 open positions
 
-| | |
-| --- | --- |
-| One order, unloaded | ~30ms |
-| Sustained throughput | ~134–185 orders/s |
-| Steady phase, 20 orders/s | p50 ~1.1s, p95 ~1.6s |
-| Burst, 1000 simultaneous | drains in ~7.5s |
-| Newest tick age, under load | ~200–300ms |
-| Frames, 200 sockets | ~104,000 over the run, zero sequence gaps |
+|                             |                                           |
+| --------------------------- | ----------------------------------------- |
+| One order, unloaded         | ~30ms                                     |
+| Sustained throughput        | ~134–185 orders/s                         |
+| Steady phase, 20 orders/s   | p50 ~1.1s, p95 ~1.6s                      |
+| Burst, 1000 simultaneous    | drains in ~7.5s                           |
+| Newest tick age, under load | ~200–300ms                                |
+| Frames, 200 sockets         | ~104,000 over the run, zero sequence gaps |
 
 ## What the run asserts, and what it deliberately does not
 
@@ -91,7 +91,7 @@ It asserts: sequence numbers stayed gapless, every socket received frames, no
 socket errored, the feed kept up, the platform came back, and **every refusal was
 a safe one**.
 
-That last one is the assertion that matters, and it is deliberately *not*
+That last one is the assertion that matters, and it is deliberately _not_
 "nothing was rejected". `STALE_QUOTE` and `NO_QUOTE_AVAILABLE` are the engine
 declining to fill at a price it does not trust — the answer §26 demands, and
 under a deep enough queue the correct one. A platform that fills every order
@@ -103,7 +103,7 @@ rather than a limit, and fails the run.
 
 Latency is otherwise printed, not asserted. A threshold that passes on one
 machine and fails on a busy CI runner teaches nobody anything. The one exception
-is the recovery check, which compares the platform against *itself* before and
+is the recovery check, which compares the platform against _itself_ before and
 after the burst, on the same machine in the same run.
 
 ## What this means for deployment

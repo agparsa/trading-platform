@@ -202,5 +202,5 @@ a client in a loop as fast as it asks is the traffic the limit exists to stop.
 
 `pnpm pentest` includes three probes that attempt the whole administrative
 surface with an ordinary trader's token — reading every user, changing another
-user's state, and crediting an account — and assert a 403 *and* that nothing
+user's state, and crediting an account — and assert a 403 _and_ that nothing
 moved.

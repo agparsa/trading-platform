@@ -36,6 +36,7 @@ class FakeRedis {
       return 'OK';
     },
     get: async (key: string) => this.store.get(key) ?? null,
+    del: async (key: string) => (this.store.delete(key) ? 1 : 0),
   };
   readonly publisher = { publish: async () => 1 };
   readonly subscriber = {
@@ -46,6 +47,8 @@ class FakeRedis {
 }
 
 export interface TradingStack {
+  /** The fake Redis behind the quote cache, so a test can take a price away entirely. */
+  redis: { client: { del(key: string): Promise<number> } };
   access: AccountAccessService;
   killSwitch: KillSwitchService;
   symbols: SymbolsService;
@@ -167,6 +170,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
   const snapshots = new SnapshotService(config as never, prismaService, accountState);
 
   return {
+    redis: redis as unknown as { client: { del(key: string): Promise<number> } },
     access,
     killSwitch,
     symbols,

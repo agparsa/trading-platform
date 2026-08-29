@@ -27,10 +27,13 @@ FROM node:22-alpine AS production
 RUN corepack enable && apk add --no-cache libc6-compat openssl
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/packages ./packages
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/apps/worker/dist ./apps/worker/dist
-COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/packages ./packages
+COPY --from=build --chown=node:node /app/prisma ./prisma
+COPY --from=build --chown=node:node /app/apps/worker/dist ./apps/worker/dist
+COPY --from=build --chown=node:node /app/apps/worker/package.json ./apps/worker/package.json
+
+USER node
 
 CMD ["node", "apps/worker/dist/main.js"]

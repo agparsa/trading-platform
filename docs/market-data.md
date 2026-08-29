@@ -82,20 +82,20 @@ Seven ways a tick is refused, in two groups.
 
 **Impossible data — never accepted, however often it repeats.**
 
-| Reason | What it means |
-| --- | --- |
-| `MALFORMED` | bid, ask or timestamp is not a number |
-| `NON_POSITIVE` | a price at or below zero |
-| `CROSSED` | ask not above bid |
+| Reason         | What it means                                        |
+| -------------- | ---------------------------------------------------- |
+| `MALFORMED`    | bid, ask or timestamp is not a number                |
+| `NON_POSITIVE` | a price at or below zero                             |
+| `CROSSED`      | ask not above bid                                    |
 | `OUT_OF_ORDER` | older than the tick already accepted for that symbol |
-| `FUTURE` | timestamped beyond `MARKET_MAX_FUTURE_SKEW_MS` ahead |
+| `FUTURE`       | timestamped beyond `MARKET_MAX_FUTURE_SKEW_MS` ahead |
 
 **Implausible markets — refused, then followed.**
 
-| Reason | Threshold |
-| --- | --- |
-| `SPREAD` | spread over `MARKET_MAX_SPREAD_RATIO` of the mid |
-| `SPIKE` | mid moved over `MARKET_MAX_JUMP_RATIO` between accepted ticks |
+| Reason   | Threshold                                                     |
+| -------- | ------------------------------------------------------------- |
+| `SPREAD` | spread over `MARKET_MAX_SPREAD_RATIO` of the mid              |
+| `SPIKE`  | mid moved over `MARKET_MAX_JUMP_RATIO` between accepted ticks |
 
 After `MARKET_REANCHOR_AFTER` consecutive rejections of the second kind, the
 gate accepts the next tick and re-anchors on it, logging loudly and counting it
