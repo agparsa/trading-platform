@@ -45,6 +45,7 @@ Phase 0 deliverables — the design the implementation is held to.
 - [master-accounts.md](./master-accounts.md) — delegated access, and why an account id is never enough
 - [testing.md](./testing.md) — what is covered, reference vectors, what each phase adds
 - [soak.md](./soak.md) — what a leak looks like, and why a slope needs a fit
+- [backup-restore.md](./backup-restore.md) — the rehearsal, and why row counts are not the check
 - [observability.md](./observability.md) — logs, metrics, health, what to alert on
 - [operations.md](./operations.md) — the kill switch, and why closing is always allowed
 - [deployment.md](./deployment.md) — local setup, images, probes, migrations, scaling

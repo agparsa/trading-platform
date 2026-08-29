@@ -37,7 +37,8 @@
     "load": "tsx --env-file-if-exists=.env scripts/load-test.ts",
     "keygen": "tsx scripts/keygen.ts",
     "pentest": "tsx --env-file-if-exists=.env scripts/pentest.ts",
-    "soak": "tsx --env-file-if-exists=.env scripts/soak.ts"
+    "soak": "tsx --env-file-if-exists=.env scripts/soak.ts",
+    "restore:rehearse": "tsx --env-file-if-exists=.env scripts/restore-rehearsal.ts"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

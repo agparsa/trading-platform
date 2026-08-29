@@ -184,6 +184,7 @@ convention.
 | `pnpm smoke`                                                                   | Boots the built API and probes it         |
 | `pnpm pentest`                                                                 | Boots it again and attacks it             |
 | `pnpm soak`                                                                    | Boots it again and leaves it running      |
+| `pnpm restore:rehearse`                                                        | Dumps, restores, compares, reconciles     |
 | `pnpm keygen <id>`                                                             | Prints a secret-encryption key            |
 | `pnpm lint:fix` / `pnpm format`                                                | Fixers                                    |
 
