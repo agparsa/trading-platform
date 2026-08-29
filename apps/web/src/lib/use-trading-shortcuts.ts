@@ -17,8 +17,14 @@ export function useTradingShortcuts(
   onAction: (action: ShortcutAction) => void,
 ): void {
   useEffect(() => {
-    if (!preferences.keyboard) return;
-
+    /**
+     * Bound even when keyboard trading is off.
+     *
+     * `Escape` is not a trading key — it only ever stops something — and a
+     * trader who has an order confirmation in front of them should be able to
+     * dismiss it whether or not they armed the shortcuts. `actionFor` is what
+     * decides which keys survive that state, not this listener.
+     */
     const onKeyDown = (event: KeyboardEvent) => {
       const action = actionFor(
         {

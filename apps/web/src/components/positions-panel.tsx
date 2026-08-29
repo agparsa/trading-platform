@@ -74,6 +74,30 @@ export function PositionsPanel({
 
   useEffect(() => {
     if (shortcut === null || shortcut.at === handledAt.current) return;
+
+    /**
+     * Claimed only when this panel is the one asking.
+     *
+     * The order ticket listens to the same keystroke, and a panel that marked
+     * every Escape handled would swallow the one the other's confirmation was
+     * waiting for.
+     */
+    if (shortcut.action === ShortcutAction.CANCEL) {
+      if (prompt === null) return;
+      handledAt.current = shortcut.at;
+      onShortcutHandled();
+      setPrompt(null);
+      return;
+    }
+
+    if (shortcut.action === ShortcutAction.CONFIRM) {
+      if (prompt === null) return;
+      handledAt.current = shortcut.at;
+      onShortcutHandled();
+      void runPromptRef.current();
+      return;
+    }
+
     if (shortcut.action !== ShortcutAction.CLOSE && shortcut.action !== ShortcutAction.CLOSE_ALL) {
       return;
     }
@@ -104,7 +128,14 @@ export function PositionsPanel({
     void closeOne.mutateAsync({ positionId: closeTarget.id, volume: null }).catch(() => {
       setNotice('The close request failed. The position is unchanged.');
     });
-  }, [shortcut, closeTarget, positions, preferences.confirm, closeOne, onShortcutHandled]);
+  }, [shortcut, closeTarget, positions, preferences.confirm, closeOne, onShortcutHandled, prompt]);
+
+  /**
+   * Held in a ref so the keyboard effect can call it without listing it as a
+   * dependency — `runPrompt` is redefined on every render, and depending on it
+   * would re-run the effect constantly and re-handle the same keystroke.
+   */
+  const runPromptRef = useRef<() => Promise<void>>(async () => undefined);
 
   const runPrompt = async () => {
     if (prompt === null) return;
@@ -120,6 +151,8 @@ export function PositionsPanel({
       }
     }
   };
+
+  runPromptRef.current = runPrompt;
 
   const specs = useMemo(
     () => Object.fromEntries(symbols.map((symbol) => [symbol.code, symbol])),

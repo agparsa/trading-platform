@@ -14,7 +14,7 @@ import {
   usePositions,
   useSymbols,
 } from '@/lib/queries';
-import { ShortcutAction } from '@/lib/shortcuts';
+import { ShortcutAction, isTradingAction } from '@/lib/shortcuts';
 import { useTradingPreferences } from '@/lib/use-trading-preferences';
 import { useTradingShortcuts } from '@/lib/use-trading-shortcuts';
 import { AccountHeader } from './account-header';
@@ -27,6 +27,7 @@ import { PositionsPanel } from './positions-panel';
 import { TradingSettings } from './trading-settings';
 import { SecuritySettings } from './security-settings';
 import { NotificationBell } from './notification-bell';
+import { ShortcutHelp } from './shortcut-help';
 import { Toasts } from './toasts';
 import { Button, Panel, Tabs } from './primitives';
 import { Watchlist } from './watchlist';
@@ -73,7 +74,26 @@ export function Terminal() {
    * to keep in step — which is exactly how the two drift apart.
    */
   const [shortcut, setShortcut] = useState<{ action: ShortcutAction; at: number } | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+
   const onShortcut = useCallback((action: ShortcutAction) => {
+    /**
+     * The three navigation keys are handled here and never reach a panel.
+     *
+     * `?` opens the card. `Escape` closes whatever is open — and is deliberately
+     * *also* forwarded, so a panel with a confirmation showing can dismiss it.
+     * `Enter` is forwarded and nothing more: it confirms something already on
+     * screen and originates no order, because Enter is the most reflexively
+     * pressed key there is.
+     */
+    if (action === ShortcutAction.HELP) {
+      setHelpOpen(true);
+      return;
+    }
+    if (action === ShortcutAction.CANCEL) {
+      setHelpOpen(false);
+    }
+
     /**
      * A close shortcut brings the positions up first.
      *
@@ -83,7 +103,11 @@ export function Terminal() {
      * on which tab is showing is worse than one that does not exist. Showing
      * them what they are about to act on is the better answer anyway.
      */
-    if (action === ShortcutAction.CLOSE || action === ShortcutAction.CLOSE_ALL) {
+    if (
+      isTradingAction(action) &&
+      action !== ShortcutAction.BUY &&
+      action !== ShortcutAction.SELL
+    ) {
       setBottomTab('open');
     }
     setShortcut({ action, at: Date.now() });
@@ -185,6 +209,15 @@ export function Terminal() {
               Administration
             </Link>
           ) : null}
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            title="Keyboard shortcuts"
+            aria-label="Keyboard shortcuts"
+            className="rounded border border-terminal-border px-1.5 py-0.5 text-[10px] leading-none text-terminal-muted transition-colors hover:text-terminal-text"
+          >
+            ?
+          </button>
           <Link
             href="/status"
             className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
@@ -294,6 +327,10 @@ export function Terminal() {
           />
         </Panel>
       </main>
+
+      {helpOpen ? (
+        <ShortcutHelp preferences={preferences} onClose={() => setHelpOpen(false)} />
+      ) : null}
 
       <Toasts />
     </div>

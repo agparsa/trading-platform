@@ -273,6 +273,34 @@ export function OrderTicket({
   const handledAt = useRef<number>(0);
   useEffect(() => {
     if (shortcut === null || shortcut.at === handledAt.current) return;
+
+    /**
+     * Escape and Enter are claimed **only when this panel has something
+     * pending**.
+     *
+     * That matters because the positions panel listens to the same keystroke.
+     * A panel that marked every Escape handled would swallow the one the other
+     * panel's own confirmation was waiting for, and a confirmation that cannot
+     * be dismissed is worse than one that was never asked.
+     */
+    if (shortcut.action === ShortcutAction.CANCEL) {
+      if (pendingConfirm === null) return;
+      handledAt.current = shortcut.at;
+      onShortcutHandled();
+      setPendingConfirm(null);
+      return;
+    }
+
+    if (shortcut.action === ShortcutAction.CONFIRM) {
+      if (pendingConfirm === null) return;
+      handledAt.current = shortcut.at;
+      onShortcutHandled();
+      const requested = pendingConfirm;
+      setPendingConfirm(null);
+      void send(requested);
+      return;
+    }
+
     if (shortcut.action !== ShortcutAction.BUY && shortcut.action !== ShortcutAction.SELL) return;
     handledAt.current = shortcut.at;
     onShortcutHandled();
@@ -284,7 +312,7 @@ export function OrderTicket({
       return;
     }
     void send(requested);
-  }, [shortcut, preferences.confirm, send, onShortcutHandled]);
+  }, [shortcut, preferences.confirm, send, onShortcutHandled, pendingConfirm]);
 
   if (symbol === undefined) {
     return <EmptyState>Select an instrument to trade.</EmptyState>;

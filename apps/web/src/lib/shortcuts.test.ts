@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ShortcutAction, actionFor, isTextEntry, needsConfirmation } from './shortcuts';
+import {
+  ShortcutAction,
+  actionFor,
+  isTextEntry,
+  isTradingAction,
+  needsConfirmation,
+} from './shortcuts';
 import { DEFAULT_KEYS } from './trading-preferences';
 
 const on = true;
@@ -77,8 +83,8 @@ describe('actionFor', () => {
 
   it('means nothing by a key the map does not mention', () => {
     expect(actionFor({ key: 'z' }, DEFAULT_KEYS, on)).toBeNull();
-    expect(actionFor({ key: 'Enter' }, DEFAULT_KEYS, on)).toBeNull();
     expect(actionFor({ key: ' ' }, DEFAULT_KEYS, on)).toBeNull();
+    expect(actionFor({ key: 'F5' }, DEFAULT_KEYS, on)).toBeNull();
   });
 });
 
@@ -106,5 +112,59 @@ describe('needsConfirmation', () => {
       expect(needsConfirmation(action, true)).toBe(true);
       expect(needsConfirmation(action, false)).toBe(false);
     }
+  });
+});
+
+// ─── Navigation keys ───────────────────────────────────────────────────────
+
+describe('Escape, Enter and help', () => {
+  /**
+   * The one key that must always work. A trader who cannot dismiss a
+   * confirmation because their cursor is in the volume box will click something
+   * to get rid of it — which is what the confirmation existed to prevent.
+   */
+  it('cancels from anywhere, armed or not, field or no field', () => {
+    expect(actionFor({ key: 'Escape' }, DEFAULT_KEYS, true)).toBe(ShortcutAction.CANCEL);
+    expect(actionFor({ key: 'Escape' }, DEFAULT_KEYS, false)).toBe(ShortcutAction.CANCEL);
+    expect(actionFor({ key: 'Escape', target: { tagName: 'INPUT' } }, DEFAULT_KEYS, true)).toBe(
+      ShortcutAction.CANCEL,
+    );
+  });
+
+  it('still refuses Escape with a modifier, which belongs to the browser', () => {
+    expect(actionFor({ key: 'Escape', ctrlKey: true }, DEFAULT_KEYS, true)).toBeNull();
+  });
+
+  /**
+   * Enter is the most reflexively pressed key there is. It confirms what is
+   * already on screen and originates nothing.
+   */
+  it('confirms only when trading is armed, and never from a field', () => {
+    expect(actionFor({ key: 'Enter' }, DEFAULT_KEYS, true)).toBe(ShortcutAction.CONFIRM);
+    expect(actionFor({ key: 'Enter' }, DEFAULT_KEYS, false)).toBeNull();
+    expect(
+      actionFor({ key: 'Enter', target: { tagName: 'INPUT' } }, DEFAULT_KEYS, true),
+    ).toBeNull();
+  });
+
+  it('offers help on ?', () => {
+    expect(actionFor({ key: '?' }, DEFAULT_KEYS, true)).toBe(ShortcutAction.HELP);
+    expect(actionFor({ key: '?' }, DEFAULT_KEYS, false)).toBeNull();
+  });
+
+  it('knows which actions are trades and which are not', () => {
+    expect(isTradingAction(ShortcutAction.BUY)).toBe(true);
+    expect(isTradingAction(ShortcutAction.CLOSE_ALL)).toBe(true);
+    expect(isTradingAction(ShortcutAction.CANCEL)).toBe(false);
+    expect(isTradingAction(ShortcutAction.CONFIRM)).toBe(false);
+    expect(isTradingAction(ShortcutAction.HELP)).toBe(false);
+  });
+
+  it('never asks for confirmation of a key that is not a trade', () => {
+    expect(needsConfirmation(ShortcutAction.CANCEL, true)).toBe(false);
+    expect(needsConfirmation(ShortcutAction.HELP, true)).toBe(false);
+    // And the trading keys are unchanged.
+    expect(needsConfirmation(ShortcutAction.BUY, true)).toBe(true);
+    expect(needsConfirmation(ShortcutAction.CLOSE_ALL, false)).toBe(true);
   });
 });
