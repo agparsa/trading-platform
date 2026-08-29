@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { HttpStatus } from '@nestjs/common';
 import { TradingErrorCode } from '@tp/shared-types';
-import { statusForCode } from './domain-exception.filter';
+import { DomainExceptionFilter, statusForCode } from './domain-exception.filter';
+import type { ApiFailure } from '@tp/shared-types';
 
 describe('statusForCode', () => {
   it('maps a business rejection to 422 so the client can show the trader why', () => {
@@ -46,5 +47,68 @@ describe('statusForCode', () => {
         code !== TradingErrorCode.INTERNAL_ERROR,
     );
     expect(unmapped).toEqual([]);
+  });
+});
+
+/**
+ * The branch a client can never provoke, and the one that matters most.
+ *
+ * Every error reachable over HTTP is a *handled* one — a 404, a validation
+ * failure, malformed JSON — and each takes an earlier path through the filter.
+ * The unexpected-exception branch is the only one that has a real stack trace in
+ * its hands, and the only way to reach it is to throw at it directly.
+ *
+ * This was written after a deliberate change made that branch return
+ * `exception.stack` and every probe in `pnpm pentest` stayed green. Nothing in
+ * the suite would have noticed a stack trace being served to clients.
+ */
+describe('DomainExceptionFilter, on an exception nobody expected', () => {
+  function respond(exception: unknown): { status: number; body: ApiFailure } {
+    let status = 0;
+    let body = {} as ApiFailure;
+    const response = {
+      status(value: number) {
+        status = value;
+        return this;
+      },
+      json(value: ApiFailure) {
+        body = value;
+      },
+    };
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({ requestId: 'req-1', url: '/api/v1/orders' }),
+        getResponse: () => response,
+      }),
+    };
+    new DomainExceptionFilter().catch(exception, host as never);
+    return { status, body };
+  }
+
+  it('answers with a code and a request id, and nothing about itself', () => {
+    const exception = new Error('connect ECONNREFUSED 10.0.0.5:5432');
+    const { status, body } = respond(exception);
+
+    expect(status).toBe(500);
+    expect(body.error.code).toBe(TradingErrorCode.INTERNAL_ERROR);
+    expect(body.error.requestId).toBe('req-1');
+    expect(body.error.message).toBe('An unexpected error occurred');
+  });
+
+  it('never puts the stack, the message or a file path in the response', () => {
+    const exception = new Error('relation "users" does not exist');
+    exception.stack = 'Error: relation "users" does not exist\n    at /home/app/src/db.ts:12:5';
+    const rendered = JSON.stringify(respond(exception).body);
+
+    for (const leak of ['relation "users"', 'at /home/app', 'db.ts', 'Error:']) {
+      expect(rendered).not.toContain(leak);
+    }
+  });
+
+  it('says the same thing whatever was thrown, so the shape reveals nothing either', () => {
+    const bodies = [new Error('a'), 'a string', { code: 'P2002' }, null, undefined].map((thrown) =>
+      JSON.stringify(respond(thrown).body),
+    );
+    expect(new Set(bodies).size).toBe(1);
   });
 });

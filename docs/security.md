@@ -131,7 +131,21 @@ be added without declaring what it requires. See
 [permissions.md](./permissions.md) — including why `ADMIN` deliberately cannot
 place an order.
 
+## The penetration checklist
+
+`pnpm pentest` boots the compiled API and attempts 22 attacks against it —
+forged tokens, cross-account reads and writes, role escalation, SQL injection,
+prototype pollution, credential leakage in responses and errors, absurd order
+volumes, idempotency-key reuse, password guessing. An attack that succeeds fails
+the run.
+
+The checklist was itself tested by breaking the API four times to see whether the
+probes noticed. Two did not, and both gaps are now closed. See
+[penetration-checklist.md](./penetration-checklist.md) — including what it
+deliberately does not cover, and why a green run does not mean there is nothing
+to find.
+
 ## Not yet implemented
 
-The admin audit surface and a penetration checklist are outstanding. They are
-listed here as the contract later phases must meet, not as work already done.
+The admin audit surface is outstanding. It is listed here as the contract later
+phases must meet, not as work already done.

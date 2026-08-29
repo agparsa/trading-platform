@@ -4,13 +4,14 @@ This is a financial system. Tests are not a quality gate bolted on afterwards;
 the formulas were written against them.
 
 ```
-pnpm test              # 294 tests (97 of them integration, opt-in)
+pnpm test              # 761 tests (integration ones opt-in)
 pnpm db:test:prepare   # create + migrate the integration test database
 pnpm test:coverage     # thresholds enforced
 pnpm verify            # lint → typecheck → test → build
 pnpm check:schema      # no floating-point columns exist
 pnpm smoke             # boots the built API and drives a full trade round trip
 pnpm smoke:ws          # boots it again and drives a real Socket.IO client
+pnpm pentest           # boots it again and attacks it
 ```
 
 Integration tests run against a real PostgreSQL database named by
@@ -177,13 +178,18 @@ Two scripts drive a real build rather than a mock, and both refuse to run if
 something is already holding the port — a smoke test that silently passes against
 a stale binary is the worst failure mode there is.
 
-- `pnpm smoke` — 10 checks: envelopes, auth, a full trade round trip, the ledger,
+- `pnpm smoke` — 13 checks: envelopes, auth, a full trade round trip, the ledger,
   a resting order placed, listed, refused on the wrong side and cancelled, the
   refresh cookie's attributes, body absence, foreign-origin refusal and
-  revocation on logout, and a permission refusal driven over real HTTP by
-  demoting a user and logging in again.
+  revocation on logout, two-factor enrolment through to a refused replay, session
+  listing and cross-user revocation, the login rate limiter, and a permission
+  refusal driven over real HTTP by demoting a user and logging in again.
 - `pnpm smoke:ws` — 8 checks: quote and candle streaming, gapless sequencing,
   private-channel refusal, cross-account isolation.
+- `pnpm pentest` — 22 attacks attempted against the compiled binary; an attack
+  that succeeds fails the run. It was itself tested by breaking the API four
+  times to see whether the probes noticed — two did not, and both gaps are now
+  closed. See [penetration-checklist.md](./penetration-checklist.md).
 
 Two integration suites carry the isolation guarantees:
 `account-access.test.ts` has one case per caller-scoped operation, so a new

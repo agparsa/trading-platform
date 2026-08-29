@@ -38,20 +38,4 @@ export class UsersService {
     await this.prisma.user.update({ where: { id: userId }, data: { displayName } });
     return this.profile(userId);
   }
-
-  /** Active sessions, so a user can see where they are signed in. */
-  async sessions(userId: string) {
-    const tokens = await this.prisma.refreshToken.findMany({
-      where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, createdAt: true, expiresAt: true, ipAddress: true, userAgent: true },
-    });
-    return tokens.map((token) => ({
-      id: token.id,
-      createdAt: token.createdAt.toISOString(),
-      expiresAt: token.expiresAt.toISOString(),
-      ipAddress: token.ipAddress,
-      userAgent: token.userAgent,
-    }));
-  }
 }

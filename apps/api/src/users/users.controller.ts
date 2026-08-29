@@ -27,9 +27,14 @@ export class UsersController {
     return this.users.updateDisplayName(user.id, body.displayName);
   }
 
-  @Get('me/sessions')
-  @ApiOperation({ summary: 'Your active sessions' })
-  sessions(@CurrentUser() user: AuthenticatedUser) {
-    return this.users.sessions(user.id);
-  }
+  /*
+   * `GET /users/me/sessions` used to live here. It listed refresh-token rows —
+   * about ninety-six a day from one browser — with no way to end any of them,
+   * and it returned the raw user agent for the reader to interpret.
+   *
+   * `GET /auth/sessions` replaced it: one entry per sign-in, described in words,
+   * with the caller's own marked and a DELETE beside it. Two answers to "where
+   * am I signed in" is one too many, so this one is gone rather than left to
+   * drift out of agreement with the other. See docs/sessions.md.
+   */
 }

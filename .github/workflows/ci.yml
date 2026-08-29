@@ -106,6 +106,12 @@ jobs:
       - name: Smoke test the WebSocket gateway
         run: pnpm smoke:ws
 
+      # Attacks, attempted against the compiled binary. An attack that succeeds
+      # fails the build. See docs/penetration-checklist.md — including why a
+      # green run is not a claim that there is nothing to find.
+      - name: Penetration checklist
+        run: pnpm pentest
+
   docker:
     name: Docker images build
     runs-on: ubuntu-latest
