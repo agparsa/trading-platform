@@ -143,6 +143,29 @@ export class SessionsService {
   }
 
   /**
+   * Ends every session a user has.
+   *
+   * Used by an administrator suspending an account or forcing a sign-out, and
+   * by the user themselves after changing a password. Returns how many refresh
+   * tokens were revoked so the caller can say what actually happened rather
+   * than "done".
+   *
+   * Note what it does *not* do: it does not touch access tokens, because those
+   * are stateless and cannot be recalled. Whoever holds one keeps it until it
+   * expires — which is why the access-token lifetime is short and why this is
+   * always paired with whatever else the situation needs. Claiming otherwise
+   * would be the more dangerous mistake: an administrator who believes a
+   * compromised session is dead the instant they click, and stops looking.
+   */
+  async revokeAll(userId: string): Promise<number> {
+    const result = await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return result.count;
+  }
+
+  /**
    * Notices a sign-in from a kind of device this account has not used before.
    *
    * Keyed on the device signature — browser and system, no version — and not on

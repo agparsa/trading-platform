@@ -146,3 +146,79 @@ link, and neither consults it. It is the capability a support surface will
 declare when there is one to declare it; until then it is a name with no
 enforcement behind it, which is worth stating plainly rather than leaving for
 someone to discover.
+
+## The administrative surface
+
+`apps/api/src/admin/` is one controller, so the question "what can an
+administrator do" has one file as its answer.
+
+### The split that runs through it
+
+| Power | Permission | Held by |
+| --- | --- | --- |
+| See any user | `users.read_any` | SUPPORT, OPERATOR, RISK_MANAGER, ADMIN |
+| Suspend, sign out, unlock | `users.manage` | RISK_MANAGER, ADMIN |
+| Freeze, restrict, close an account | `accounts.manage` | OPERATOR, RISK_MANAGER, ADMIN |
+| Change an account's risk thresholds | `risk.manage` | RISK_MANAGER, ADMIN |
+| **Post a ledger entry** | `accounts.adjust` | **ADMIN only** |
+| Read the audit trail | `audit.read` | RISK_MANAGER, ADMIN |
+
+`accounts.adjust` is deliberately not implied by `accounts.manage`. Managing an
+account changes what it may *do*; adjusting it changes what it is *worth*, and
+there is no version of the second that is a smaller act than the first. It is
+also absent from `LINKABLE_CAPABILITIES`, so a master-account link cannot carry
+it.
+
+### Suspension ends sessions
+
+`setUserActive(false)` revokes every refresh token in the same call. Marking a
+user inactive on its own leaves whoever is signed in able to keep trading until
+their access token expires — which reads, afterwards, as a suspension that did
+nothing.
+
+It does **not** revoke access tokens, because those are stateless and cannot be
+recalled. That is why the access-token lifetime is short, and why `revokeAll`
+says so in its own documentation rather than letting an administrator believe a
+compromised session is dead the instant they click.
+
+### Three actions, not one
+
+- **suspend** — stop them signing in *and* end their sessions.
+- **sign out** — end their sessions and let them straight back in. A stolen
+  laptop.
+- **unlock** — clear a lockout from failed attempts. A forgotten password, not a
+  punishment to be lifted.
+
+Collapsing them into one "disable" would make the wrong one convenient.
+
+### Balance adjustments
+
+There is no endpoint anywhere that *sets* a balance. §37 forbids arbitrary
+balance editing, and the reason is worth stating rather than citing: a balance
+that can be written directly is a balance whose history is a lie.
+
+`POST /admin/accounts/:id/adjustments` appends through the same
+`LedgerService.post` a trade uses, inside the same account lock. It demands
+three things:
+
+1. `accounts.adjust`, which nobody holds by default;
+2. a current TOTP code from the administrator — the only action in the platform
+   that asks for a second factor after sign-in, because it is the only one that
+   creates money;
+3. a reason in words, stored on the ledger row and in the audit record.
+
+The caller's idempotency key becomes the ledger row's `idempotencyKey`, which
+carries a unique constraint: a retried request cannot credit twice, and that is
+the database's guarantee rather than a promise.
+
+A debit that would take the balance below zero is refused. A negative cash
+balance is not a state this platform has rules for — it is not a margin loan,
+and nothing downstream knows how to charge interest on it or collect it.
+
+### Refusals are proved over HTTP
+
+`pnpm pentest` includes three probes that attempt the whole administrative
+surface with an ordinary trader's token: reading every user, changing another
+user's state, and crediting an account. Each asserts a 403 *and* that nothing
+moved — the last one checks the attacker's balance and that no
+`admin_adjustment` ledger row exists.

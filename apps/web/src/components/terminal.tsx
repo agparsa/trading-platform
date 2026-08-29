@@ -169,6 +169,19 @@ export function Terminal() {
           </select>
           <TradingSettings preferences={preferences} onChange={updatePreferences} />
           <SecuritySettings />
+          {/*
+            Shown to roles that have something to do there. It is a shortcut,
+            not a gate — the server decides on every request, and a trader who
+            types the URL sees a console that refuses each panel in turn.
+          */}
+          {user !== null && user.role !== 'USER' ? (
+            <Link
+              href="/admin"
+              className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+            >
+              Administration
+            </Link>
+          ) : null}
           <Link
             href="/status"
             className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"

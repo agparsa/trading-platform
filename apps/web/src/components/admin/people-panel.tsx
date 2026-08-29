@@ -1,0 +1,234 @@
+'use client';
+
+import { useState } from 'react';
+import { cn } from '@tp/ui';
+import { Button } from '@/components/primitives';
+import {
+  useAdminUser,
+  useAdminUsers,
+  useForceSignOut,
+  useSuspendUser,
+  useUnlockUser,
+} from '@/lib/admin-queries';
+import { money, utcTime } from '@/lib/format';
+import { ErrorLine, Head, Loading, ReasonedAction, SearchBox, StatusPill, Table } from './shared';
+
+/**
+ * Users, and what may be done to them.
+ *
+ * Three separate actions rather than one "disable", because they answer three
+ * different situations and collapsing them would make the wrong one convenient:
+ *
+ *  - **suspend** — stop them signing in *and* end their sessions. Anything less
+ *    leaves whoever is logged in able to keep trading, which reads afterwards
+ *    as a suspension that did nothing.
+ *  - **sign out** — end their sessions and let them straight back in. What a
+ *    stolen laptop needs.
+ *  - **unlock** — clear a lockout from failed attempts. What a forgotten
+ *    password needs, and not a punishment to be lifted.
+ */
+export function PeoplePanel() {
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<string | null>(null);
+  const users = useAdminUsers(search);
+  const suspend = useSuspendUser();
+  const signOut = useForceSignOut();
+  const unlock = useUnlockUser();
+
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-2 border-b border-terminal-border px-3 py-2">
+        <SearchBox value={search} onChange={setSearch} placeholder="Email or name" />
+        <span className="text-[10px] text-terminal-muted">
+          {users.data === undefined ? '' : `${users.data.length} shown`}
+        </span>
+      </div>
+
+      <ErrorLine error={users.error ?? suspend.error ?? signOut.error ?? unlock.error} />
+
+      {users.isLoading ? (
+        <Loading />
+      ) : (users.data ?? []).length === 0 ? (
+        <Loading>Nobody matches that.</Loading>
+      ) : (
+        <Table>
+          <Head
+            columns={[
+              'Email',
+              'Name',
+              'Role',
+              'State',
+              '2FA',
+              { label: 'Accounts', right: true },
+              'Last seen',
+              { label: 'Actions', right: true },
+            ]}
+          />
+          <tbody>
+            {(users.data ?? []).map((user) => (
+              <tr
+                key={user.id}
+                className={cn(
+                  'border-t border-terminal-border/60',
+                  selected === user.id ? 'bg-terminal-raised/50' : 'hover:bg-terminal-raised/30',
+                )}
+              >
+                <td className="px-2 py-1.5 text-terminal-text">
+                  <button
+                    type="button"
+                    className="text-left hover:underline"
+                    onClick={() => setSelected(selected === user.id ? null : user.id)}
+                  >
+                    {user.email}
+                  </button>
+                </td>
+                <td className="px-2 py-1.5 text-terminal-muted">{user.displayName}</td>
+                <td className="px-2 py-1.5 text-terminal-muted">{user.role}</td>
+                <td className="px-2 py-1.5">
+                  <StatusPill status={user.isActive ? 'ACTIVE' : 'SUSPENDED'} />
+                  {user.lockedUntil === null ? null : (
+                    <span
+                      className="ml-1 text-[9px] uppercase text-terminal-warning"
+                      title={`Locked out until ${utcTime(user.lockedUntil)} UTC after ${user.failedLoginAttempts} failed attempts`}
+                    >
+                      locked
+                    </span>
+                  )}
+                </td>
+                <td className="px-2 py-1.5 text-terminal-muted">
+                  {user.twoFactorEnabled ? 'on' : '—'}
+                </td>
+                <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                  {user.accounts}
+                </td>
+                <td className="numeric px-2 py-1.5 text-terminal-muted">
+                  {user.lastLoginAt === null ? '—' : utcTime(user.lastLoginAt)}
+                </td>
+                <td className="px-2 py-1.5">
+                  <div className="flex flex-wrap justify-end gap-1">
+                    <ReasonedAction
+                      label={user.isActive ? 'Suspend' : 'Reinstate'}
+                      title={
+                        user.isActive ? 'Why they are being suspended' : 'Why they are cleared'
+                      }
+                      variant={user.isActive ? 'danger' : 'neutral'}
+                      busy={suspend.isPending}
+                      onConfirm={(reason) =>
+                        suspend.mutate({ userId: user.id, suspend: user.isActive, reason })
+                      }
+                    />
+                    <ReasonedAction
+                      label="Sign out"
+                      title="Why their sessions are being ended"
+                      busy={signOut.isPending}
+                      onConfirm={(reason) => signOut.mutate({ userId: user.id, reason })}
+                    />
+                    {user.lockedUntil === null ? null : (
+                      <Button
+                        variant="ghost"
+                        className="px-2 py-0.5"
+                        disabled={unlock.isPending}
+                        onClick={() => unlock.mutate({ userId: user.id })}
+                      >
+                        Unlock
+                      </Button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+
+      {selected === null ? null : <UserDetail userId={selected} />}
+    </div>
+  );
+}
+
+/** One person's accounts and live sessions. */
+function UserDetail({ userId }: { userId: string }) {
+  const detail = useAdminUser(userId);
+
+  if (detail.isLoading) return <Loading />;
+  if (detail.error !== null) return <ErrorLine error={detail.error} />;
+  const data = detail.data;
+  if (data === undefined) return null;
+
+  return (
+    <div className="border-t border-terminal-border bg-terminal-bg px-3 py-3">
+      <p className="mb-2 text-[10px] uppercase tracking-wider text-terminal-muted">
+        {data.email} — accounts
+      </p>
+      {data.accounts.length === 0 ? (
+        <p className="text-[11px] text-terminal-muted">No accounts.</p>
+      ) : (
+        <Table>
+          <Head
+            columns={[
+              'Number',
+              'Type',
+              'State',
+              'Currency',
+              { label: 'Balance', right: true },
+              { label: 'Leverage', right: true },
+              { label: 'Positions', right: true },
+              'Opened',
+            ]}
+          />
+          <tbody>
+            {data.accounts.map((account) => (
+              <tr key={account.id} className="border-t border-terminal-border/60">
+                <td className="numeric px-2 py-1.5 text-terminal-text">{account.number}</td>
+                <td className="px-2 py-1.5 text-terminal-muted">{account.type}</td>
+                <td className="px-2 py-1.5">
+                  <StatusPill status={account.status} />
+                </td>
+                <td className="px-2 py-1.5 text-terminal-muted">{account.currency}</td>
+                <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                  {money(account.balance, account.currency)}
+                </td>
+                <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                  1:{account.leverage}
+                </td>
+                <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                  {account.positions}
+                </td>
+                <td className="numeric px-2 py-1.5 text-terminal-muted">
+                  {utcTime(account.createdAt)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+
+      <p className="mb-2 mt-4 text-[10px] uppercase tracking-wider text-terminal-muted">
+        Live sessions
+      </p>
+      {data.sessions.length === 0 ? (
+        <p className="text-[11px] text-terminal-muted">Nobody is signed in.</p>
+      ) : (
+        <Table>
+          <Head columns={['Device', 'Address', 'Signed in', 'Last refreshed']} />
+          <tbody>
+            {data.sessions.map((session) => (
+              <tr key={session.id} className="border-t border-terminal-border/60">
+                <td className="px-2 py-1.5 text-terminal-text">{session.device}</td>
+                <td className="numeric px-2 py-1.5 text-terminal-muted">
+                  {session.ipAddress ?? '—'}
+                </td>
+                <td className="numeric px-2 py-1.5 text-terminal-muted">
+                  {utcTime(session.signedInAt)}
+                </td>
+                <td className="numeric px-2 py-1.5 text-terminal-muted">
+                  {utcTime(session.lastSeenAt)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </div>
+  );
+}

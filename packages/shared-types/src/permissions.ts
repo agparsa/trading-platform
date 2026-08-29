@@ -16,6 +16,22 @@ export const Permission = {
   ACCOUNTS_READ: 'accounts.read',
   ACCOUNTS_READ_ANY: 'accounts.read_any',
   ACCOUNTS_MANAGE: 'accounts.manage',
+  /**
+   * Post a correcting entry to an account's ledger.
+   *
+   * Separate from `accounts.manage`, and the separation is the point. Managing
+   * an account means changing what it may *do* — freezing it, restricting it to
+   * closing trades. This means changing what it is *worth*, and there is no
+   * version of that which is a smaller power than the other one. Nobody gets it
+   * by being able to suspend an account.
+   */
+  ACCOUNTS_ADJUST: 'accounts.adjust',
+
+  // --- people ---
+  /** Read any user's profile, accounts and sessions. */
+  USERS_READ_ANY: 'users.read_any',
+  /** Suspend, reinstate, and force a user's sessions to end. */
+  USERS_MANAGE: 'users.manage',
 
   // --- trading ---
   ORDERS_READ: 'orders.read',
@@ -85,6 +101,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
 
   [UserRole.SUPPORT]: [
     Permission.ACCOUNTS_READ_ANY,
+    Permission.USERS_READ_ANY,
     Permission.ORDERS_READ,
     Permission.POSITIONS_READ,
     Permission.MASTER_READ,
@@ -93,6 +110,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
   [UserRole.OPERATOR]: [
     Permission.ACCOUNTS_READ_ANY,
     Permission.ACCOUNTS_MANAGE,
+    Permission.USERS_READ_ANY,
     Permission.ORDERS_READ,
     Permission.ORDERS_CANCEL,
     Permission.POSITIONS_READ,
@@ -108,6 +126,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
   [UserRole.RISK_MANAGER]: [
     Permission.ACCOUNTS_READ_ANY,
     Permission.ACCOUNTS_MANAGE,
+    Permission.USERS_READ_ANY,
+    Permission.USERS_MANAGE,
     Permission.ORDERS_READ,
     Permission.ORDERS_CANCEL,
     Permission.POSITIONS_READ,
@@ -128,6 +148,9 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.ACCOUNTS_READ,
     Permission.ACCOUNTS_READ_ANY,
     Permission.ACCOUNTS_MANAGE,
+    Permission.ACCOUNTS_ADJUST,
+    Permission.USERS_READ_ANY,
+    Permission.USERS_MANAGE,
     Permission.ORDERS_READ,
     Permission.ORDERS_CANCEL,
     Permission.POSITIONS_READ,
