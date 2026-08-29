@@ -307,7 +307,7 @@ export function usePendingOrders(accountId: string | null) {
   });
 }
 
-export interface OpenPositionInput {
+export interface OpenPositionInput extends CommandInput {
   accountId: string;
   symbol: string;
   side: 'BUY' | 'SELL';
@@ -317,25 +317,53 @@ export interface OpenPositionInput {
 }
 
 /**
- * Every mutation carries a fresh idempotency key.
+ * Every mutation carries an idempotency key.
  *
  * The key is minted once per attempt, not per retry: a network failure that the
  * client retries must not be able to open a second position. `ApiClient` refuses
  * to send a mutation without one.
+ *
+ * A caller may supply the key instead, as `commandId`. That is not a second way
+ * of doing the same thing: the order ticket needs to *know* the key so it can
+ * record what became of the attempt, and minting one here and returning it
+ * separately would leave a window in which the request had been sent and the
+ * ticket did not yet know under which id. It is stripped from the body — it is
+ * a header, and echoing it into the payload would make one attempt's request
+ * differ from a retry's for no reason.
  */
-function mutate<TInput, TResult>(
+export interface CommandInput {
+  /** Idempotency key for this attempt. Minted here when omitted. */
+  commandId?: string;
+}
+
+function mutate<TInput extends CommandInput, TResult>(
   api: ApiClient,
   run: (api: ApiClient, input: TInput, key: string) => Promise<TResult>,
 ) {
-  return (input: TInput) => run(api, input, crypto.randomUUID());
+  return (input: TInput) => {
+    const { commandId, ...body } = input;
+    return run(api, body as unknown as TInput, commandId ?? crypto.randomUUID());
+  };
+}
+
+/** What `POST /orders` answers with. A market order that filled names its position. */
+export interface OrderAck {
+  orderId: string;
+  positionId?: string;
+  status: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  volume: string;
+  price: string;
+  executedAt?: string;
 }
 
 export function useOpenPosition(accountId: string | null) {
   const { api } = useSession();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: mutate<OpenPositionInput, unknown>(api, (client_, input, key) =>
-      client_.post('/orders', input, { idempotencyKey: key }),
+    mutationFn: mutate<OpenPositionInput, OrderAck>(api, (client_, input, key) =>
+      client_.post<OrderAck>('/orders', input, { idempotencyKey: key }),
     ),
     onSuccess: () => {
       if (accountId !== null) invalidateTradingState(client, accountId);
@@ -347,7 +375,7 @@ export function useClosePosition(accountId: string | null) {
   const { api } = useSession();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: mutate<{ positionId: string; volume: string | null }, unknown>(
+    mutationFn: mutate<CommandInput & { positionId: string; volume: string | null }, unknown>(
       api,
       (client_, input, key) =>
         client_.post(
@@ -362,7 +390,7 @@ export function useClosePosition(accountId: string | null) {
   });
 }
 
-export interface ModifyInput {
+export interface ModifyInput extends CommandInput {
   positionId: string;
   stopLoss?: string | null;
   takeProfit?: string | null;
@@ -387,7 +415,7 @@ export function useReversePosition(accountId: string | null) {
   const { api } = useSession();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: mutate<{ positionId: string }, unknown>(api, (client_, input, key) =>
+    mutationFn: mutate<CommandInput & { positionId: string }, unknown>(api, (client_, input, key) =>
       client_.post(`/positions/${input.positionId}/reverse`, {}, { idempotencyKey: key }),
     ),
     onSuccess: () => {
@@ -458,7 +486,7 @@ export function useCandles(symbol: string | null, resolution: string, bars = 400
   });
 }
 
-export interface PlacePendingInput {
+export interface PlacePendingInput extends CommandInput {
   accountId: string;
   symbol: string;
   side: 'BUY' | 'SELL';
@@ -474,8 +502,8 @@ export function usePlacePending(accountId: string | null) {
   const { api } = useSession();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: mutate<PlacePendingInput, unknown>(api, (client_, input, key) =>
-      client_.post('/orders/pending', input, { idempotencyKey: key }),
+    mutationFn: mutate<PlacePendingInput, PendingOrderRow>(api, (client_, input, key) =>
+      client_.post<PendingOrderRow>('/orders/pending', input, { idempotencyKey: key }),
     ),
     onSuccess: () => {
       if (accountId !== null) invalidateTradingState(client, accountId);
@@ -487,7 +515,7 @@ export function useCancelPending(accountId: string | null) {
   const { api } = useSession();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: mutate<{ orderId: string }, unknown>(api, (client_, input, key) =>
+    mutationFn: mutate<CommandInput & { orderId: string }, unknown>(api, (client_, input, key) =>
       client_.delete(`/orders/${input.orderId}`, { idempotencyKey: key }),
     ),
     onSuccess: () => {
@@ -496,7 +524,7 @@ export function useCancelPending(accountId: string | null) {
   });
 }
 
-export interface ModifyPendingInput {
+export interface ModifyPendingInput extends CommandInput {
   orderId: string;
   price?: string;
   volume?: string;

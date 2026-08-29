@@ -51,7 +51,8 @@ const DEFAULT_RESOLUTION = '1';
 const EVENT_ROUTING: Readonly<Record<string, { channel: WsChannel; wire: string }>> = {
   'order.created': { channel: WsChannel.ORDERS, wire: 'order.created' },
   'order.accepted': { channel: WsChannel.ORDERS, wire: 'order.updated' },
-  'order.rejected': { channel: WsChannel.ORDERS, wire: 'order.updated' },
+  // Its own wire event, not `order.updated`. See WsEvent.ORDER_REJECTED.
+  'order.rejected': { channel: WsChannel.ORDERS, wire: 'order.rejected' },
   'order.filled': { channel: WsChannel.ORDERS, wire: 'order.filled' },
   'order.cancelled': { channel: WsChannel.ORDERS, wire: 'order.cancelled' },
   'position.opened': { channel: WsChannel.POSITIONS, wire: 'position.created' },

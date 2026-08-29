@@ -157,13 +157,37 @@ export function useSocket(
         case 'candle.update':
           live.applyBar(frame.data as unknown as Bar);
           break;
+        case 'order.filled':
+          // A resting order placed minutes or hours ago has just become a
+          // position. The submission that created it is matched on order id —
+          // the command id belongs to the attempt, and nothing on this frame
+          // carries it.
+          if (typeof frame.data['orderId'] === 'string') {
+            live.orderFilled(
+              frame.data['orderId'],
+              typeof frame.data['positionId'] === 'string' ? frame.data['positionId'] : null,
+            );
+          }
+          notify.current();
+          break;
+        case 'order.rejected':
+        case 'order.cancelled':
+          // Cancelled, expired, or refused when it triggered. Whichever it was,
+          // the order is not coming, and a command left reading "accepted"
+          // would say the opposite.
+          if (typeof frame.data['orderId'] === 'string') {
+            live.orderClosed(
+              frame.data['orderId'],
+              typeof frame.data['reason'] === 'string' ? frame.data['reason'] : 'cancelled',
+            );
+          }
+          notify.current();
+          break;
         case 'position.created':
         case 'position.updated':
         case 'position.closed':
         case 'order.created':
-        case 'order.filled':
         case 'order.updated':
-        case 'order.cancelled':
           notify.current();
           break;
         case 'risk.updated':

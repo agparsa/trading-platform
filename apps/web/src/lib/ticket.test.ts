@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { estimateCosts, stepVolume, validateRestingPrice, validateTicket } from './ticket';
+import {
+  estimateCosts,
+  projectedOutcome,
+  rewardToRisk,
+  stepVolume,
+  validateRestingPrice,
+  validateTicket,
+} from './ticket';
 import type { AccountSummary, SymbolRow } from './queries';
 
 const XAUUSD: SymbolRow = {
@@ -178,5 +185,63 @@ describe('validateRestingPrice', () => {
    */
   it('defers to the server when no quote has arrived', () => {
     expect(validateRestingPrice(XAUUSD, 'LIMIT', 'BUY', '2010.00', undefined)).toBeNull();
+  });
+});
+
+describe('projectedOutcome', () => {
+  it('projects what a stop would cost from the entry the order will open at', () => {
+    // Long 1 lot of gold, 100 oz, entry 4583.72, stop 4580.00 → −372.00.
+    const projected = projectedOutcome(XAUUSD, account, 'BUY', '1', '4583.72', '4580.00');
+    expect(Number(projected)).toBeCloseTo(-372, 6);
+  });
+
+  it('projects what a target would pay', () => {
+    const projected = projectedOutcome(XAUUSD, account, 'BUY', '1', '4583.72', '4590.00');
+    expect(Number(projected)).toBeCloseTo(628, 6);
+  });
+
+  it('reverses for a short', () => {
+    const projected = projectedOutcome(XAUUSD, account, 'SELL', '1', '4583.72', '4580.00');
+    expect(Number(projected)).toBeCloseTo(372, 6);
+  });
+
+  /**
+   * The same rule `estimateCosts` follows. Converting would mean inventing an FX
+   * rate this browser does not hold, and a wrong number is worse than none.
+   */
+  it('refuses to convert when the instrument is not quoted in the account currency', () => {
+    const eurAccount = { ...account, currency: 'EUR' };
+    expect(projectedOutcome(XAUUSD, eurAccount, 'BUY', '1', '4583.72', '4580.00')).toBeNull();
+  });
+
+  it('says nothing rather than zero when a level is missing or half-typed', () => {
+    expect(projectedOutcome(XAUUSD, account, 'BUY', '1', '4583.72', '')).toBeNull();
+    expect(projectedOutcome(XAUUSD, account, 'BUY', '1', '4583.72', '458.')).toBeNull();
+    expect(projectedOutcome(XAUUSD, account, 'BUY', '1', null, '4580.00')).toBeNull();
+    expect(projectedOutcome(undefined, account, 'BUY', '1', '4583.72', '4580.00')).toBeNull();
+  });
+});
+
+describe('rewardToRisk', () => {
+  it('divides the projected gain by the projected loss', () => {
+    expect(rewardToRisk('628', '-372')).toBe('1.69');
+  });
+
+  /**
+   * A "risk" that is positive means the stop sits on the profitable side of the
+   * entry, which is not a stop. Printing a ratio for it would be a confident,
+   * meaningless number.
+   */
+  it('refuses a ratio when the stop is on the wrong side', () => {
+    expect(rewardToRisk('628', '372')).toBeNull();
+  });
+
+  it('refuses a ratio when the target loses money', () => {
+    expect(rewardToRisk('-100', '-372')).toBeNull();
+  });
+
+  it('says nothing when either side is missing', () => {
+    expect(rewardToRisk(null, '-372')).toBeNull();
+    expect(rewardToRisk('628', null)).toBeNull();
   });
 });

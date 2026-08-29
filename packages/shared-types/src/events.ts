@@ -12,6 +12,17 @@ export const WsEvent = {
   ORDER_UPDATED: 'order.updated',
   ORDER_FILLED: 'order.filled',
   ORDER_CANCELLED: 'order.cancelled',
+  /**
+   * A resting order the engine refused when it triggered — nearly always
+   * because the account could not carry it by the time the market got there.
+   *
+   * This used to be delivered as `order.updated`, which is how a client learns
+   * that *something* about an order changed and nothing about what. A trader
+   * whose breakout order was refused for margin has to be told that, in those
+   * words: an order that quietly stops existing is worse than one that fails
+   * loudly, and "updated" is the quiet version.
+   */
+  ORDER_REJECTED: 'order.rejected',
 
   POSITION_CREATED: 'position.created',
   POSITION_UPDATED: 'position.updated',

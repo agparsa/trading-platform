@@ -17,13 +17,16 @@ import { price as formatPrice, signedMoney } from '@/lib/format';
 import { RESOLUTIONS, RESOLUTION_LABEL, mergeBars, type ChartBar } from '@/lib/datafeed';
 import {
   LevelKind,
+  levelIdentity,
   levelsFor,
-  modificationFor,
   outcomeAt,
+  pendingLevelsFor,
   priceFromDrag,
+  priceFromPendingDrag,
   type ChartLevel,
 } from '@/lib/chart-levels';
-import { useCandles, useModifyPosition, type PositionRow, type SymbolRow } from '@/lib/queries';
+import { useTradingCommands } from '@/lib/chart-commands';
+import { useCandles, type PendingOrderRow, type PositionRow, type SymbolRow } from '@/lib/queries';
 import { barKey, useRealtime } from '@/lib/realtime-store';
 import { EmptyState } from './primitives';
 
@@ -46,6 +49,7 @@ export function ChartPanel({
   resolution,
   onResolutionChange,
   positions,
+  pendingOrders,
   accountId,
   currency,
 }: {
@@ -53,6 +57,7 @@ export function ChartPanel({
   resolution: string;
   onResolutionChange: (resolution: string) => void;
   positions: readonly PositionRow[];
+  pendingOrders: readonly PendingOrderRow[];
   accountId: string | null;
   currency: string;
 }) {
@@ -110,6 +115,7 @@ export function ChartPanel({
               bars={bars}
               spec={symbol}
               positions={positions}
+              pendingOrders={pendingOrders}
               accountId={accountId}
               currency={currency}
             />
@@ -125,8 +131,8 @@ export function ChartPanel({
       </div>
 
       <p className="shrink-0 border-t border-terminal-border px-3 py-1 text-[10px] text-terminal-muted">
-        Server candles, built from the bid. Drag a stop or target to move it — the server decides.
-        Indicators and drawing tools arrive with the licensed charting library.
+        Server candles, built from the bid. Drag a stop, a target or a resting order to move it —
+        the server decides. Indicators and drawing tools arrive with the licensed charting library.
       </p>
     </div>
   );
@@ -155,12 +161,14 @@ function Candles({
   bars,
   spec,
   positions,
+  pendingOrders,
   accountId,
   currency,
 }: {
   bars: readonly ChartBar[];
   spec: SymbolRow;
   positions: readonly PositionRow[];
+  pendingOrders: readonly PendingOrderRow[];
   accountId: string | null;
   currency: string;
 }) {
@@ -256,12 +264,31 @@ function Candles({
 
   // ─── Levels ────────────────────────────────────────────────────────────────
 
-  const modify = useModifyPosition(accountId);
+  /**
+   * Trading actions go through the command adapter, not through mutations
+   * reached for here.
+   *
+   * That is the writing half of the seam `lib/tradingview-datafeed.ts` opened
+   * for reading: when the licensed library arrives it is handed this same
+   * object, and the chart that issues the command changes without the commands
+   * themselves changing. See lib/chart-commands.ts.
+   */
+  const commands = useTradingCommands(accountId);
   const quote = useRealtime((state) => state.quotes[spec.code]);
-  const levels = useMemo(() => levelsFor(positions, spec.code), [positions, spec.code]);
+  const levels = useMemo(
+    () => [
+      ...levelsFor(positions, spec.code),
+      ...pendingLevelsFor(pendingOrders, spec.code, spec, quote),
+    ],
+    [positions, pendingOrders, spec, quote],
+  );
   const byId = useMemo(
     () => Object.fromEntries(positions.map((position) => [position.id, position])),
     [positions],
+  );
+  const ordersById = useMemo(
+    () => Object.fromEntries(pendingOrders.map((order) => [order.orderId, order])),
+    [pendingOrders],
   );
 
   /**
@@ -320,7 +347,7 @@ function Candles({
     linesRef.current.clear();
 
     for (const level of levels) {
-      const position = byId[level.positionId];
+      const position = level.positionId === null ? undefined : byId[level.positionId];
       /**
        * Always the outcome at *this line's own* price.
        *
@@ -331,12 +358,12 @@ function Candles({
        * preview, next to the proposed price.
        */
       const outcome =
-        position === undefined || level.kind === LevelKind.ENTRY
+        position === undefined || level.kind === LevelKind.ENTRY || level.kind === LevelKind.PENDING
           ? null
           : outcomeAt(position, spec, level.price, currency);
 
       linesRef.current.set(
-        levelKey(level),
+        levelIdentity(level),
         series.createPriceLine({
           price: Number(level.price),
           color: LEVEL_COLOR[level.kind],
@@ -353,9 +380,11 @@ function Candles({
     // trader can see both where the stop is and where they are proposing to put
     // it.
     if (drag !== null) {
-      const position = byId[drag.level.positionId];
+      const position = drag.level.positionId === null ? undefined : byId[drag.level.positionId];
       const proposed =
-        position === undefined ? null : outcomeAt(position, spec, drag.price, currency);
+        position === undefined || drag.level.kind === LevelKind.PENDING
+          ? null
+          : outcomeAt(position, spec, drag.price, currency);
       linesRef.current.set(
         'preview',
         series.createPriceLine({
@@ -387,6 +416,22 @@ function Candles({
    * unusable, and a stop that is hard to grab is a stop that gets left where it
    * is.
    */
+  /**
+   * Is the thing this line describes still there?
+   *
+   * A position closed by a stop-out, or an order that just filled, leaves its
+   * line on screen for the instant between the server acting and the query
+   * refetching. Grabbing it in that instant would send a modification for
+   * something that no longer exists.
+   */
+  const hasTarget = useCallback(
+    (level: ChartLevel): boolean =>
+      level.kind === LevelKind.PENDING
+        ? level.orderId !== null && ordersById[level.orderId] !== undefined
+        : level.positionId !== null && byId[level.positionId] !== undefined,
+    [byId, ordersById],
+  );
+
   const levelUnder = useCallback(
     (offsetY: number): ChartLevel | null => {
       const series = seriesRef.current;
@@ -430,8 +475,10 @@ function Candles({
     const onPointerDown = (event: PointerEvent) => {
       const level = levelUnder(yIn(event));
       if (level === null) return;
-      const position = byId[level.positionId];
-      if (position === undefined) return;
+      // The row behind the line has to still exist. A line whose position or
+      // order has just closed is a line about to disappear, and dragging it
+      // would send a modification for something that is gone.
+      if (!hasTarget(level)) return;
 
       // Stops the chart panning under the drag; without this the price scale
       // moves with the cursor and the level appears not to follow it.
@@ -440,7 +487,7 @@ function Candles({
       container.setPointerCapture(event.pointerId);
       chartRef.current?.applyOptions({ handleScroll: false, handleScale: false });
       setRefusal(null);
-      setDrag({ key: levelKey(level), level, price: level.price, error: null });
+      setDrag({ key: levelIdentity(level), level, price: level.price, error: null });
     };
 
     const onPointerMove = (event: PointerEvent) => {
@@ -451,7 +498,18 @@ function Candles({
       }
       const raw = priceAt(yIn(event));
       if (raw === null) return;
-      const position = byId[current.level.positionId];
+
+      if (current.level.kind === LevelKind.PENDING) {
+        const order =
+          current.level.orderId === null ? undefined : ordersById[current.level.orderId];
+        if (order === undefined) return;
+        const moved = priceFromPendingDrag(spec, order, raw, quote);
+        setDrag({ ...current, price: moved.price, error: moved.error });
+        return;
+      }
+
+      const position =
+        current.level.positionId === null ? undefined : byId[current.level.positionId];
       if (position === undefined) return;
       const outcome = priceFromDrag(
         spec,
@@ -484,15 +542,21 @@ function Candles({
        * position query and the `position.updated` frame, and on failure the
        * line is already where it always was.
        */
-      modify.mutate(
-        {
-          positionId: current.level.positionId,
-          ...modificationFor(current.level.kind, current.price),
-        },
-        {
-          onError: (error: unknown) =>
-            setRefusal(error instanceof Error ? error.message : 'The server refused that level.'),
-        },
+      const sent =
+        current.level.kind === LevelKind.PENDING
+          ? current.level.orderId === null
+            ? null
+            : commands.movePendingOrder(current.level.orderId, current.price)
+          : current.level.positionId === null
+            ? null
+            : commands.modifyPositionLevel(
+                current.level.positionId,
+                current.level.kind,
+                current.price,
+              );
+
+      sent?.catch((error: unknown) =>
+        setRefusal(error instanceof Error ? error.message : 'The server refused that level.'),
       );
     };
 
@@ -506,7 +570,7 @@ function Candles({
       container.removeEventListener('pointerup', endDrag);
       container.removeEventListener('pointercancel', endDrag);
     };
-  }, [levelUnder, byId, spec, quote?.bid, modify]);
+  }, [levelUnder, hasTarget, byId, ordersById, spec, quote, commands]);
 
   return (
     <div className="relative h-full w-full">
@@ -538,11 +602,10 @@ const LEVEL_COLOR: Record<LevelKind, string> = {
   [LevelKind.ENTRY]: '#8b94a3',
   [LevelKind.STOP_LOSS]: '#ef5350',
   [LevelKind.TAKE_PROFIT]: '#26a69a',
+  // Its own colour, because it is its own kind of thing: an instruction that
+  // will *open* a trade, not one that closes an existing one.
+  [LevelKind.PENDING]: '#e0b341',
 };
-
-function levelKey(level: ChartLevel): string {
-  return `${level.positionId}:${level.kind}`;
-}
 
 /**
  * Prices become JS numbers here, at the rendering boundary and nowhere else.

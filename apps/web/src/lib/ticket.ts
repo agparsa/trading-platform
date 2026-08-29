@@ -1,4 +1,10 @@
-import { checkVolume, requiredMargin, toDecimal, type SymbolSpec } from '@tp/financial-core';
+import {
+  checkVolume,
+  grossPnl,
+  requiredMargin,
+  toDecimal,
+  type SymbolSpec,
+} from '@tp/financial-core';
 import { DomainError } from '@tp/shared-types';
 import { validatePendingPrice, validateProtectiveLevels } from '@tp/trading-core';
 import { money } from './format';
@@ -162,4 +168,72 @@ export function validateRestingPrice(
   } catch (error) {
     return error instanceof DomainError ? error.message : 'Invalid price.';
   }
+}
+
+/**
+ * What the stop and the target on *this* ticket would be worth.
+ *
+ * A projection of an order that does not exist yet, which makes it two steps
+ * removed from a fact: the entry has not happened, and neither has the exit. It
+ * is still worth showing, because "risking 180 to make 240" is the question
+ * every trader is actually answering when they type a stop, and making them do
+ * that arithmetic in their head is how position sizes go wrong.
+ *
+ * Three rules keep it honest:
+ *
+ *  - it runs `grossPnl` from `@tp/financial-core`, the engine's own formula, so
+ *    the browser cannot invent an arithmetic the server does not have;
+ *  - it returns `null`, not zero, whenever an input is missing — a dash says
+ *    "not known", a zero says "costs you nothing", and only one of those is
+ *    true;
+ *  - it refuses to convert. When the instrument is quoted in a currency other
+ *    than the account's it returns `null` rather than applying an FX rate this
+ *    browser does not hold, exactly as `estimateCosts` does.
+ *
+ * Gross, not net: commission is shown on its own line above and swap depends on
+ * how long the position is held, which nobody knows at the moment of entry.
+ */
+export function projectedOutcome(
+  spec: SymbolRow | undefined,
+  account: AccountSummary | undefined,
+  side: 'BUY' | 'SELL',
+  volume: string,
+  entryPrice: string | null,
+  exitPrice: string,
+): string | null {
+  if (spec === undefined || account === undefined || entryPrice === null) return null;
+  if (spec.quoteCurrency !== account.currency) return null;
+  const exit = exitPrice.trim();
+  if (exit === '' || !isDecimalString(exit) || !isDecimalString(volume)) return null;
+
+  try {
+    return grossPnl({
+      spec: spec as SymbolSpec,
+      side,
+      volume,
+      entryPrice,
+      exitPrice: exit,
+      accountCurrency: account.currency,
+      quoteToAccountRate: '1',
+    }).toString();
+  } catch {
+    // A half-typed level is the normal state of an input being filled in.
+    return null;
+  }
+}
+
+/**
+ * Reward divided by risk, as a plain ratio.
+ *
+ * `null` unless both projections exist and the risk side is actually a loss —
+ * a "risk" that is positive means the stop is on the wrong side of the entry,
+ * and dividing by it would print a confident, meaningless number.
+ */
+export function rewardToRisk(profit: string | null, loss: string | null): string | null {
+  if (profit === null || loss === null) return null;
+  const reward = Number(profit);
+  const risk = Number(loss);
+  if (!Number.isFinite(reward) || !Number.isFinite(risk)) return null;
+  if (risk >= 0 || reward <= 0) return null;
+  return (reward / Math.abs(risk)).toFixed(2);
 }

@@ -1,6 +1,15 @@
 'use client';
 
 import { create } from 'zustand';
+import {
+  beginCommand,
+  noteOrderClosed,
+  noteOrderFilled,
+  settleCommand,
+  type CommandSettlement,
+  type NewCommand,
+  type OrderCommand,
+} from './order-commands';
 
 export interface Quote {
   symbol: string;
@@ -89,6 +98,15 @@ interface RealtimeState {
   account: AccountState | null;
   /** The last risk transition announced, or null while the account is normal. */
   risk: RiskUpdate | null;
+  /**
+   * What became of the orders this browser submitted, newest first.
+   *
+   * Lives here rather than in the ticket because two things write to it — the
+   * ticket when it sends, the socket when a resting order later fills — and one
+   * of them is not a React component. It is never a source of truth about
+   * positions; the tables are. See lib/order-commands.ts.
+   */
+  commands: OrderCommand[];
   pnl: Record<string, LivePnl>;
   /**
    * Bars that arrived over the socket, keyed by `symbol:resolution` and then by
@@ -107,6 +125,10 @@ interface RealtimeState {
   applyQuote: (quote: Quote) => void;
   applyAccount: (account: AccountState) => void;
   applyRiskState: (risk: RiskUpdate) => void;
+  startCommand: (command: NewCommand) => void;
+  settleCommand: (commandId: string, settlement: CommandSettlement) => void;
+  orderFilled: (orderId: string, positionId: string | null) => void;
+  orderClosed: (orderId: string, reason: string) => void;
   applyPnl: (pnl: LivePnl) => void;
   applyBar: (bar: Bar) => void;
   clearBars: () => void;
@@ -120,6 +142,7 @@ export const useRealtime = create<RealtimeState>((set) => ({
   quotes: {},
   account: null,
   risk: null,
+  commands: [],
   pnl: {},
   bars: {},
   lastSeq: 0,
@@ -174,6 +197,16 @@ export const useRealtime = create<RealtimeState>((set) => ({
 
   applyRiskState: (risk) => set({ risk }),
 
+  startCommand: (command) => set((state) => ({ commands: beginCommand(state.commands, command) })),
+  settleCommand: (commandId, settlement) =>
+    set((state) => ({ commands: settleCommand(state.commands, commandId, settlement) })),
+  orderFilled: (orderId, positionId) =>
+    set((state) => ({
+      commands: noteOrderFilled(state.commands, orderId, positionId, Date.now()),
+    })),
+  orderClosed: (orderId, reason) =>
+    set((state) => ({ commands: noteOrderClosed(state.commands, orderId, reason, Date.now()) })),
+
   applyPnl: (pnl) => set((state) => ({ pnl: { ...state.pnl, [pnl.positionId]: pnl } })),
 
   applyBar: (bar) =>
@@ -218,10 +251,15 @@ export const useRealtime = create<RealtimeState>((set) => ({
    * last risk transition.
    *
    * Sequence, live P&L and live bars are all per-connection and are re-derived
-   * from the snapshot that follows. The risk state is not: it is the answer to
-   * "is this account in trouble", the server only re-sends it when it *changes*,
-   * and dropping it here would clear a stop-out warning off the screen because
-   * the socket blinked.
+   * from the snapshot that follows. Two things are not, and both are kept.
+   *
+   * The risk state is the answer to "is this account in trouble". The server
+   * only re-sends it when it *changes*, so dropping it here would clear a
+   * stop-out warning off the screen because the socket blinked.
+   *
+   * The command log is what this browser submitted. A reconnect does not undo
+   * an order, and a trader who loses their record of one at the moment the
+   * connection wobbles is left with no way to tell whether it went.
    */
   resetConnection: () => set({ lastSeq: 0, gapDetected: false, pnl: {}, bars: {} }),
 }));

@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { LevelKind, levelsFor, modificationFor, outcomeAt, priceFromDrag } from './chart-levels';
-import type { PositionRow, SymbolRow } from './queries';
+import {
+  LevelKind,
+  levelIdentity,
+  levelsFor,
+  modificationFor,
+  outcomeAt,
+  pendingLevelsFor,
+  priceFromDrag,
+  priceFromPendingDrag,
+} from './chart-levels';
+import type { PendingOrderRow, PositionRow, SymbolRow } from './queries';
 
 const XAUUSD: SymbolRow = {
   code: 'XAUUSD',
@@ -216,5 +225,113 @@ describe('modificationFor', () => {
       expect(Object.values(body)).not.toContain(null);
       expect(Object.keys(body)).toHaveLength(1);
     }
+  });
+});
+
+// ─── Resting orders on the chart ───────────────────────────────────────────
+
+function pending(overrides: Partial<PendingOrderRow> = {}): PendingOrderRow {
+  return {
+    orderId: 'o1',
+    status: 'PENDING',
+    symbol: 'XAUUSD',
+    side: 'BUY',
+    type: 'LIMIT',
+    volume: '1',
+    price: '4570.00',
+    stopLoss: null,
+    takeProfit: null,
+    timeInForce: 'GTC',
+    expiresAt: null,
+    createdAt: '2026-08-28T09:00:00.000Z',
+    ...overrides,
+  };
+}
+
+const QUOTE = { bid: '4583.58', ask: '4583.72' };
+
+describe('pendingLevelsFor', () => {
+  it('draws one line per resting order on this instrument', () => {
+    const levels = pendingLevelsFor([pending()], 'XAUUSD', XAUUSD, QUOTE);
+    expect(levels).toHaveLength(1);
+    expect(levels[0]?.kind).toBe(LevelKind.PENDING);
+    expect(levels[0]?.orderId).toBe('o1');
+    expect(levels[0]?.positionId).toBeNull();
+    expect(levels[0]?.draggable).toBe(true);
+  });
+
+  it('leaves another instrument alone', () => {
+    expect(pendingLevelsFor([pending({ symbol: 'EURUSD' })], 'XAUUSD', XAUUSD, QUOTE)).toEqual([]);
+  });
+
+  it('names the side, the type and how far away it is', () => {
+    // A buy is measured against the ask: 4583.72 - 4570.00 = 13.72 = 1372 points.
+    const levels = pendingLevelsFor([pending()], 'XAUUSD', XAUUSD, QUOTE);
+    expect(levels[0]?.title).toBe('BUY LIMIT 1  1372 pt');
+  });
+
+  /**
+   * A distance of zero would read as "about to trigger". Silence is the honest
+   * answer when there is no quote to measure against.
+   */
+  it('omits the distance rather than showing zero when no quote has arrived', () => {
+    const levels = pendingLevelsFor([pending()], 'XAUUSD', XAUUSD, undefined);
+    expect(levels[0]?.title).toBe('BUY LIMIT 1');
+  });
+});
+
+describe('priceFromPendingDrag', () => {
+  it('snaps the dropped price to the instrument tick grid', () => {
+    const moved = priceFromPendingDrag(XAUUSD, pending(), 4571.4837, QUOTE);
+    expect(moved.error).toBeNull();
+    expect(moved.price).toBe('4571.48');
+  });
+
+  /**
+   * The mistake that matters. A buy limit dragged above the ask is not a
+   * resting order — it fires on the next tick at a price the trader never saw.
+   * The rule comes from `@tp/trading-core`, the same module the server runs.
+   */
+  it('refuses a drag that would fire the order immediately', () => {
+    const moved = priceFromPendingDrag(XAUUSD, pending(), 4590, QUOTE);
+    expect(moved.error).not.toBeNull();
+    expect(moved.error).toContain('fill immediately');
+  });
+
+  it('refuses the same mistake in the other direction, for a sell limit', () => {
+    const order = pending({ side: 'SELL', type: 'LIMIT', price: '4600.00' });
+    expect(priceFromPendingDrag(XAUUSD, order, 4570, QUOTE).error).not.toBeNull();
+    expect(priceFromPendingDrag(XAUUSD, order, 4610, QUOTE).error).toBeNull();
+  });
+
+  it('lets a buy stop rest above the market and refuses it below', () => {
+    const order = pending({ side: 'BUY', type: 'STOP', price: '4600.00' });
+    expect(priceFromPendingDrag(XAUUSD, order, 4610, QUOTE).error).toBeNull();
+    expect(priceFromPendingDrag(XAUUSD, order, 4570, QUOTE).error).not.toBeNull();
+  });
+
+  it('sends the snapped price and lets the server decide when there is no quote', () => {
+    const moved = priceFromPendingDrag(XAUUSD, pending(), 4590, undefined);
+    expect(moved.error).toBeNull();
+    expect(moved.price).toBe('4590.00');
+  });
+
+  it('refuses a coordinate that is not a price at all', () => {
+    expect(priceFromPendingDrag(XAUUSD, pending(), Number.NaN, QUOTE).error).not.toBeNull();
+    expect(priceFromPendingDrag(XAUUSD, pending(), -1, QUOTE).error).not.toBeNull();
+  });
+
+  it('refuses to drag an order type that does not rest on a price', () => {
+    const moved = priceFromPendingDrag(XAUUSD, pending({ type: 'MARKET' }), 4570, QUOTE);
+    expect(moved.error).toContain('cannot be dragged');
+  });
+});
+
+describe('levelIdentity', () => {
+  it('distinguishes a position level from an order level', () => {
+    const [entry] = levelsFor([position()], 'XAUUSD');
+    const [order] = pendingLevelsFor([pending()], 'XAUUSD', XAUUSD, QUOTE);
+    expect(levelIdentity(entry!)).toBe('p1:ENTRY');
+    expect(levelIdentity(order!)).toBe('o1:PENDING');
   });
 });

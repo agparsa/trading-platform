@@ -1,7 +1,8 @@
 import { grossPnl, normalizePrice, toDecimal, type SymbolSpec } from '@tp/financial-core';
 import { DomainError } from '@tp/shared-types';
-import { validateProtectiveLevels } from '@tp/trading-core';
-import type { PositionRow, SymbolRow } from './queries';
+import { validatePendingPrice, validateProtectiveLevels } from '@tp/trading-core';
+import { distanceInPoints } from './points';
+import type { PendingOrderRow, PositionRow, SymbolRow } from './queries';
 
 /**
  * What the chart draws on top of the price, and the rules for moving it.
@@ -22,11 +23,16 @@ export const LevelKind = {
   ENTRY: 'ENTRY',
   STOP_LOSS: 'STOP_LOSS',
   TAKE_PROFIT: 'TAKE_PROFIT',
+  /** A resting order's own trigger price. */
+  PENDING: 'PENDING',
 } as const;
 export type LevelKind = (typeof LevelKind)[keyof typeof LevelKind];
 
 export interface ChartLevel {
-  positionId: string;
+  /** Set when this line belongs to an open position. */
+  positionId: string | null;
+  /** Set when this line belongs to a resting order. Exactly one of the two is set. */
+  orderId: string | null;
   kind: LevelKind;
   /** Decimal string, exactly as the server stated it. */
   price: string;
@@ -35,6 +41,11 @@ export interface ChartLevel {
   /** Set on a stop that the trailing engine is moving. */
   trailing: boolean;
   title: string;
+}
+
+/** Stable identity for one drawn line. */
+export function levelIdentity(level: ChartLevel): string {
+  return `${level.positionId ?? level.orderId ?? '?'}:${level.kind}`;
 }
 
 /**
@@ -57,6 +68,7 @@ export function levelsFor(
 
     levels.push({
       positionId: position.id,
+      orderId: null,
       kind: LevelKind.ENTRY,
       price: position.entryPrice,
       draggable: false,
@@ -68,6 +80,7 @@ export function levelsFor(
     if (position.stopLoss !== null) {
       levels.push({
         positionId: position.id,
+        orderId: null,
         kind: LevelKind.STOP_LOSS,
         price: position.stopLoss,
         // A trailing stop is still draggable: the trader may tighten it by hand
@@ -87,6 +100,7 @@ export function levelsFor(
     if (position.takeProfit !== null) {
       levels.push({
         positionId: position.id,
+        orderId: null,
         kind: LevelKind.TAKE_PROFIT,
         price: position.takeProfit,
         draggable: true,
@@ -203,4 +217,93 @@ export function modificationFor(
   price: string,
 ): { stopLoss?: string; takeProfit?: string } {
   return kind === LevelKind.STOP_LOSS ? { stopLoss: price } : { takeProfit: price };
+}
+
+/**
+ * Lines for the resting orders on this instrument.
+ *
+ * A pending order is a different kind of line from a stop or a target: it is not
+ * protecting an open position, it is an instruction waiting to *create* one. So
+ * it is drawn in its own colour and labelled with its side and type — a trader
+ * looking at three dashed lines needs to know at a glance which of them will
+ * open a trade and which will close one.
+ *
+ * The distance to the market is part of the label because it is the question the
+ * line exists to answer. It is measured against the side the order would
+ * actually fire on, and omitted entirely when there is no quote — a distance of
+ * "0" from a missing price would read as "about to trigger".
+ */
+export function pendingLevelsFor(
+  orders: readonly PendingOrderRow[],
+  symbolCode: string | undefined,
+  spec: SymbolRow | undefined,
+  quote: { bid: string; ask: string } | undefined,
+): ChartLevel[] {
+  if (symbolCode === undefined) return [];
+  const levels: ChartLevel[] = [];
+
+  for (const order of orders) {
+    if (order.symbol !== symbolCode) continue;
+
+    const reference = quote === undefined ? null : order.side === 'BUY' ? quote.ask : quote.bid;
+    const away = distanceInPoints(order.price, reference, spec?.pricePrecision ?? 2);
+    const suffix = away === null ? '' : `  ${away} pt`;
+
+    levels.push({
+      positionId: null,
+      orderId: order.orderId,
+      kind: LevelKind.PENDING,
+      price: order.price,
+      draggable: true,
+      trailing: false,
+      title: `${order.side} ${order.type} ${order.volume}${suffix}`,
+    });
+  }
+
+  return levels;
+}
+
+/**
+ * Where a dragged resting order may be dropped.
+ *
+ * Same two steps as a protective level — snap to the tick grid, then run the
+ * server's own rule — but the rule is a different one. `validatePendingPrice`
+ * refuses a price that would fire the order immediately, which is the mistake
+ * that matters here: an order dragged past the market is not a resting order at
+ * all, it is a market order the trader did not ask for, executing on the next
+ * tick at a price they never saw.
+ *
+ * Only `LIMIT` and `STOP` rest. Anything else is refused rather than guessed at.
+ */
+export function priceFromPendingDrag(
+  spec: SymbolRow | undefined,
+  order: PendingOrderRow,
+  rawPrice: number,
+  quote: { bid: string; ask: string } | undefined,
+): DragOutcome {
+  if (spec === undefined) return { price: '', error: 'No instrument.' };
+  if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
+    return { price: '', error: 'That is not a price.' };
+  }
+  if (order.type !== 'LIMIT' && order.type !== 'STOP') {
+    return { price: '', error: `A ${order.type} order cannot be dragged.` };
+  }
+
+  const snapped = normalizePrice(spec as SymbolSpec, toDecimal(rawPrice.toFixed(10))).toFixed(
+    spec.pricePrecision,
+  );
+
+  // No quote means nothing to measure against. The server has one and will
+  // refuse the move if it is wrong, which is the right authority anyway.
+  if (quote === undefined) return { price: snapped, error: null };
+
+  try {
+    validatePendingPrice(spec as SymbolSpec, order.type, order.side, snapped, quote);
+    return { price: snapped, error: null };
+  } catch (error) {
+    return {
+      price: snapped,
+      error: error instanceof DomainError ? error.message : 'That price is not allowed.',
+    };
+  }
 }

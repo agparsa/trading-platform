@@ -298,6 +298,10 @@ export class OrdersService {
     // must not be told about a fill that a rollback is about to erase.
     await this.events.publish(DomainEvent.ORDER_FILLED, account.id, {
       orderId: result.order.id,
+      // The position the fill created. `position.opened` names it too, but a
+      // subscriber that cares about *this order* should not have to correlate
+      // two events by timing to learn what became of it.
+      positionId: result.position.id,
       symbol: symbolCode,
       side: request.side,
       volume: volume.toString(),
@@ -743,6 +747,7 @@ export class OrdersService {
 
       await this.events.publish(DomainEvent.ORDER_FILLED, order.accountId, {
         orderId: order.id,
+        positionId: result.id,
         symbol: symbolCode,
         side,
         volume: volume.toString(),

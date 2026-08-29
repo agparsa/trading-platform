@@ -97,12 +97,40 @@ server confirms. It does not move optimistically and then reconcile — a stop-l
 that appears to be at one price while the server holds another is the single
 worst failure this UI can have.
 
+## The two halves of the seam
+
+Reading and writing are separate, and both exist.
+
+**Reading.** `lib/tradingview-datafeed.ts` holds the mappings — seconds against
+milliseconds, price scale, session strings — and the datafeed object itself.
+`lib/chart-datafeed.ts` assembles it from this application's own state: bars over
+REST through `createPlatformDatafeed`, live bars out of the realtime store, the
+instrument list and sessions from React Query.
+
+The library is not here, so nothing renders from that object yet. It is still
+driven end to end by `chart-datafeed.test.ts` — `onReady`, `resolveSymbol`,
+`getBars` against a stub API, `subscribeBars` against the real store,
+`unsubscribeBars` — because *written* and *works* are different claims and only
+one of them can be made without running it.
+
+**Writing.** `lib/chart-commands.ts` is `TradingCommandAdapter`: move a stop or a
+target, move a resting order, close a position, cancel an order. The
+lightweight-charts panel issues every trading action through it today, so the
+interface is the one in use rather than one designed in advance for a library
+nobody has run. When the licensed bundle arrives it is handed the same object.
+
+It deliberately does not validate. Snapping to the tick grid and refusing an
+illegal level live in `lib/chart-levels.ts`, which is pure and tested; an adapter
+that also validated would be a second home for those rules and a second place
+for them to drift.
+
 ## Remaining work when the licence arrives
 
 1. Unpack the bundle into `apps/web/public/charting_library/`.
 2. Replace the hand-declared types with the library's own.
-3. Construct the widget with `createTradingViewDatafeed(...)` as its datafeed.
-4. Add the overlays — position, order, SL and TP lines — under the rule above.
+3. Construct the widget with `buildChartDatafeed(...)` as its datafeed.
+4. Add the overlays — position, order, SL and TP lines — driving them through
+   `useTradingCommands`, under the rule above.
 
 Steps 1–3 are the day's work the adapter exists to make small. Step 4 is the
-part that needs care.
+part that needs care, and `chart-levels.ts` already holds the rules it needs.

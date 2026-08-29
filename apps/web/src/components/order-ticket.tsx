@@ -3,9 +3,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@tp/ui';
 import { DomainError } from '@tp/shared-types';
-import { price as formatPrice } from '@/lib/format';
-import { estimateCosts, stepVolume, validateTicket } from '@/lib/ticket';
+import { price as formatPrice, signedMoney, toneClass, toneOf } from '@/lib/format';
+import {
+  estimateCosts,
+  projectedOutcome,
+  rewardToRisk,
+  stepVolume,
+  validateTicket,
+} from '@/lib/ticket';
 import { validateRestingPrice } from '@/lib/ticket';
+import {
+  COMMAND_STATE_LABEL,
+  CommandState,
+  settlementFromResponse,
+  type OrderCommand,
+} from '@/lib/order-commands';
 import {
   useOpenPosition,
   usePlacePending,
@@ -63,6 +75,7 @@ export function OrderTicket({
   const quote = useRealtime((state) =>
     symbol === undefined ? undefined : state.quotes[symbol.code],
   );
+  const commands = useRealtime((state) => state.commands);
   const open = useOpenPosition(accountId);
   const place = usePlacePending(accountId);
 
@@ -108,6 +121,26 @@ export function OrderTicket({
     [symbol, account, volume, executable, validation.volumeOk],
   );
 
+  /**
+   * What the levels on this ticket would be worth.
+   *
+   * Measured from the price the order will actually open at: the executable
+   * price for a market order, the resting price for one that has to wait. A
+   * limit order priced 40 points below the market has a different risk from the
+   * same stop measured against today's price, and showing the latter would be
+   * arithmetic about an order nobody placed.
+   */
+  const entryReference = orderType === 'MARKET' ? executable : resting === '' ? null : resting;
+  const ifStopped = useMemo(
+    () => projectedOutcome(symbol, account, side, volume, entryReference, stopLoss),
+    [symbol, account, side, volume, entryReference, stopLoss],
+  );
+  const ifTargeted = useMemo(
+    () => projectedOutcome(symbol, account, side, volume, entryReference, takeProfit),
+    [symbol, account, side, volume, entryReference, takeProfit],
+  );
+  const ratio = useMemo(() => rewardToRisk(ifTargeted, ifStopped), [ifTargeted, ifStopped]);
+
   const busy = open.isPending || place.isPending;
 
   /**
@@ -150,41 +183,75 @@ export function OrderTicket({
         stopLoss: stopLoss.trim() === '' ? null : stopLoss.trim(),
         takeProfit: takeProfit.trim() === '' ? null : takeProfit.trim(),
       };
+
+      /**
+       * The command id is minted here and handed to the mutation as the
+       * idempotency key, rather than minted inside it.
+       *
+       * That ordering is the point. If the key were minted where the request is
+       * sent, there would be a window — short, but real — in which the order was
+       * on the wire and this panel could not yet say which attempt it belonged
+       * to. Recording the submission *before* it leaves means a trader whose
+       * network drops mid-request still has the id to quote.
+       */
+      const commandId = crypto.randomUUID();
+      const store = useRealtime.getState();
+      store.startCommand({
+        commandId,
+        symbol: symbol.code,
+        side: requestedSide,
+        type: orderType,
+        volume,
+        at: Date.now(),
+      });
+
       try {
-        if (orderType === 'MARKET') {
-          await open.mutateAsync({
-            accountId,
-            symbol: symbol.code,
-            side: requestedSide,
-            volume,
-            ...levels,
-          });
-        } else {
-          await place.mutateAsync({
-            accountId,
-            symbol: symbol.code,
-            side: requestedSide,
-            type: orderType,
-            volume,
-            price: restingPrice.trim(),
-            timeInForce,
-            ...levels,
-          });
-          setRestingPrice('');
-        }
+        const response =
+          orderType === 'MARKET'
+            ? await open.mutateAsync({
+                commandId,
+                accountId,
+                symbol: symbol.code,
+                side: requestedSide,
+                volume,
+                ...levels,
+              })
+            : await place.mutateAsync({
+                commandId,
+                accountId,
+                symbol: symbol.code,
+                side: requestedSide,
+                type: orderType,
+                volume,
+                price: restingPrice.trim(),
+                timeInForce,
+                ...levels,
+              });
+
+        useRealtime
+          .getState()
+          .settleCommand(commandId, settlementFromResponse(orderType, response, Date.now()));
+
+        if (orderType !== 'MARKET') setRestingPrice('');
         setStopLoss('');
         setTakeProfit('');
       } catch (error) {
-        setSubmitError(
+        const message =
           error instanceof DomainError
             ? error.message
-            : 'The order could not be submitted. It was not placed.',
-        );
+            : 'The order could not be submitted. It was not placed.';
+        useRealtime.getState().settleCommand(commandId, {
+          state: CommandState.REJECTED,
+          reason: message,
+          at: Date.now(),
+        });
+        setSubmitError(message);
       }
     },
     [
       accountId,
       symbol,
+      blockedReason,
       stopLoss,
       takeProfit,
       orderType,
@@ -408,6 +475,34 @@ export function OrderTicket({
           label={orderType === 'MARKET' ? 'Executable' : 'Market now'}
           value={executable === null ? '—' : formatPrice(executable, symbol.pricePrecision)}
         />
+        {/*
+          Shown only once there is a level to project from. An empty row reading
+          "—" beside "If stopped" invites the reading that the stop costs
+          nothing, which is the opposite of what a blank means.
+        */}
+        {ifStopped === null ? null : (
+          <EstimateRow
+            label="If stopped"
+            value={signedMoney(ifStopped, account?.currency ?? 'USD')}
+            tone={toneClass[toneOf(ifStopped)]}
+            title="Gross, at this stop, from this entry. Commission is above; swap depends on how long it is held."
+          />
+        )}
+        {ifTargeted === null ? null : (
+          <EstimateRow
+            label="If target hits"
+            value={signedMoney(ifTargeted, account?.currency ?? 'USD')}
+            tone={toneClass[toneOf(ifTargeted)]}
+            title="Gross, at this target, from this entry."
+          />
+        )}
+        {ratio === null ? null : (
+          <EstimateRow
+            label="Reward : risk"
+            value={`${ratio} : 1`}
+            title="Projected gain divided by projected loss, both gross"
+          />
+        )}
       </dl>
 
       {orderType === 'MARKET' ? null : (
@@ -422,6 +517,8 @@ export function OrderTicket({
           {symbol.code} is outside its trading session. The server will reject the order.
         </p>
       )}
+
+      <CommandLog commands={commands} />
 
       {priceError === null ? null : <p className="text-[11px] text-terminal-short">{priceError}</p>}
       {validation.error === null ? null : (
@@ -499,14 +596,72 @@ export function OrderTicket({
 type OrderType = 'MARKET' | 'LIMIT' | 'STOP';
 const ORDER_TYPES: readonly OrderType[] = ['MARKET', 'LIMIT', 'STOP'];
 
-function EstimateRow({ label, value }: { label: string; value: string }) {
+function EstimateRow({
+  label,
+  value,
+  tone,
+  title,
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+  title?: string;
+}) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between" title={title}>
       <dt className="text-terminal-muted">{label}</dt>
-      <dd className="numeric text-terminal-text">{value}</dd>
+      <dd className={cn('numeric', tone ?? 'text-terminal-text')}>{value}</dd>
     </div>
   );
 }
+
+/**
+ * What became of the orders sent from this browser.
+ *
+ * The panel a trader looks at after pressing the button. Before this, a
+ * submission produced a spinner and then the tables refreshed, leaving them to
+ * infer which of the new rows was theirs — which on a fast market with two
+ * orders in flight is not something a person can do.
+ *
+ * `accepted` and `filled` are deliberately different words. A resting order that
+ * has been accepted has not filled, and one line that said both would be the
+ * single most expensive thing this panel could get wrong.
+ */
+function CommandLog({ commands }: { commands: readonly OrderCommand[] }) {
+  if (commands.length === 0) return null;
+
+  return (
+    <div className="rounded border border-terminal-border bg-terminal-bg px-2.5 py-2">
+      <p className="mb-1 text-[10px] uppercase tracking-wider text-terminal-muted">Sent</p>
+      <ul className="space-y-1">
+        {commands.slice(0, 4).map((command) => (
+          <li key={command.commandId} className="flex items-baseline justify-between gap-2">
+            <span className="numeric truncate text-[11px] text-terminal-text">
+              {command.side} {command.volume} {command.symbol}
+              {command.type === 'MARKET' ? '' : ` ${command.type}`}
+            </span>
+            <span
+              className={cn('shrink-0 text-[10px]', COMMAND_STATE_TONE[command.state])}
+              title={command.reason ?? `Command ${command.commandId}`}
+            >
+              {COMMAND_STATE_LABEL[command.state]}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {commands[0]?.reason === null || commands[0]?.reason === undefined ? null : (
+        <p className="mt-1 text-[10px] leading-snug text-terminal-short">{commands[0].reason}</p>
+      )}
+    </div>
+  );
+}
+
+const COMMAND_STATE_TONE: Record<CommandState, string> = {
+  [CommandState.SUBMITTING]: 'text-terminal-muted',
+  [CommandState.ACCEPTED]: 'text-terminal-warning',
+  [CommandState.EXECUTED]: 'text-terminal-long',
+  [CommandState.REJECTED]: 'text-terminal-short',
+};
 
 function SideButton({
   active,

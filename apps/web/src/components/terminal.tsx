@@ -220,6 +220,7 @@ export function Terminal() {
               resolution={resolution}
               onResolutionChange={setResolution}
               positions={positions}
+              pendingOrders={pending}
               accountId={accountId}
               currency={currency}
             />
