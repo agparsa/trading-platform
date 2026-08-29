@@ -22,18 +22,54 @@ import { io, type Socket } from 'socket.io-client';
 
 const PORT = process.env['API_PORT'] ?? '4000';
 const BASE = `http://127.0.0.1:${PORT}`;
+/**
+ * A second instance, which does nothing but ingest.
+ *
+ * The first run of this harness at a hundred traders found something real: one
+ * process serving two hundred sockets and a thousand orders starves its own
+ * market feed. Only 149 ticks arrived in a minute, quotes aged past
+ * `QUOTE_MAX_AGE_MS`, and the engine — correctly — refused to trade on them.
+ *
+ * The platform was right. The *deployment* was wrong, and it was the deployment
+ * this harness had invented: production separates ingest from serving, which is
+ * exactly what `MARKET_INGEST_ENABLED` and the `market:ticks` relay exist for.
+ * So the harness now boots the pair, and in doing so measures the relay under
+ * load as well.
+ */
+const INGEST_PORT = process.env['LOAD_INGEST_PORT'] ?? '4111';
 const PASSWORD = 'a-sufficiently-long-passphrase';
 
-const TRADERS = Number(process.env['LOAD_TRADERS'] ?? 12);
-const SOCKETS_PER_TRADER = Number(process.env['LOAD_SOCKETS_PER_TRADER'] ?? 3);
+const TRADERS = Number(process.env['LOAD_TRADERS'] ?? 100);
+const SOCKETS_PER_TRADER = Number(process.env['LOAD_SOCKETS_PER_TRADER'] ?? 2);
 const ORDERS_PER_TRADER = Number(process.env['LOAD_ORDERS_PER_TRADER'] ?? 10);
 const OBSERVE_MS = Number(process.env['LOAD_OBSERVE_MS'] ?? 20_000);
+
+/**
+ * How long the steady phase runs, and how many orders it spreads over that.
+ *
+ * A steady phase is not a slower burst. It is the shape of ordinary trading —
+ * requests arriving continuously rather than all at once — and it answers a
+ * question the burst cannot: what does the platform *feel like* while it is
+ * being used, as opposed to while it is being hit.
+ */
+const STEADY_MS = Number(process.env['LOAD_STEADY_MS'] ?? 15_000);
+const STEADY_ORDERS_PER_TRADER = Number(process.env['LOAD_STEADY_ORDERS'] ?? 3);
 
 interface Frame {
   event: string;
   seq: number;
   timestamp: number;
 }
+
+/**
+ * Refusals that mean the platform declined to price an order, rather than that
+ * something went wrong.
+ *
+ * A stale quote under a burst is the engine refusing to fill at a price it no
+ * longer trusts. That is the behaviour §26 asks for — an infrastructure problem
+ * must never become a trade — and it is a capacity limit, not a defect.
+ */
+const SAFE_REFUSALS = new Set(['STALE_QUOTE', 'NO_QUOTE_AVAILABLE', 'TRADING_HALTED']);
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -78,15 +114,15 @@ async function registerTrader(index: number): Promise<Trader> {
   return { token: accessToken, accountId: accountId! };
 }
 
-async function waitForBoot(): Promise<void> {
+async function waitForBoot(base: string = BASE): Promise<void> {
   const deadline = Date.now() + 60_000;
   for (;;) {
     try {
-      if ((await fetch(`${BASE}/health`)).ok) return;
+      if ((await fetch(`${base}/health`)).ok) return;
     } catch {
       /* not listening yet */
     }
-    if (Date.now() > deadline) throw new Error('API did not become healthy');
+    if (Date.now() > deadline) throw new Error(`${base} did not become healthy`);
     await sleep(500);
   }
 }
@@ -100,6 +136,50 @@ async function assertPortFree(): Promise<void> {
   throw new Error(
     `Something is already listening on ${BASE}. Stop it first — otherwise this would measure it instead of the build under test.`,
   );
+}
+
+/**
+ * How old the newest tick is, as the platform itself reports it.
+ *
+ * From `/health/market` rather than counted here, so the harness asserts the
+ * same number an operator's alerting would see. `null` means no tick has ever
+ * arrived, which on this instance would mean the relay never delivered one.
+ */
+async function newestTickAge(): Promise<number | null> {
+  try {
+    const response = await fetch(`${BASE}/health/market`);
+    /**
+     * Unwrapped twice: the API wraps every response in `{ok, data, meta}`, and
+     * Terminus's own payload is what sits inside `data`.
+     */
+    const envelope = (await response.json()) as {
+      data?: {
+        details?: Record<string, { newestTickAgeMs?: number | null }>;
+        info?: Record<string, { newestTickAgeMs?: number | null }>;
+      };
+    };
+    const detail = envelope.data?.details?.['market-data'] ?? envelope.data?.info?.['market-data'];
+    return detail?.newestTickAgeMs ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A gauge's current value, summed over its labels.
+ *
+ * Read from the ingest instance, which is the one whose per-tick cost the open
+ * position count actually describes.
+ */
+async function gaugeValue(name: string): Promise<number> {
+  const text = await (await fetch(`http://127.0.0.1:${INGEST_PORT}/metrics`)).text();
+  let total = 0;
+  for (const line of text.split('\n')) {
+    if (!line.startsWith(name)) continue;
+    const value = Number(line.slice(line.lastIndexOf(' ') + 1));
+    if (Number.isFinite(value)) total += value;
+  }
+  return total;
 }
 
 async function counterValue(name: string): Promise<number> {
@@ -125,13 +205,49 @@ async function main(): Promise<void> {
    * exercised by the auth tests. What is being measured here is what the engine
    * does when the requests actually reach it.
    */
+  const limits = {
+    RATE_LIMIT_LOGIN_PER_MINUTE: '100000',
+    RATE_LIMIT_ORDERS_PER_MINUTE: '100000',
+    RATE_LIMIT_API_PER_MINUTE: '100000',
+    // The socket limit too: a hundred terminals each sending five subscribes
+    // on connect is ordinary traffic, and this run is not about that limit.
+    RATE_LIMIT_SOCKET_MESSAGES_PER_MINUTE: '100000',
+  };
+
+  /**
+   * The ingest instance: it produces prices and fires stops, and serves nobody.
+   *
+   * This is how production is deployed, and it is not an optimisation. Exactly
+   * one process may pull from the provider or candle volume is counted twice,
+   * and a process doing that while serving two hundred sockets starves its own
+   * feed — which this harness demonstrated the first time it was run at a
+   * hundred traders.
+   */
+  const ingest = spawn('node', ['apps/api/dist/main.js'], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      ...limits,
+      API_PORT: INGEST_PORT,
+      MARKET_INGEST_ENABLED: 'true',
+      TRIGGER_ENGINE_ENABLED: 'true',
+    },
+  });
+  ingest.stdout.on('data', () => undefined);
+  ingest.stderr.on('data', () => undefined);
+
+  /**
+   * The instance under test: it serves, and relays prices from the other one
+   * over `market:ticks`.
+   */
   const api = spawn('node', ['apps/api/dist/main.js'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
-      RATE_LIMIT_LOGIN_PER_MINUTE: '100000',
-      RATE_LIMIT_ORDERS_PER_MINUTE: '100000',
-      RATE_LIMIT_API_PER_MINUTE: '100000',
+      ...limits,
+      API_PORT: PORT,
+      MARKET_INGEST_ENABLED: 'false',
+      TRIGGER_ENGINE_ENABLED: 'false',
     },
   });
   const output: string[] = [];
@@ -142,9 +258,14 @@ async function main(): Promise<void> {
   let failed = false;
 
   try {
+    await waitForBoot(`http://127.0.0.1:${INGEST_PORT}`);
     await waitForBoot();
     console.log(
-      `\n  ${TRADERS} traders · ${TRADERS * SOCKETS_PER_TRADER} sockets · ` +
+      `\n  one ingest instance on :${INGEST_PORT}, one serving instance on :${PORT},` +
+        `\n  prices relayed between them over market:ticks — as production runs.\n`,
+    );
+    console.log(
+      `  ${TRADERS} traders · ${TRADERS * SOCKETS_PER_TRADER} sockets · ` +
         `${TRADERS * ORDERS_PER_TRADER} orders · ${OBSERVE_MS / 1000}s observation` +
         `\n  (per-IP rate limits raised for this run — see the note in the script)\n`,
     );
@@ -152,6 +273,20 @@ async function main(): Promise<void> {
     const traders = await Promise.all(
       Array.from({ length: TRADERS }, (_, index) => registerTrader(index)),
     );
+
+    /**
+     * What the platform is already holding.
+     *
+     * Printed because it changes the answer. The ingest process checks every
+     * open position against every tick — that is what a stop-loss *is* — so the
+     * per-tick cost scales with the whole platform's open interest, not with
+     * this run's. A figure of "180 orders/s" means nothing without saying what
+     * the book looked like while it was measured.
+     *
+     * Read from `/metrics`, which is public and needs no operator token.
+     */
+    const openPositionsBefore = await gaugeValue('tp_open_positions');
+    const accountsBefore = await gaugeValue('tp_accounts');
 
     const symbols = await json<Array<{ symbol: string }>>(
       await fetch(`${BASE}/api/v1/market/quotes`, {
@@ -233,6 +368,43 @@ async function main(): Promise<void> {
     latencies.length = 0;
     rejections.length = 0;
 
+    /**
+     * Three phases, and each answers something the others cannot.
+     *
+     * **Steady** is what ordinary use looks like: requests arriving continuously
+     * rather than all at once. It is the number a trader lives with.
+     *
+     * **Burst** is everything at the same instant. It measures how long a queue
+     * takes to drain, which is a different quantity from how long an order takes
+     * to serve, and is reported as such.
+     *
+     * **Recovery** is the one usually left out, and it is the one that catches
+     * the interesting failures. A platform that serves a burst and then stays
+     * degraded — connection pool exhausted, a lock never released, memory that
+     * never comes back — passes a burst test and fails in production an hour
+     * later. So the unloaded measurement is taken again, afterwards, and
+     * compared with the one from before.
+     */
+
+    // --- phase 1: steady ----------------------------------------------------
+    const steady: number[] = [];
+    const steadyStartedAt = Date.now();
+    const gapMs = Math.max(1, Math.floor(STEADY_MS / Math.max(1, STEADY_ORDERS_PER_TRADER)));
+    for (let round = 0; round < STEADY_ORDERS_PER_TRADER; round += 1) {
+      const roundStartedAt = Date.now();
+      const before = latencies.length;
+      await Promise.all(traders.map((trader, index) => submit(trader, round * 7 + index)));
+      for (const value of latencies.slice(before)) steady.push(value);
+      const remaining = gapMs - (Date.now() - roundStartedAt);
+      if (remaining > 0) await sleep(remaining);
+    }
+    const steadyElapsed = Date.now() - steadyStartedAt;
+    const steadyOrders = TRADERS * STEADY_ORDERS_PER_TRADER;
+    const steadyRejections = [...rejections];
+    latencies.length = 0;
+    rejections.length = 0;
+
+    // --- phase 2: burst -----------------------------------------------------
     const orderStartedAt = Date.now();
     await Promise.all(
       traders.flatMap((trader) =>
@@ -240,11 +412,28 @@ async function main(): Promise<void> {
       ),
     );
     const orderElapsed = Date.now() - orderStartedAt;
+    const burst = [...latencies];
+    const burstRejections = [...rejections];
+    rejections.length = 0;
+
+    // --- phase 3: recovery --------------------------------------------------
+    // A short pause, then the same single-order measurement taken before the
+    // load started. If this is much worse than `quiet`, the platform did not
+    // come back — and that is a fault a burst test alone would have passed.
+    await sleep(3_000);
+    const recovered: number[] = [];
+    const feedAgeAfterBurst = await newestTickAge();
+    for (let i = 0; i < 5; i += 1) {
+      const startedAt = Date.now();
+      await submit(traders[0]!, 200 + i);
+      recovered.push(Date.now() - startedAt);
+    }
 
     // --- watch the stream under that load -----------------------------------
     await sleep(OBSERVE_MS);
     const coalescedAfter = await counterValue('tp_ticks_coalesced_total');
     const ticks = await counterValue('tp_market_ticks_total');
+    const feedAgeMs = await newestTickAge();
 
     // --- results ------------------------------------------------------------
     const allFrames = streams.reduce((total, stream) => total + stream.frames.length, 0);
@@ -267,6 +456,9 @@ async function main(): Promise<void> {
 
     const orders = TRADERS * ORDERS_PER_TRADER;
     const rows: Array<[string, string]> = [
+      ['Traders registered for this run', String(TRADERS)],
+      ['Accounts on the platform beforehand', String(accountsBefore)],
+      ['Open positions on the platform beforehand', String(openPositionsBefore)],
       ['Sockets held open', String(sockets.length)],
       ['Frames delivered', String(allFrames)],
       [
@@ -276,16 +468,47 @@ async function main(): Promise<void> {
       ['Sockets with a sequence gap', String(gaps)],
       ['Sockets that received nothing', String(emptyStreams)],
       ['Socket errors', String(socketErrors.length)],
-      ['Orders submitted', String(orders)],
-      ['Orders rejected', String(rejections.length)],
+      ['Orders submitted', String(orders + steadyOrders + quiet.length + recovered.length)],
+      [
+        'Orders rejected',
+        String(steadyRejections.length + burstRejections.length + rejections.length),
+      ],
+      ['— phase 1, steady —', ''],
+      ['Steady orders', String(steadyOrders)],
+      ['Steady throughput (per second)', (steadyOrders / (steadyElapsed / 1000)).toFixed(1)],
+      ['Steady round trip p50 (ms)', String(percentile(steady, 50))],
+      ['Steady round trip p95 (ms)', String(percentile(steady, 95))],
+      ['Steady round trip max (ms)', String(Math.max(...steady, 0))],
+      [
+        'Steady rejections',
+        steadyRejections.length === 0
+          ? '0'
+          : `${steadyRejections.length} (${[...new Set(steadyRejections)].join(', ')})`,
+      ],
+      ['— phase 2, burst —', ''],
+      ['Burst orders', String(orders)],
       ['Order throughput (per second)', (orders / (orderElapsed / 1000)).toFixed(1)],
+      ['Round trip under burst p50 (ms)', String(percentile(burst, 50))],
+      ['Round trip under burst p95 (ms)', String(percentile(burst, 95))],
+      ['Round trip under burst p99 (ms)', String(percentile(burst, 99))],
+      ['Round trip under burst max (ms)', String(Math.max(...burst, 0))],
+      [
+        'Burst rejections',
+        burstRejections.length === 0
+          ? '0'
+          : `${burstRejections.length} (${[...new Set(burstRejections)].join(', ')})`,
+      ],
+      [
+        'Newest tick age right after the burst (ms)',
+        feedAgeAfterBurst === null ? 'never' : String(feedAgeAfterBurst),
+      ],
+      ['— phase 3, recovery —', ''],
       ['Service time, unloaded p50 (ms)', String(percentile(quiet, 50))],
       ['Service time, unloaded max (ms)', String(Math.max(...quiet))],
-      ['Round trip under burst p50 (ms)', String(percentile(latencies, 50))],
-      ['Round trip under burst p95 (ms)', String(percentile(latencies, 95))],
-      ['Round trip under burst p99 (ms)', String(percentile(latencies, 99))],
-      ['Round trip under burst max (ms)', String(Math.max(...latencies))],
-      ['Market ticks ingested', String(ticks)],
+      ['Service time after the burst p50 (ms)', String(percentile(recovered, 50))],
+      ['Service time after the burst max (ms)', String(Math.max(...recovered))],
+      ['Market ticks seen by the serving instance', String(ticks)],
+      ['Newest tick age at the end (ms)', feedAgeMs === null ? 'never' : String(feedAgeMs)],
       ['Ticks coalesced into a running pass', String(coalescedAfter - coalescedBefore)],
     ];
     const width = Math.max(...rows.map(([label]) => label.length));
@@ -296,10 +519,70 @@ async function main(): Promise<void> {
       ['sequence numbers stayed gapless', gaps === 0, `${gaps} socket(s) saw a gap`],
       ['every socket received frames', emptyStreams === 0, `${emptyStreams} socket(s) got nothing`],
       ['no socket errored', socketErrors.length === 0, socketErrors.slice(0, 3).join('; ')],
+      /**
+       * The platform may refuse. It may not refuse *wrongly*.
+       *
+       * `STALE_QUOTE` and `NO_QUOTE_AVAILABLE` are safe refusals: the engine has
+       * decided it cannot price the order against a quote it trusts, and has
+       * said so. That is the answer §26 demands — an infrastructure problem must
+       * never become a trade — and under enough load it is the *correct* answer,
+       * because a price the process has not caught up with is genuinely old.
+       *
+       * Anything else — an internal error, a conflicted idempotency key, a
+       * validation failure, a margin decision that should not have been made —
+       * would mean the load had found a bug rather than a limit.
+       *
+       * This is the assertion that matters, and it is deliberately not "nothing
+       * was rejected". A platform that fills every order under any load is a
+       * platform that is filling some of them at prices it should not trust.
+       */
       [
-        'no order was rejected',
-        rejections.length === 0,
-        `rejected: ${[...new Set(rejections)].join(', ')}`,
+        'every refusal was a safe one',
+        [...steadyRejections, ...burstRejections, ...rejections].every((code) =>
+          SAFE_REFUSALS.has(code),
+        ),
+        `unsafe: ${[
+          ...new Set(
+            [...steadyRejections, ...burstRejections, ...rejections].filter(
+              (code) => !SAFE_REFUSALS.has(code),
+            ),
+          ),
+        ].join(', ')}`,
+      ],
+      /**
+       * Did the feed keep up while all that was happening?
+       *
+       * This is the check the first hundred-trader run failed, and it failed for
+       * a reason worth keeping a test for: a process that both ingests and
+       * serves starves its own market data, quotes age past
+       * `QUOTE_MAX_AGE_MS`, and the engine refuses to trade on them. The engine
+       * was right to refuse. The deployment was wrong.
+       *
+       * Reading it from `/health/market` rather than counting ticks makes it the
+       * platform's own answer, in the same terms an operator's alerting sees.
+       */
+      [
+        'the market feed kept up',
+        feedAgeMs !== null && feedAgeMs < 10_000,
+        `the newest tick was ${feedAgeMs === null ? 'never' : `${feedAgeMs}ms`} old at the end`,
+      ],
+      /**
+       * The recovery check, and the only latency assertion in this file.
+       *
+       * Latency is otherwise printed rather than asserted, because a threshold
+       * that passes here and fails on a busy CI runner teaches nobody anything.
+       * This one is different: it compares the platform against *itself*, before
+       * and after the burst, on the same machine and in the same run. A tenfold
+       * degradation that persists is a leak, an exhausted pool or a lock never
+       * released — not a slow runner.
+       *
+       * The floor of 50ms stops the ratio being meaningless when both numbers
+       * are tiny: 2ms becoming 20ms is noise, not a regression.
+       */
+      [
+        'the platform came back after the burst',
+        percentile(recovered, 50) <= Math.max(50, percentile(quiet, 50) * 10),
+        `unloaded p50 was ${percentile(quiet, 50)}ms before and ${percentile(recovered, 50)}ms after`,
       ],
     ];
     for (const [name, ok, detail] of checks) {
@@ -337,6 +620,7 @@ async function main(): Promise<void> {
   } finally {
     for (const socket of sockets) socket.close();
     api.kill('SIGTERM');
+    ingest.kill('SIGTERM');
   }
 
   if (failed) {

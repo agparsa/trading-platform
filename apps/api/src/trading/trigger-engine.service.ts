@@ -84,6 +84,10 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
 
   /** Last stop-out evaluation per account, to bound repeated valuations. */
   private readonly lastStopOutCheck = new Map<string, number>();
+  /** Instruments whose move has not yet been swept for stop-outs. */
+  private readonly pendingStopOutChecks = new Set<string>();
+  private sweepTimer: NodeJS.Timeout | null = null;
+  private stopped = false;
 
   constructor(
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
@@ -104,10 +108,15 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
       return;
     }
     this.unsubscribe = this.ticks.subscribe((tick) => this.onTick(tick));
+    this.stopped = false;
+    this.scheduleSweep();
     this.logger.log('Trigger engine attached to the tick stream');
   }
 
   onApplicationShutdown(): void {
+    this.stopped = true;
+    if (this.sweepTimer !== null) clearTimeout(this.sweepTimer);
+    this.sweepTimer = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
   }
@@ -137,11 +146,101 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
     }
   }
 
+  /**
+   * One pass over what this symbol's move implies.
+   *
+   * The three price comparisons stay here, synchronous with the tick, because
+   * they *are* the tick: "did the market trade through this stop" is answered
+   * exactly, from the coalesced range, and answering it late would mean firing a
+   * stop at a price the market has already left.
+   *
+   * The stop-out sweep does not. It is a *valuation* of every account holding
+   * this instrument, and it used to run inline — with seven hundred such
+   * accounts on the platform, a single tick took six seconds to process. Because
+   * `TickBus` awaits its handlers, that was six seconds of back-pressure on the
+   * feed: measured at idle, the newest price on a quiet instance was seven
+   * seconds old, and the engine then refused orders against it with
+   * `STALE_QUOTE`.
+   *
+   * Moving it off this path makes stop-outs *more* timely, not less. It was
+   * already throttled per account by `STOP_OUT_CHECK_INTERVAL_MS`, so no account
+   * was ever valued on every tick; what changes is that the valuation now
+   * happens against a price that is current rather than one the sweep itself
+   * made stale.
+   */
   private async runPass(coalesced: CoalescedTick): Promise<void> {
     await this.advanceTrailingStops(coalesced);
     await this.fireProtectiveOrders(coalesced);
     await this.workRestingOrders(coalesced);
-    await this.checkStopOuts(coalesced.latest);
+    this.pendingStopOutChecks.add(coalesced.latest.symbol);
+  }
+
+  /**
+   * Value the accounts exposed to whatever has moved, and liquidate what must
+   * be liquidated.
+   *
+   * Exposed so tests can drive one sweep without waiting for the loop.
+   */
+  async sweepStopOuts(nowMs: number = Date.now()): Promise<void> {
+    const symbols = [...this.pendingStopOutChecks];
+    this.pendingStopOutChecks.clear();
+    if (symbols.length === 0) return;
+
+    const throttleMs = this.config.getOrThrow('STOP_OUT_CHECK_INTERVAL_MS', { infer: true });
+
+    const due = new Set<string>();
+    for (const symbol of symbols) {
+      const exposed = await this.prisma.position.findMany({
+        where: { status: 'OPEN', symbol: { code: symbol } },
+        select: { accountId: true },
+        distinct: ['accountId'],
+      });
+      for (const { accountId } of exposed) {
+        if (nowMs - (this.lastStopOutCheck.get(accountId) ?? 0) < throttleMs) continue;
+        due.add(accountId);
+      }
+    }
+    if (due.size === 0) return;
+
+    for (const accountId of due) this.lastStopOutCheck.set(accountId, nowMs);
+
+    /**
+     * Serially, on purpose.
+     *
+     * A liquidation closes positions and writes to the ledger. Running several
+     * at once would put concurrent write transactions against different accounts
+     * into the same pass — which is safe, but it is also the moment the database
+     * is most contended, and a stop-out sweep must not be what makes the trading
+     * path slow. One at a time keeps the sweep a background cost.
+     */
+    for (const accountId of due) {
+      try {
+        await this.liquidateIfRequired(accountId);
+      } catch (error) {
+        this.logger.error({ err: error, accountId }, 'Stop-out check failed');
+      }
+    }
+  }
+
+  /**
+   * A self-rescheduling timeout, not an interval: a sweep that overruns its
+   * cadence delays the next one rather than queueing a burst behind it.
+   */
+  private scheduleSweep(): void {
+    const throttleMs = this.config.getOrThrow('STOP_OUT_CHECK_INTERVAL_MS', { infer: true });
+    const delay = Math.max(100, Math.min(throttleMs, 1_000));
+
+    this.sweepTimer = setTimeout(() => {
+      void this.sweepStopOuts()
+        .catch((error: unknown) => {
+          this.logger.error({ err: error }, 'Stop-out sweep failed');
+        })
+        .finally(() => {
+          this.sweepTimer = null;
+          if (!this.stopped) this.scheduleSweep();
+        });
+    }, delay);
+    this.sweepTimer.unref?.();
   }
 
   /**
@@ -269,31 +368,13 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
   }
 
   /**
-   * Liquidates accounts that have fallen through their stop-out level.
+   * Liquidates one account if it has fallen through its stop-out level.
    *
    * Positions are closed largest-margin-first and one at a time, re-valuing
    * after each: closing one position frees margin, and the account frequently
    * recovers before the rest need to go. Dumping the whole book at once would
    * cost the trader positions that did not have to be closed.
    */
-  private async checkStopOuts(tick: Tick): Promise<void> {
-    const throttleMs = this.config.getOrThrow('STOP_OUT_CHECK_INTERVAL_MS', { infer: true });
-    const now = Date.now();
-
-    const exposed = await this.prisma.position.findMany({
-      where: { status: 'OPEN', symbol: { code: tick.symbol } },
-      select: { accountId: true },
-      distinct: ['accountId'],
-    });
-
-    for (const { accountId } of exposed) {
-      const last = this.lastStopOutCheck.get(accountId) ?? 0;
-      if (now - last < throttleMs) continue;
-      this.lastStopOutCheck.set(accountId, now);
-      await this.liquidateIfRequired(accountId);
-    }
-  }
-
   private async liquidateIfRequired(accountId: string): Promise<void> {
     const settings = await this.prisma.accountSettings.findUnique({ where: { accountId } });
     if (settings === null) return;

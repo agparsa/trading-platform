@@ -149,3 +149,58 @@ to find.
 
 The admin audit surface is outstanding. It is listed here as the contract later
 phases must meet, not as work already done.
+
+## The WebSocket surface
+
+Three things a long-lived connection got wrong, all about authority it acquired
+once and then kept.
+
+### CORS was `origin: true`
+
+Which reflects whatever `Origin` the request carried — so any site on the
+internet could open an authenticated socket against this API from a logged-in
+trader's browser and read their positions, orders and account in real time. The
+HTTP side had been on an allowlist since it was written; the socket had not.
+
+It now uses the same `CORS_ORIGINS` allowlist. Read from `process.env` rather
+than `ConfigService`, because `@WebSocketGateway` is a decorator and is evaluated
+before the container exists. With no allowlist configured, production fails
+closed rather than falling back to a wildcard.
+
+### The token outlived the socket
+
+A WebSocket outlives the fifteen-minute access token that opened it. A socket
+authenticated at nine o'clock was still streaming private frames at five — past
+a session the user may have ended from another device.
+
+The gateway now records the token's `exp` and re-checks every authenticated
+socket once a minute. An expired one is **downgraded**, not closed: it keeps
+delivering public quotes, which it is still entitled to, while its private
+channels go quiet and it has been told why. Closing would be simpler and worse —
+the client reconnects immediately with the same dead token and the pair spin.
+
+### The account set was a connect-time snapshot
+
+Resolved once and never again, so a master-account link revoked this morning went
+on delivering somebody else's positions until the operator happened to reconnect,
+and an account opened after connect delivered nothing at all.
+
+The same pass re-derives it. Removal happens first: authority that has been taken
+away must stop being honoured before anything else in the pass can go wrong.
+
+### Inbound messages are rate-limited
+
+There was no limit at all, so `subscribe` in a loop was an unmetered way to make
+the process parse and validate as fast as a client could write. A fixed window
+per socket, `RATE_LIMIT_SOCKET_MESSAGES_PER_MINUTE`, default 100 — a terminal
+sends five subscribes on connect and one more when the chart changes instrument.
+
+The refusal is announced once per window rather than on every message: answering
+a client in a loop as fast as it asks is the traffic the limit exists to stop.
+
+### Proved over HTTP
+
+`pnpm pentest` includes three probes that attempt the whole administrative
+surface with an ordinary trader's token — reading every user, changing another
+user's state, and crediting an account — and assert a 403 *and* that nothing
+moved.

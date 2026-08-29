@@ -22,6 +22,7 @@ import { CandleBus, type CandleUpdate } from '../market/candle-bus';
 import { MetricsService } from '../metrics/metrics.service';
 import { RedisService } from '../redis/redis.service';
 import { DOMAIN_EVENT_CHANNEL, EventsService, type DomainEventEnvelope } from './events.service';
+import { rateLimits, socketCorsOrigins } from '../config/env.schema';
 import { initialState, type TradingSocket } from './socket.types';
 
 const subscribeSchema = z
@@ -42,6 +43,18 @@ const subscribeSchema = z
 
 /** What a candle subscription gets when it does not name a resolution. */
 const DEFAULT_RESOLUTION = '1';
+
+/**
+ * How often every authenticated socket's authority is re-checked.
+ *
+ * A minute of over-delivery on a revoked link is not nothing, and it is a great
+ * deal less than the alternative, which was until the client happened to
+ * reconnect.
+ */
+const SOCKET_REFRESH_MS = 60_000;
+
+/** The inbound-message window. Fixed, and the same length as the HTTP one. */
+const SOCKET_WINDOW_MS = 60_000;
 
 /**
  * Maps a domain event onto the channel and wire event a client sees.
@@ -66,9 +79,19 @@ const EVENT_ROUTING: Readonly<Record<string, { channel: WsChannel; wire: string 
 @Injectable()
 @WebSocketGateway({
   path: '/ws',
-  // The browser client is served from a different origin in development; the
-  // allowlist is applied in main.ts and mirrored here.
-  cors: { origin: true, credentials: true },
+  /**
+   * The same allowlist the HTTP side uses.
+   *
+   * This was `origin: true`, which reflects whatever `Origin` the request
+   * carried — so any site on the internet could open an authenticated socket
+   * against this API from a logged-in trader's browser and read their
+   * positions, orders and account in real time. The HTTP side had been on an
+   * allowlist since it was written; the socket had not.
+   *
+   * Read from `process.env` rather than `ConfigService` because a decorator is
+   * evaluated before the container exists. See `socketCorsOrigins`.
+   */
+  cors: { origin: socketCorsOrigins(), credentials: true },
 })
 export class RealtimeGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnApplicationShutdown
@@ -76,6 +99,8 @@ export class RealtimeGateway
   private readonly logger = new Logger(RealtimeGateway.name);
   private readonly sockets = new Set<TradingSocket>();
   private readonly abandonListeners = new Set<(accountId: string) => void>();
+  private refreshTimer: NodeJS.Timeout | null = null;
+  private shuttingDown = false;
   private unsubscribeTicks: (() => void) | null = null;
   private unsubscribeEvents: (() => void) | null = null;
   private unsubscribeCandles: (() => void) | null = null;
@@ -101,6 +126,27 @@ export class RealtimeGateway
   ) {}
 
   async afterInit(): Promise<void> {
+    /**
+     * Re-check every authenticated socket on an interval.
+     *
+     * Two things a long-lived connection gets wrong without it, both about
+     * authority the socket acquired once and then kept:
+     *
+     * 1. **An expired token.** A WebSocket outlives the fifteen-minute access
+     *    token that opened it. Before this, a socket authenticated at nine
+     *    o'clock was still streaming private frames at five — past a session
+     *    the user may have ended from another device.
+     *
+     * 2. **A stale account set.** It was resolved at connect and never again,
+     *    so a master-account link revoked this morning went on delivering
+     *    somebody else's positions until the operator happened to reconnect,
+     *    and an account opened after connect delivered nothing at all.
+     *
+     * The interval is the granularity of both. A minute of over-delivery on a
+     * revoked link is not nothing, and it is a great deal less than a day.
+     */
+    this.scheduleRefresh();
+
     this.unsubscribeTicks = this.ticks.subscribe((tick) => this.onTick(tick));
     this.unsubscribeCandles = this.candles.subscribe((update) => this.onCandle(update));
     this.unsubscribeEvents = this.events.onEvent((envelope) => this.onDomainEvent(envelope));
@@ -129,6 +175,9 @@ export class RealtimeGateway
   }
 
   async onApplicationShutdown(): Promise<void> {
+    this.shuttingDown = true;
+    if (this.refreshTimer !== null) clearTimeout(this.refreshTimer);
+    this.refreshTimer = null;
     this.unsubscribeTicks?.();
     this.unsubscribeCandles?.();
     this.unsubscribeEvents?.();
@@ -198,6 +247,8 @@ export class RealtimeGateway
         }),
       ]);
       client.state.userId = claims.sub;
+      // `exp` is in seconds, as the JWT standard writes it.
+      client.state.tokenExpiresAt = claims.exp === undefined ? null : claims.exp * 1000;
       for (const account of owned) client.state.accountIds.add(account.id);
       for (const link of linked) client.state.accountIds.add(link.accountId);
     } catch (error) {
@@ -234,6 +285,19 @@ export class RealtimeGateway
     }
   }
 
+  /**
+   * How many sockets are held open here, and how many of them are somebody.
+   *
+   * The split matters: a rising *anonymous* count is people looking at public
+   * quotes, and a rising *authenticated* count is traders. They are different
+   * events with different responses, and one number would hide both.
+   */
+  socketCounts(): { authenticated: number; anonymous: number } {
+    let authenticated = 0;
+    for (const socket of this.sockets) if (socket.state.userId !== null) authenticated += 1;
+    return { authenticated, anonymous: this.sockets.size - authenticated };
+  }
+
   /** Whether any remaining socket still covers this account. */
   private isWatched(accountId: string): boolean {
     for (const socket of this.sockets) if (socket.state.accountIds.has(accountId)) return true;
@@ -254,11 +318,139 @@ export class RealtimeGateway
     };
   }
 
+  /**
+   * A self-rescheduling timeout rather than an interval.
+   *
+   * `setInterval` queues its callback behind a slow pass and then fires them
+   * back to back, so a database stall would be followed by a burst of refreshes
+   * all reading the same rows. Rescheduling *after* the work finishes cannot do
+   * that. The market feed's pump loop is written the same way, for the same
+   * reason.
+   */
+  private scheduleRefresh(): void {
+    this.refreshTimer = setTimeout(() => {
+      void this.refreshSockets()
+        .catch((error: unknown) => {
+          this.logger.error({ err: error }, 'Socket authority refresh failed');
+        })
+        .finally(() => {
+          this.refreshTimer = null;
+          if (!this.shuttingDown) this.scheduleRefresh();
+        });
+    }, SOCKET_REFRESH_MS);
+    // Nothing here should hold the process open at shutdown.
+    this.refreshTimer.unref?.();
+  }
+
+  /**
+   * Re-derives what every authenticated socket is still allowed to see.
+   *
+   * Exposed for tests, which drive it directly rather than waiting a minute.
+   */
+  async refreshSockets(nowMs: number = Date.now()): Promise<void> {
+    const authenticated = [...this.sockets].filter((socket) => socket.state.userId !== null);
+    if (authenticated.length === 0) return;
+
+    for (const socket of authenticated) {
+      const expiresAt = socket.state.tokenExpiresAt;
+      if (expiresAt !== null && expiresAt <= nowMs) {
+        this.downgrade(
+          socket,
+          'TOKEN_EXPIRED',
+          'The access token this socket opened with has expired; reconnect with a fresh one',
+        );
+        continue;
+      }
+
+      const userId = socket.state.userId;
+      if (userId === null) continue;
+
+      const allowed = await this.accountsFor(userId);
+      // Removed first: authority that has been taken away must stop being
+      // honoured before anything else about this pass can go wrong.
+      for (const accountId of [...socket.state.accountIds]) {
+        if (!allowed.has(accountId)) socket.state.accountIds.delete(accountId);
+      }
+      for (const accountId of allowed) socket.state.accountIds.add(accountId);
+    }
+  }
+
+  /**
+   * Strips a socket of its identity without closing it.
+   *
+   * Closing would be simpler and worse: the client reconnects immediately with
+   * the same dead token, and the pair of them spin. Downgraded, the socket keeps
+   * delivering public quotes — which it is still entitled to — while its private
+   * channels go quiet and it has been told why.
+   */
+  private downgrade(socket: TradingSocket, code: string, message: string): void {
+    socket.state.userId = null;
+    socket.state.tokenExpiresAt = null;
+    const abandoned = [...socket.state.accountIds];
+    socket.state.accountIds.clear();
+    socket.emit('error', { code, message });
+    this.metrics.websocketConnections.inc({ event: 'downgraded' });
+
+    for (const accountId of abandoned) {
+      if (this.isWatched(accountId)) continue;
+      for (const listener of this.abandonListeners) listener(accountId);
+    }
+  }
+
+  /** Every account this user may see: the ones they own and the ones linked to them. */
+  private async accountsFor(userId: string): Promise<Set<string>> {
+    const [owned, linked] = await Promise.all([
+      this.prisma.account.findMany({ where: { userId }, select: { id: true } }),
+      this.prisma.masterAccountLink.findMany({
+        where: { status: 'ACTIVE', master: { userId, status: 'ACTIVE' } },
+        select: { accountId: true },
+      }),
+    ]);
+    return new Set([...owned.map((row) => row.id), ...linked.map((row) => row.accountId)]);
+  }
+
+  /**
+   * Has this socket sent more messages than it is allowed to?
+   *
+   * A fixed window per socket, which is coarse and right for the shape of the
+   * traffic: a terminal sends five subscribes on connect and one more when the
+   * chart changes instrument. Anything sending a hundred a minute is not a
+   * terminal.
+   *
+   * The HTTP side has been rate-limited since it was written; the socket was
+   * not, so `subscribe` in a loop was an unmetered way to make this process
+   * parse and validate as fast as it could read.
+   */
+  private overBudget(socket: TradingSocket, nowMs: number = Date.now()): boolean {
+    const state = socket.state;
+    if (nowMs - state.windowStartedAt >= SOCKET_WINDOW_MS) {
+      state.windowStartedAt = nowMs;
+      state.messagesInWindow = 0;
+    }
+    state.messagesInWindow += 1;
+
+    if (state.messagesInWindow <= rateLimits.socketMessages) return false;
+
+    // Told once per window rather than on every refusal: a client in a loop
+    // would otherwise be answered as fast as it asks, which is the traffic the
+    // limit exists to stop.
+    if (state.messagesInWindow === rateLimits.socketMessages + 1) {
+      this.metrics.websocketConnections.inc({ event: 'rate_limited' });
+      socket.emit('error', {
+        code: 'RATE_LIMITED',
+        message: 'Too many messages on this socket; slow down',
+      });
+    }
+    return true;
+  }
+
   @SubscribeMessage('subscribe')
   async handleSubscribe(
     @ConnectedSocket() client: TradingSocket,
     @MessageBody() body: unknown,
   ): Promise<{ ok: boolean; channel?: string; error?: string }> {
+    if (this.overBudget(client)) return { ok: false, error: 'Rate limited' };
+
     const parsed = subscribeSchema.safeParse(body);
     if (!parsed.success) {
       return { ok: false, error: 'Invalid subscribe message' };
@@ -298,6 +490,8 @@ export class RealtimeGateway
     @ConnectedSocket() client: TradingSocket,
     @MessageBody() body: unknown,
   ): { ok: boolean } {
+    if (this.overBudget(client)) return { ok: false };
+
     const parsed = subscribeSchema.safeParse(body);
     if (!parsed.success) return { ok: false };
     client.state.channels.delete(parsed.data.channel);
@@ -316,6 +510,7 @@ export class RealtimeGateway
     channels: string[];
     seq: number;
   } {
+    this.overBudget(client);
     return {
       authenticated: client.state.userId !== null,
       accounts: client.state.accountIds.size,

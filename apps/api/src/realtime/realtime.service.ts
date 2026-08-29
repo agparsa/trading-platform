@@ -31,6 +31,16 @@ import type { Env } from '../config/env.schema';
  */
 const RISK_THRESHOLD_TTL_MS = 60_000;
 
+/**
+ * How many accounts are valued at once in a pass.
+ *
+ * Serially, a hundred accounts is a hundred round trips and the pass overruns
+ * the interval it is meant to run at. All at once, a busy platform opens a
+ * hundred simultaneous connections to price screens nobody is waiting on,
+ * competing with the orders that *are* being waited on.
+ */
+const VALUATION_CONCURRENCY = 8;
+
 interface RiskThresholds {
   marginCall: string | null;
   stopOut: string | null;
@@ -65,6 +75,10 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
   /** Last risk state announced per account, so only transitions are sent. */
   private readonly lastRiskState = new Map<string, RiskState>();
   private readonly thresholds = new Map<string, RiskThresholds>();
+  /** Instruments that have moved since the last valuation pass. */
+  private readonly dirtySymbols = new Set<string>();
+  private drainTimer: NodeJS.Timeout | null = null;
+  private stopped = false;
 
   constructor(
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
@@ -77,7 +91,11 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
   ) {}
 
   onApplicationBootstrap(): void {
-    this.unsubscribe = this.ticks.subscribe((tick) => this.onTick(tick));
+    this.stopped = false;
+    this.unsubscribe = this.ticks.subscribe((tick) => {
+      this.onTick(tick);
+    });
+    this.scheduleDrain();
     this.unsubscribeAbandoned = this.gateway.onAccountAbandoned((accountId) =>
       this.forget(accountId),
     );
@@ -85,51 +103,138 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
   }
 
   onApplicationShutdown(): void {
+    this.stopped = true;
+    if (this.drainTimer !== null) clearTimeout(this.drainTimer);
+    this.drainTimer = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.unsubscribeAbandoned?.();
     this.unsubscribeAbandoned = null;
   }
 
-  /** Exposed so tests can drive it without a live feed. */
-  async onTick(tick: Tick): Promise<void> {
+  /**
+   * A tick arrived. Note which instrument moved, and return.
+   *
+   * ## Why this does no work
+   *
+   * `TickBus` awaits its handlers in order, deliberately: a stop must be
+   * evaluated against every price the market printed, in the order it printed
+   * them. That makes anything slow in a handler *back-pressure on the feed
+   * itself*.
+   *
+   * This used to value every exposed account here, inline. A load run at a
+   * hundred traders found what that costs: with a hundred accounts online, each
+   * tick blocked the bus for a hundred database reads, the relay fell behind,
+   * and within a minute the newest price on the serving instance was fourteen
+   * seconds old. The engine then — correctly — refused every order with
+   * `STALE_QUOTE`. The platform was right about the price it had. The price it
+   * had was late because of *this*.
+   *
+   * So valuation is decoupled from ingestion. The tick path records a symbol in
+   * a set; `drain` does the work on its own cadence. The failure mode that
+   * remains is the right one: under load the *frames* thin out while the
+   * *prices* stay current, rather than the other way round.
+   */
+  onTick(tick: Tick): void {
+    this.dirtySymbols.add(tick.symbol);
+  }
+
+  /**
+   * Value the accounts exposed to whatever has moved since the last pass.
+   *
+   * Exposed so tests can drive it without waiting for the loop. Everything that
+   * can be slow lives here: the exposure index's own rebuild, the valuations,
+   * the frames.
+   */
+  async drain(nowMs: number = Date.now()): Promise<void> {
+    const symbols = [...this.dirtySymbols];
+    this.dirtySymbols.clear();
+    if (symbols.length === 0) return;
+
     const listening = new Set([
       ...this.gateway.listeningAccounts(WsChannel.ACCOUNT),
       ...this.gateway.listeningAccounts(WsChannel.PNL),
     ]);
     if (listening.size === 0) return;
 
-    const now = Date.now();
+    const interval = this.config.getOrThrow('REALTIME_VALUATION_INTERVAL_MS', { infer: true });
 
     /**
-     * From memory, not from a query.
+     * Which accounts are due, from memory rather than a query.
      *
-     * This used to be a `position.findMany` on every tick — and, worse, it ran
-     * *before* the throttle below, so raising the valuation interval did not
-     * reduce it at all. The index answers the same question without the round
+     * The exposure index answers "who holds this instrument" without a round
      * trip; it is a routing hint and never an input to money, which is what
      * makes holding it in memory safe. See ExposureIndex.
      */
-    const exposed = await this.exposure.exposedTo(tick.symbol, listening, now);
-
-    const interval = this.config.getOrThrow('REALTIME_VALUATION_INTERVAL_MS', { infer: true });
-
-    for (const accountId of exposed) {
-      if (now - (this.lastValuedAt.get(accountId) ?? 0) < interval) continue;
-      // A valuation already running for this account means the previous tick is
-      // still being served; skipping is correct, the next tick is newer anyway.
-      if (this.inFlight.has(accountId)) continue;
-
-      this.lastValuedAt.set(accountId, now);
-      this.inFlight.add(accountId);
-      try {
-        await this.pushValuation(accountId);
-      } catch (error) {
-        this.logger.error({ err: error, accountId }, 'Realtime valuation failed');
-      } finally {
-        this.inFlight.delete(accountId);
+    const due = new Set<string>();
+    for (const symbol of symbols) {
+      for (const accountId of await this.exposure.exposedTo(symbol, listening, nowMs)) {
+        if (nowMs - (this.lastValuedAt.get(accountId) ?? 0) < interval) continue;
+        // A valuation already running means the previous pass is still serving
+        // this account; skipping is correct, since the next pass is newer.
+        if (this.inFlight.has(accountId)) continue;
+        due.add(accountId);
       }
     }
+    if (due.size === 0) return;
+
+    /**
+     * Valued a few at a time.
+     *
+     * Serially, a hundred accounts is a hundred round trips end to end and the
+     * pass takes longer than the interval it is meant to run at. All at once,
+     * a busy platform opens a hundred simultaneous connections to price screens
+     * nobody is waiting on, competing with the orders that *are* being waited
+     * on. A small window uses the I/O wait without becoming the load.
+     */
+    const queue = [...due];
+    for (const accountId of queue) {
+      this.lastValuedAt.set(accountId, nowMs);
+      this.inFlight.add(accountId);
+    }
+
+    const workers = Array.from({ length: Math.min(VALUATION_CONCURRENCY, queue.length) }, () =>
+      (async () => {
+        for (;;) {
+          const accountId = queue.shift();
+          if (accountId === undefined) return;
+          try {
+            await this.pushValuation(accountId);
+          } catch (error) {
+            this.logger.error({ err: error, accountId }, 'Realtime valuation failed');
+          } finally {
+            this.inFlight.delete(accountId);
+          }
+        }
+      })(),
+    );
+    await Promise.all(workers);
+  }
+
+  /**
+   * A self-rescheduling timeout, not an interval.
+   *
+   * An interval queues its callback behind a slow pass and then fires them back
+   * to back, so a database stall would be followed by a burst of valuations all
+   * reading the same rows. Rescheduling after the work finishes cannot do that,
+   * which is the property that makes the decoupling worth having: a pass that
+   * takes longer than its cadence delays the next pass and nothing else.
+   */
+  private scheduleDrain(): void {
+    const interval = this.config.getOrThrow('REALTIME_VALUATION_INTERVAL_MS', { infer: true });
+    const delay = Math.max(50, Math.min(interval === 0 ? 50 : interval, 1_000));
+
+    this.drainTimer = setTimeout(() => {
+      void this.drain()
+        .catch((error: unknown) => {
+          this.logger.error({ err: error }, 'Realtime valuation pass failed');
+        })
+        .finally(() => {
+          this.drainTimer = null;
+          if (!this.stopped) this.scheduleDrain();
+        });
+    }, delay);
+    this.drainTimer.unref?.();
   }
 
   private async pushValuation(accountId: string): Promise<void> {
@@ -268,6 +373,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
    */
   forget(accountId: string): void {
     this.lastValuedAt.delete(accountId);
+    this.inFlight.delete(accountId);
     this.lastRiskState.delete(accountId);
     this.thresholds.delete(accountId);
     this.exposure.forget(accountId);

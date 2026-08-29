@@ -44,6 +44,15 @@ export interface SimulatorConfig {
  * scheduler in the API process, a loop in a test. That is the only reason the
  * same seed reproduces the same market on every machine.
  */
+/**
+ * The most ticks one instrument may emit in a single pass.
+ *
+ * A process paused for a minute — a debugger, a long collection, a container
+ * that was descheduled — would otherwise emit hundreds of back-dated ticks at
+ * once and spend the recovery replaying a history nobody watched.
+ */
+const MAX_CATCH_UP_TICKS = 8;
+
 export class InternalMarketSimulator implements MarketDataProvider {
   readonly name = 'internal-simulator';
 
@@ -123,26 +132,54 @@ export class InternalMarketSimulator implements MarketDataProvider {
    * The caller advances the clock first, then calls this. Ticks are generated in
    * a fixed instrument order and a fixed time order, so the sequence depends
    * only on the seed and the elapsed time — never on scheduling jitter.
+   *
+   * ## The newest tick is stamped *now*, and the grid re-anchors
+   *
+   * This used to advance each instrument's schedule by exactly one interval per
+   * tick emitted, from wherever it started. On a grid that is running on time
+   * that is the same thing; on one that is late it is not, and the lateness
+   * never came back.
+   *
+   * A load run found what that costs. The pump loop runs a little late every
+   * pass — it always does, it is a timer — and under load a great deal late. The
+   * timestamps stayed on their original 250ms grid while the wall clock moved
+   * on, so within a minute the newest "current" price was stamped fourteen
+   * seconds ago. `requireFresh` then refused every order with `STALE_QUOTE`, and
+   * it was right to: a price observed fourteen seconds ago is not a price to
+   * trade on. The engine was correct. The timestamp was a lie.
+   *
+   * So: the last tick of a pass carries the clock's current time, because that
+   * is when it was observed, and the schedule re-anchors to `now + interval`
+   * rather than to where the grid thought it should be. Drift cannot accumulate.
+   *
+   * The catch-up is bounded too. A process paused for a minute — a debugger, a
+   * long GC, a container that was descheduled — would otherwise emit hundreds of
+   * back-dated ticks in one pass and spend the recovery replaying a history
+   * nobody watched.
    */
   pump(): readonly Tick[] {
     if (!this.started) return [];
     const now = this.clock.now();
     const produced: Tick[] = [];
 
-    // Loop until no instrument is due, so a large time jump emits every
-    // intermediate tick instead of collapsing them into one.
-    let due = true;
-    while (due) {
-      due = false;
-      for (const instrument of this.instruments) {
-        const code = instrument.definition.spec.code;
-        const at = this.nextTickAt.get(code) ?? now;
-        if (at > now) continue;
-        produced.push(this.generate(instrument, at));
-        this.nextTickAt.set(code, at + instrument.tickIntervalMs);
-        due = true;
+    for (const instrument of this.instruments) {
+      const code = instrument.definition.spec.code;
+      const at = this.nextTickAt.get(code) ?? now;
+      if (at > now) continue;
+
+      const interval = Math.max(1, instrument.tickIntervalMs);
+      const steps = Math.min(Math.floor((now - at) / interval) + 1, MAX_CATCH_UP_TICKS);
+
+      for (let i = 0; i < steps; i += 1) {
+        // The last one is an observation of *now*; the ones before it fill in
+        // the grid so a candle has the shape it would have had.
+        const stamp = i === steps - 1 ? now : at + i * interval;
+        produced.push(this.generate(instrument, stamp));
       }
+
+      this.nextTickAt.set(code, now + interval);
     }
+
     return produced;
   }
 

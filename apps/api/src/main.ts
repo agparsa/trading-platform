@@ -38,7 +38,7 @@ async function bootstrap(): Promise<void> {
   });
 
   app.setGlobalPrefix(config.get('API_GLOBAL_PREFIX', { infer: true }), {
-    exclude: ['health', 'ready', 'metrics'],
+    exclude: ['health', 'health/market', 'ready', 'metrics'],
   });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: API_VERSION.replace('v', '') });
 

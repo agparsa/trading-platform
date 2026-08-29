@@ -63,6 +63,15 @@ suite('Trigger engine (integration)', () => {
   };
 
   /** Publishes a price and lets the engine act on it, as the feed would. */
+  /**
+   * A tick, and then the sweep that used to run inside it.
+   *
+   * Protective levels and resting orders fire synchronously with the tick —
+   * they are exact price comparisons and answering them late would mean firing
+   * at a price the market has already left. The stop-out sweep is a *valuation*
+   * of every exposed account and now runs on its own loop; driving it here keeps
+   * these tests deterministic instead of waiting for a timer.
+   */
   const tick = async (bid: string, ask: string) => {
     await stack.publishQuote('XAUUSD', bid, ask);
     await stack.triggers.onTick({
@@ -72,6 +81,7 @@ suite('Trigger engine (integration)', () => {
       timestamp: Date.now(),
       volume: '1',
     });
+    await stack.triggers.sweepStopOuts();
   };
 
   /**
@@ -393,6 +403,52 @@ suite('Trigger engine (integration)', () => {
       });
       expect(risk.severity).toBe('CRITICAL');
       expect(JSON.stringify(risk.snapshot)).toContain('equity');
+    });
+
+    /**
+     * The throttle that makes the sweep affordable, and the reason it is safe
+     * for the sweep to have left the tick path at all.
+     *
+     * An account was never valued on every tick — `STOP_OUT_CHECK_INTERVAL_MS`
+     * has always bounded that. What changed is that the valuation no longer
+     * happens *inside* the tick handler, where it put back-pressure on the feed
+     * and made the very prices it was judging against stale.
+     */
+    it('does not re-value the same account twice inside the throttle window', async () => {
+      const { userId, accountId } = await createAccount(prisma, { balance: '6000' });
+      await stack.orders.openPosition(userId, {
+        accountId,
+        symbol: 'XAUUSD',
+        side: 'BUY',
+        volume: '0.10',
+      });
+
+      const at = Date.now();
+      await stack.publishQuote('XAUUSD', '4580.00', '4580.14');
+      await stack.triggers.onTick({
+        symbol: 'XAUUSD',
+        bid: '4580.00',
+        ask: '4580.14',
+        timestamp: at,
+        volume: '1',
+      });
+
+      // Two sweeps a millisecond apart. The second must find nothing due.
+      await stack.triggers.sweepStopOuts(at);
+      const before = await prisma.riskEvent.count();
+      await stack.triggers.onTick({
+        symbol: 'XAUUSD',
+        bid: '4580.00',
+        ask: '4580.14',
+        timestamp: at + 1,
+        volume: '1',
+      });
+      await stack.triggers.sweepStopOuts(at + 1);
+      expect(await prisma.riskEvent.count()).toBe(before);
+    });
+
+    it('sweeps nothing when no instrument has moved', async () => {
+      await expect(stack.triggers.sweepStopOuts()).resolves.toBeUndefined();
     });
 
     it('leaves a healthy account alone', async () => {

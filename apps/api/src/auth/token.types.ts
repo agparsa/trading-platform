@@ -25,6 +25,14 @@ export interface AccessTokenClaims {
   fam: string;
   /** Token type discriminator — an access token must never be usable as a refresh token. */
   typ: 'access';
+  /**
+   * Expiry, in epoch **seconds**, as the JWT standard writes it.
+   *
+   * Declared because the WebSocket gateway needs it: a socket outlives the
+   * token that opened it, and without knowing when that token dies there is no
+   * moment at which to stop streaming a trader's private frames.
+   */
+  exp?: number;
 }
 
 export interface RefreshTokenClaims {

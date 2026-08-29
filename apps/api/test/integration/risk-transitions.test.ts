@@ -151,8 +151,10 @@ suite('Risk state transitions (integration)', () => {
   it('says nothing while the account is comfortable', async () => {
     await leveragedTrader();
 
-    await realtime.onTick(tick(BID, ASK));
-    await realtime.onTick(tick('4583.60', '4583.74'));
+    realtime.onTick(tick(BID, ASK));
+    await realtime.drain();
+    realtime.onTick(tick('4583.60', '4583.74'));
+    await realtime.drain();
 
     expect(riskFrames()).toHaveLength(0);
   });
@@ -165,7 +167,18 @@ suite('Risk state transitions (integration)', () => {
     const trader = await leveragedTrader();
     await stack.publishQuote('XAUUSD', '4540.00', '4540.14');
 
-    for (let i = 0; i < 10; i += 1) await realtime.onTick(tick('4540.00', '4540.14'));
+    /**
+     * Ten separate passes, not one drain over ten ticks.
+     *
+     * Coalescing them would make this test pass for the wrong reason — one
+     * valuation cannot produce two frames whatever the guard does. Ten
+     * valuations at the same bad level is the case that matters, and with the
+     * throttle set to zero for this suite that is exactly what this is.
+     */
+    for (let i = 0; i < 10; i += 1) {
+      realtime.onTick(tick('4540.00', '4540.14'));
+      await realtime.drain();
+    }
 
     const frames = riskFrames();
     expect(frames).toHaveLength(1);
@@ -178,11 +191,13 @@ suite('Risk state transitions (integration)', () => {
     await leveragedTrader();
 
     await stack.publishQuote('XAUUSD', '4540.00', '4540.14');
-    await realtime.onTick(tick('4540.00', '4540.14'));
+    realtime.onTick(tick('4540.00', '4540.14'));
+    await realtime.drain();
     expect(riskFrames()).toHaveLength(1);
 
     await stack.publishQuote('XAUUSD', BID, ASK);
-    await realtime.onTick(tick(BID, ASK));
+    realtime.onTick(tick(BID, ASK));
+    await realtime.drain();
 
     const frames = riskFrames();
     expect(frames).toHaveLength(2);
@@ -198,11 +213,13 @@ suite('Risk state transitions (integration)', () => {
     await leveragedTrader();
 
     await stack.publishQuote('XAUUSD', '4540.00', '4540.14');
-    await realtime.onTick(tick('4540.00', '4540.14'));
+    realtime.onTick(tick('4540.00', '4540.14'));
+    await realtime.drain();
     const first = riskFrames();
 
     await stack.publishQuote('XAUUSD', '4500.00', '4500.14');
-    await realtime.onTick(tick('4500.00', '4500.14'));
+    realtime.onTick(tick('4500.00', '4500.14'));
+    await realtime.drain();
     const frames = riskFrames();
 
     if (first[0]?.data['state'] === RiskState.STOP_OUT) {
@@ -217,7 +234,8 @@ suite('Risk state transitions (integration)', () => {
   it('carries the levels it judged against, so the number can be checked', async () => {
     await leveragedTrader();
     await stack.publishQuote('XAUUSD', '4540.00', '4540.14');
-    await realtime.onTick(tick('4540.00', '4540.14'));
+    realtime.onTick(tick('4540.00', '4540.14'));
+    await realtime.drain();
 
     const frame = riskFrames()[0];
     expect(frame?.data['marginLevel']).toEqual(expect.any(String));
@@ -235,14 +253,16 @@ suite('Risk state transitions (integration)', () => {
     await leveragedTrader();
 
     await stack.publishQuote('XAUUSD', '4540.00', '4540.14');
-    await realtime.onTick(tick('4540.00', '4540.14'));
+    realtime.onTick(tick('4540.00', '4540.14'));
+    await realtime.drain();
     expect(raised).toHaveLength(1);
     expect(raised[0]?.['kind']).toMatch(/^risk\./);
     expect(raised[0]?.['severity']).not.toBe('INFO');
     expect(typeof raised[0]?.['dedupeKey']).toBe('string');
 
     await stack.publishQuote('XAUUSD', BID, ASK);
-    await realtime.onTick(tick(BID, ASK));
+    realtime.onTick(tick(BID, ASK));
+    await realtime.drain();
 
     // The recovery produced a frame but no second notice.
     expect(riskFrames()).toHaveLength(2);
@@ -251,13 +271,15 @@ suite('Risk state transitions (integration)', () => {
 
   it('says nothing at all while the account is comfortable', async () => {
     await leveragedTrader();
-    await realtime.onTick(tick(BID, ASK));
+    realtime.onTick(tick(BID, ASK));
+    await realtime.drain();
     expect(raised).toEqual([]);
   });
 
   it('still streams the account and P&L frames alongside it', async () => {
     await leveragedTrader();
-    await realtime.onTick(tick(BID, ASK));
+    realtime.onTick(tick(BID, ASK));
+    await realtime.drain();
 
     expect(sent.filter((frame) => frame.event === 'account.updated').length).toBeGreaterThan(0);
     expect(sent.filter((frame) => frame.event === 'pnl.updated').length).toBeGreaterThan(0);

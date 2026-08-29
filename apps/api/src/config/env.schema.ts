@@ -167,6 +167,14 @@ export const envSchema = z.object({
   RATE_LIMIT_LOGIN_PER_MINUTE: z.coerce.number().int().min(1).default(5),
   RATE_LIMIT_ORDERS_PER_MINUTE: z.coerce.number().int().min(1).default(120),
   RATE_LIMIT_API_PER_MINUTE: z.coerce.number().int().min(1).default(600),
+  /**
+   * Inbound WebSocket messages per socket per minute.
+   *
+   * A terminal sends five subscribes on connect and one more when the chart
+   * changes instrument. A hundred is generous for a person and cheap for an
+   * attacker to exceed.
+   */
+  RATE_LIMIT_SOCKET_MESSAGES_PER_MINUTE: z.coerce.number().int().min(1).default(100),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -228,4 +236,36 @@ export const rateLimits = {
   get api(): number {
     return rateLimitFromEnv('RATE_LIMIT_API_PER_MINUTE', 600);
   },
+  /**
+   * Inbound WebSocket messages per socket per minute.
+   *
+   * A terminal sends a handful: five subscribes on connect, one more when the
+   * chart changes instrument. A hundred is generous for a person and cheap for
+   * an attacker to exceed, which is what makes it a useful line.
+   */
+  get socketMessages(): number {
+    return rateLimitFromEnv('RATE_LIMIT_SOCKET_MESSAGES_PER_MINUTE', 100);
+  },
 };
+
+/**
+ * The CORS allowlist, read the same way the rate limits are and for the same
+ * reason: `@WebSocketGateway` is a decorator, evaluated before the DI container
+ * exists, so `ConfigService` is not available to it.
+ *
+ * `origin: true` was what the gateway had — which reflects whatever `Origin` the
+ * request carried, and therefore allows every site on the internet to open an
+ * authenticated socket against this API from a logged-in user's browser. The
+ * HTTP side has been on an allowlist since it was written; the socket was not.
+ */
+export function socketCorsOrigins(): string[] | boolean {
+  const configured = corsOrigins(process.env['CORS_ORIGINS'] ?? '');
+  if (configured.length > 0) return configured;
+
+  /**
+   * No allowlist configured. In production that is a refusal, not a wildcard:
+   * a deployment that forgot to set it should fail closed and be noticed on the
+   * first connection, rather than quietly accepting everybody.
+   */
+  return process.env['NODE_ENV'] === 'production' ? false : true;
+}

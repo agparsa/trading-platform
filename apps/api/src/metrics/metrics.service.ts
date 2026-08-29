@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { collectDefaultMetrics, Counter, Histogram, Registry } from 'prom-client';
+import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from 'prom-client';
 
 /**
  * Prometheus registry.
@@ -21,6 +21,25 @@ export class MetricsService {
   readonly ticksCoalesced: Counter<'symbol'>;
   readonly ticksRejected: Counter<'symbol' | 'reason'>;
   readonly ticksReanchored: Counter<'symbol' | 'reason'>;
+
+  /**
+   * Gauges: the platform's shape right now, rather than what has happened.
+   *
+   * A counter answers "how many orders since this process started"; none of
+   * these can be derived from one. "How many accounts are frozen" and "how many
+   * positions is the engine checking against every tick" are the questions asked
+   * during an incident, and both are states, not events.
+   *
+   * Set by `PlatformMetricsService` on a schedule — deliberately not on every
+   * request, which would put a `COUNT(*)` in the trading path to keep a
+   * dashboard current.
+   */
+  readonly accounts: Gauge<'status'>;
+  readonly openPositions: Gauge<string>;
+  readonly connectedSockets: Gauge<'state'>;
+  readonly openFindings: Gauge<'severity'>;
+  readonly openSignals: Gauge<'severity'>;
+  readonly marketFeedAge: Gauge<string>;
 
   constructor() {
     collectDefaultMetrics({ register: this.registry, prefix: 'tp_' });
@@ -80,6 +99,46 @@ export class MetricsService {
       name: 'tp_market_ticks_reanchored_total',
       help: 'Ticks accepted only because the integrity gate re-anchored after a run of rejections. Each one means the platform followed a move it first refused.',
       labelNames: ['symbol', 'reason'] as const,
+      registers: [this.registry],
+    });
+
+    this.accounts = new Gauge({
+      name: 'tp_accounts',
+      help: 'Accounts by status. A rising SUSPENDED or CLOSE_ONLY count is an operational event.',
+      labelNames: ['status'] as const,
+      registers: [this.registry],
+    });
+
+    this.openPositions = new Gauge({
+      name: 'tp_open_positions',
+      help: 'Positions the trigger engine checks against every tick. Per-tick cost scales with this, not with how busy any one trader is.',
+      registers: [this.registry],
+    });
+
+    this.connectedSockets = new Gauge({
+      name: 'tp_connected_sockets',
+      help: 'WebSocket connections held open on this instance, authenticated or not.',
+      labelNames: ['state'] as const,
+      registers: [this.registry],
+    });
+
+    this.openFindings = new Gauge({
+      name: 'tp_reconciliation_findings_open',
+      help: 'Reconciliation discrepancies nobody has closed, by severity. A CRITICAL above zero means records disagree about money.',
+      labelNames: ['severity'] as const,
+      registers: [this.registry],
+    });
+
+    this.openSignals = new Gauge({
+      name: 'tp_integrity_signals_open',
+      help: 'Integrity observations awaiting review, by severity.',
+      labelNames: ['severity'] as const,
+      registers: [this.registry],
+    });
+
+    this.marketFeedAge = new Gauge({
+      name: 'tp_market_feed_age_ms',
+      help: 'Age of the newest tick this instance holds. Rising means the feed, or this process, is behind — and the engine will start refusing orders with STALE_QUOTE.',
       registers: [this.registry],
     });
 

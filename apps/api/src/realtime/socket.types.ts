@@ -40,6 +40,20 @@ export interface SocketState {
    * race it and be refused its own private channels.
    */
   authenticated: Promise<void>;
+  /**
+   * When the access token this socket authenticated with expires, in epoch ms,
+   * or `null` for an unauthenticated socket.
+   *
+   * A WebSocket outlives the token that opened it. Without this, a socket
+   * authenticated with a fifteen-minute token went on streaming a trader's
+   * private frames for as long as the connection held — hours, and past a
+   * session the user had since ended from another device. The refresh pass
+   * downgrades it to public when the moment passes.
+   */
+  tokenExpiresAt: number | null;
+  /** Inbound messages counted in the current window, and when the window began. */
+  messagesInWindow: number;
+  windowStartedAt: number;
 }
 
 export type TradingSocket = Socket & { state: SocketState };
@@ -56,5 +70,8 @@ export function initialState(): SocketState {
     // Replaced by handleConnection before any message can arrive. Resolved here
     // so a socket that somehow skips it cannot hang a subscribe forever.
     authenticated: Promise.resolve(),
+    tokenExpiresAt: null,
+    messagesInWindow: 0,
+    windowStartedAt: Date.now(),
   };
 }

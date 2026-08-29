@@ -21,16 +21,24 @@ interface Frame {
   seq: number;
 }
 
-function fakeSocket(): TradingSocket & { frames: Frame[] } {
+interface Emitted {
+  event: string;
+  payload: unknown;
+}
+
+function fakeSocket(): TradingSocket & { frames: Frame[]; emitted: Emitted[] } {
   const frames: Frame[] = [];
+  const emitted: Emitted[] = [];
   return {
     state: initialState(),
     frames,
+    emitted,
     emit: (event: string, payload: unknown) => {
+      emitted.push({ event, payload });
       if (event === 'frame') frames.push(payload as Frame);
       return true;
     },
-  } as unknown as TradingSocket & { frames: Frame[] };
+  } as unknown as TradingSocket & { frames: Frame[]; emitted: Emitted[] };
 }
 
 const candle = (symbol: string, resolution: string, close = '2000'): Candle => ({
@@ -57,7 +65,9 @@ const tick = (symbol: string): Tick => ({
  * candle and quote filters never reach is a stub, so a failure here can only
  * mean the filter is wrong.
  */
-function buildGateway() {
+function buildGateway(
+  accounts: { owned?: string[]; linked?: string[] } = { owned: [], linked: [] },
+) {
   const ticks = new TickBus();
   const candles = new CandleBus();
   const quotes = {
@@ -69,9 +79,18 @@ function buildGateway() {
   const events = { onEvent: () => () => undefined };
   const metrics = { websocketConnections: { inc: () => undefined } };
 
+  const prisma = {
+    account: {
+      findMany: async () => (accounts.owned ?? []).map((id) => ({ id })),
+    },
+    masterAccountLink: {
+      findMany: async () => (accounts.linked ?? []).map((accountId) => ({ accountId })),
+    },
+  };
+
   const gateway = new RealtimeGateway(
     {} as never,
-    {} as never,
+    prisma as never,
     quotes as never,
     ticks,
     candles,
@@ -229,5 +248,157 @@ describe('RealtimeGateway subscriptions', () => {
     await harness.ticks.publish(tick('XAUUSD'));
 
     expect(socket.frames.map((frame) => frame.seq)).toEqual([1, 2, 3]);
+  });
+});
+
+/**
+ * Authority a socket acquired once and then kept.
+ *
+ * A WebSocket outlives the token that opened it, and its account set used to be
+ * resolved at connect and never again. Both are about the same mistake: a
+ * connection is a *long-lived* thing, and permissions are not.
+ */
+describe('RealtimeGateway authority refresh', () => {
+  it('drops a socket whose access token has expired, and keeps it connected', async () => {
+    const harness = buildGateway({ owned: ['account-1'] });
+    await harness.gateway.afterInit();
+
+    const socket = fakeSocket();
+    socket.state.userId = 'user-1';
+    socket.state.accountIds.add('account-1');
+    socket.state.tokenExpiresAt = 1_000;
+    (harness.gateway as unknown as { sockets: Set<TradingSocket> }).sockets.add(socket);
+
+    await harness.gateway.refreshSockets(2_000);
+
+    expect(socket.state.userId).toBeNull();
+    expect(socket.state.accountIds.size).toBe(0);
+    expect(socket.emitted.some((e) => e.event === 'error')).toBe(true);
+    // Downgraded, not closed: a closed socket reconnects with the same dead
+    // token and the pair of them spin.
+    expect(
+      (harness.gateway as unknown as { sockets: Set<TradingSocket> }).sockets.has(socket),
+    ).toBe(true);
+  });
+
+  it('leaves a socket alone while its token is still good', async () => {
+    const harness = buildGateway({ owned: ['account-1'] });
+    await harness.gateway.afterInit();
+
+    const socket = fakeSocket();
+    socket.state.userId = 'user-1';
+    socket.state.accountIds.add('account-1');
+    socket.state.tokenExpiresAt = 10_000;
+    (harness.gateway as unknown as { sockets: Set<TradingSocket> }).sockets.add(socket);
+
+    await harness.gateway.refreshSockets(2_000);
+
+    expect(socket.state.userId).toBe('user-1');
+    expect([...socket.state.accountIds]).toEqual(['account-1']);
+  });
+
+  /**
+   * The one that matters. A master-account link revoked this morning used to go
+   * on delivering somebody else's positions until the operator happened to
+   * reconnect.
+   */
+  it('stops honouring an account the user may no longer see', async () => {
+    const harness = buildGateway({ owned: ['account-1'], linked: [] });
+    await harness.gateway.afterInit();
+
+    const socket = fakeSocket();
+    socket.state.userId = 'user-1';
+    socket.state.accountIds.add('account-1');
+    socket.state.accountIds.add('revoked-link');
+    socket.state.tokenExpiresAt = 10_000;
+    (harness.gateway as unknown as { sockets: Set<TradingSocket> }).sockets.add(socket);
+
+    await harness.gateway.refreshSockets(2_000);
+
+    expect([...socket.state.accountIds]).toEqual(['account-1']);
+  });
+
+  it('picks up an account opened after the socket connected', async () => {
+    const harness = buildGateway({ owned: ['account-1', 'account-2'] });
+    await harness.gateway.afterInit();
+
+    const socket = fakeSocket();
+    socket.state.userId = 'user-1';
+    socket.state.accountIds.add('account-1');
+    socket.state.tokenExpiresAt = 10_000;
+    (harness.gateway as unknown as { sockets: Set<TradingSocket> }).sockets.add(socket);
+
+    await harness.gateway.refreshSockets(2_000);
+
+    expect([...socket.state.accountIds].sort()).toEqual(['account-1', 'account-2']);
+  });
+
+  it('does nothing to an unauthenticated socket', async () => {
+    const harness = buildGateway();
+    await harness.gateway.afterInit();
+
+    const socket = fakeSocket();
+    (harness.gateway as unknown as { sockets: Set<TradingSocket> }).sockets.add(socket);
+
+    await harness.gateway.refreshSockets(2_000);
+    expect(socket.emitted).toEqual([]);
+  });
+});
+
+/**
+ * The socket had no rate limit at all, so `subscribe` in a loop was an unmetered
+ * way to make this process parse and validate as fast as a client could write.
+ */
+describe('RealtimeGateway message budget', () => {
+  it('refuses once a socket has spent its budget, and says so once', async () => {
+    const harness = buildGateway({ owned: ['account-1'] });
+    await harness.gateway.afterInit();
+
+    const socket = fakeSocket();
+    socket.state.userId = 'user-1';
+    (harness.gateway as unknown as { sockets: Set<TradingSocket> }).sockets.add(socket);
+
+    let refusals = 0;
+    for (let i = 0; i < 400; i += 1) {
+      const answer = await harness.gateway.handleSubscribe(socket, { channel: WsChannel.QUOTES });
+      if (!answer.ok) refusals += 1;
+    }
+
+    expect(refusals).toBeGreaterThan(0);
+    const told = socket.emitted.filter(
+      (e) => e.event === 'error' && (e.payload as { code?: string }).code === 'RATE_LIMITED',
+    );
+    // Told once, not on every refusal: answering a client in a loop as fast as
+    // it asks is the traffic the limit exists to stop.
+    expect(told).toHaveLength(1);
+  });
+
+  it('lets an ordinary terminal through untouched', async () => {
+    const harness = buildGateway({ owned: ['account-1'] });
+    await harness.gateway.afterInit();
+
+    const socket = fakeSocket();
+    socket.state.userId = 'user-1';
+    (harness.gateway as unknown as { sockets: Set<TradingSocket> }).sockets.add(socket);
+
+    // Five channels on connect, then a chart change. Nowhere near the limit.
+    for (const channel of [
+      WsChannel.QUOTES,
+      WsChannel.ORDERS,
+      WsChannel.POSITIONS,
+      WsChannel.ACCOUNT,
+      WsChannel.PNL,
+    ]) {
+      expect((await harness.gateway.handleSubscribe(socket, { channel })).ok).toBe(true);
+    }
+    expect(
+      (
+        await harness.gateway.handleSubscribe(socket, {
+          channel: WsChannel.CANDLES,
+          symbols: ['XAUUSD'],
+        })
+      ).ok,
+    ).toBe(true);
+    expect(socket.emitted.filter((e) => e.event === 'error')).toEqual([]);
   });
 });

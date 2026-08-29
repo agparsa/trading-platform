@@ -90,7 +90,14 @@ describe('InternalMarketSimulator', () => {
     }
   });
 
-  it('emits every intermediate tick across a large time jump', async () => {
+  /**
+   * A jump fills in the grid, up to a bound.
+   *
+   * Unbounded catch-up was a real problem, not a theoretical one: a process
+   * paused for a minute would emit hundreds of back-dated ticks in one pass and
+   * spend the recovery replaying a history nobody watched.
+   */
+  it('fills in a time jump, but not without limit', async () => {
     const clock = new ManualClock(T0);
     const sim = new InternalMarketSimulator({
       instruments: [XAUUSD_SIMULATED],
@@ -100,7 +107,83 @@ describe('InternalMarketSimulator', () => {
     });
     await sim.start();
     clock.advance(10_000); // 40 x 250ms
-    expect(sim.pump()).toHaveLength(41); // includes the tick due at T0 itself
+
+    const ticks = sim.pump();
+    expect(ticks.length).toBeGreaterThan(1);
+    expect(ticks.length).toBeLessThanOrEqual(8);
+  });
+
+  /**
+   * The bug a load run found, and the reason the schedule re-anchors.
+   *
+   * The pump used to advance each instrument's schedule by exactly one interval
+   * per tick emitted, from wherever it started. A loop that runs a little late
+   * every pass — and every timer does — left the timestamps on their original
+   * grid while the wall clock moved on. Within a minute of load the newest
+   * "current" price was stamped fourteen seconds ago, `requireFresh` refused
+   * every order with STALE_QUOTE, and it was right to: a price observed fourteen
+   * seconds ago is not one to trade on. The engine was correct. The timestamp
+   * was a lie.
+   */
+  it('stamps the newest tick with the time it was actually produced', async () => {
+    const clock = new ManualClock(T0);
+    const sim = new InternalMarketSimulator({
+      instruments: [XAUUSD_SIMULATED],
+      seed: 3,
+      clock,
+      resolutions: [Resolution.M1],
+    });
+    await sim.start();
+
+    clock.advance(10_000);
+    const late = sim.pump();
+    expect(late[late.length - 1]?.timestamp).toBe(T0 + 10_000);
+  });
+
+  it('does not accumulate drift when every pass runs late', async () => {
+    const clock = new ManualClock(T0);
+    const sim = new InternalMarketSimulator({
+      instruments: [XAUUSD_SIMULATED],
+      seed: 3,
+      clock,
+      resolutions: [Resolution.M1],
+    });
+    await sim.start();
+
+    // Forty passes, each one 400ms apart for a 250ms grid: always late, never
+    // catching up. The old schedule fell 150ms further behind every pass.
+    let newest = T0;
+    for (let i = 0; i < 40; i += 1) {
+      clock.advance(400);
+      const ticks = sim.pump();
+      if (ticks.length > 0) newest = ticks[ticks.length - 1]!.timestamp;
+    }
+
+    // The newest observation is the present, not six seconds ago.
+    expect(clock.now() - newest).toBe(0);
+  });
+
+  it('keeps a punctual grid exactly as it was', async () => {
+    const clock = new ManualClock(T0);
+    const sim = new InternalMarketSimulator({
+      instruments: [XAUUSD_SIMULATED],
+      seed: 3,
+      clock,
+      resolutions: [Resolution.M1],
+    });
+    await sim.start();
+
+    // The first pass also clears the tick due at start(), as it always did.
+    clock.advance(250);
+    expect(sim.pump()).toHaveLength(2);
+
+    // After that, one interval is one tick, stamped at the moment.
+    for (let i = 0; i < 5; i += 1) {
+      clock.advance(250);
+      const ticks = sim.pump();
+      expect(ticks).toHaveLength(1);
+      expect(ticks[0]?.timestamp).toBe(clock.now());
+    }
   });
 
   it('delivers ticks to subscribers and stops after unsubscribe', async () => {
