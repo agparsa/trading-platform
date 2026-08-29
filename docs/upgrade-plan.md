@@ -183,7 +183,7 @@ the integrity engine consumes events the earlier steps emit.
 | 11   | Security hardening                               | 3, 4       | done — [two-factor.md](./two-factor.md), [sessions.md](./sessions.md), [penetration-checklist.md](./penetration-checklist.md) |
 | 12   | Load and soak                                    | all        | done — [soak.md](./soak.md)                                                                                                   |
 | 13   | Backup and restore rehearsal                     | —          | done — [backup-restore.md](./backup-restore.md)                                                                               |
-| 14   | Final browser, integration and concurrency audit | all        |                                                                                                                               |
+| 14   | Final browser, integration and concurrency audit | all        | done — [final-audit.md](./final-audit.md)                                                                                     |
 
 `pnpm verify` must pass at the end of every step, and `pnpm smoke`,
 `pnpm smoke:ws` and `pnpm load` where the step touches what they cover. No step
