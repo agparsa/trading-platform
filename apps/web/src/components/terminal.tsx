@@ -145,14 +145,14 @@ export function Terminal() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-terminal-bg">
-      <header className="flex shrink-0 items-center justify-between border-b border-terminal-border px-4 py-2">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-y-2 border-b border-terminal-border px-4 py-2">
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold tracking-tight text-terminal-text">
             Trading Platform
           </span>
           <ConnectionBadge />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {/* The watchlist is a desktop panel; on a narrow screen this is how a
               trader changes instrument. */}
           <select
@@ -191,8 +191,21 @@ export function Terminal() {
         />
       </div>
 
-      <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden p-2 lg:grid-cols-[250px_minmax(0,1fr)_270px] xl:grid-cols-[310px_minmax(0,1fr)_280px]">
-        <Panel title="Watchlist" className="hidden lg:flex">
+      {/*
+        Below `lg` the three columns become one, and one screen height cannot
+        hold a chart, a table and an order ticket at a usable size. So the layout
+        scrolls there and each panel keeps a workable minimum, instead of
+        squeezing all three into the viewport and making every one of them
+        useless. Above `lg` nothing scrolls: a trading screen that moves under
+        the cursor is a screen you can misclick.
+
+        The order is deliberately different too. On a phone the chart comes
+        first, the ticket second and the watchlist last — the watchlist is how
+        you browse, and browsing is not what you opened the terminal on a phone
+        to do.
+      */}
+      <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto p-2 lg:grid-cols-[250px_minmax(0,1fr)_270px] lg:overflow-hidden xl:grid-cols-[310px_minmax(0,1fr)_280px]">
+        <Panel title="Watchlist" className="order-3 max-h-80 lg:order-none lg:max-h-none">
           <Watchlist
             symbols={tradeableSymbols}
             selected={selectedSymbol}
@@ -200,7 +213,7 @@ export function Terminal() {
           />
         </Panel>
 
-        <div className="flex min-h-0 flex-col gap-2">
+        <div className="order-1 flex min-h-[32rem] flex-col gap-2 lg:order-none lg:min-h-0">
           <Panel className="min-h-[240px] flex-[3]" bodyClassName="overflow-hidden">
             <ChartPanel
               symbol={activeSymbol}
@@ -253,7 +266,7 @@ export function Terminal() {
           </Panel>
         </div>
 
-        <Panel title="Order" className="min-h-0">
+        <Panel title="Order" className="order-2 min-h-[22rem] lg:order-none lg:min-h-0">
           <OrderTicket
             symbol={activeSymbol}
             account={account}

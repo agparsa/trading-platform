@@ -9,8 +9,10 @@ import {
   signedMoney,
   toneClass,
   toneOf,
+  utcTime,
   volume as formatVolume,
 } from '@/lib/format';
+import { shortRefs } from '@/lib/refs';
 import {
   useClosePosition,
   useModifyPosition,
@@ -127,6 +129,11 @@ export function PositionsPanel({
     () => Object.fromEntries((snapshot?.positions ?? []).map((p) => [p.positionId, p])),
     [snapshot],
   );
+  /**
+   * Short labels for the reference column, unique within what is on screen.
+   * Derived from the rows being shown, so two positions can never read alike.
+   */
+  const refs = useMemo(() => shortRefs(positions.map((position) => position.id)), [positions]);
 
   if (positions.length === 0) {
     return (
@@ -147,119 +154,198 @@ export function PositionsPanel({
           onCancel={() => setPrompt(null)}
         />
       )}
-      <table className="w-full border-collapse text-xs">
-        <thead className="sticky top-0 z-10 bg-terminal-surface">
-          <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
-            <th className="px-3 py-1.5 font-medium">Symbol</th>
-            <th className="px-2 py-1.5 font-medium">Side</th>
-            <th className="px-2 py-1.5 text-right font-medium">Volume</th>
-            <th className="px-2 py-1.5 text-right font-medium">Entry</th>
-            <th className="px-2 py-1.5 text-right font-medium">Current</th>
-            <th className="px-2 py-1.5 text-right font-medium">S/L</th>
-            <th className="px-2 py-1.5 text-right font-medium">T/P</th>
-            <th className="px-2 py-1.5 text-right font-medium">Swap</th>
-            <th className="px-2 py-1.5 text-right font-medium">P&amp;L</th>
-            <th className="px-2 py-1.5 text-right font-medium">Net P&amp;L</th>
-            <th className="px-3 py-1.5 text-right font-medium">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {positions.map((position) => {
-            const spec = specs[position.symbol];
-            const precision = spec?.pricePrecision ?? 2;
-            const live = livePnl[position.id];
-            const fallback = snapshotPnl[position.id];
-            const pnl = live?.floatingPnl ?? fallback?.floatingPnl ?? null;
-            // Also from the server. Net is the mark less the commission and swap
-            // already charged to this position — not a projection of the round
-            // trip, and not something the browser subtracts for itself.
-            const netPnl = live?.netPnl ?? fallback?.netPnl ?? null;
-            const current = live?.currentPrice ?? fallback?.currentPrice ?? position.currentPrice;
-            const stale = live?.stale ?? fallback?.stale ?? false;
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[52rem] border-collapse text-xs">
+          <thead className="sticky top-0 z-10 bg-terminal-surface">
+            <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+              <th className="px-3 py-1.5 font-medium" title="Position reference">
+                Ref
+              </th>
+              <th className="px-2 py-1.5 font-medium">Symbol</th>
+              <th className="px-2 py-1.5 font-medium">Side</th>
+              <th className="px-2 py-1.5 text-right font-medium">Volume</th>
+              <th className="px-2 py-1.5 text-right font-medium">Entry</th>
+              <th className="px-2 py-1.5 text-right font-medium">Current</th>
+              <th className="px-2 py-1.5 text-right font-medium">S/L</th>
+              <th className="px-2 py-1.5 text-right font-medium">T/P</th>
+              <th
+                className="px-2 py-1.5 text-right font-medium"
+                title="Initial margin held for this position, in the account currency"
+              >
+                Margin
+              </th>
+              <th
+                className="px-2 py-1.5 text-right font-medium"
+                title="Opening commission already charged"
+              >
+                Comm.
+              </th>
+              <th className="px-2 py-1.5 text-right font-medium">Swap</th>
+              <th className="px-2 py-1.5 text-right font-medium">P&amp;L</th>
+              <th className="px-2 py-1.5 text-right font-medium">Net P&amp;L</th>
+              <th className="px-2 py-1.5 font-medium">Opened (UTC)</th>
+              <th className="px-3 py-1.5 text-right font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {positions.map((position) => {
+              const spec = specs[position.symbol];
+              const precision = spec?.pricePrecision ?? 2;
+              const live = livePnl[position.id];
+              const fallback = snapshotPnl[position.id];
+              const pnl = live?.floatingPnl ?? fallback?.floatingPnl ?? null;
+              // Also from the server. Net is the mark less the commission and swap
+              // already charged to this position — not a projection of the round
+              // trip, and not something the browser subtracts for itself.
+              const netPnl = live?.netPnl ?? fallback?.netPnl ?? null;
+              const current = live?.currentPrice ?? fallback?.currentPrice ?? position.currentPrice;
+              const stale = live?.stale ?? fallback?.stale ?? false;
 
-            return (
-              <Fragment key={position.id}>
-                <tr className="border-t border-terminal-border/60 hover:bg-terminal-raised/40">
-                  <td className="px-3 py-1.5 font-medium text-terminal-text">{position.symbol}</td>
-                  <td className="px-2 py-1.5">
-                    <SideBadge side={position.side} />
-                  </td>
-                  <td className="numeric px-2 py-1.5 text-right text-terminal-text">
-                    {formatVolume(position.volume)}
-                  </td>
-                  <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
-                    {formatPrice(position.entryPrice, precision)}
-                  </td>
-                  <td
-                    className={cn(
-                      'numeric px-2 py-1.5 text-right',
-                      stale ? 'text-terminal-warning' : 'text-terminal-text',
-                    )}
-                    title={stale ? 'This price is older than the freshness limit' : undefined}
-                  >
-                    {formatPrice(current, precision)}
-                  </td>
-                  <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
-                    {position.stopLoss === null ? '—' : formatPrice(position.stopLoss, precision)}
-                    {position.trailingStopDistance === null ? null : (
-                      <span
-                        className="ml-1 text-[9px] uppercase text-terminal-warning"
-                        title="Trailing"
-                      >
-                        trl
-                      </span>
-                    )}
-                  </td>
-                  <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
-                    {position.takeProfit === null
-                      ? '—'
-                      : formatPrice(position.takeProfit, precision)}
-                  </td>
-                  <td
-                    className={cn(
-                      'numeric px-2 py-1.5 text-right',
-                      toneClass[toneOf(position.swap)],
-                    )}
-                  >
-                    {money(position.swap, currency)}
-                  </td>
-                  <td className={cn('numeric px-2 py-1.5 text-right', toneClass[toneOf(pnl)])}>
-                    {signedMoney(pnl, currency)}
-                  </td>
-                  <td
-                    className={cn('numeric px-2 py-1.5 text-right', toneClass[toneOf(netPnl)])}
-                    title="Mark less the commission and swap already charged. The closing commission has not been charged and is not guessed at."
-                  >
-                    {signedMoney(netPnl, currency)}
-                  </td>
-                  <td className="px-3 py-1.5 text-right">
-                    <Button
-                      variant="ghost"
-                      onClick={() => setEditing(editing === position.id ? null : position.id)}
-                      className="px-2 py-0.5"
+              return (
+                <Fragment key={position.id}>
+                  <tr className="border-t border-terminal-border/60 hover:bg-terminal-raised/40">
+                    <td className="numeric px-3 py-1.5 text-terminal-muted">
+                      <CopyRef full={position.id} label={refs.get(position.id) ?? position.id} />
+                    </td>
+                    <td className="px-2 py-1.5 font-medium text-terminal-text">
+                      {position.symbol}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <SideBadge side={position.side} />
+                    </td>
+                    <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                      {formatVolume(position.volume)}
+                    </td>
+                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                      {formatPrice(position.entryPrice, precision)}
+                    </td>
+                    <td
+                      className={cn(
+                        'numeric px-2 py-1.5 text-right',
+                        stale ? 'text-terminal-warning' : 'text-terminal-text',
+                      )}
+                      title={stale ? 'This price is older than the freshness limit' : undefined}
                     >
-                      {editing === position.id ? 'Close panel' : 'Manage'}
-                    </Button>
-                  </td>
-                </tr>
-                {editing === position.id ? (
-                  <tr className="border-t border-terminal-border/60">
-                    <td colSpan={11} className="bg-terminal-bg px-3 py-3">
-                      <PositionEditor
-                        position={position}
-                        spec={spec}
-                        accountId={accountId}
-                        onDone={() => setEditing(null)}
-                      />
+                      {formatPrice(current, precision)}
+                    </td>
+                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                      {position.stopLoss === null ? '—' : formatPrice(position.stopLoss, precision)}
+                      {position.trailingStopDistance === null ? null : (
+                        <span
+                          className="ml-1 text-[9px] uppercase text-terminal-warning"
+                          title="Trailing"
+                        >
+                          trl
+                        </span>
+                      )}
+                    </td>
+                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                      {position.takeProfit === null
+                        ? '—'
+                        : formatPrice(position.takeProfit, precision)}
+                    </td>
+                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                      {money(position.margin, currency)}
+                    </td>
+                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                      {money(position.commission, currency)}
+                    </td>
+                    <td
+                      className={cn(
+                        'numeric px-2 py-1.5 text-right',
+                        toneClass[toneOf(position.swap)],
+                      )}
+                    >
+                      {money(position.swap, currency)}
+                    </td>
+                    <td className={cn('numeric px-2 py-1.5 text-right', toneClass[toneOf(pnl)])}>
+                      {signedMoney(pnl, currency)}
+                    </td>
+                    <td
+                      className={cn('numeric px-2 py-1.5 text-right', toneClass[toneOf(netPnl)])}
+                      title="Mark less the commission and swap already charged. The closing commission has not been charged and is not guessed at."
+                    >
+                      {signedMoney(netPnl, currency)}
+                    </td>
+                    <td className="numeric px-2 py-1.5 text-terminal-muted">
+                      {utcTime(position.openedAt)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right">
+                      <Button
+                        variant="ghost"
+                        onClick={() => setEditing(editing === position.id ? null : position.id)}
+                        className="px-2 py-0.5"
+                      >
+                        {editing === position.id ? 'Close panel' : 'Manage'}
+                      </Button>
                     </td>
                   </tr>
-                ) : null}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
+                  {editing === position.id ? (
+                    <tr className="border-t border-terminal-border/60">
+                      <td colSpan={15} className="bg-terminal-bg px-3 py-3">
+                        <PositionEditor
+                          position={position}
+                          spec={spec}
+                          accountId={accountId}
+                          onDone={() => setEditing(null)}
+                        />
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {snapshot === undefined ? null : (
+        <p className="border-t border-terminal-border/60 px-3 py-1.5 text-[10px] text-terminal-muted">
+          Account floating P&amp;L{' '}
+          <span className={cn('numeric', toneClass[toneOf(snapshot.floatingPnl)])}>
+            {signedMoney(snapshot.floatingPnl, currency)}
+          </span>{' '}
+          · used margin <span className="numeric">{money(snapshot.usedMargin, currency)}</span> —
+          the server&rsquo;s own totals, not a sum of the rows above.
+        </p>
+      )}
     </>
+  );
+}
+
+/**
+ * The reference column.
+ *
+ * A prefix is what fits; the full identifier is what support needs. Clicking
+ * copies the whole thing, and the button says so afterwards rather than
+ * silently succeeding.
+ */
+function CopyRef({ full, label }: { full: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1200);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  return (
+    <button
+      type="button"
+      title={`${full} — click to copy`}
+      className="rounded px-1 py-0.5 text-[10px] tracking-wide text-terminal-muted transition-colors hover:bg-terminal-raised hover:text-terminal-text"
+      onClick={() => {
+        // Clipboard access is refused in insecure contexts and by some
+        // policies. A reference that cannot be copied is still readable in the
+        // tooltip, so a failure here is not worth an error banner — but it must
+        // not claim to have copied either.
+        void navigator.clipboard
+          ?.writeText(full)
+          .then(() => setCopied(true))
+          .catch(() => setCopied(false));
+      }}
+    >
+      {copied ? 'copied' : label}
+    </button>
   );
 }
 
