@@ -122,3 +122,56 @@ no execution behind them — a shape no code path in this system can produce.
 
 The fixture was fixed, not the check. A test built on a position that cannot
 exist is testing against something that cannot happen.
+
+## Runs and findings
+
+Reconciliation used to leave its results as risk events and nothing else. That
+made two questions unanswerable: *how long has this been true*, and *did anybody
+check*.
+
+### `reconciliation_runs`
+
+One row per pass, written **before** the work starts and closed when it ends —
+including when it fails.
+
+Clean runs are recorded too, and that is the point. "The last run found nothing"
+and "nothing has run since Tuesday" look identical if only findings are stored,
+and only one of them is reassuring. A run that threw is recorded as `FAILED`
+with the error, so a broken job cannot masquerade as a clean bill of health.
+
+### `reconciliation_findings`
+
+One row per `(account, code, subject)`, with `occurrences`, `firstSeenAt` and
+`lastSeenAt`. A drift still present on the next run is the same drift seen
+again, not a second one; a thousand duplicate rows would bury the fact an
+investigator actually wants.
+
+`subjectKey` exists because PostgreSQL does not treat two NULLs as equal in a
+unique index — a nullable subject would let the same account-wide finding be
+inserted without limit. The empty string means "about the account itself".
+
+### Resolution reopens
+
+A finding marked `RESOLVED` or `FALSE_POSITIVE` that is seen again is **reopened**
+and its resolution cleared. That is what stops a tick put there in good faith —
+when the drift really had gone — from hiding a live inconsistency for longer
+than one scheduled run.
+
+### Nothing here repairs anything
+
+Not one method in `ReconciliationReadService` writes to an account, a position, a
+trade or the ledger. Correcting a discrepancy is a ledger adjustment through
+`AdjustmentsService`: a different route, a different permission, a second factor
+and a reason. Keeping them apart is what stops "resolve" from quietly becoming
+"make it go away".
+
+### Running one by hand
+
+`POST /reconciliation/runs` creates the run row and publishes a BullMQ job
+carrying its id, so the console can show a run that has been *requested* rather
+than a button that appears to do nothing. The run id is the job id, so a retried
+request cannot queue it twice, and a run already in flight is returned rather
+than a second one being started — two concurrent passes over every account would
+double the read load to produce the same answer and race each other for the same
+finding rows. A run stuck in `RUNNING` for over an hour is treated as abandoned
+rather than blocking every future run.

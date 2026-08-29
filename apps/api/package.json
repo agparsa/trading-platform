@@ -29,6 +29,7 @@
     "@tp/risk-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
     "@tp/trading-core": "workspace:*",
+    "bullmq": "catalog:",
     "cookie": "catalog:",
     "helmet": "catalog:",
     "ioredis": "catalog:",

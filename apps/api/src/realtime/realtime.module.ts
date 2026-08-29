@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { MarketModule } from '../market/market.module';
 import { TradingModule } from '../trading/trading.module';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
 import { ExposureIndex } from './exposure-index';
@@ -11,7 +12,7 @@ import { RealtimeService } from './realtime.service';
 import type { Env } from '../config/env.schema';
 
 @Module({
-  imports: [MarketModule, TradingModule, AuthModule],
+  imports: [MarketModule, TradingModule, AuthModule, NotificationsModule],
   providers: [
     RealtimeGateway,
     RealtimeService,

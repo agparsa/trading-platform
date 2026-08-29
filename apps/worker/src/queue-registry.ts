@@ -13,6 +13,7 @@ import type { WorkerEnv } from './env';
 import { SwapAccrualService } from './jobs/swap-accrual.service';
 import { ReconciliationService } from './jobs/reconciliation.service';
 import { MaintenanceService } from './jobs/maintenance.service';
+import { NotificationsService } from './jobs/notifications.service';
 
 /**
  * Owns the BullMQ connections, the workers attached to each queue, and the
@@ -34,6 +35,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly swaps: SwapAccrualService,
     private readonly reconciliation: ReconciliationService,
     private readonly maintenance: MaintenanceService,
+    private readonly notifications: NotificationsService,
   ) {
     this.connection = new IORedis(config.getOrThrow('REDIS_URL', { infer: true }), {
       // BullMQ requires this to be null: its blocking commands must not time out.
@@ -53,11 +55,22 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     }
 
     this.attach(QueueName.SWAP_ACCRUAL, async () => this.swaps.accrue());
-    this.attach(QueueName.RECONCILIATION, async () => this.reconciliation.check());
+    /**
+     * A manual run carries the id of a row the API already created, so the
+     * console can show a run that has been *requested* rather than a button
+     * that appears to do nothing until this process gets round to it.
+     */
+    this.attach(QueueName.RECONCILIATION, async (job) => {
+      const runId = (job.data as { runId?: unknown }).runId;
+      return this.reconciliation.check(
+        typeof runId === 'string' ? { runId, trigger: 'MANUAL' } : { trigger: 'SCHEDULED' },
+      );
+    });
     this.attach(QueueName.IDEMPOTENCY_SWEEP, async () => ({
       expired: await this.maintenance.sweepIdempotencyKeys(),
       abandoned: await this.maintenance.releaseAbandonedClaims(),
     }));
+    this.attach(QueueName.NOTIFICATIONS, async (job) => this.notifications.deliver(job.data));
 
     await this.schedule();
 
@@ -69,9 +82,6 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     }
 
     this.logger.log(`Queue registry ready: ${ALL_QUEUES.join(', ')}`);
-    this.logger.warn(
-      `${QueueName.NOTIFICATIONS} has no processor yet — jobs added to it will queue and wait`,
-    );
   }
 
   async onModuleDestroy(): Promise<void> {

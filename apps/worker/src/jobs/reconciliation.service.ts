@@ -11,9 +11,14 @@ import {
 import { PrismaService } from '../prisma.service';
 
 export interface ReconciliationSummary {
+  readonly runId: string;
   readonly checked: number;
   readonly reports: readonly AccountReport[];
   readonly findings: number;
+  /** Findings seen for the first time in this run. */
+  readonly raised: number;
+  /** Findings that were already on record and are still there. */
+  readonly recurred: number;
   readonly critical: number;
 }
 
@@ -41,39 +46,115 @@ export class ReconciliationService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async check(): Promise<ReconciliationSummary> {
-    const accounts = await this.prisma.account.findMany({
-      select: { id: true, number: true, balance: true, currency: true },
-      orderBy: { createdAt: 'asc' },
-    });
+  /**
+   * Run the checks over every account, and record the run itself.
+   *
+   * The run row is written *before* the work starts and closed when it ends,
+   * including when it fails. That ordering matters: "the last run was clean" and
+   * "there has been no run since Tuesday" look identical if only findings are
+   * stored, and only one of them is reassuring. An operator opening the console
+   * during an incident needs to be able to tell them apart at a glance.
+   *
+   * `runId` may be supplied when a person asked for the run through the API and
+   * the row already exists; otherwise one is created here.
+   */
+  async check(
+    options: { runId?: string; trigger?: string; requestedByUserId?: string } = {},
+  ): Promise<ReconciliationSummary> {
+    const startedAt = Date.now();
+    const run =
+      options.runId === undefined
+        ? await this.prisma.reconciliationRun.create({
+            data: {
+              trigger: options.trigger ?? 'SCHEDULED',
+              requestedByUserId: options.requestedByUserId ?? null,
+            },
+          })
+        : await this.prisma.reconciliationRun.update({
+            where: { id: options.runId },
+            data: { status: 'RUNNING', startedAt: new Date() },
+          });
 
-    const reports: AccountReport[] = [];
-    let findings = 0;
-    let critical = 0;
+    try {
+      const accounts = await this.prisma.account.findMany({
+        select: { id: true, number: true, balance: true, currency: true },
+        orderBy: { createdAt: 'asc' },
+      });
 
-    for (const account of accounts) {
-      const records = await this.loadRecords(account);
-      const report = reconcileAccount(records);
-      if (report.findings.length === 0) continue;
+      const reports: AccountReport[] = [];
+      let findings = 0;
+      let raised = 0;
+      let recurred = 0;
+      let critical = 0;
 
-      reports.push(report);
-      findings += report.findings.length;
-      critical += report.findings.filter((f) => f.severity === Severity.CRITICAL).length;
+      for (const account of accounts) {
+        const records = await this.loadRecords(account);
+        const report = reconcileAccount(records);
+        if (report.findings.length === 0) continue;
 
-      for (const found of report.findings) {
-        await this.record(account.id, report.number, found);
+        reports.push(report);
+        findings += report.findings.length;
+        critical += report.findings.filter((f) => f.severity === Severity.CRITICAL).length;
+
+        for (const found of report.findings) {
+          const outcome = await this.record(run.id, account.id, report.number, found);
+          if (outcome === 'raised') raised += 1;
+          else recurred += 1;
+        }
       }
-    }
 
-    if (findings === 0) {
-      this.logger.log(`Reconciliation clean: ${accounts.length} account(s) agree with themselves`);
-    } else {
-      this.logger.error(
-        { accounts: reports.length, findings, critical },
-        'RECONCILIATION MISMATCH: records disagree. Nothing has been corrected.',
-      );
+      await this.prisma.reconciliationRun.update({
+        where: { id: run.id },
+        data: {
+          status: 'COMPLETED',
+          accountsChecked: accounts.length,
+          findingsRaised: raised,
+          findingsRecurred: recurred,
+          criticalCount: critical,
+          finishedAt: new Date(),
+          durationMs: Date.now() - startedAt,
+        },
+      });
+
+      if (findings === 0) {
+        this.logger.log(
+          `Reconciliation clean: ${accounts.length} account(s) agree with themselves`,
+        );
+      } else {
+        this.logger.error(
+          { accounts: reports.length, findings, raised, recurred, critical },
+          'RECONCILIATION MISMATCH: records disagree. Nothing has been corrected.',
+        );
+      }
+
+      return {
+        runId: run.id,
+        checked: accounts.length,
+        reports,
+        findings,
+        raised,
+        recurred,
+        critical,
+      };
+    } catch (error) {
+      /**
+       * A run that failed is not a run that found nothing.
+       *
+       * Recording the failure is what stops a broken job from looking like a
+       * clean bill of health — the worst possible confusion for a check whose
+       * whole purpose is to notice that something is wrong.
+       */
+      await this.prisma.reconciliationRun.update({
+        where: { id: run.id },
+        data: {
+          status: 'FAILED',
+          error: error instanceof Error ? error.message : String(error),
+          finishedAt: new Date(),
+          durationMs: Date.now() - startedAt,
+        },
+      });
+      throw error;
     }
-    return { checked: accounts.length, reports, findings, critical };
   }
 
   /**
@@ -245,11 +326,89 @@ export class ReconciliationService {
    * should find a reconciliation mismatch in the same place as a margin breach
    * rather than in a table they have to be told about.
    */
-  private async record(accountId: string, number: string, found: Finding): Promise<void> {
+  /**
+   * Record one finding, or note that it is still there.
+   *
+   * One row per (account, code, subject): a drift that is still present on the
+   * next run is the same drift seen again, not a second one. A thousand
+   * duplicate rows would bury the one fact an investigator wants, which is *how
+   * long this has been true*.
+   *
+   * A finding that had been marked RESOLVED and has come back is **reopened**,
+   * with the resolution cleared. Leaving it closed would let a real
+   * inconsistency sit behind a tick somebody put there in good faith when it had
+   * genuinely gone away.
+   */
+  private async record(
+    runId: string,
+    accountId: string,
+    number: string,
+    found: Finding,
+  ): Promise<'raised' | 'recurred'> {
     this.logger.error(
       { accountId, number, ...found },
       `RECONCILIATION ${found.code}: ${found.message}`,
     );
+
+    const subjectKey = found.subjectId ?? '';
+    const now = new Date();
+
+    const existing = await this.prisma.reconciliationFinding.findUnique({
+      where: { accountId_code_subjectKey: { accountId, code: found.code, subjectKey } },
+      select: { id: true, status: true },
+    });
+
+    const evidence = {
+      expected: found.expected,
+      actual: found.actual,
+      difference: found.difference,
+      message: found.message,
+      severity: found.severity,
+    };
+
+    if (existing === null) {
+      await this.prisma.reconciliationFinding.create({
+        data: {
+          runId,
+          accountId,
+          code: found.code,
+          subjectKey,
+          subjectType: found.subjectType ?? null,
+          subjectId: found.subjectId ?? null,
+          firstSeenAt: now,
+          lastSeenAt: now,
+          ...evidence,
+        },
+      });
+    } else {
+      const reopening = existing.status === 'RESOLVED' || existing.status === 'FALSE_POSITIVE';
+      await this.prisma.reconciliationFinding.update({
+        where: { id: existing.id },
+        data: {
+          runId,
+          lastSeenAt: now,
+          occurrences: { increment: 1 },
+          ...evidence,
+          ...(reopening
+            ? { status: 'OPEN', resolvedAt: null, resolvedByUserId: null, resolutionNote: null }
+            : {}),
+        },
+      });
+      if (reopening) {
+        this.logger.error(
+          { accountId, code: found.code, subjectKey },
+          'A reconciliation finding that had been closed has come back; it is open again',
+        );
+      }
+    }
+
+    /**
+     * Still written as a risk event.
+     *
+     * The findings table is the record an investigator works from; the risk
+     * event stream is what the operations summary and any alerting already
+     * watch. Removing this would silence an alert that exists, to gain nothing.
+     */
     await this.prisma.riskEvent.create({
       data: {
         accountId,
@@ -266,5 +425,7 @@ export class ReconciliationService {
         },
       },
     });
+
+    return existing === null ? 'raised' : 'recurred';
   }
 }

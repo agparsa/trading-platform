@@ -78,6 +78,7 @@ model User {
   auditLogs      AuditLog[]
   recoveryCodes  TotpRecoveryCode[]
   masterAccounts MasterAccount[]
+  notifications  Notification[]
 
   @@map("users")
 }
@@ -160,16 +161,17 @@ model Account {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user             User                @relation(fields: [userId], references: [id], onDelete: Restrict)
-  settings         AccountSettings?
-  orders           Order[]
-  positions        Position[]
-  trades           Trade[]
-  ledger           BalanceLedger[]
-  snapshots        AccountSnapshot[]
-  riskEvents       RiskEvent[]
-  masterLinks      MasterAccountLink[]
-  integritySignals IntegritySignal[]
+  user                   User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  settings               AccountSettings?
+  orders                 Order[]
+  positions              Position[]
+  trades                 Trade[]
+  ledger                 BalanceLedger[]
+  snapshots              AccountSnapshot[]
+  riskEvents             RiskEvent[]
+  masterLinks            MasterAccountLink[]
+  integritySignals       IntegritySignal[]
+  reconciliationFindings ReconciliationFinding[]
 
   @@index([userId, status])
   @@map("accounts")
@@ -846,4 +848,155 @@ model SystemSetting {
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("system_settings")
+}
+
+// ---------------------------------------------------------------------------
+// Reconciliation
+// ---------------------------------------------------------------------------
+
+enum ReconciliationRunStatus {
+  /// Requested and not yet picked up, or picked up and still working.
+  RUNNING
+  COMPLETED
+  /// The run itself failed. Distinct from a run that completed and found things.
+  FAILED
+}
+
+enum ReconciliationFindingStatus {
+  OPEN
+  ACKNOWLEDGED
+  INVESTIGATING
+  RESOLVED
+  /// Looked at, and the records were right after all.
+  FALSE_POSITIVE
+}
+
+/// One pass of the reconciliation checks over every account.
+///
+/// Recorded even when it finds nothing, and that is the point: "the last run was
+/// clean" and "there has been no run since Tuesday" look identical if only
+/// findings are stored, and only one of them is reassuring.
+model ReconciliationRun {
+  id                String                  @id @default(uuid()) @db.Uuid
+  status            ReconciliationRunStatus @default(RUNNING)
+  /// 'SCHEDULED' | 'MANUAL' — how this run came to happen.
+  trigger           String                  @default("SCHEDULED")
+  /// Set when a person asked for it.
+  requestedByUserId String?                 @map("requested_by_user_id") @db.Uuid
+
+  accountsChecked  Int @default(0) @map("accounts_checked")
+  findingsRaised   Int @default(0) @map("findings_raised")
+  findingsRecurred Int @default(0) @map("findings_recurred")
+  criticalCount    Int @default(0) @map("critical_count")
+
+  /// Why the run itself failed. Never a finding — a finding is a successful run.
+  error String?
+
+  startedAt  DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+  durationMs Int?      @map("duration_ms")
+
+  findings ReconciliationFinding[]
+
+  @@index([startedAt(sort: Desc)])
+  @@index([status, startedAt(sort: Desc)])
+  @@map("reconciliation_runs")
+}
+
+/// A discrepancy between records that should agree.
+///
+/// One row per (account, code, subject), like an integrity signal and for the
+/// same reason: a drift that is still there on the next run is the same drift
+/// seen again, not a second one. `occurrences`, `firstSeenAt` and `lastSeenAt`
+/// say how persistent it is, which is what an investigator needs and what a
+/// thousand duplicate rows would bury.
+///
+/// `subjectKey` exists because PostgreSQL does not treat two NULLs as equal in a
+/// unique index — a nullable subject would let the same account-wide finding be
+/// inserted without limit. The empty string means "about the account itself".
+model ReconciliationFinding {
+  id    String @id @default(uuid()) @db.Uuid
+  /// The run that most recently saw it. The first is in `firstSeenAt`.
+  runId String @map("run_id") @db.Uuid
+
+  accountId String @map("account_id") @db.Uuid
+  code      String
+  severity  String
+
+  status ReconciliationFindingStatus @default(OPEN)
+
+  /// Decimal strings, kept as text: these are evidence, not operands. Storing
+  /// them as NUMERIC would invite arithmetic on a record of an inconsistency.
+  expected   String
+  actual     String
+  difference String
+
+  subjectType String? @map("subject_type")
+  subjectId   String? @map("subject_id") @db.Uuid
+  /// Non-null discriminator for the unique index. Empty means the account itself.
+  subjectKey  String  @default("") @map("subject_key")
+
+  message     String
+  occurrences Int      @default(1)
+  firstSeenAt DateTime @default(now()) @map("first_seen_at") @db.Timestamptz(6)
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+
+  resolvedByUserId String?   @map("resolved_by_user_id") @db.Uuid
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolutionNote   String?   @map("resolution_note")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  run     ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+  account Account           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([accountId, code, subjectKey])
+  @@index([status, severity])
+  @@index([lastSeenAt(sort: Desc)])
+  @@map("reconciliation_findings")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+}
+
+/// Something the platform decided a person should be told.
+///
+/// Written by the notification worker, never by a request handler: a
+/// notification that only exists because somebody's browser was open is a
+/// notification the person who was away never gets.
+model Notification {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  /// Stable machine name, e.g. 'risk.margin_call'. The UI maps it to wording.
+  kind     String
+  severity String @default("INFO")
+  title    String
+  body     String
+
+  /// Whatever the event carried, so the message can be rebuilt or investigated.
+  data Json @default("{}")
+
+  /// The account it concerns, when it concerns one.
+  accountId String? @map("account_id") @db.Uuid
+
+  readAt    DateTime? @map("read_at") @db.Timestamptz(6)
+  emailedAt DateTime? @map("emailed_at") @db.Timestamptz(6)
+  /// Deduplication key. A risk engine that raises the same alert twice in a
+  /// minute must not produce two rows.
+  dedupeKey String?   @unique @map("dedupe_key")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@map("notifications")
 }

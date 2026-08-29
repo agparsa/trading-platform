@@ -10,8 +10,9 @@ import { PeoplePanel } from './people-panel';
 import { AccountsPanel } from './accounts-panel';
 import { RiskPanel } from './risk-panel';
 import { AuditPanel } from './audit-panel';
+import { ReconciliationPanel } from './reconciliation-panel';
 
-type AdminTab = 'overview' | 'people' | 'accounts' | 'risk' | 'audit';
+type AdminTab = 'overview' | 'people' | 'accounts' | 'risk' | 'reconciliation' | 'audit';
 
 /**
  * The administrative console.
@@ -68,6 +69,7 @@ export function AdminConsole() {
             { id: 'people', label: 'People' },
             { id: 'accounts', label: 'Accounts' },
             { id: 'risk', label: 'Risk' },
+            { id: 'reconciliation', label: 'Reconciliation' },
             { id: 'audit', label: 'Audit' },
           ]}
         />
@@ -79,6 +81,7 @@ export function AdminConsole() {
           {tab === 'people' ? <PeoplePanel /> : null}
           {tab === 'accounts' ? <AccountsPanel /> : null}
           {tab === 'risk' ? <RiskPanel /> : null}
+          {tab === 'reconciliation' ? <ReconciliationPanel /> : null}
           {tab === 'audit' ? <AuditPanel /> : null}
         </Panel>
       </main>

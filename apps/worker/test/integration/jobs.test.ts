@@ -321,6 +321,127 @@ suite('Worker jobs (integration)', () => {
       expect(Money.of(account.balance.toString(), 'USD').toString()).toBe('100500.00');
     });
 
+    /**
+     * A run is recorded even when it finds nothing, and that is the point.
+     * "The last run was clean" and "there has been no run since Tuesday" look
+     * identical if only findings are stored, and only one of them is
+     * reassuring.
+     */
+    it('records the run itself, clean or not', async () => {
+      await createAccount(prisma, { balance: '100000' });
+      const summary = await service().check();
+
+      const run = await prisma.reconciliationRun.findUniqueOrThrow({
+        where: { id: summary.runId },
+      });
+      expect(run.status).toBe('COMPLETED');
+      expect(run.trigger).toBe('SCHEDULED');
+      expect(run.accountsChecked).toBe(1);
+      expect(run.findingsRaised).toBe(0);
+      expect(run.finishedAt).not.toBeNull();
+      expect(run.durationMs).not.toBeNull();
+    });
+
+    it('carries the run id and trigger a person asked for', async () => {
+      const requested = await prisma.reconciliationRun.create({
+        data: { trigger: 'MANUAL' },
+      });
+      const summary = await service().check({ runId: requested.id, trigger: 'MANUAL' });
+
+      expect(summary.runId).toBe(requested.id);
+      const run = await prisma.reconciliationRun.findUniqueOrThrow({ where: { id: requested.id } });
+      expect(run.status).toBe('COMPLETED');
+      expect(run.trigger).toBe('MANUAL');
+    });
+
+    it('writes a finding row alongside the risk event', async () => {
+      const { accountId } = await createAccount(prisma, { balance: '100000' });
+      await prisma.account.update({ where: { id: accountId }, data: { balance: '100500' } });
+
+      const summary = await service().check();
+      expect(summary.raised).toBe(1);
+      expect(summary.recurred).toBe(0);
+
+      const finding = await prisma.reconciliationFinding.findFirstOrThrow({
+        where: { accountId, code: 'LEDGER_DRIFT' },
+      });
+      expect(finding.status).toBe('OPEN');
+      expect(finding.severity).toBe('CRITICAL');
+      expect(finding.expected).toBe('100000');
+      expect(finding.actual).toBe('100500');
+      expect(finding.difference).toBe('500');
+      expect(finding.occurrences).toBe(1);
+      expect(finding.runId).toBe(summary.runId);
+    });
+
+    /**
+     * A drift that is still there on the next run is the same drift seen again,
+     * not a second one. A thousand duplicate rows would bury the one fact an
+     * investigator wants: how long this has been true.
+     */
+    it('counts a recurrence rather than filing it twice', async () => {
+      const { accountId } = await createAccount(prisma, { balance: '100000' });
+      await prisma.account.update({ where: { id: accountId }, data: { balance: '100500' } });
+
+      await service().check();
+      const second = await service().check();
+
+      expect(second.raised).toBe(0);
+      expect(second.recurred).toBe(1);
+      expect(await prisma.reconciliationFinding.count({ where: { accountId } })).toBe(1);
+
+      const finding = await prisma.reconciliationFinding.findFirstOrThrow({ where: { accountId } });
+      expect(finding.occurrences).toBe(2);
+      expect(finding.lastSeenAt.getTime()).toBeGreaterThanOrEqual(finding.firstSeenAt.getTime());
+    });
+
+    /**
+     * The one that stops a tick put there in good faith from hiding a real
+     * inconsistency. Somebody closed it; the drift is still there; it comes
+     * back open.
+     */
+    it('reopens a finding that had been resolved and has come back', async () => {
+      const { accountId } = await createAccount(prisma, { balance: '100000' });
+      await prisma.account.update({ where: { id: accountId }, data: { balance: '100500' } });
+      await service().check();
+
+      await prisma.reconciliationFinding.updateMany({
+        where: { accountId },
+        data: {
+          status: 'RESOLVED',
+          resolvedAt: new Date(),
+          resolutionNote: 'Looked into it, all fine',
+        },
+      });
+
+      await service().check();
+
+      const finding = await prisma.reconciliationFinding.findFirstOrThrow({ where: { accountId } });
+      expect(finding.status).toBe('OPEN');
+      expect(finding.resolvedAt).toBeNull();
+      expect(finding.resolutionNote).toBeNull();
+    });
+
+    it('records a failed run as failed, not as a clean one', async () => {
+      const broken = new ReconciliationService({
+        reconciliationRun: prismaService.reconciliationRun,
+        account: {
+          findMany: async () => {
+            throw new Error('the database went away');
+          },
+        },
+      } as unknown as PrismaService);
+
+      await expect(broken.check()).rejects.toThrow('the database went away');
+
+      const run = await prisma.reconciliationRun.findFirstOrThrow({
+        orderBy: { startedAt: 'desc' },
+      });
+      expect(run.status).toBe('FAILED');
+      expect(run.error).toContain('the database went away');
+      expect(run.finishedAt).not.toBeNull();
+    });
+
     it('detects drift in the other direction too', async () => {
       const { accountId } = await createAccount(prisma, { balance: '100000' });
       await prisma.account.update({ where: { id: accountId }, data: { balance: '99000' } });

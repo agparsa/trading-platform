@@ -11,6 +11,7 @@ import { RiskState, WsChannel } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { TickBus } from '../market/tick-bus';
 import { AccountStateService } from '../trading/account-state.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ExposureIndex } from './exposure-index';
 import { RealtimeGateway } from './realtime.gateway';
 import type { Env } from '../config/env.schema';
@@ -33,6 +34,9 @@ const RISK_THRESHOLD_TTL_MS = 60_000;
 interface RiskThresholds {
   marginCall: string | null;
   stopOut: string | null;
+  /** Who to tell. Read alongside the thresholds so a notice costs no extra query. */
+  userId: string | null;
+  accountNumber: string | null;
   readAt: number;
 }
 
@@ -69,6 +73,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     private readonly gateway: RealtimeGateway,
     private readonly ticks: TickBus,
     private readonly exposure: ExposureIndex,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -183,6 +188,44 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       marginCallLevelPercent: thresholds.marginCall,
       stopOutLevelPercent: thresholds.stopOut,
     });
+
+    /**
+     * And a notice that survives the browser being shut.
+     *
+     * The frame above reaches whoever is looking. Crossing into a margin call is
+     * precisely the moment a trader is *not* looking — that is what makes it
+     * worth telling them — so it is written down as well. Recovering to NORMAL
+     * is not: it is good news that needs no chasing, and a bell that rings for
+     * every recovery teaches people to ignore it.
+     */
+    if (state !== RiskState.NORMAL && thresholds.userId !== null) {
+      const level = marginLevel === null ? 'unknown' : `${marginLevel.toString()}%`;
+      const account = thresholds.accountNumber ?? accountId;
+      await this.notifications.raise({
+        userId: thresholds.userId,
+        kind: state === RiskState.STOP_OUT ? 'risk.stop_out' : 'risk.margin_call',
+        severity: state === RiskState.STOP_OUT ? 'CRITICAL' : 'WARNING',
+        title:
+          state === RiskState.STOP_OUT
+            ? `Account ${account} has reached its stop-out level`
+            : `Account ${account} is on margin call`,
+        body:
+          state === RiskState.STOP_OUT
+            ? `The margin level is ${level}, at or below the stop-out level of ${thresholds.stopOut ?? '—'}%. Positions may be closed automatically.`
+            : `The margin level is ${level}, at or below the margin-call level of ${thresholds.marginCall ?? '—'}%. Add funds or reduce exposure.`,
+        data: { marginLevel: marginLevel?.toString() ?? null, state, previous },
+        accountId,
+        /**
+         * One notice per account per state per minute.
+         *
+         * Transitions are already de-duplicated in memory, but this process is
+         * not the only one: two API instances each watching the same account
+         * would each see the crossing. The key makes the second a no-op at the
+         * database rather than a second bell.
+         */
+        dedupeKey: `${accountId}:${state}:${Math.floor(Date.now() / 60_000)}`,
+      });
+    }
   }
 
   /**
@@ -201,10 +244,15 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     const now = Date.now();
     if (cached !== undefined && now - cached.readAt < RISK_THRESHOLD_TTL_MS) return cached;
 
-    const settings = await this.prisma.accountSettings.findUnique({ where: { accountId } });
+    const account = await this.prisma.account.findUnique({
+      where: { id: accountId },
+      select: { userId: true, number: true, settings: true },
+    });
     const fresh: RiskThresholds = {
-      marginCall: settings?.marginCallLevelPercent?.toString() ?? null,
-      stopOut: settings?.stopOutLevelPercent?.toString() ?? null,
+      marginCall: account?.settings?.marginCallLevelPercent?.toString() ?? null,
+      stopOut: account?.settings?.stopOutLevelPercent?.toString() ?? null,
+      userId: account?.userId ?? null,
+      accountNumber: account?.number ?? null,
       readAt: now,
     };
     this.thresholds.set(accountId, fresh);

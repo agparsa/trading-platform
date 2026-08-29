@@ -22,6 +22,7 @@ import { MasterModule } from './master/master.module';
 import { IntegrityModule } from './integrity/integrity.module';
 import { OperationsModule } from './operations/operations.module';
 import { AdminModule } from './admin/admin.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { MarketModule } from './market/market.module';
 import { TradingModule } from './trading/trading.module';
 import { IdempotencyModule } from './common/idempotency/idempotency.module';
@@ -91,6 +92,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     IntegrityModule,
     OperationsModule,
     AdminModule,
+    ReconciliationModule,
     MarketModule,
     TradingModule,
     RealtimeModule,

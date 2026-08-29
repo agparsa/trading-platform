@@ -26,6 +26,8 @@ import { OrderTicket } from './order-ticket';
 import { PositionsPanel } from './positions-panel';
 import { TradingSettings } from './trading-settings';
 import { SecuritySettings } from './security-settings';
+import { NotificationBell } from './notification-bell';
+import { Toasts } from './toasts';
 import { Button, Panel, Tabs } from './primitives';
 import { Watchlist } from './watchlist';
 
@@ -167,6 +169,7 @@ export function Terminal() {
               </option>
             ))}
           </select>
+          <NotificationBell />
           <TradingSettings preferences={preferences} onChange={updatePreferences} />
           <SecuritySettings />
           {/*
@@ -291,6 +294,8 @@ export function Terminal() {
           />
         </Panel>
       </main>
+
+      <Toasts />
     </div>
   );
 }

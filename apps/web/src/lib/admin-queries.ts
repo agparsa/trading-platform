@@ -362,3 +362,91 @@ export function useHaltTrading() {
     onSuccess: invalidate,
   });
 }
+
+// ─── Reconciliation ────────────────────────────────────────────────────────
+
+export interface ReconciliationRunRow {
+  id: string;
+  status: string;
+  trigger: string;
+  accountsChecked: number;
+  findingsRaised: number;
+  findingsRecurred: number;
+  criticalCount: number;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+}
+
+export interface ReconciliationFindingRow {
+  id: string;
+  accountId: string;
+  accountNumber: string;
+  code: string;
+  severity: string;
+  status: string;
+  expected: string;
+  actual: string;
+  difference: string;
+  subjectType: string | null;
+  subjectId: string | null;
+  message: string;
+  occurrences: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+  resolutionNote: string | null;
+}
+
+export function useReconciliationRuns() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'reconciliation-runs'],
+    queryFn: () => api.get<ReconciliationRunRow[]>('/reconciliation/runs'),
+    enabled: accessToken !== null,
+    // A run in flight finishes without telling anybody, so the list is refreshed
+    // rather than left showing RUNNING until somebody clicks away and back.
+    refetchInterval: 20_000,
+  });
+}
+
+export function useReconciliationFindings(status: string) {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'reconciliation-findings', status],
+    queryFn: () =>
+      api.get<ReconciliationFindingRow[]>('/reconciliation/findings', {
+        query: status === '' ? { limit: 200 } : { status, limit: 200 },
+      }),
+    enabled: accessToken !== null,
+  });
+}
+
+export function useSetFindingStatus() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; status: string; note: string | null }) =>
+      api.post(
+        `/reconciliation/findings/${input.id}/status`,
+        { status: input.status, ...(input.note === null ? {} : { note: input.note }) },
+        { idempotencyKey: crypto.randomUUID() },
+      ),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['admin'] }),
+  });
+}
+
+export function useRequestReconciliation() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ runId: string; alreadyRunning: boolean }>(
+        '/reconciliation/runs',
+        {},
+        { idempotencyKey: crypto.randomUUID() },
+      ),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['admin'] }),
+  });
+}

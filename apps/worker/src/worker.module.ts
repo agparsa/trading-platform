@@ -7,6 +7,7 @@ import { QueueRegistry } from './queue-registry';
 import { SwapAccrualService } from './jobs/swap-accrual.service';
 import { ReconciliationService } from './jobs/reconciliation.service';
 import { MaintenanceService } from './jobs/maintenance.service';
+import { NotificationsService } from './jobs/notifications.service';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { MaintenanceService } from './jobs/maintenance.service';
     SwapAccrualService,
     ReconciliationService,
     MaintenanceService,
+    NotificationsService,
     QueueRegistry,
   ],
 })

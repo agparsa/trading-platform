@@ -10,6 +10,7 @@ import {
   type Quote,
   type RiskUpdate,
 } from './realtime-store';
+import { useToasts } from './toasts';
 
 const WS_URL = process.env['NEXT_PUBLIC_WS_URL'] ?? 'http://localhost:4000';
 
@@ -190,11 +191,14 @@ export function useSocket(
         case 'order.updated':
           notify.current();
           break;
-        case 'risk.updated':
+        case 'risk.updated': {
           // Transition-only by construction on the server, so this fires when
           // the account crosses a level and not while it sits at one.
-          live.applyRiskState(frame.data as unknown as RiskUpdate);
+          const risk = frame.data as unknown as RiskUpdate;
+          live.applyRiskState(risk);
+          raiseRiskToast(risk);
           break;
+        }
         default:
           break;
       }
@@ -224,4 +228,55 @@ export function useSocket(
       resolutions: [chartResolution],
     });
   }, [chartSymbol, chartResolution]);
+}
+
+/**
+ * A margin call on screen, now.
+ *
+ * The server has also written a notification, which is the record; this is the
+ * nudge, and the two are deliberately different things. A trader who is looking
+ * gets told immediately; one who is away finds it in the bell when they return.
+ *
+ * The toast id is the account and the state, so an account oscillating across
+ * its level updates one strip rather than stacking four. A stop-out is sticky:
+ * it is the platform closing somebody's positions, and fading that away after
+ * eight seconds would be deciding on their behalf that they had read it.
+ */
+function raiseRiskToast(risk: RiskUpdate): void {
+  const toasts = useToasts.getState();
+  const level = risk.marginLevel === null ? 'unknown' : `${risk.marginLevel}%`;
+
+  if (risk.state === 'STOP_OUT') {
+    toasts.push({
+      id: `risk:${risk.accountId}`,
+      tone: 'danger',
+      sticky: true,
+      title: 'Stop-out level reached',
+      body: `Margin level ${level}, at or below the stop-out level of ${risk.stopOutLevelPercent ?? '—'}%. Positions may be closed automatically.`,
+    });
+    return;
+  }
+
+  if (risk.state === 'MARGIN_CALL') {
+    toasts.push({
+      id: `risk:${risk.accountId}`,
+      tone: 'warning',
+      sticky: false,
+      title: 'Margin call',
+      body: `Margin level ${level}, at or below ${risk.marginCallLevelPercent ?? '—'}%. Add funds or reduce exposure.`,
+    });
+    return;
+  }
+
+  // Back to normal. Worth saying once — and worth *replacing* the warning that
+  // is still on screen, which is why it shares an id rather than being silent.
+  if (risk.previous !== 'NORMAL') {
+    toasts.push({
+      id: `risk:${risk.accountId}`,
+      tone: 'success',
+      sticky: false,
+      title: 'Margin level recovered',
+      body: `Back above the margin-call level, at ${level}.`,
+    });
+  }
 }

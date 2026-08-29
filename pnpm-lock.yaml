@@ -273,6 +273,9 @@ importers:
       '@tp/trading-core':
         specifier: workspace:*
         version: link:../../packages/trading-core
+      bullmq:
+        specifier: 'catalog:'
+        version: 5.81.3
       cookie:
         specifier: 'catalog:'
         version: 1.1.1

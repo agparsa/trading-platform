@@ -4,6 +4,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Tick } from '@tp/market-core';
 import { RiskState, WsChannel } from '@tp/shared-types';
 import { EventsService } from '../../src/realtime/events.service';
+import { NotificationsService } from '../../src/notifications/notifications.service';
 import { ExposureIndex } from '../../src/realtime/exposure-index';
 import { RealtimeService } from '../../src/realtime/realtime.service';
 import type { RealtimeGateway } from '../../src/realtime/realtime.gateway';
@@ -54,6 +55,7 @@ suite('Risk state transitions (integration)', () => {
   let realtime: RealtimeService;
   let sent: SentFrame[];
   let listening: Set<string>;
+  let raised: Array<Record<string, unknown>>;
 
   beforeAll(async () => {
     prisma = createTestClient();
@@ -98,6 +100,19 @@ suite('Risk state transitions (integration)', () => {
       REALTIME_VALUATION_INTERVAL_MS: 0,
     } as never);
 
+    /**
+     * The notification leg is queued, and Redis is faked here. `raise` never
+     * throws by contract — a queue that is briefly unreachable must not fail a
+     * stop-out — so a publisher that refuses is exactly the condition these
+     * tests should keep passing under.
+     */
+    raised = [];
+    const notifications = {
+      raise: async (job: Record<string, unknown>) => {
+        raised.push(job);
+      },
+    } as unknown as NotificationsService;
+
     realtime = new RealtimeService(
       config as never,
       prismaService,
@@ -105,6 +120,7 @@ suite('Risk state transitions (integration)', () => {
       gateway,
       new TickBus(),
       new ExposureIndex(prismaService, new EventsService(fakeRedis), 30_000),
+      notifications,
     );
   });
 
@@ -207,6 +223,36 @@ suite('Risk state transitions (integration)', () => {
     expect(frame?.data['marginLevel']).toEqual(expect.any(String));
     expect(frame?.data['stopOutLevelPercent']).toEqual(expect.any(String));
     expect(frame?.data['marginCallLevelPercent']).toEqual(expect.any(String));
+  });
+
+  /**
+   * The frame reaches whoever is looking. A margin call is precisely the moment
+   * a trader is not looking, so it is written down as well — and recovering to
+   * NORMAL is not, because a bell that rings for every recovery teaches people
+   * to ignore it.
+   */
+  it('also raises a notice when an account crosses into trouble, and not when it comes back', async () => {
+    await leveragedTrader();
+
+    await stack.publishQuote('XAUUSD', '4540.00', '4540.14');
+    await realtime.onTick(tick('4540.00', '4540.14'));
+    expect(raised).toHaveLength(1);
+    expect(raised[0]?.['kind']).toMatch(/^risk\./);
+    expect(raised[0]?.['severity']).not.toBe('INFO');
+    expect(typeof raised[0]?.['dedupeKey']).toBe('string');
+
+    await stack.publishQuote('XAUUSD', BID, ASK);
+    await realtime.onTick(tick(BID, ASK));
+
+    // The recovery produced a frame but no second notice.
+    expect(riskFrames()).toHaveLength(2);
+    expect(raised).toHaveLength(1);
+  });
+
+  it('says nothing at all while the account is comfortable', async () => {
+    await leveragedTrader();
+    await realtime.onTick(tick(BID, ASK));
+    expect(raised).toEqual([]);
   });
 
   it('still streams the account and P&L frames alongside it', async () => {

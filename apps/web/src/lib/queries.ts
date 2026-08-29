@@ -576,3 +576,59 @@ export function useModifyPending(accountId: string | null) {
     },
   });
 }
+
+// ─── Notifications ─────────────────────────────────────────────────────────
+
+export interface NotificationRow {
+  id: string;
+  kind: string;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  title: string;
+  body: string;
+  data: unknown;
+  accountId: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * The notices the server has written for this user.
+ *
+ * Polled slowly rather than pushed, and only while the panel is open. A
+ * notification is *already* the durable record — it was written precisely so it
+ * would survive the browser being shut — so there is nothing for a socket frame
+ * to add except a second delivery path to keep in step with the first.
+ *
+ * The one push that matters, a risk transition, arrives on the socket anyway and
+ * raises a toast; this is what the trader reads afterwards.
+ */
+export function useNotifications(enabled = true) {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api.get<NotificationRow[]>('/notifications', { query: { limit: 50 } }),
+    enabled: accessToken !== null && enabled,
+    staleTime: 30_000,
+    refetchInterval: enabled ? 60_000 : false,
+  });
+}
+
+export function useMarkRead() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string }) =>
+      api.post(`/notifications/${input.id}/read`, {}, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+export function useMarkAllRead() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post('/notifications/read-all', {}, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
