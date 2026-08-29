@@ -88,6 +88,29 @@ describe('ApiClient', () => {
     });
   });
 
+  /**
+   * 204 is a success with nothing to say, and the body is empty by definition.
+   * Before this was handled, every endpoint that answers 204 — sign out, disable
+   * two-factor, end a session — threw "the server returned an unreadable
+   * response" *after the server had done the thing*. It went unnoticed because
+   * the only caller at the time swallowed its errors.
+   */
+  it('treats 204 as success rather than as an unreadable response', async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+    await expect(
+      client(fetchImpl as unknown as typeof fetch).delete('/auth/sessions/abc', {
+        idempotencyKey: 'k',
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('still reports an empty body with a success status as unreadable', async () => {
+    const fetchImpl = vi.fn(async () => new Response('', { status: 200 }));
+    await expect(
+      client(fetchImpl as unknown as typeof fetch).get('/accounts/me'),
+    ).rejects.toMatchObject({ code: TradingErrorCode.INTERNAL_ERROR });
+  });
+
   it('reports a network failure as service unavailable', async () => {
     const fetchImpl = vi.fn(async () => {
       throw new Error('ECONNREFUSED');

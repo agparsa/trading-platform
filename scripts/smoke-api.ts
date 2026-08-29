@@ -555,6 +555,93 @@ const checks: Check[] = [
   },
   {
     /**
+     * Sessions, over HTTP.
+     *
+     * The assertion that matters is the isolation one: a session id is a UUID a
+     * user can read off their own list, and handing somebody else's to this
+     * endpoint must find nothing rather than end their session.
+     */
+    name: 'a user can see and end their own sessions, and only their own',
+    run: async () => {
+      const password = 'a-sufficiently-long-passphrase';
+      const alice = `smoke-sessions-a-${Date.now()}@test.local`;
+      const bob = `smoke-sessions-b-${Date.now()}@test.local`;
+
+      const signIn = async (email: string, userAgent: string) => {
+        await fetch(`${BASE}/api/v1/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'User-Agent': userAgent },
+          body: JSON.stringify({ email, password, displayName: 'Smoke Sessions' }),
+        }).then((response) => response.body?.cancel());
+        const login = await fetch(`${BASE}/api/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'User-Agent': userAgent },
+          body: JSON.stringify({ email, password }),
+        });
+        return ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+      };
+
+      const CHROME =
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+      const FIREFOX = 'Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0';
+
+      const aliceToken = await signIn(alice, CHROME);
+      // A second sign-in for Alice, from something else.
+      await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'User-Agent': FIREFOX },
+        body: JSON.stringify({ email: alice, password }),
+      }).then((response) => response.body?.cancel());
+
+      const listed = await fetch(`${BASE}/api/v1/auth/sessions`, {
+        headers: { Authorization: `Bearer ${aliceToken}` },
+      });
+      const list = (
+        (await listed.json()) as { data: Array<{ id: string; device: string; current: boolean }> }
+      ).data;
+      assert(list.length === 2, `expected two sessions, got ${list.length}`);
+      assert(
+        list.some((entry) => entry.device === 'Chrome on macOS') &&
+          list.some((entry) => entry.device === 'Firefox on Linux'),
+        `sessions were not described as expected: ${list.map((e) => e.device).join(', ')}`,
+      );
+      assert(
+        list.filter((entry) => entry.current).length === 1,
+        'no single session was marked current',
+      );
+
+      const other = list.find((entry) => !entry.current);
+      assert(other !== undefined, 'both sessions claimed to be the current one');
+
+      // Bob cannot end it.
+      const bobToken = await signIn(bob, CHROME);
+      const refused = await fetch(`${BASE}/api/v1/auth/sessions/${other?.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${bobToken}` },
+      });
+      const refusedBody = (await refused.json()) as { error?: { code: string } };
+      assert(refused.status === 404, `another user's revoke returned ${refused.status}`);
+      assert(
+        refusedBody.error?.code === 'RESOURCE_NOT_FOUND',
+        `expected RESOURCE_NOT_FOUND, got ${refusedBody.error?.code}`,
+      );
+
+      // Alice can.
+      const ended = await fetch(`${BASE}/api/v1/auth/sessions/${other?.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${aliceToken}` },
+      });
+      assert(ended.status === 204, `ending a session returned ${ended.status}`);
+
+      const after = await fetch(`${BASE}/api/v1/auth/sessions`, {
+        headers: { Authorization: `Bearer ${aliceToken}` },
+      });
+      const remaining = ((await after.json()) as { data: unknown[] }).data;
+      assert(remaining.length === 1, `expected one session left, got ${remaining.length}`);
+    },
+  },
+  {
+    /**
      * Permissions are enforced by the running application, not by a unit test.
      *
      * Every other permission test in this repository exercises the catalogue or

@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { PrismaClient } from '@prisma/client';
 import { AuthService, type LoginResult } from '../../src/auth/auth.service';
 import { TotpService } from '../../src/auth/totp.service';
+import { SessionsService } from '../../src/auth/sessions.service';
 import {
   SecretBox,
   generateEncryptionKey,
@@ -102,11 +103,13 @@ suite('Auth (integration)', () => {
       parseEncryptionKeys(config.get('SECRET_ENCRYPTION_KEYS') as string),
     ) as any;
     totp = new TotpService(prismaService, secrets, passwords, audit, config as any);
+    const sessions = new SessionsService(prismaService, audit, email);
     auth = new AuthService(
       prismaService,
       passwords,
       tokens,
       totp,
+      sessions,
       accounts,
       audit,
       email,

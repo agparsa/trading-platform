@@ -1,11 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
+  Param,
+  ParseUUIDPipe,
   Post,
   Req,
   Res,
@@ -31,6 +34,7 @@ import { SelfService } from '../common/decorators/self-service.decorator';
 import type { RequestWithContext } from '../common/request-context';
 import { AuthService, type AuthContext } from './auth.service';
 import { TotpService, type TotpStatus } from './totp.service';
+import { SessionsService, type SessionSummary } from './sessions.service';
 import {
   ChangePasswordDto,
   LoginDto,
@@ -58,6 +62,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly totp: TotpService,
+    private readonly sessions: SessionsService,
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
   ) {}
 
@@ -218,6 +223,45 @@ export class AuthController {
     @Req() request: RequestWithContext,
   ): Promise<void> {
     await this.totp.disable(user.id, body.password, body.code, request.requestId);
+  }
+
+  /**
+   * The user's live sessions, with their own marked.
+   *
+   * One row per sign-in, not per token: a token rotates every fifteen minutes,
+   * and listing rows would show a user ninety-six sessions a day from one
+   * laptop. A list that looks like noise is a list nobody reads, and the value
+   * of this one is entirely that they do.
+   */
+  @SelfService()
+  @Get('sessions')
+  @ApiOperation({ summary: 'List the signed-in user’s active sessions' })
+  async listSessions(@CurrentUser() user: AuthenticatedUser): Promise<SessionSummary[]> {
+    return this.sessions.list(user.id, user.sessionId);
+  }
+
+  /**
+   * Ends one session.
+   *
+   * A user who ends their own current session is signing out, which is a
+   * reasonable thing to want from a list of sessions and is not treated as a
+   * mistake. The cookie is left alone: the next refresh fails and the client
+   * clears it, which is the same path an expired session takes.
+   */
+  @SelfService()
+  @Delete('sessions/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Revoke one of the signed-in user’s sessions' })
+  async revokeSession(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Req() request: RequestWithContext,
+  ): Promise<void> {
+    await this.sessions.revoke(user.id, id, {
+      requestId: request.requestId,
+      ipAddress: request.ip,
+      userAgent: request.header('user-agent'),
+    });
   }
 
   @Public()

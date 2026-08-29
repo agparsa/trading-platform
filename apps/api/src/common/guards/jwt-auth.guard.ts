@@ -48,7 +48,7 @@ export class JwtAuthGuard implements CanActivate {
       throw new DomainError(TradingErrorCode.FORBIDDEN, 'This account is disabled');
     }
 
-    request.user = { id: user.id, email: user.email, role: user.role };
+    request.user = { id: user.id, email: user.email, role: user.role, sessionId: claims.fam };
     return true;
   }
 }

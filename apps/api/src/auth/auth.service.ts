@@ -8,6 +8,7 @@ import { AuditService } from '../common/audit/audit.service';
 import { PasswordService } from './password.service';
 import { TokenService, type IssueContext } from './token.service';
 import { TotpService } from './totp.service';
+import { SessionsService } from './sessions.service';
 import { EmailPort } from './email/email.port';
 import type { Env } from '../config/env.schema';
 import type { TokenPair } from './token.types';
@@ -51,6 +52,7 @@ export class AuthService {
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
     private readonly totp: TotpService,
+    private readonly sessions: SessionsService,
     private readonly accounts: AccountsService,
     private readonly audit: AuditService,
     private readonly email: EmailPort,
@@ -264,6 +266,10 @@ export class AuthService {
       ipAddress: context.ipAddress ?? null,
       userAgent: context.userAgent ?? null,
     });
+
+    // After the session exists, and unable to prevent it: a mail server being
+    // down must not stop a trader reaching their positions.
+    await this.sessions.noticeSignIn(user, context, this.tokens.familyOf(pair.accessToken));
 
     return pair;
   }

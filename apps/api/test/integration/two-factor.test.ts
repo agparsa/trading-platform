@@ -5,6 +5,7 @@ import type { PrismaClient } from '@prisma/client';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { AuthService, type LoginResult } from '../../src/auth/auth.service';
 import { TotpService } from '../../src/auth/totp.service';
+import { SessionsService } from '../../src/auth/sessions.service';
 import { TokenService } from '../../src/auth/token.service';
 import { PasswordService } from '../../src/auth/password.service';
 import { EmailPort } from '../../src/auth/email/email.port';
@@ -77,11 +78,13 @@ suite('Two-factor authentication (integration)', () => {
     const audit = new AuditService(prismaService);
     secrets = new SecretBox(parseEncryptionKeys(KEY));
     totp = new TotpService(prismaService, secrets as never, passwords, audit, config as never);
+    const sessions = new SessionsService(prismaService, audit, new SilentEmailAdapter());
     auth = new AuthService(
       prismaService,
       passwords,
       tokens,
       totp,
+      sessions,
       accounts,
       audit,
       new SilentEmailAdapter(),

@@ -47,6 +47,7 @@ export class TokenService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      fam: familyId,
       typ: 'access',
     };
     const accessToken = await this.jwt.signAsync(accessClaims, {
@@ -241,6 +242,17 @@ export class TokenService {
       data: { revokedAt: new Date() },
     });
     return result.count;
+  }
+
+  /**
+   * The rotation family an access token belongs to.
+   *
+   * Read back from the token just issued rather than returned alongside it: the
+   * family is already in the claims, and a second channel carrying the same
+   * value is a second thing that can disagree with the first.
+   */
+  familyOf(accessToken: string): string {
+    return this.jwt.decode<AccessTokenClaims>(accessToken).fam;
   }
 
   private tokenIdOf(refreshToken: string): string {

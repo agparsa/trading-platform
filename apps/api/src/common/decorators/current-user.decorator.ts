@@ -6,6 +6,12 @@ export interface AuthenticatedUser {
   readonly id: string;
   readonly email: string;
   readonly role: UserRole;
+  /**
+   * The session this request belongs to, taken from the token rather than the
+   * database — it identifies which of the user's sessions is speaking, which no
+   * amount of looking at the user row can tell you.
+   */
+  readonly sessionId: string;
 }
 
 /**

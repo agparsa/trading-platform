@@ -18,6 +18,15 @@ interface EnrolmentOffer {
   otpauthUri: string;
 }
 
+interface SessionSummary {
+  id: string;
+  device: string;
+  ipAddress: string | null;
+  signedInAt: string;
+  lastSeenAt: string;
+  current: boolean;
+}
+
 /**
  * Turning two-factor authentication on and off.
  *
@@ -31,6 +40,7 @@ export function SecuritySettings() {
   const { api } = useSession();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<TwoFactorStatus | null>(null);
+  const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [offer, setOffer] = useState<EnrolmentOffer | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
@@ -41,6 +51,7 @@ export function SecuritySettings() {
 
   const refresh = useCallback(async () => {
     setStatus(await api.get<TwoFactorStatus>('/auth/2fa').catch(() => null));
+    setSessions(await api.get<SessionSummary[]>('/auth/sessions').catch(() => null));
   }, [api]);
 
   useEffect(() => {
@@ -104,6 +115,12 @@ export function SecuritySettings() {
       setRecoveryCodes(result.recoveryCodes);
       setOffer(null);
       setCode('');
+      await refresh();
+    });
+
+  const endSession = (id: string) =>
+    run(async () => {
+      await api.delete(`/auth/sessions/${id}`, { idempotencyKey: crypto.randomUUID() });
       await refresh();
     });
 
@@ -262,6 +279,46 @@ export function SecuritySettings() {
           )}
 
           {error === null ? null : <p className="mt-2 text-[11px] text-terminal-short">{error}</p>}
+
+          <p className="mb-2 mt-4 border-t border-terminal-border pt-3 text-[10px] uppercase tracking-wider text-terminal-muted">
+            Where you are signed in
+          </p>
+          {sessions === null ? (
+            <p className="text-[11px] text-terminal-muted">Loading…</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {sessions.map((session) => (
+                <li key={session.id} className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] text-terminal-text">
+                      {session.device}
+                      {session.current ? (
+                        <span className="ml-1 text-terminal-muted">· this device</span>
+                      ) : null}
+                    </p>
+                    <p className="truncate text-[10px] text-terminal-muted">
+                      {session.ipAddress ?? 'address unknown'} · since{' '}
+                      {new Date(session.signedInAt).toLocaleString()}
+                    </p>
+                  </div>
+                  {session.current ? null : (
+                    <button
+                      type="button"
+                      className="shrink-0 text-[10px] text-terminal-muted transition-colors hover:text-terminal-short"
+                      disabled={busy}
+                      onClick={() => void endSession(session.id)}
+                    >
+                      End
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-2 text-[10px] leading-relaxed text-terminal-muted">
+            A device you do not recognise means someone else has your password. End that session,
+            then change it.
+          </p>
         </div>
       )}
     </div>

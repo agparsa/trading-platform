@@ -116,6 +116,13 @@ hole: the risk being addressed is a _script reading_ the token, and no response
 ever hands one out. A client that wants to manage the value itself must read it
 from the `Set-Cookie` header, which only a non-browser client can do.
 
+## Sessions and devices
+
+A user can list their live sessions and end any of them. A sign-in from a kind of
+device the account has not used before is recorded and emailed to the owner. The
+only inputs are the user agent and the IP already stored with each session — no
+fingerprinting, no location lookup. See [sessions.md](./sessions.md).
+
 ## Authorisation
 
 Roles are enforced as sets of `resource.verb` capabilities, checked in a global

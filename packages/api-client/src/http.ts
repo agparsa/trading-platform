@@ -109,6 +109,18 @@ export class ApiClient {
           : { credentials: this.options.credentials }),
       });
 
+      /**
+       * 204 means the server did what was asked and had nothing to say.
+       *
+       * It is checked before the body is read, because a 204 body is empty by
+       * definition and `response.json()` on it throws. Without this, every
+       * endpoint that answers 204 — sign out, disable two-factor, end a session
+       * — reported "the server returned an unreadable response" *after
+       * succeeding*, and the only reason nobody noticed is that the one caller
+       * that existed swallowed its errors.
+       */
+      if (response.status === 204) return undefined as T;
+
       const payload = (await response.json().catch(() => null)) as ApiResponse<T> | null;
 
       if (payload === null) {

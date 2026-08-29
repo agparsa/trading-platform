@@ -13,6 +13,16 @@ export interface AccessTokenClaims {
   sub: string;
   email: string;
   role: UserRole;
+  /**
+   * The rotation family this token belongs to — the same value the refresh
+   * token carries, and what the user sees as one "session".
+   *
+   * It is here so a request can say which session it *is*. Without it, a user
+   * looking at their list of sessions has no way to tell which row is the
+   * browser they are reading it in, and revoking the wrong one signs them out
+   * while leaving the intruder in place.
+   */
+  fam: string;
   /** Token type discriminator — an access token must never be usable as a refresh token. */
   typ: 'access';
 }
