@@ -5,3 +5,4 @@ export * from './provider';
 export * from './candles';
 export * from './providers';
 export * from './tick-window';
+export * from './integrity';

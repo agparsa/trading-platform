@@ -171,3 +171,56 @@ export async function seedClosedSymbol(prisma: PrismaClient): Promise<void> {
   });
   await prisma.marketSession.deleteMany({ where: { symbolId: symbol.id } });
 }
+
+/**
+ * An instrument quoted in a currency that is not the account's.
+ *
+ * USDJPY is the platform's first such instrument, and it exists for exactly
+ * this reason: every other listed contract settles its P&L in USD, so the whole
+ * conversion path — `ConversionService`, and the `quoteToAccountRate` that
+ * multiplies P&L, margin and exposure on every foreign-quoted position — was
+ * reachable in production and exercised by nothing.
+ *
+ * Its session is open every minute of the week so a test does not depend on
+ * which day it runs.
+ */
+export async function seedJpySymbol(prisma: PrismaClient): Promise<void> {
+  const symbol = await prisma.symbol.upsert({
+    where: { code: 'USDJPY' },
+    create: {
+      code: 'USDJPY',
+      description: 'US Dollar vs Japanese Yen',
+      category: 'FX',
+      quoteCurrency: 'JPY',
+    },
+    update: { quoteCurrency: 'JPY' },
+  });
+  await prisma.symbolSpec.upsert({
+    where: { symbolId: symbol.id },
+    create: {
+      symbolId: symbol.id,
+      contractSize: '100000',
+      tickSize: '0.001',
+      pricePrecision: 3,
+      volumeStep: '0.01',
+      volumePrecision: 2,
+      minVolume: '0.01',
+      maxVolume: '200',
+      marginRate: '0.002',
+      commissionPerLot: '3.5',
+      swapLongPerLot: '1.8',
+      swapShortPerLot: '-3.2',
+    },
+    update: {},
+  });
+  await prisma.marketSession.deleteMany({ where: { symbolId: symbol.id } });
+  await prisma.marketSession.createMany({
+    data: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+      symbolId: symbol.id,
+      timezone: 'UTC',
+      dayOfWeek,
+      openMinute: 0,
+      closeMinute: 1440,
+    })),
+  });
+}

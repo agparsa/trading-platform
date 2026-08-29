@@ -21,6 +21,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { SymbolsService } from '../symbols/symbols.service';
+import { MarketIntegrityService } from './market-integrity.service';
 import { QuoteService } from './quote.service';
 import { TickBus } from './tick-bus';
 import { CandleBus } from './candle-bus';
@@ -49,11 +50,13 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
   private running = false;
   private readonly aggregators = new Map<string, CandleAggregator>();
   private resolutions: Resolution[] = [];
+  private relaying = false;
 
   constructor(
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
     private readonly symbols: SymbolsService,
     private readonly quotes: QuoteService,
+    private readonly integrity: MarketIntegrityService,
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly metrics: MetricsService,
@@ -76,9 +79,21 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
       .filter((value): value is Resolution => isResolution(value));
 
     if (!this.config.getOrThrow('MARKET_INGEST_ENABLED', { infer: true })) {
-      this.logger.warn(
-        'Market ingestion is disabled on this instance (MARKET_INGEST_ENABLED=false)',
-      );
+      /**
+       * This instance does not ingest — but it still has to *know the price*.
+       *
+       * Exactly one process may pull from the provider, or candle volume is
+       * counted twice. Every other process still runs valuations, serves
+       * `GET /market/quotes` and pushes account frames to its own sockets, and
+       * without prices it would do all three against whatever it last read out
+       * of Redis. So it relays: the ingesting instance publishes each tick on
+       * `market:ticks`, and this listens.
+       *
+       * The channel was being published to and nothing was listening. That was
+       * survivable only because nothing had been scaled past one instance yet;
+       * the moment it was, half the traders would have watched a dead terminal.
+       */
+      await this.startRelay();
       return;
     }
 
@@ -103,8 +118,14 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
   async onApplicationShutdown(): Promise<void> {
     this.running = false;
     if (this.timer !== null) clearTimeout(this.timer);
+    if (this.relaying) {
+      this.relaying = false;
+      await this.redis.subscriber.unsubscribe(TICK_CHANNEL);
+    }
     await this.provider?.stop();
     // Persist the partial candles rather than discarding a minute of data.
+    // A relaying instance has aggregators too, and none of them are its to save.
+    if (this.provider === null) return;
     for (const aggregator of this.aggregators.values()) {
       const candle = aggregator.flush();
       if (candle !== null) await this.persistCandle(candle);
@@ -145,18 +166,82 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
     const simulator = this.provider as InternalMarketSimulator | null;
     if (simulator === null) return;
     const ticks = simulator.pump();
-    for (const tick of ticks) await this.onTick(tick);
+    for (const tick of ticks) await this.ingest(tick);
   }
 
-  private async onTick(tick: Tick): Promise<void> {
+  /**
+   * Listen for ticks another instance ingested.
+   *
+   * They go through the same gate and the same fan-out as locally generated
+   * ones — a relayed tick is still market data from outside this process, and a
+   * crossed book does not become trustworthy by crossing Redis first. What it
+   * does *not* do is re-publish to `market:ticks` (that would echo forever) or
+   * persist candles (the ingesting instance owns those rows; two writers would
+   * be two upserts racing for the same bucket).
+   */
+  private async startRelay(): Promise<void> {
+    this.relaying = true;
+    this.redis.subscriber.on('message', (channel: string, payload: string) => {
+      if (channel !== TICK_CHANNEL || !this.relaying) return;
+      let tick: Tick;
+      try {
+        tick = JSON.parse(payload) as Tick;
+      } catch {
+        // Malformed payloads are a transport fault, not a market event. The
+        // gate would refuse it anyway; parsing failure just refuses it sooner.
+        return;
+      }
+      void this.ingest(tick, { relayed: true }).catch((error: unknown) => {
+        this.logger.error({ err: error }, 'Relayed tick failed');
+      });
+    });
+    await this.redis.subscriber.subscribe(TICK_CHANNEL);
+    this.logger.log(
+      'Market ingestion is disabled on this instance; relaying ticks from market:ticks instead',
+    );
+  }
+
+  /**
+   * Take one tick from outside and make it the platform's price.
+   *
+   * Public and named, because it is the seam every market data source arrives
+   * through: the built-in simulator's pump, the relay on a non-ingesting
+   * instance, and — when one exists — an external provider adapter pushing over
+   * a webhook or a socket. `MarketDataProvider` describes how to *pull*; this is
+   * what a provider that pushes calls, and having it be a private method reached
+   * only from the pump loop was the reason there was no way to write one.
+   *
+   * Returns nothing. A tick that is refused, out of session, or older than the
+   * price already held simply does not become a price; a caller must not read
+   * silence as a market event, and must not read acceptance as a fill.
+   */
+  async ingest(tick: Tick, options: { relayed?: boolean } = {}): Promise<void> {
     const instrument = this.symbols.find(tick.symbol);
     // Outside its session an instrument produces no tradeable price. Publishing
     // one would let a stop fire on a weekend.
     if (instrument === undefined || !isSessionOpen(instrument.session, tick.timestamp)) return;
 
-    await this.quotes.publish(tick);
+    /**
+     * The integrity gate, before anything else sees the tick.
+     *
+     * Placed here rather than inside `QuoteService` deliberately: a rejected
+     * tick must reach neither the quote, nor the trigger engine, nor the candle
+     * aggregator, nor the socket. A crossed book that was refused as a quote but
+     * still evaluated stops would be the worst of both — the price nobody
+     * believes, deciding whether a position closes.
+     *
+     * A rejection is a statement about the feed and never about the market. The
+     * previous price stands, and `requireFresh` is what decides whether it is
+     * still fit to trade on.
+     */
+    if (!this.integrity.admit(tick).accepted) return;
+
+    // A tick older than the one already held loses to it — see QuoteService.
+    if (!(await this.quotes.publish(tick))) return;
     this.metrics.marketTicks.inc({ symbol: tick.symbol });
-    await this.redis.publisher.publish(TICK_CHANNEL, JSON.stringify(tick));
+    if (options.relayed !== true) {
+      await this.redis.publisher.publish(TICK_CHANNEL, JSON.stringify(tick));
+    }
 
     // Local consumers (trigger engine, WebSocket gateway) run before the next
     // tick is generated, so a stop is evaluated against every price the market
@@ -175,7 +260,9 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
         this.aggregators.set(key, aggregator);
       }
       const closed = aggregator.push(tick);
-      if (closed !== null) await this.persistCandle(closed);
+      // Only the ingesting instance writes candle rows. A relayed pass keeps
+      // its own aggregator so its charts have a live bar, and writes nothing.
+      if (closed !== null && options.relayed !== true) await this.persistCandle(closed);
       if (!broadcast) continue;
 
       // A closed bucket produces two frames: the final state of the bar that
@@ -262,6 +349,8 @@ const SIMULATOR_START_PRICES: Readonly<Record<string, string>> = {
   ETHUSD: '2985.40',
   EURUSD: '1.08750',
   AUDUSD: '0.71580',
+  GBPUSD: '1.27340',
+  USDJPY: '155.250',
 };
 
 const SIMULATOR_VOLATILITY: Readonly<Record<string, number>> = {
@@ -271,6 +360,8 @@ const SIMULATOR_VOLATILITY: Readonly<Record<string, number>> = {
   ETHUSD: 0.0009,
   EURUSD: 0.00008,
   AUDUSD: 0.0001,
+  GBPUSD: 0.00009,
+  USDJPY: 0.00007,
 };
 
 const SIMULATOR_HALF_SPREAD: Readonly<Record<string, string>> = {
@@ -280,4 +371,6 @@ const SIMULATOR_HALF_SPREAD: Readonly<Record<string, string>> = {
   ETHUSD: '0.35',
   EURUSD: '0.00005',
   AUDUSD: '0.000005',
+  GBPUSD: '0.00006',
+  USDJPY: '0.005',
 };

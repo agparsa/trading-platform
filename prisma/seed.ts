@@ -149,6 +149,52 @@ const INSTRUMENTS: SeedInstrument[] = [
     swapShortPerLot: '0.2',
     session: 'fx',
   },
+  {
+    code: 'GBPUSD',
+    description: 'British Pound vs US Dollar',
+    category: 'FX',
+    quoteCurrency: 'USD',
+    contractSize: '100000',
+    tickSize: '0.00001',
+    pricePrecision: 5,
+    volumeStep: '0.01',
+    volumePrecision: 2,
+    minVolume: '0.01',
+    maxVolume: '200',
+    marginRate: '0.002',
+    commissionPerLot: '3.5',
+    swapLongPerLot: '-1.4',
+    swapShortPerLot: '0.3',
+    session: 'fx',
+  },
+  /**
+   * The first instrument NOT quoted in USD.
+   *
+   * That is why it is here. Every other instrument on this list settles its P&L
+   * in the account currency without conversion, which means the conversion path
+   * — ConversionService, the quoteToAccountRate that multiplies P&L, margin and
+   * exposure on every position — was reachable in production and exercised by
+   * nothing a developer would see. A JPY-quoted pair makes it the ordinary case
+   * rather than the untested one.
+   */
+  {
+    code: 'USDJPY',
+    description: 'US Dollar vs Japanese Yen',
+    category: 'FX',
+    quoteCurrency: 'JPY',
+    contractSize: '100000',
+    tickSize: '0.001',
+    pricePrecision: 3,
+    volumeStep: '0.01',
+    volumePrecision: 2,
+    minVolume: '0.01',
+    maxVolume: '200',
+    marginRate: '0.002',
+    commissionPerLot: '3.5',
+    swapLongPerLot: '1.8',
+    swapShortPerLot: '-3.2',
+    session: 'fx',
+  },
 ];
 
 /** Windows in UTC minutes from midnight, by weekday (0 = Sunday). */

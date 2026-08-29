@@ -218,15 +218,13 @@ describe('storeBarSource', () => {
     useRealtime
       .getState()
       .applyBar({ ...candle(BASE, '4583.50'), symbol: 'XAUUSD', resolution: '1' });
-    useRealtime
-      .getState()
-      .applyQuote({
-        symbol: 'XAUUSD',
-        bid: '4583.58',
-        ask: '4583.72',
-        spread: '0.14',
-        timestamp: 1,
-      });
+    useRealtime.getState().applyQuote({
+      symbol: 'XAUUSD',
+      bid: '4583.58',
+      ask: '4583.72',
+      spread: '0.14',
+      timestamp: 1,
+    });
 
     stop();
     expect(seen).toEqual(['4583.50']);

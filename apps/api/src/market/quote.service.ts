@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { isTickFresh, type Tick } from '@tp/market-core';
-import { spreadOf, toDecimal } from '@tp/financial-core';
+import { isBookSane, isTickFresh, type Tick } from '@tp/market-core';
+import { spreadOf } from '@tp/financial-core';
 import { DomainError, type QuoteDto, TradingErrorCode } from '@tp/shared-types';
 import { RedisService } from '../redis/redis.service';
 import type { Env } from '../config/env.schema';
@@ -27,23 +27,74 @@ export class QuoteService {
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
   ) {}
 
-  async publish(tick: Tick): Promise<void> {
+  /**
+   * Make a tick the current price.
+   *
+   * Refuses a tick older than the one already held for that symbol, and returns
+   * `false` when it does. `MarketIntegrityService` is the real gate and runs
+   * before anything reaches here; this is the second line, and it exists because
+   * `publish` is reachable from more than one place — the ingest loop, the
+   * relay on a non-ingesting instance, tests — and "the newest tick wins" is a
+   * property of *the quote*, not of any one caller.
+   *
+   * Overwriting unconditionally was the previous behaviour, and out-of-order
+   * delivery is normal on any real transport. A tick that arrives late and
+   * overwrites a newer one rewinds the price, and the rewound price then decides
+   * whether a stop fires.
+   */
+  async publish(tick: Tick): Promise<boolean> {
+    const held = this.local.get(tick.symbol);
+    if (held !== undefined && tick.timestamp < held.timestamp) return false;
+
     this.local.set(tick.symbol, tick);
     // A short TTL means a symbol whose feed dies stops answering rather than
     // serving a price from an hour ago to a process that just started.
     await this.redis.client.set(QUOTE_KEY(tick.symbol), JSON.stringify(tick), 'EX', 60);
+    return true;
   }
 
-  /** Latest known tick, local first, then Redis. Null when nothing is known. */
+  /**
+   * Latest known tick, local first, then Redis. Null when nothing is known.
+   *
+   * The Redis copy is checked for sanity before it is adopted. It is written by
+   * whichever process ingests, and a corrupted or truncated value there would
+   * otherwise become this process's price with nothing between it and the
+   * engine. Local values have already passed the gate.
+   */
   async latest(symbol: string): Promise<Tick | null> {
     const local = this.local.get(symbol);
     if (local !== undefined) return local;
 
     const raw = await this.redis.client.get(QUOTE_KEY(symbol));
     if (raw === null) return null;
-    const tick = JSON.parse(raw) as Tick;
+
+    let tick: Tick;
+    try {
+      tick = JSON.parse(raw) as Tick;
+    } catch {
+      return null;
+    }
+    if (typeof tick?.symbol !== 'string' || !isBookSane(tick)) return null;
+
     this.local.set(symbol, tick);
     return tick;
+  }
+
+  /**
+   * Drop the cached price for a symbol.
+   *
+   * The local map is a cache with no expiry of its own — Redis has a TTL, this
+   * does not — so a price that must not be used again has to be removed by
+   * hand. Two cases need it: an instrument being delisted, and an operator who
+   * has established that a particular quote was poisoned and does not want the
+   * ordering rule in `publish` to keep it in place ahead of a correction.
+   *
+   * It does not clear Redis. The next `latest` will re-read from there, which
+   * is what the operator wants when the correction is coming from whichever
+   * process ingests.
+   */
+  forget(symbol: string): void {
+    this.local.delete(symbol);
   }
 
   /**
@@ -106,7 +157,9 @@ export class QuoteService {
   }
 }
 
-/** Exported for the health indicator: a book that is crossed is a broken feed. */
-export function isBookSane(tick: Tick): boolean {
-  return toDecimal(tick.bid).gt(0) && toDecimal(tick.ask).gt(toDecimal(tick.bid));
-}
+/**
+ * Re-exported so callers that already depend on the quote service do not have
+ * to reach past it. The definition lives in `@tp/market-core` beside the gate
+ * that uses it — one answer to "is this book broken", not two that can drift.
+ */
+export { isBookSane };

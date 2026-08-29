@@ -19,6 +19,8 @@ export class MetricsService {
   readonly executionLatency: Histogram<'symbol'>;
   readonly websocketConnections: Counter<'event'>;
   readonly ticksCoalesced: Counter<'symbol'>;
+  readonly ticksRejected: Counter<'symbol' | 'reason'>;
+  readonly ticksReanchored: Counter<'symbol' | 'reason'>;
 
   constructor() {
     collectDefaultMetrics({ register: this.registry, prefix: 'tp_' });
@@ -64,6 +66,20 @@ export class MetricsService {
       name: 'tp_ticks_coalesced_total',
       help: 'Ticks folded into a running trigger pass rather than starting their own. A rising rate means the engine is behind the feed.',
       labelNames: ['symbol'],
+      registers: [this.registry],
+    });
+
+    this.ticksRejected = new Counter({
+      name: 'tp_market_ticks_rejected_total',
+      help: 'Ticks refused by the integrity gate, by symbol and reason. A rising CROSSED or OUT_OF_ORDER rate is a broken feed, not a market.',
+      labelNames: ['symbol', 'reason'] as const,
+      registers: [this.registry],
+    });
+
+    this.ticksReanchored = new Counter({
+      name: 'tp_market_ticks_reanchored_total',
+      help: 'Ticks accepted only because the integrity gate re-anchored after a run of rejections. Each one means the platform followed a move it first refused.',
+      labelNames: ['symbol', 'reason'] as const,
       registers: [this.registry],
     });
 

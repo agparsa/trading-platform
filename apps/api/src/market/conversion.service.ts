@@ -51,10 +51,27 @@ export class ConversionService {
     );
   }
 
+  /**
+   * The mid of a *fresh* quote, or nothing.
+   *
+   * `requireFresh`, not `latest`. A conversion rate is not a display figure: it
+   * multiplies P&L, margin and exposure on every position quoted in a foreign
+   * currency, so an hour-old rate does not make those numbers slightly stale, it
+   * makes them wrong by however far the currency has moved — and nothing on
+   * screen or in the ledger would say so.
+   *
+   * A stale rate therefore behaves exactly like a missing one: the caller falls
+   * through to the next route and, if there is none, refuses. Refusing an order
+   * because a rate cannot be trusted is recoverable; pricing it against a rate
+   * nobody checked is not.
+   */
   private async midOf(code: string): Promise<Decimal | null> {
     if (this.symbols.find(code) === undefined) return null;
-    const tick = await this.quotes.latest(code);
-    if (tick === null) return null;
-    return toDecimal(tick.bid).plus(toDecimal(tick.ask)).div(2);
+    try {
+      const tick = await this.quotes.requireFresh(code);
+      return toDecimal(tick.bid).plus(toDecimal(tick.ask)).div(2);
+    } catch {
+      return null;
+    }
   }
 }

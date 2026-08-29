@@ -246,6 +246,37 @@ export function useQuoteSnapshot() {
   });
 }
 
+/**
+ * How each instrument has moved today, from the server.
+ *
+ * Refetched on an interval, and this is the one place polling is right: the
+ * reference is the previous *daily* close, so the figure changes when the price
+ * changes — which the socket already reports — and when the day rolls, which
+ * nothing reports. A minute is far finer than either.
+ */
+export interface MarketStatsRow {
+  symbol: string;
+  open: string | null;
+  high: string | null;
+  low: string | null;
+  last: string | null;
+  reference: string | null;
+  referenceKind: 'PREVIOUS_CLOSE' | 'SESSION_OPEN' | 'NONE';
+  change: string | null;
+  changePercent: string | null;
+}
+
+export function useMarketStats() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['market-stats'],
+    queryFn: () => api.get<MarketStatsRow[]>('/market/stats'),
+    enabled: accessToken !== null,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+}
+
 export function useAccounts() {
   const { api, accessToken } = useSession();
   return useQuery({

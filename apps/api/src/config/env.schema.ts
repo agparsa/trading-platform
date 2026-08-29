@@ -78,6 +78,37 @@ export const envSchema = z.object({
 
   // How old a quote may be before the engine refuses to trade on it.
   QUOTE_MAX_AGE_MS: z.coerce.number().int().min(100).default(5_000),
+
+  /**
+   * Market data integrity thresholds. See MarketIntegrityService and
+   * @tp/market-core's TickGate for what each one refuses and why.
+   *
+   * The defaults are deliberately generous: this is a broken-feed detector, not
+   * a liquidity opinion. A spread of 5% of the price, or a 10% move between two
+   * consecutive ticks, does not happen on anything this platform lists — and
+   * when it genuinely does, the gate re-anchors rather than freezing the price.
+   * Zero disables a check.
+   */
+  MARKET_MAX_SPREAD_RATIO: z.coerce
+    .number()
+    .min(0)
+    .max(1)
+    .default(0.05)
+    .transform((value) => (value === 0 ? null : value)),
+  MARKET_MAX_JUMP_RATIO: z.coerce
+    .number()
+    .min(0)
+    .max(10)
+    .default(0.1)
+    .transform((value) => (value === 0 ? null : value)),
+  MARKET_MAX_FUTURE_SKEW_MS: z.coerce.number().int().min(0).default(5_000),
+  /**
+   * Consecutive plausibility rejections after which the gate follows the market
+   * rather than continuing to refuse it. A gate that never re-opens would leave
+   * the engine marking positions against a price that stopped moving, which is
+   * worse than the spike it was protecting against.
+   */
+  MARKET_REANCHOR_AFTER: z.coerce.number().int().min(1).max(1_000).default(5),
   // Resolutions the platform aggregates and persists.
   CANDLE_RESOLUTIONS: z.string().default('1,5,15,60,240,1D'),
   // Exactly one process may ingest market data: two would double-count candle

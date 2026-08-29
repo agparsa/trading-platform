@@ -3,7 +3,11 @@ import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator';
-import { DatabaseHealthIndicator, RedisHealthIndicator } from './health.indicators';
+import {
+  DatabaseHealthIndicator,
+  MarketDataHealthIndicator,
+  RedisHealthIndicator,
+} from './health.indicators';
 
 /**
  * Probes live outside the versioned API surface. An orchestrator's health
@@ -23,6 +27,7 @@ export class HealthController {
     private readonly health: HealthCheckService,
     private readonly database: DatabaseHealthIndicator,
     private readonly redis: RedisHealthIndicator,
+    private readonly marketData: MarketDataHealthIndicator,
   ) {}
 
   /**
@@ -44,5 +49,21 @@ export class HealthController {
   @HealthCheck()
   ready() {
     return this.health.check([() => this.database.check(), () => this.redis.check()]);
+  }
+
+  /**
+   * Feed health, reported separately from readiness.
+   *
+   * A dead upstream feed is an incident, not a reason to take this process out
+   * of the load balancer: it can still serve history, account state and the
+   * ledger, and pulling it would take away the screen that tells traders what
+   * has happened. Alert on this; do not route on it.
+   */
+  @Version(VERSION_NEUTRAL)
+  @Get('health/market')
+  @ApiOperation({ summary: 'Market feed health and integrity-gate counters' })
+  @HealthCheck()
+  market() {
+    return this.health.check([() => this.marketData.check()]);
   }
 }

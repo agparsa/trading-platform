@@ -49,6 +49,25 @@ export class MarketController {
     return this.quotes.snapshot(requested);
   }
 
+  /**
+   * How each instrument has moved today.
+   *
+   * Computed on the server so every trader sees the same number measured
+   * against the same reference — and so the reference is *named*, which a
+   * change figure computed in a browser from whenever it happened to connect
+   * cannot do.
+   */
+  @Get('stats')
+  @ApiOperation({ summary: "Today's open, high, low and change for one or more instruments" })
+  async stats(@Query() query: QuotesQueryDto) {
+    const requested =
+      query.symbols === undefined
+        ? this.symbols.codes()
+        : query.symbols.split(',').map((code) => code.trim().toUpperCase());
+    for (const code of requested) this.symbols.require(code);
+    return this.candles.dailyStats(requested);
+  }
+
   @Get('candles')
   @ApiOperation({ summary: 'Historical candles, including the in-progress bar' })
   async candlesFor(@Query() query: CandlesQueryDto) {

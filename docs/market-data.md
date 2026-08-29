@@ -70,3 +70,95 @@ charting datafeed expects.
 symbol. The timezone is stored on the row rather than inherited from the server,
 so changing the server's timezone cannot silently move every session. Metals and
 FX run Sunday 22:00 → Friday 21:00 UTC; crypto never closes.
+
+## The integrity gate
+
+Every tick passes `TickGate` (`@tp/market-core`) before it becomes a price.
+`MarketFeedService.ingest` is the only door, and it is the only door for the
+built-in simulator, for the relay on a non-ingesting instance, and for any
+external provider adapter that pushes.
+
+Seven ways a tick is refused, in two groups.
+
+**Impossible data — never accepted, however often it repeats.**
+
+| Reason | What it means |
+| --- | --- |
+| `MALFORMED` | bid, ask or timestamp is not a number |
+| `NON_POSITIVE` | a price at or below zero |
+| `CROSSED` | ask not above bid |
+| `OUT_OF_ORDER` | older than the tick already accepted for that symbol |
+| `FUTURE` | timestamped beyond `MARKET_MAX_FUTURE_SKEW_MS` ahead |
+
+**Implausible markets — refused, then followed.**
+
+| Reason | Threshold |
+| --- | --- |
+| `SPREAD` | spread over `MARKET_MAX_SPREAD_RATIO` of the mid |
+| `SPIKE` | mid moved over `MARKET_MAX_JUMP_RATIO` between accepted ticks |
+
+After `MARKET_REANCHOR_AFTER` consecutive rejections of the second kind, the
+gate accepts the next tick and re-anchors on it, logging loudly and counting it
+in `tp_market_ticks_reanchored_total`.
+
+That re-anchoring is the part worth arguing about, so here is the argument: a
+guard that never re-opens freezes the price. The engine then marks positions,
+computes margin and evaluates stops against an anchor that stopped moving —
+silently, and with every appearance of working. A market really can gap 10% and
+really can open with a spread five times normal. When it does, following it is
+the safe direction; refusing forever is not.
+
+The first group never re-anchors, because a crossed book is not a market
+condition and accepting one after five repetitions would only corrupt prices
+more slowly.
+
+### What a rejection is not
+
+It is a statement about the **feed**. Nothing in this path closes a position,
+breaches an account or fails an order — §26's rule that an API fault must not be
+read as a rule violation applies to the price stream too. The worst a rejection
+does is leave the previous price standing, and `QuoteService.requireFresh` is
+what decides whether that price is still fit to trade on.
+
+### Ordering, twice
+
+`QuoteService.publish` also refuses a tick older than the one it holds, and
+returns `false` when it does. That is deliberate duplication: "the newest tick
+wins" is a property of the quote, not of any one caller, and `publish` is
+reachable from the ingest loop, the relay, and tests.
+
+### Conversion rates must be fresh
+
+`ConversionService` reads through `requireFresh`, not `latest`. A conversion
+rate is not a display figure — it multiplies P&L, margin and exposure on every
+position quoted in a foreign currency. An hour-old rate does not make those
+numbers slightly stale; it makes them wrong by however far the currency has
+moved, and nothing on screen or in the ledger would say so. A stale rate
+therefore behaves exactly like a missing one, and the caller refuses.
+
+USDJPY exists in the seed for this reason. It is the first instrument not quoted
+in USD, which makes the conversion path the ordinary case rather than the
+untested one. `apps/api/test/integration/conversion.test.ts` holds the figures.
+
+### Relaying to non-ingesting instances
+
+Exactly one process may pull from the provider, or candle volume is counted
+twice. Every other instance still runs valuations, serves `GET /market/quotes`
+and pushes account frames to its own sockets — so it subscribes to `market:ticks`
+and feeds what arrives through the same gate. It does not re-publish (that would
+echo forever) and does not persist candles (the ingesting instance owns those
+rows).
+
+`market:ticks` was being published to and nothing was listening. That was
+survivable only while nothing had been scaled past one instance.
+
+### Health
+
+`GET /health/market` reports the age of the newest tick, how many instruments
+are priced, how many ticks have been rejected, and — by name — which instruments
+are currently in a rejection run.
+
+It is deliberately **not** part of `/ready`. A process pulled out of the load
+balancer because the upstream feed stopped is a process that cannot serve
+history, account state or the ledger either, and traders would lose the screen
+that tells them what has happened. Alert on it; do not route on it.

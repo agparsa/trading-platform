@@ -1,3 +1,4 @@
+import { toDecimal } from '@tp/financial-core';
 import type { Tick } from './types';
 
 /**
@@ -34,13 +35,25 @@ export interface CoalescedTick extends PriceRange {
   readonly observed: number;
 }
 
-/** Compares decimal strings numerically without parsing them into floats twice. */
+/**
+ * Compares two prices and returns the original string, never a converted one.
+ *
+ * The comparison is decimal, not `Number`. These extremes decide whether the
+ * market traded through a stop level — the one question the whole window
+ * exists to answer — so a comparison that rounds is a comparison that can
+ * answer it wrongly. `4583.5750000000003 <= 4583.575` is exactly the kind of
+ * difference that decides whether a stop fired, and it is exactly the kind of
+ * difference binary floating point invents.
+ *
+ * The *returned* value is always one of the inputs, unparsed, so no rounding
+ * enters the range even in principle.
+ */
 function lower(a: string, b: string): string {
-  return Number(a) <= Number(b) ? a : b;
+  return toDecimal(a).lte(toDecimal(b)) ? a : b;
 }
 
 function higher(a: string, b: string): string {
-  return Number(a) >= Number(b) ? a : b;
+  return toDecimal(a).gte(toDecimal(b)) ? a : b;
 }
 
 export class TickWindow {

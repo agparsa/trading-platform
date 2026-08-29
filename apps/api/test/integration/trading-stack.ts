@@ -57,6 +57,7 @@ export interface TradingStack {
   triggers: TriggerEngineService;
   snapshots: SnapshotService;
   /** Puts a price into the quote cache, as the market feed would. */
+  conversion: ConversionService;
   publishQuote: (symbol: string, bid: string, ask: string, atMs?: number) => Promise<void>;
 }
 
@@ -144,7 +145,21 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     metrics,
   );
 
+  /**
+   * Stand in for the feed.
+   *
+   * The cached price is dropped first so a test can put the market wherever it
+   * needs it, including *backwards* — which `QuoteService.publish` otherwise
+   * refuses, because an out-of-order tick arriving from a real feed must not
+   * rewind the price. Tests need to say "the last price for this symbol is an
+   * hour old" and that is not an out-of-order delivery, it is a feed that
+   * stopped.
+   *
+   * The ordering rule itself is proved directly in `quote-ordering.test.ts`
+   * rather than incidentally here.
+   */
   const publishQuote = async (symbol: string, bid: string, ask: string, atMs = Date.now()) => {
+    quotes.forget(symbol);
     const tick: Tick = { symbol, bid, ask, timestamp: atMs, volume: '1' };
     await quotes.publish(tick);
   };
@@ -156,6 +171,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     killSwitch,
     symbols,
     quotes,
+    conversion,
     orders,
     positions,
     accountState,
