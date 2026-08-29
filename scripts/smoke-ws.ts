@@ -159,6 +159,59 @@ async function main(): Promise<void> {
       assert(typeof frame.data['ask'] === 'string', 'ask was not a decimal string');
     });
 
+    /**
+     * Subscribing the instant the socket connects, exactly as the terminal does.
+     *
+     * Socket.IO fires `connect` as soon as the transport is up, which is before
+     * the gateway has finished reading the socket's accounts from the database.
+     * This raced it: win and the private channels attached, lose and all three
+     * were refused with "requires authentication" while `whoami` reported the
+     * socket as authenticated — leaving the trader silently deaf to their own
+     * positions and orders until they reconnected.
+     *
+     * The subscribes go out inside the `connect` handler with no delay at all,
+     * because any wait here is a wait that hides the bug.
+     */
+    await check(
+      'private channels attach when subscribed the instant the socket connects',
+      async () => {
+        const socket = io(BASE, {
+          path: '/ws',
+          transports: ['websocket'],
+          auth: { token: alice.token },
+        });
+        sockets.push(socket);
+
+        const replies = await new Promise<Array<{ ok: boolean; channel?: string; error?: string }>>(
+          (resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('no connect within 10s')), 10_000);
+            socket.on('connect', () => {
+              clearTimeout(timer);
+              void Promise.all(
+                (['positions', 'orders', 'account', 'pnl'] as const).map((channel) =>
+                  socket.emitWithAck('subscribe', { channel }),
+                ),
+              ).then(resolve, reject);
+            });
+          },
+        );
+
+        const refused = replies.filter((reply) => !reply.ok);
+        assert(
+          refused.length === 0,
+          `${refused.length} private channel(s) refused on a freshly connected socket: ${refused
+            .map((reply) => reply.error)
+            .join('; ')}`,
+        );
+
+        const whoami = (await socket.emitWithAck('whoami', {})) as { channels: string[] };
+        assert(
+          whoami.channels.length === 4,
+          `whoami reports ${whoami.channels.length} channel(s), expected 4`,
+        );
+      },
+    );
+
     await check('a private channel is refused without a token', async () => {
       const { socket } = connect();
       sockets.push(socket);

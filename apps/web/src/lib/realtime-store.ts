@@ -59,6 +59,21 @@ export interface Bar {
   closed?: boolean;
 }
 
+/**
+ * How close the account is to the levels that stop it trading.
+ *
+ * Sent by the server on *transition only* — the account crossing into or out of
+ * a state — so this is set once when it happens, not repeatedly while it holds.
+ */
+export interface RiskUpdate {
+  accountId: string;
+  state: 'NORMAL' | 'MARGIN_CALL' | 'STOP_OUT';
+  previous: 'NORMAL' | 'MARGIN_CALL' | 'STOP_OUT';
+  marginLevel: string | null;
+  marginCallLevelPercent: string | null;
+  stopOutLevelPercent: string | null;
+}
+
 export type ConnectionStatus = 'idle' | 'connecting' | 'live' | 'reconnecting' | 'offline';
 
 /** How many live bars to keep per chart before the REST history takes over. */
@@ -72,6 +87,8 @@ interface RealtimeState {
   status: ConnectionStatus;
   quotes: Record<string, Quote>;
   account: AccountState | null;
+  /** The last risk transition announced, or null while the account is normal. */
+  risk: RiskUpdate | null;
   pnl: Record<string, LivePnl>;
   /**
    * Bars that arrived over the socket, keyed by `symbol:resolution` and then by
@@ -89,6 +106,7 @@ interface RealtimeState {
   setStatus: (status: ConnectionStatus) => void;
   applyQuote: (quote: Quote) => void;
   applyAccount: (account: AccountState) => void;
+  applyRiskState: (risk: RiskUpdate) => void;
   applyPnl: (pnl: LivePnl) => void;
   applyBar: (bar: Bar) => void;
   clearBars: () => void;
@@ -101,6 +119,7 @@ export const useRealtime = create<RealtimeState>((set) => ({
   status: 'idle',
   quotes: {},
   account: null,
+  risk: null,
   pnl: {},
   bars: {},
   lastSeq: 0,
@@ -153,6 +172,8 @@ export const useRealtime = create<RealtimeState>((set) => ({
       };
     }),
 
+  applyRiskState: (risk) => set({ risk }),
+
   applyPnl: (pnl) => set((state) => ({ pnl: { ...state.pnl, [pnl.positionId]: pnl } })),
 
   applyBar: (bar) =>
@@ -192,5 +213,15 @@ export const useRealtime = create<RealtimeState>((set) => ({
 
   // A new connection restarts the sequence at 1, so the old high-water mark
   // must go with it or the first frame would look like a gap.
+  /**
+   * A reconnect clears everything that was streamed, and deliberately keeps the
+   * last risk transition.
+   *
+   * Sequence, live P&L and live bars are all per-connection and are re-derived
+   * from the snapshot that follows. The risk state is not: it is the answer to
+   * "is this account in trouble", the server only re-sends it when it *changes*,
+   * and dropping it here would clear a stop-out warning off the screen because
+   * the socket blinked.
+   */
   resetConnection: () => set({ lastSeq: 0, gapDetected: false, pnl: {}, bars: {} }),
 }));

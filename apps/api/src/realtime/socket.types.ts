@@ -31,6 +31,15 @@ export interface SocketState {
   candleSymbols: Set<string>;
   resolutions: Set<string>;
   seq: number;
+  /**
+   * Resolves once `handleConnection` has finished resolving this socket's
+   * identity, whether it succeeded or failed.
+   *
+   * Socket.IO delivers the client's `connect` event before that work is done, so
+   * a terminal subscribing on `connect` — which every one does — would otherwise
+   * race it and be refused its own private channels.
+   */
+  authenticated: Promise<void>;
 }
 
 export type TradingSocket = Socket & { state: SocketState };
@@ -44,5 +53,8 @@ export function initialState(): SocketState {
     candleSymbols: new Set(),
     resolutions: new Set(),
     seq: 0,
+    // Replaced by handleConnection before any message can arrive. Resolved here
+    // so a socket that somehow skips it cannot hang a subscribe forever.
+    authenticated: Promise.resolve(),
   };
 }

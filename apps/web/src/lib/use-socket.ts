@@ -8,18 +8,39 @@ import {
   type Bar,
   type LivePnl,
   type Quote,
+  type RiskUpdate,
 } from './realtime-store';
 
 const WS_URL = process.env['NEXT_PUBLIC_WS_URL'] ?? 'http://localhost:4000';
 
 interface Frame {
   event: string;
+  /** Identifies the occurrence. Two frames sharing one describe one thing. */
+  eventId: string;
+  channel: string;
+  accountId: string | null;
   data: Record<string, unknown>;
   seq: number;
   timestamp: number;
 }
 
-const CHANNELS = ['quotes', 'positions', 'account', 'pnl'] as const;
+/**
+ * `orders` was missing from this list, which made the three `order.*` cases in
+ * the frame handler unreachable — an order filling refreshed the tables only
+ * because the *position* event fired alongside it. A limit order that fills
+ * without opening a position, or an order rejected by risk, produced nothing.
+ */
+const CHANNELS = ['quotes', 'orders', 'positions', 'account', 'pnl'] as const;
+
+/**
+ * How many recently-seen event ids to remember for de-duplication.
+ *
+ * Small on purpose. A duplicate arrives within milliseconds of its original —
+ * it is the same event taking a second path to the same socket — so a short
+ * memory catches every realistic case, and an unbounded one would be a leak in
+ * a process that stays open all day.
+ */
+const SEEN_EVENT_LIMIT = 256;
 
 /**
  * Holds one socket open for the life of the terminal.
@@ -93,9 +114,35 @@ export function useSocket(
     socket.on('disconnect', () => useRealtime.getState().setStatus('reconnecting'));
     socket.on('connect_error', () => useRealtime.getState().setStatus('reconnecting'));
 
+    /**
+     * Event ids already applied, newest last.
+     *
+     * The server suppresses its own Redis echo, so a duplicate should not reach
+     * here at all. This is the second line: a client that applied one fill twice
+     * would refetch twice and, once notifications exist, alert twice. Cheap
+     * insurance against a delivery path nobody has thought of yet.
+     */
+    const seen = new Set<string>();
+    const seenOrder: string[] = [];
+
     socket.on('frame', (frame: Frame) => {
       const live = useRealtime.getState();
+
+      // Sequence is noted before the duplicate check: `seq` is per-connection
+      // and increments for every frame the server sent, duplicates included, so
+      // skipping it here would manufacture a gap and force a needless
+      // re-snapshot.
       live.noteSeq(frame.seq);
+
+      if (typeof frame.eventId === 'string' && frame.eventId.length > 0) {
+        if (seen.has(frame.eventId)) return;
+        seen.add(frame.eventId);
+        seenOrder.push(frame.eventId);
+        if (seenOrder.length > SEEN_EVENT_LIMIT) {
+          const oldest = seenOrder.shift();
+          if (oldest !== undefined) seen.delete(oldest);
+        }
+      }
 
       switch (frame.event) {
         case 'quote.update':
@@ -113,10 +160,16 @@ export function useSocket(
         case 'position.created':
         case 'position.updated':
         case 'position.closed':
+        case 'order.created':
         case 'order.filled':
         case 'order.updated':
         case 'order.cancelled':
           notify.current();
+          break;
+        case 'risk.updated':
+          // Transition-only by construction on the server, so this fires when
+          // the account crosses a level and not while it sits at one.
+          live.applyRiskState(frame.data as unknown as RiskUpdate);
           break;
         default:
           break;

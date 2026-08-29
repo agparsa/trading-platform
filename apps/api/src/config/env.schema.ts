@@ -99,6 +99,15 @@ export const envSchema = z.object({
   // Lower bound between account valuations pushed to one connected client.
   // Throttling, not polling: nothing runs when the market is still.
   REALTIME_VALUATION_INTERVAL_MS: z.coerce.number().int().min(0).default(500),
+  /**
+   * How often the symbol→accounts routing index is re-derived from the database.
+   *
+   * The index only ever decides *whether to value an account now*, so being
+   * stale costs an unnecessary valuation and never a wrong number. Lower means
+   * a closed position stops being valued sooner; higher means fewer queries.
+   * Thirty seconds is generous in the safe direction.
+   */
+  EXPOSURE_INDEX_REFRESH_MS: z.coerce.number().int().min(1000).default(30_000),
 
   TRADING_SERVER_TIMEZONE: z.string().default('UTC'),
   /**

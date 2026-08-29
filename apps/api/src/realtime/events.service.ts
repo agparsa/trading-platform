@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { DomainEvent } from '@tp/shared-types';
 import { RedisService } from '../redis/redis.service';
@@ -7,11 +8,36 @@ export const DOMAIN_EVENT_CHANNEL = 'domain:events';
 
 export interface DomainEventEnvelope {
   readonly event: DomainEvent;
+  /**
+   * Identifies the occurrence. Travels to the WebSocket frame so a client can
+   * discard a duplicate, and lets an instance recognise its own echo.
+   */
+  readonly eventId: string;
+  /**
+   * Which API process published this.
+   *
+   * Redis pub/sub delivers a message to every subscriber including the one that
+   * published it — the publisher and subscriber are separate connections, so
+   * Redis has no way to know they are the same process. Without this field the
+   * gateway handled every event twice: once from the local handler, once from
+   * its own echo off Redis. Verified by counting frames: one market order
+   * produced two `position.created` frames carrying the same position id.
+   */
+  readonly origin: string;
   /** Owning account, so an instance can route the frame to the right sockets. */
   readonly accountId: string;
   readonly data: Record<string, unknown>;
   readonly timestamp: number;
 }
+
+/**
+ * This process, for the life of the process.
+ *
+ * Deliberately not a configured instance name: two processes must differ, and
+ * nothing else about this value matters. A restart producing a new id is correct
+ * — the old process is not listening any more.
+ */
+export const INSTANCE_ID = randomUUID();
 
 export type DomainEventHandler = (envelope: DomainEventEnvelope) => void | Promise<void>;
 
@@ -47,7 +73,14 @@ export class EventsService {
     accountId: string,
     data: Record<string, unknown>,
   ): Promise<void> {
-    const envelope: DomainEventEnvelope = { event, accountId, data, timestamp: Date.now() };
+    const envelope: DomainEventEnvelope = {
+      event,
+      eventId: randomUUID(),
+      origin: INSTANCE_ID,
+      accountId,
+      data,
+      timestamp: Date.now(),
+    };
 
     for (const handler of this.handlers) {
       try {
@@ -64,8 +97,19 @@ export class EventsService {
     }
   }
 
-  /** Delivers an envelope that arrived from another instance. */
-  async deliverRemote(envelope: DomainEventEnvelope): Promise<void> {
+  /**
+   * Delivers an envelope that arrived from another instance.
+   *
+   * Refuses this instance's own echo. Redis has no idea that the publisher and
+   * subscriber connections belong to the same process, so it hands the message
+   * straight back; without this check the local handlers would run a second
+   * time and every socket on this instance would see the event twice.
+   *
+   * Returns whether it delivered, so the caller can count what it dropped.
+   */
+  async deliverRemote(envelope: DomainEventEnvelope): Promise<boolean> {
+    if (envelope.origin === INSTANCE_ID) return false;
+
     for (const handler of this.handlers) {
       try {
         await handler(envelope);
@@ -73,5 +117,6 @@ export class EventsService {
         this.logger.error({ err: error }, 'Remote domain event handler failed');
       }
     }
+    return true;
   }
 }

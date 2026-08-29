@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger, type OnApplicationShutdown } from '@nestjs/common';
 import {
   type OnGatewayConnection,
@@ -73,6 +74,7 @@ export class RealtimeGateway
 {
   private readonly logger = new Logger(RealtimeGateway.name);
   private readonly sockets = new Set<TradingSocket>();
+  private readonly abandonListeners = new Set<(accountId: string) => void>();
   private unsubscribeTicks: (() => void) | null = null;
   private unsubscribeEvents: (() => void) | null = null;
   private unsubscribeCandles: (() => void) | null = null;
@@ -102,12 +104,21 @@ export class RealtimeGateway
     this.unsubscribeCandles = this.candles.subscribe((update) => this.onCandle(update));
     this.unsubscribeEvents = this.events.onEvent((envelope) => this.onDomainEvent(envelope));
 
-    // Frames produced by other API instances arrive here.
+    /**
+     * Frames produced by other API instances arrive here.
+     *
+     * Routed through `EventsService.deliverRemote` rather than straight into
+     * `onDomainEvent`, because that is where this instance's own echo is
+     * refused. Redis delivers a published message to every subscriber including
+     * the publisher — the two are separate connections, so Redis cannot know
+     * they are one process — and calling `onDomainEvent` directly meant every
+     * event was handled twice on the instance that raised it.
+     */
     await this.redis.subscriber.subscribe(DOMAIN_EVENT_CHANNEL);
     this.redis.subscriber.on('message', (channel, payload) => {
       if (channel !== DOMAIN_EVENT_CHANNEL) return;
       try {
-        this.onDomainEvent(JSON.parse(payload) as DomainEventEnvelope);
+        void this.events.deliverRemote(JSON.parse(payload) as DomainEventEnvelope);
       } catch (error) {
         this.logger.error({ err: error }, 'Unreadable domain event from Redis');
       }
@@ -136,8 +147,31 @@ export class RealtimeGateway
     this.sockets.add(client);
     this.metrics.websocketConnections.inc({ event: 'connect' });
 
+    /**
+     * Published before the first `await`, and awaited by `subscribe`.
+     *
+     * Socket.IO fires the client's `connect` event as soon as the transport is
+     * up — which is *before* this method has finished its two database reads. A
+     * terminal that subscribes on `connect`, as every one does, was racing them:
+     * win and the private channels attach, lose and all three are refused with
+     * "requires authentication" while `whoami` cheerfully reports the socket as
+     * authenticated. The client is then silently deaf to its own positions,
+     * orders and account until it reconnects.
+     *
+     * It is a race, so it passed most of the time and failed under exactly the
+     * conditions that matter: a slow database, or a hundred traders connecting
+     * at once.
+     */
+    let ready: () => void = () => undefined;
+    client.state.authenticated = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+
     const token = extractToken(client);
-    if (token === null) return;
+    if (token === null) {
+      ready();
+      return;
+    }
 
     try {
       const claims = await this.tokens.verifyAccessToken(token);
@@ -171,23 +205,69 @@ export class RealtimeGateway
         code: isDomainError(error) ? error.code : 'UNAUTHENTICATED',
         message: 'Authentication failed; only public channels are available',
       });
+    } finally {
+      // Released on every path, including the failure one. A socket that could
+      // not authenticate must still be allowed to subscribe to public quotes
+      // rather than hanging on a promise nobody will ever resolve.
+      ready();
     }
   }
 
   handleDisconnect(client: TradingSocket): void {
     this.sockets.delete(client);
     this.metrics.websocketConnections.inc({ event: 'disconnect' });
+
+    /**
+     * Tell whoever is holding per-account state that nobody is watching any
+     * more — but only for accounts no *other* socket still covers. A trader with
+     * the terminal open in two tabs closing one must not stop the other's
+     * valuations.
+     *
+     * `forget` existed with no caller before this, so every map keyed by account
+     * grew for the life of the process. Small, unbounded, and invisible to a
+     * fifteen-minute soak.
+     */
+    for (const accountId of client.state.accountIds) {
+      if (this.isWatched(accountId)) continue;
+      for (const listener of this.abandonListeners) listener(accountId);
+    }
+  }
+
+  /** Whether any remaining socket still covers this account. */
+  private isWatched(accountId: string): boolean {
+    for (const socket of this.sockets) if (socket.state.accountIds.has(accountId)) return true;
+    return false;
+  }
+
+  /**
+   * Registers interest in "the last socket for this account went away".
+   *
+   * A callback rather than a direct call into `RealtimeService`, because the
+   * gateway is constructed first and a hard reference the other way would be a
+   * circular dependency for the sake of one notification.
+   */
+  onAccountAbandoned(listener: (accountId: string) => void): () => void {
+    this.abandonListeners.add(listener);
+    return () => {
+      this.abandonListeners.delete(listener);
+    };
   }
 
   @SubscribeMessage('subscribe')
-  handleSubscribe(
+  async handleSubscribe(
     @ConnectedSocket() client: TradingSocket,
     @MessageBody() body: unknown,
-  ): { ok: boolean; channel?: string; error?: string } {
+  ): Promise<{ ok: boolean; channel?: string; error?: string }> {
     const parsed = subscribeSchema.safeParse(body);
     if (!parsed.success) {
       return { ok: false, error: 'Invalid subscribe message' };
     }
+
+    // Wait for this socket's identity to be resolved before deciding what it may
+    // have. Without this the answer depends on whether two database reads
+    // finished before the client's first message arrived.
+    await client.state.authenticated;
+
     const { channel, symbols, resolutions } = parsed.data;
 
     const isPublic = PUBLIC_CHANNELS.includes(channel);
@@ -249,7 +329,7 @@ export class RealtimeGateway
       if (!socket.state.channels.has(WsChannel.QUOTES)) continue;
       // An empty symbol set means "everything"; a non-empty one filters.
       if (socket.state.symbols.size > 0 && !socket.state.symbols.has(tick.symbol)) continue;
-      this.send(socket, 'quote.update', quote);
+      this.send(socket, 'quote.update', WsChannel.QUOTES, null, quote);
     }
   }
 
@@ -267,7 +347,10 @@ export class RealtimeGateway
       if (socket.state.candleSymbols.size > 0 && !socket.state.candleSymbols.has(candle.symbol))
         continue;
       if (!socket.state.resolutions.has(candle.resolution)) continue;
-      this.send(socket, 'candle.update', { ...candle, closed: update.closed });
+      this.send(socket, 'candle.update', WsChannel.CANDLES, null, {
+        ...candle,
+        closed: update.closed,
+      });
     }
   }
 
@@ -279,7 +362,16 @@ export class RealtimeGateway
       if (!socket.state.channels.has(route.channel)) continue;
       // The account filter is the whole of the private-channel guarantee.
       if (!socket.state.accountIds.has(envelope.accountId)) continue;
-      this.send(socket, route.wire, envelope.data);
+      // The occurrence id travels from the publisher, so every socket that sees
+      // this event sees the same id — including sockets on other instances.
+      this.send(
+        socket,
+        route.wire,
+        route.channel,
+        envelope.accountId,
+        envelope.data,
+        envelope.eventId,
+      );
     }
   }
 
@@ -289,7 +381,7 @@ export class RealtimeGateway
     for (const socket of this.sockets) {
       if (!socket.state.channels.has(channel)) continue;
       if (!socket.state.accountIds.has(accountId)) continue;
-      this.send(socket, event, data);
+      this.send(socket, event, channel, accountId, data);
       delivered += 1;
     }
     return delivered;
@@ -309,10 +401,32 @@ export class RealtimeGateway
     return this.sockets.size;
   }
 
-  private send(socket: TradingSocket, event: string, data: unknown): void {
+  /**
+   * Emits one frame.
+   *
+   * `eventId` identifies the *occurrence*. For a domain event it is minted once
+   * at publish time and travels to every socket that receives it, so two frames
+   * describing one fill carry one id and a client can discard the second. For
+   * market data there is no upstream occurrence, so each frame mints its own.
+   *
+   * `accountId` sits at the top level rather than inside `data`, because a
+   * client with several accounts open has to route the frame before it knows
+   * what shape the payload is.
+   */
+  private send(
+    socket: TradingSocket,
+    event: string,
+    channel: WsChannel,
+    accountId: string | null,
+    data: unknown,
+    eventId: string = randomUUID(),
+  ): void {
     socket.state.seq += 1;
     socket.emit('frame', {
       event: event as WsEvent,
+      eventId,
+      channel,
+      accountId,
       data,
       seq: socket.state.seq,
       timestamp: Date.now(),

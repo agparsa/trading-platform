@@ -84,18 +84,79 @@ listening, so the cost is paid only when someone is looking.
 ```jsonc
 {
   "event": "position.updated",
+  "eventId": "0f0f4f0e-…",
+  "channel": "positions",
+  "accountId": "a15faf89-…",
   "data": { "positionId": "…", "symbol": "XAUUSD", "floatingPnl": "182.42" },
   "seq": 4412,
   "timestamp": 1787307884014,
 }
 ```
 
-`seq` is a monotonic per-connection sequence number. A client that sees a gap
-knows it missed a frame and must re-snapshot over REST rather than silently
-drifting out of sync. Without it, a dropped frame produces a P&L on screen that
-is quietly wrong and stays wrong.
+`eventId` identifies the **occurrence**, not the delivery. Two frames carrying
+one id describe one thing that happened once, and a client may discard the
+second. It is minted at publish time and travels to every socket that receives
+the event — including sockets on other API instances — so it is stable across
+the whole fan-out.
+
+`accountId` is at the top level rather than inside `data` because a client with
+several accounts open has to route a frame before it knows what shape the
+payload is. It is `null` for public market data.
+
+`channel` says which subscription produced the frame.
+
+`seq` is a monotonic **per-connection** sequence number. A client that sees a
+gap knows it missed a frame and must re-snapshot over REST rather than silently
+drifting out of sync. Per connection rather than per channel deliberately: a
+per-channel counter would let a client detect a gap in quotes while missing one
+in positions, whereas one counter across the socket makes any loss visible. It
+resets on reconnect, which is why the reconnect contract re-snapshots instead of
+resuming.
 
 All monetary values are decimal strings, as everywhere else.
+
+## Account figures arrive together
+
+The specification asks for `MarginUpdated` and `FreeMarginUpdated` as separate
+streams. They are **one frame** here — `account.updated` — and that is a
+deliberate strengthening rather than a shortcut.
+
+Those figures are derived from each other: free margin _is_ equity minus used
+margin. Split across frames, a client that has applied one and not yet the other
+renders a set of numbers that never existed — an equity from 10:00:00.250 beside
+a used margin from 10:00:00.750, and a free margin matching neither. One frame
+carrying a consistent set is a stronger guarantee than four carrying the same
+information, and it is a quarter of the traffic.
+
+## `risk.updated` fires on transition only
+
+An account crossing into or out of margin call or stop-out proximity produces
+one frame. An account _sitting_ at 94% for an hour produces nothing further.
+
+That is what makes it safe for a notification to be raised straight from this
+event with no de-duplication of its own: the de-duplication is the semantics of
+the event rather than a filter bolted on afterwards. The frame carries the
+levels it judged against, so the decision can be checked rather than trusted.
+
+## Two delivery faults this contract had
+
+**Every domain event was delivered twice.** `EventsService` publishes to local
+handlers _and_ to Redis; the gateway also subscribes to Redis; and Redis hands a
+message back to the connection that published it, because the publisher and
+subscriber are separate connections and Redis cannot know they are one process.
+Counted on a live socket, one market order produced two `position.created`
+frames carrying the same position id. Envelopes now carry the id of the process
+that raised them and an instance refuses its own echo.
+
+**Subscribing raced authentication.** Socket.IO fires the client's `connect`
+event as soon as the transport is up — before the gateway has finished reading
+the socket's accounts from the database. A terminal that subscribes on `connect`,
+as every one does, was racing those two queries: win and the private channels
+attached, lose and all of them were refused with "requires authentication" while
+`whoami` reported the socket as authenticated, leaving the trader silently deaf
+to their own positions and orders until they reconnected. `subscribe` now waits
+for the socket's identity to be resolved. `pnpm smoke:ws` subscribes inside the
+`connect` handler with no delay at all, because any wait there hides the bug.
 
 ## Fan-out
 

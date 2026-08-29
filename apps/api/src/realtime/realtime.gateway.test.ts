@@ -99,7 +99,7 @@ describe('RealtimeGateway subscriptions', () => {
     const socket = fakeSocket();
     socket.state.userId = 'user-1';
     attach(socket);
-    harness.gateway.handleSubscribe(socket, {
+    await harness.gateway.handleSubscribe(socket, {
       channel: WsChannel.CANDLES,
       symbols: ['XAUUSD'],
       resolutions: ['1'],
@@ -116,7 +116,10 @@ describe('RealtimeGateway subscriptions', () => {
   it('marks a closed bucket so a chart can finalise the bar', async () => {
     const socket = fakeSocket();
     attach(socket);
-    harness.gateway.handleSubscribe(socket, { channel: WsChannel.CANDLES, symbols: ['XAUUSD'] });
+    await harness.gateway.handleSubscribe(socket, {
+      channel: WsChannel.CANDLES,
+      symbols: ['XAUUSD'],
+    });
 
     await harness.candles.publish({ candle: candle('XAUUSD', '1'), closed: true });
 
@@ -126,7 +129,10 @@ describe('RealtimeGateway subscriptions', () => {
   it('defaults a candle subscription with no resolution to one minute', async () => {
     const socket = fakeSocket();
     attach(socket);
-    harness.gateway.handleSubscribe(socket, { channel: WsChannel.CANDLES, symbols: ['XAUUSD'] });
+    await harness.gateway.handleSubscribe(socket, {
+      channel: WsChannel.CANDLES,
+      symbols: ['XAUUSD'],
+    });
 
     await harness.candles.publish({ candle: candle('XAUUSD', '1'), closed: false });
     await harness.candles.publish({ candle: candle('XAUUSD', '60'), closed: false });
@@ -145,8 +151,8 @@ describe('RealtimeGateway subscriptions', () => {
     const socket = fakeSocket();
     attach(socket);
     // Every symbol, as the watchlist asks for.
-    harness.gateway.handleSubscribe(socket, { channel: WsChannel.QUOTES });
-    harness.gateway.handleSubscribe(socket, {
+    await harness.gateway.handleSubscribe(socket, { channel: WsChannel.QUOTES });
+    await harness.gateway.handleSubscribe(socket, {
       channel: WsChannel.CANDLES,
       symbols: ['XAUUSD'],
       resolutions: ['1'],
@@ -167,12 +173,12 @@ describe('RealtimeGateway subscriptions', () => {
   it('replaces the chart subscription rather than accumulating it', async () => {
     const socket = fakeSocket();
     attach(socket);
-    harness.gateway.handleSubscribe(socket, {
+    await harness.gateway.handleSubscribe(socket, {
       channel: WsChannel.CANDLES,
       symbols: ['XAUUSD'],
       resolutions: ['1'],
     });
-    harness.gateway.handleSubscribe(socket, {
+    await harness.gateway.handleSubscribe(socket, {
       channel: WsChannel.CANDLES,
       symbols: ['EURUSD'],
       resolutions: ['15'],
@@ -188,7 +194,10 @@ describe('RealtimeGateway subscriptions', () => {
   it('stops candle frames after an unsubscribe', async () => {
     const socket = fakeSocket();
     attach(socket);
-    harness.gateway.handleSubscribe(socket, { channel: WsChannel.CANDLES, symbols: ['XAUUSD'] });
+    await harness.gateway.handleSubscribe(socket, {
+      channel: WsChannel.CANDLES,
+      symbols: ['XAUUSD'],
+    });
     harness.gateway.handleUnsubscribe(socket, { channel: WsChannel.CANDLES });
 
     await harness.candles.publish({ candle: candle('XAUUSD', '1'), closed: false });
@@ -199,7 +208,7 @@ describe('RealtimeGateway subscriptions', () => {
   it('sends nothing to a socket that never subscribed to candles', async () => {
     const socket = fakeSocket();
     attach(socket);
-    harness.gateway.handleSubscribe(socket, { channel: WsChannel.QUOTES });
+    await harness.gateway.handleSubscribe(socket, { channel: WsChannel.QUOTES });
 
     await harness.candles.publish({ candle: candle('XAUUSD', '1'), closed: false });
 
@@ -209,8 +218,11 @@ describe('RealtimeGateway subscriptions', () => {
   it('numbers every frame on a connection consecutively', async () => {
     const socket = fakeSocket();
     attach(socket);
-    harness.gateway.handleSubscribe(socket, { channel: WsChannel.QUOTES });
-    harness.gateway.handleSubscribe(socket, { channel: WsChannel.CANDLES, symbols: ['XAUUSD'] });
+    await harness.gateway.handleSubscribe(socket, { channel: WsChannel.QUOTES });
+    await harness.gateway.handleSubscribe(socket, {
+      channel: WsChannel.CANDLES,
+      symbols: ['XAUUSD'],
+    });
 
     await harness.ticks.publish(tick('XAUUSD'));
     await harness.candles.publish({ candle: candle('XAUUSD', '1'), closed: false });

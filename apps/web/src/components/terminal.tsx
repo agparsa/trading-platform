@@ -183,7 +183,12 @@ export function Terminal() {
       </header>
 
       <div className="shrink-0 border-b border-terminal-border bg-terminal-surface">
-        <AccountHeader accountId={accountId} account={account} />
+        <AccountHeader
+          accountId={accountId}
+          account={account}
+          openPositions={openPositions.data?.length}
+          openOrders={pendingOrders.data?.length}
+        />
       </div>
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden p-2 lg:grid-cols-[250px_minmax(0,1fr)_270px] xl:grid-cols-[310px_minmax(0,1fr)_280px]">

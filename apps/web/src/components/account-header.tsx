@@ -18,9 +18,14 @@ import { Stat } from './primitives';
 export function AccountHeader({
   accountId,
   account,
+  openPositions,
+  openOrders,
 }: {
   accountId: string | null;
   account: AccountSummary | undefined;
+  /** Undefined until the list has loaded — an em dash, never a zero. */
+  openPositions: number | undefined;
+  openOrders: number | undefined;
 }) {
   const snapshot = useAccountState(accountId);
   const live = useRealtime((state) => state.account);
@@ -93,6 +98,22 @@ export function AccountHeader({
         label="Exposure"
         value={money(state?.grossExposure, currency)}
         title="Gross notional across open positions, in account currency"
+      />
+      {/*
+        Counts, not money — and they come from the same lists the panels below
+        render, so the header can never disagree with the table a trader is
+        looking at. A count derived from a second source is a count that starts
+        arguing with the first one.
+      */}
+      <Stat
+        label="Positions"
+        value={openPositions === undefined ? '—' : String(openPositions)}
+        title="Open positions"
+      />
+      <Stat
+        label="Orders"
+        value={openOrders === undefined ? '—' : String(openOrders)}
+        title="Resting orders waiting to trigger"
       />
     </div>
   );
