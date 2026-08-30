@@ -51,6 +51,13 @@ ENV NODE_ENV=production
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/packages ./packages
 COPY --from=build --chown=node:node /app/prisma ./prisma
+# The workspace package's own node_modules, not only the root's.
+#
+# pnpm puts a package's dependencies in its own directory as symlinks into
+# /app/node_modules/.pnpm — which the line above does copy. Without this one the
+# image builds, starts, and dies on `Cannot find module 'reflect-metadata'`,
+# because nothing the application actually imports is where Node looks for it.
+COPY --from=build --chown=node:node /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build --chown=node:node /app/apps/api/dist ./apps/api/dist
 COPY --from=build --chown=node:node /app/apps/api/package.json ./apps/api/package.json
 

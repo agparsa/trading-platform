@@ -659,3 +659,28 @@ describe('the install lifecycle', () => {
     }
   });
 });
+
+describe('what the runtime images actually contain', () => {
+  /**
+   * pnpm puts a workspace package's dependencies in that package's own
+   * directory, as symlinks into the root `.pnpm` store. An image that copies
+   * only the root `node_modules` builds, starts, and dies immediately on
+   * `Cannot find module 'reflect-metadata'` — the first thing `main.js`
+   * requires.
+   *
+   * Every image here had that fault. They had been built in CI and never run,
+   * which is exactly the gap the deployment guide warns about in its own
+   * "before the first deploy" section.
+   */
+  it("copies each app's own node_modules, not only the workspace root's", () => {
+    for (const dockerfile of DOCKERFILES) {
+      const body = read(dockerfile);
+      const app = /COPY --from=build[^\n]*\/app\/apps\/([a-z]+)\/dist/.exec(body)?.[1];
+      if (app === undefined) continue; // not a compiled-to-dist app image
+      expect(body, `${dockerfile} ships dist without apps/${app}/node_modules`).toMatch(
+        new RegExp(`COPY --from=build[^\\n]*/app/apps/${app}/node_modules`),
+      );
+      expect(body).toMatch(/COPY --from=build[^\n]*\/app\/node_modules/);
+    }
+  });
+});
