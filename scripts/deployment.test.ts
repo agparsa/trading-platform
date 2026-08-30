@@ -447,3 +447,28 @@ describe('ACME', () => {
     expect(read('docker/nginx/entrypoint/20-watch-renewals.sh')).toContain('nginx -s reload');
   });
 });
+
+describe('docker-compose.cpanel.yml', () => {
+  const override = read('docker-compose.cpanel.yml');
+
+  /**
+   * The whole point of the override. On a control-panel host, Apache serves
+   * every site on the machine from 80 and 443; publishing this stack's edge
+   * there does not conflict with one thing, it takes all of them down.
+   */
+  it('publishes the edge on loopback only', () => {
+    expect(override).toMatch(/ports: !override/);
+    for (const line of override.split('\n').filter((l) => /- '.*:\d+'/.test(l))) {
+      expect(line).toContain('127.0.0.1:');
+    }
+    expect(override).not.toMatch(/- '(\$\{[^}]*\}|\d+):(80|443)'/);
+  });
+
+  /**
+   * The panel owns the public certificate and renews it. Two issuers racing for
+   * one hostname is one more than can succeed.
+   */
+  it('turns certbot off, because the panel already renews that hostname', () => {
+    expect(override).toMatch(/certbot:[\s\S]*profiles: \['never'\]/);
+  });
+});

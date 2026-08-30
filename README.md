@@ -27,7 +27,7 @@ until the bundle is dropped in.
 
 |                   |                                                                                     |
 | ----------------- | ----------------------------------------------------------------------------------- |
-| Tests             | **1043** across 83 files, all passing                                               |
+| Tests             | **1045** across 83 files, all passing                                               |
 | Database          | 30 tables, **59 NUMERIC columns, 0 floating-point columns** (CI-enforced)           |
 | Verified          | `lint → typecheck → test → build` green, plus smoke, WebSocket smoke, pentest, load |
 | Security          | **25** attacks attempted against a running instance, all refused                    |

@@ -96,6 +96,13 @@ in production is a way to run code nobody built or tested.
 **Migrations are a job.** Two API replicas racing `migrate deploy` is lock
 contention at best.
 
+### Behind a control panel
+
+If the host already runs cPanel, Plesk or similar, it already serves ports 80
+and 443 for every site on it, and this stack cannot have them. See
+[deployment-cpanel.md](./deployment-cpanel.md) — and read the first paragraph,
+which argues for not doing it at all on anything but a test deployment.
+
 ### Behind a CDN
 
 If anything sits between the internet and this host — a CDN, a load balancer, a
