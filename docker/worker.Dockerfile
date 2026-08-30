@@ -1,5 +1,17 @@
 # syntax=docker/dockerfile:1.7
 FROM node:22-alpine AS base
+# Where apk fetches from.
+#
+# Empty by default, which means Alpine's own CDN — correct nearly everywhere. It
+# exists because on the network this was first deployed to, dl-cdn.alpinelinux.org
+# answers on the host but fails intermittently from inside a container, and a
+# build that dies on `apk add openssl` gives no hint that the package is fine and
+# the route is not. Set ALPINE_MIRROR to a mirror that works from there.
+ARG ALPINE_MIRROR=""
+RUN if [ -n "$ALPINE_MIRROR" ]; then \
+      sed -i "s|https://dl-cdn.alpinelinux.org|$ALPINE_MIRROR|g" /etc/apk/repositories 2>/dev/null || \
+      sed -i "s|https://dl-cdn.alpinelinux.org|$ALPINE_MIRROR|g" /etc/apk/repositories.d/*.repo 2>/dev/null || true; \
+    fi
 RUN corepack enable && apk add --no-cache libc6-compat openssl
 WORKDIR /app
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml .npmrc ./
@@ -24,6 +36,18 @@ ENV NODE_ENV=production
 RUN pnpm build:packages && pnpm --filter @tp/worker build
 
 FROM node:22-alpine AS production
+# Where apk fetches from.
+#
+# Empty by default, which means Alpine's own CDN — correct nearly everywhere. It
+# exists because on the network this was first deployed to, dl-cdn.alpinelinux.org
+# answers on the host but fails intermittently from inside a container, and a
+# build that dies on `apk add openssl` gives no hint that the package is fine and
+# the route is not. Set ALPINE_MIRROR to a mirror that works from there.
+ARG ALPINE_MIRROR=""
+RUN if [ -n "$ALPINE_MIRROR" ]; then \
+      sed -i "s|https://dl-cdn.alpinelinux.org|$ALPINE_MIRROR|g" /etc/apk/repositories 2>/dev/null || \
+      sed -i "s|https://dl-cdn.alpinelinux.org|$ALPINE_MIRROR|g" /etc/apk/repositories.d/*.repo 2>/dev/null || true; \
+    fi
 RUN corepack enable && apk add --no-cache libc6-compat openssl
 WORKDIR /app
 ENV NODE_ENV=production

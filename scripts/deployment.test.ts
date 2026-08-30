@@ -472,3 +472,38 @@ describe('docker-compose.cpanel.yml', () => {
     expect(override).toMatch(/certbot:[\s\S]*profiles: \['never'\]/);
   });
 });
+
+describe('image builds', () => {
+  /**
+   * `apk add` failing with "no such package" for something that obviously
+   * exists means the index fetch failed, not the package. That happened on a
+   * real deployment: Alpine's CDN answered from the host and failed
+   * intermittently from inside a container, and the error named the package
+   * rather than the route.
+   *
+   * The argument defaults to empty, so nothing changes for a build that can
+   * reach the CDN. Every Dockerfile that installs a package has to accept it,
+   * though — one that does not is the one that fails on such a network.
+   */
+  it('lets every apk-installing image be pointed at a different mirror', () => {
+    for (const dockerfile of DOCKERFILES) {
+      const body = read(dockerfile);
+      const installs = body.split('\n').filter((line) => /^RUN .*\bapk add\b/.test(line.trim()));
+      if (installs.length === 0) continue;
+      expect(body, `${dockerfile} installs packages but takes no ALPINE_MIRROR`).toMatch(
+        /^ARG ALPINE_MIRROR=/m,
+      );
+      // One ARG per build stage that installs: an ARG does not cross a FROM.
+      const argCount = (body.match(/^ARG ALPINE_MIRROR=/gm) ?? []).length;
+      expect(argCount).toBeGreaterThanOrEqual(installs.length);
+    }
+  });
+
+  it('passes the mirror to every image compose builds', () => {
+    const compose = read('docker-compose.prod.yml');
+    const builds = (compose.match(/dockerfile: docker\/[a-z]+\.Dockerfile/g) ?? []).length;
+    const args = (compose.match(/ALPINE_MIRROR: \$\{ALPINE_MIRROR:-\}/g) ?? []).length;
+    expect(builds).toBeGreaterThan(0);
+    expect(args).toBe(builds);
+  });
+});
