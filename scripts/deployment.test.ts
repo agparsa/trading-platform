@@ -499,6 +499,29 @@ describe('image builds', () => {
     }
   });
 
+  /**
+   * The prefix has to include `/alpine`.
+   *
+   * `/etc/apk/repositories` holds `https://dl-cdn.alpinelinux.org/alpine/v3.21/main`.
+   * Replacing only the hostname yields `.../alpine/alpine/v3.21/main`, and the
+   * error apk then prints says the package does not exist — which sends you
+   * looking for a package that has existed for twenty years, rather than at the
+   * path. This cost a build cycle on a live host to find.
+   */
+  it('substitutes the whole mirror prefix, not just the hostname', () => {
+    for (const dockerfile of DOCKERFILES) {
+      const body = read(dockerfile);
+      if (!/^ARG ALPINE_MIRROR=/m.test(body)) continue;
+      const substitutions = body.match(/s\|https:\/\/dl-cdn\.alpinelinux\.org[^|]*\|/g) ?? [];
+      expect(substitutions.length).toBeGreaterThan(0);
+      for (const found of substitutions) {
+        expect(found, `${dockerfile}: replacing the host alone doubles /alpine`).toBe(
+          's|https://dl-cdn.alpinelinux.org/alpine|',
+        );
+      }
+    }
+  });
+
   it('passes the mirror to every image compose builds', () => {
     const compose = read('docker-compose.prod.yml');
     const builds = (compose.match(/dockerfile: docker\/[a-z]+\.Dockerfile/g) ?? []).length;

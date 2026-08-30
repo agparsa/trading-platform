@@ -18,8 +18,9 @@ FROM nginx:1.27-alpine
 # the route is not. Set ALPINE_MIRROR to a mirror that works from there.
 ARG ALPINE_MIRROR=""
 RUN if [ -n "$ALPINE_MIRROR" ]; then \
-      sed -i "s|https://dl-cdn.alpinelinux.org|$ALPINE_MIRROR|g" /etc/apk/repositories 2>/dev/null || \
-      sed -i "s|https://dl-cdn.alpinelinux.org|$ALPINE_MIRROR|g" /etc/apk/repositories.d/*.repo 2>/dev/null || true; \
+      for f in /etc/apk/repositories /etc/apk/repositories.d/*; do \
+        [ -f "$f" ] && sed -i "s|https://dl-cdn.alpinelinux.org/alpine|$ALPINE_MIRROR|g" "$f"; \
+      done; \
     fi
 RUN apk add --no-cache openssl
 
