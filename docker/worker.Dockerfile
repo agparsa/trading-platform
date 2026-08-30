@@ -8,11 +8,8 @@ FROM node:22-alpine AS base
 # build that dies on `apk add openssl` gives no hint that the package is fine and
 # the route is not. Set ALPINE_MIRROR to a mirror that works from there.
 ARG ALPINE_MIRROR=""
-RUN if [ -n "$ALPINE_MIRROR" ]; then \
-      for f in /etc/apk/repositories /etc/apk/repositories.d/*; do \
-        [ -f "$f" ] && sed -i "s|https://dl-cdn.alpinelinux.org/alpine|$ALPINE_MIRROR|g" "$f"; \
-      done; \
-    fi
+COPY docker/alpine-mirror.sh /tmp/alpine-mirror.sh
+RUN sh /tmp/alpine-mirror.sh && rm /tmp/alpine-mirror.sh
 RUN corepack enable && apk add --no-cache libc6-compat openssl
 WORKDIR /app
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml .npmrc ./
@@ -45,11 +42,8 @@ FROM node:22-alpine AS production
 # build that dies on `apk add openssl` gives no hint that the package is fine and
 # the route is not. Set ALPINE_MIRROR to a mirror that works from there.
 ARG ALPINE_MIRROR=""
-RUN if [ -n "$ALPINE_MIRROR" ]; then \
-      for f in /etc/apk/repositories /etc/apk/repositories.d/*; do \
-        [ -f "$f" ] && sed -i "s|https://dl-cdn.alpinelinux.org/alpine|$ALPINE_MIRROR|g" "$f"; \
-      done; \
-    fi
+COPY docker/alpine-mirror.sh /tmp/alpine-mirror.sh
+RUN sh /tmp/alpine-mirror.sh && rm /tmp/alpine-mirror.sh
 RUN corepack enable && apk add --no-cache libc6-compat openssl
 WORKDIR /app
 ENV NODE_ENV=production

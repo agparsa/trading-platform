@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -500,25 +508,20 @@ describe('image builds', () => {
   });
 
   /**
-   * The prefix has to include `/alpine`.
-   *
-   * `/etc/apk/repositories` holds `https://dl-cdn.alpinelinux.org/alpine/v3.21/main`.
-   * Replacing only the hostname yields `.../alpine/alpine/v3.21/main`, and the
-   * error apk then prints says the package does not exist — which sends you
-   * looking for a package that has existed for twenty years, rather than at the
-   * path. This cost a build cycle on a live host to find.
+   * Four lines of shell, three failures, so it is a file with a test rather than
+   * a fragment repeated in four Dockerfiles. The failures are listed in the
+   * script; the tests below are one per failure.
    */
-  it('substitutes the whole mirror prefix, not just the hostname', () => {
+  it('runs the mirror script in every image that installs packages', () => {
     for (const dockerfile of DOCKERFILES) {
       const body = read(dockerfile);
-      if (!/^ARG ALPINE_MIRROR=/m.test(body)) continue;
-      const substitutions = body.match(/s\|https:\/\/dl-cdn\.alpinelinux\.org[^|]*\|/g) ?? [];
-      expect(substitutions.length).toBeGreaterThan(0);
-      for (const found of substitutions) {
-        expect(found, `${dockerfile}: replacing the host alone doubles /alpine`).toBe(
-          's|https://dl-cdn.alpinelinux.org/alpine|',
-        );
-      }
+      const installs = body.split('\n').filter((line) => /^RUN .*\bapk add\b/.test(line.trim()));
+      if (installs.length === 0) continue;
+      const applied = (body.match(/sh \/tmp\/alpine-mirror\.sh/g) ?? []).length;
+      expect(
+        applied,
+        `${dockerfile} installs packages without applying the mirror`,
+      ).toBeGreaterThanOrEqual(installs.length);
     }
   });
 
@@ -528,5 +531,109 @@ describe('image builds', () => {
     const args = (compose.match(/ALPINE_MIRROR: \$\{ALPINE_MIRROR:-\}/g) ?? []).length;
     expect(builds).toBeGreaterThan(0);
     expect(args).toBe(builds);
+  });
+});
+
+describe('alpine-mirror.sh', () => {
+  const script = resolve(ROOT, 'docker/alpine-mirror.sh');
+  const CDN = 'https://dl-cdn.alpinelinux.org/alpine';
+  const MIRROR = 'https://mirror.example.org/alpine';
+
+  const run = (apkRoot: string, mirror?: string) =>
+    spawnSync('sh', [script], {
+      env: {
+        ...process.env,
+        APK_ROOT: apkRoot,
+        ...(mirror === undefined ? {} : { ALPINE_MIRROR: mirror }),
+      },
+      encoding: 'utf8',
+    });
+
+  const withRoot = (build: (root: string) => void, check: (root: string) => void) => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'tp-apk-'));
+    try {
+      build(dir);
+      check(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  /**
+   * The whole prefix, not the hostname. Replacing the host alone yields
+   * `.../alpine/alpine/v3.21/main`, and apk then reports the package as missing
+   * — the same error as having no mirror at all, which is how it went unnoticed.
+   */
+  it('rewrites the whole prefix', () => {
+    withRoot(
+      (dir) =>
+        writeFileSync(resolve(dir, 'repositories'), `${CDN}/v3.21/main\n${CDN}/v3.21/community\n`),
+      (dir) => {
+        expect(run(dir, MIRROR).status).toBe(0);
+        const after = readFileSync(resolve(dir, 'repositories'), 'utf8');
+        expect(after).toBe(`${MIRROR}/v3.21/main\n${MIRROR}/v3.21/community\n`);
+        expect(after).not.toContain('alpine/alpine');
+      },
+    );
+  });
+
+  /**
+   * The scenario that failed the build while doing its job correctly: with no
+   * `repositories.d/`, the glob stays literal, `[ -f ]` is false, and in the
+   * Dockerfile that false test was the last statement in the loop and so the
+   * whole RUN step's exit status.
+   *
+   * This asserts the scenario now succeeds. It does not, and cannot, catch the
+   * `&&` form coming back — what actually prevents that is structural: the exit
+   * status of this script is the `found` check after the loop, not the loop.
+   * Rewriting the body in the old style still passes here, which is why the fix
+   * had to be the structure rather than a test.
+   */
+  it('succeeds when only /etc/apk/repositories exists', () => {
+    withRoot(
+      (dir) => writeFileSync(resolve(dir, 'repositories'), `${CDN}/v3.21/main\n`),
+      (dir) => {
+        const out = run(dir, MIRROR);
+        expect(out.status, out.stderr).toBe(0);
+      },
+    );
+  });
+
+  it('handles the newer repositories.d layout too', () => {
+    withRoot(
+      (dir) => {
+        mkdirSync(resolve(dir, 'repositories.d'), { recursive: true });
+        writeFileSync(resolve(dir, 'repositories.d/main.repo'), `${CDN}/v3.22/main\n`);
+      },
+      (dir) => {
+        expect(run(dir, MIRROR).status).toBe(0);
+        expect(readFileSync(resolve(dir, 'repositories.d/main.repo'), 'utf8')).toContain(MIRROR);
+      },
+    );
+  });
+
+  /**
+   * If Alpine moves the file again, say so here rather than letting the build
+   * fail later with the misleading message this script exists to prevent.
+   */
+  it('fails loudly when it can find nothing to rewrite', () => {
+    withRoot(
+      () => {},
+      (dir) => {
+        const out = run(dir, MIRROR);
+        expect(out.status).not.toBe(0);
+        expect(out.stderr).toContain('no repository file');
+      },
+    );
+  });
+
+  it('does nothing at all when no mirror was asked for', () => {
+    withRoot(
+      (dir) => writeFileSync(resolve(dir, 'repositories'), `${CDN}/v3.21/main\n`),
+      (dir) => {
+        expect(run(dir).status).toBe(0);
+        expect(readFileSync(resolve(dir, 'repositories'), 'utf8')).toContain(CDN);
+      },
+    );
   });
 });
