@@ -637,3 +637,25 @@ describe('alpine-mirror.sh', () => {
     );
   });
 });
+
+describe('the install lifecycle', () => {
+  /**
+   * The root `package.json` runs `prisma generate` from `prepare`, which npm
+   * and pnpm run on every install. Any image that installs dependencies
+   * therefore needs the schema in its context — even one that never touches a
+   * database, like the web app. Without it `pnpm install` fails with
+   * "schema.prisma: file not found", which reads like a missing dependency and
+   * is really a missing COPY.
+   */
+  it('gives every installing image the prisma schema its install will look for', () => {
+    const prepare = JSON.parse(read('package.json')).scripts?.prepare ?? '';
+    if (!prepare.includes('prisma')) return; // the reason is gone; so is the requirement
+    for (const dockerfile of DOCKERFILES) {
+      const body = read(dockerfile);
+      if (!/^RUN pnpm install/m.test(body)) continue;
+      expect(body, `${dockerfile} installs but never copies prisma/`).toMatch(
+        /^COPY prisma \.\/prisma$/m,
+      );
+    }
+  });
+});

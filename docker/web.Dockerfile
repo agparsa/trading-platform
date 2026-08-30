@@ -14,6 +14,11 @@ RUN corepack enable && apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml .npmrc ./
 COPY tsconfig.base.json ./
+# The web app needs no database, but the root package.json's `prepare` script
+# runs `prisma generate` on every install — so `pnpm install` fails here without
+# the schema, with an error about a file the web app does not use. The schema is
+# a few kilobytes and this is cheaper than special-casing the lifecycle script.
+COPY prisma ./prisma
 COPY packages ./packages
 COPY apps/web ./apps/web
 # No fallback. `|| pnpm install` was here, and it meant a drifted lockfile
