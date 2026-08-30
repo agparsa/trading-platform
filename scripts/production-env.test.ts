@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -43,6 +45,8 @@ const COMPOSE_ONLY = new Set([
   'HTTP_PORT',
   'HTTPS_PORT',
   'TLS_CERT_DIR',
+  'TLS_DOMAIN',
+  'TRUSTED_PROXIES_FILE',
   'PUBLIC_API_URL',
   'PUBLIC_WS_URL',
 ]);
@@ -101,5 +105,137 @@ describe('.env.production.example', () => {
       .filter((line) => /^(JWT_[A-Z_]*SECRET|SECRET_ENCRYPTION_KEYS|POSTGRES_PASSWORD)=/.test(line))
       .filter((line) => line.slice(line.indexOf('=') + 1).trim().length > 0);
     expect(secrets).toEqual([]);
+  });
+});
+
+// ─── The script that writes the real thing ─────────────────────────────────
+
+describe('bootstrap-production-env.sh', () => {
+  /**
+   * The end-to-end claim: run this on a host and the platform boots.
+   *
+   * Checking the *example* file is not enough — the example is a template full
+   * of blanks, and the thing that actually has to satisfy the schema is what the
+   * bootstrap writes. This runs it for real, in a scratch copy, and parses the
+   * result with the same schemas the API and worker use at startup. A missing
+   * substitution, a secret too short, a base64 value mangled by a `sed`
+   * expression that did not expect `/` — each of those fails here rather than on
+   * the host, ten minutes after a deploy.
+   */
+  const bootstrap = (domain: string, cdn?: string) => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'tp-bootstrap-'));
+    for (const part of ['scripts', 'docker', '.env.production.example', 'apps', 'packages']) {
+      cpSync(resolve(ROOT, part), resolve(dir, part), { recursive: true });
+    }
+    const args = [resolve(dir, 'scripts/bootstrap-production-env.sh'), domain];
+    if (cdn !== undefined) args.push('--cdn', cdn);
+    const run = spawnSync('bash', args, { cwd: dir, encoding: 'utf8' });
+    return { dir, run };
+  };
+
+  const parseEnv = (file: string): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const line of readFileSync(file, 'utf8').split('\n')) {
+      const t = line.trim();
+      if (!/^[A-Z][A-Z0-9_]*=/.test(t)) continue;
+      out[t.slice(0, t.indexOf('='))] = t.slice(t.indexOf('=') + 1);
+    }
+    return out;
+  };
+
+  it('writes a file both schemas accept', () => {
+    const { dir, run } = bootstrap('trade.example.com', 'arvancloud');
+    try {
+      expect(run.status).toBe(0);
+      const env = parseEnv(resolve(dir, '.env.production'));
+      Object.assign(env, {
+        DATABASE_URL: `postgresql://${env['POSTGRES_USER']}:${env['POSTGRES_PASSWORD']}@postgres:5432/${env['POSTGRES_DB']}?schema=public`,
+        REDIS_URL: 'redis://redis:6379',
+        NODE_ENV: 'production',
+        API_HOST: '0.0.0.0',
+        API_PORT: '4000',
+      });
+
+      const api = envSchema.safeParse(env);
+      const worker = workerEnvSchema.safeParse(env);
+      const issues = [
+        ...(api.success
+          ? []
+          : api.error.issues.map((i) => `api ${i.path.join('.')}: ${i.message}`)),
+        ...(worker.success
+          ? []
+          : worker.error.issues.map((i) => `worker ${i.path.join('.')}: ${i.message}`)),
+      ];
+      expect(issues).toEqual([]);
+
+      expect(env['TLS_DOMAIN']).toBe('trade.example.com');
+      expect(env['CORS_ORIGINS']).toBe('https://trade.example.com');
+      expect(env['TRUSTED_PROXIES_FILE']).toBe('./docker/nginx/trusted-proxies.arvancloud.conf');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * Every one of these is different every run, and none of them is the
+   * placeholder that was in the template. A bootstrap that shipped the same
+   * secret to every deployment would be worse than one that shipped none.
+   */
+  it('generates secrets rather than substituting a constant', () => {
+    const first = bootstrap('a.example.com');
+    const second = bootstrap('b.example.com');
+    try {
+      const a = parseEnv(resolve(first.dir, '.env.production'));
+      const b = parseEnv(resolve(second.dir, '.env.production'));
+      for (const key of [
+        'POSTGRES_PASSWORD',
+        'JWT_ACCESS_SECRET',
+        'JWT_REFRESH_SECRET',
+        'SECRET_ENCRYPTION_KEYS',
+      ]) {
+        expect(a[key]).toBeTruthy();
+        expect(a[key]).not.toBe(b[key]);
+      }
+      expect(a['JWT_ACCESS_SECRET']!.length).toBeGreaterThanOrEqual(32);
+    } finally {
+      rmSync(first.dir, { recursive: true, force: true });
+      rmSync(second.dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * Re-running it must not quietly rotate a live secret. Regenerating
+   * SECRET_ENCRYPTION_KEYS alone locks every enrolled user out of their second
+   * factor, and nobody finds out until each of them next signs in.
+   */
+  it('refuses to overwrite a file that already exists', () => {
+    const { dir } = bootstrap('trade.example.com');
+    try {
+      const before = readFileSync(resolve(dir, '.env.production'), 'utf8');
+      const again = spawnSync(
+        'bash',
+        [resolve(dir, 'scripts/bootstrap-production-env.sh'), 'trade.example.com'],
+        {
+          cwd: dir,
+          encoding: 'utf8',
+        },
+      );
+      expect(again.status).not.toBe(0);
+      expect(again.stderr).toContain('Refusing to overwrite');
+      expect(readFileSync(resolve(dir, '.env.production'), 'utf8')).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a CDN it has no ranges for, rather than trusting nothing quietly', () => {
+    const { dir, run } = bootstrap('trade.example.com', 'notacdn');
+    try {
+      expect(run.status).not.toBe(0);
+      expect(run.stderr).toContain('No trusted-proxy file');
+      expect(existsSync(resolve(dir, '.env.production'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

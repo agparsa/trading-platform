@@ -235,7 +235,7 @@ describe('the certificate entrypoint', () => {
       expect(existsSync(resolve(run.active, 'fullchain.pem'))).toBe(true);
       expect(existsSync(resolve(run.active, 'privkey.pem'))).toBe(true);
       // A warning nobody can miss, on stderr, every boot.
-      expect(run.stderr).toContain('NO CERTIFICATE WAS MOUNTED');
+      expect(run.stderr).toContain('NO CERTIFICATE FOR');
       // And it is a certificate, not an empty file.
       const shown = spawnSync(
         'openssl',
@@ -277,7 +277,7 @@ describe('the certificate entrypoint', () => {
 
       const run = runIn(dir);
       expect(run.status).toBe(0);
-      expect(run.stderr).not.toContain('NO CERTIFICATE WAS MOUNTED');
+      expect(run.stderr).not.toContain('NO CERTIFICATE FOR');
 
       const subject = spawnSync(
         'openssl',
@@ -288,5 +288,162 @@ describe('the certificate entrypoint', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the certificate entrypoint, with Let's Encrypt", () => {
+  const script = resolve(ROOT, 'docker/nginx/entrypoint/10-resolve-certificates.sh');
+
+  const issue = (dir: string, cn: string) => {
+    mkdirSync(dir, { recursive: true });
+    const made = spawnSync('openssl', [
+      'req',
+      '-x509',
+      '-nodes',
+      '-newkey',
+      'rsa:2048',
+      '-days',
+      '1',
+      '-keyout',
+      resolve(dir, 'privkey.pem'),
+      '-out',
+      resolve(dir, 'fullchain.pem'),
+      '-subj',
+      `/CN=${cn}`,
+    ]);
+    expect(made.status).toBe(0);
+  };
+
+  const run = (dir: string, domain: string) => {
+    const mounted = resolve(dir, 'mounted');
+    const active = resolve(dir, 'active');
+    const letsencrypt = resolve(dir, 'letsencrypt');
+    mkdirSync(mounted, { recursive: true });
+    const result = spawnSync('sh', [script], {
+      env: {
+        ...process.env,
+        TP_CERT_MOUNT: mounted,
+        TP_CERT_ACTIVE: active,
+        TP_LETSENCRYPT_DIR: letsencrypt,
+        TLS_DOMAIN: domain,
+      },
+      encoding: 'utf8',
+    });
+    return { ...result, mounted, active, letsencrypt };
+  };
+
+  const subjectOf = (path: string) =>
+    spawnSync('openssl', ['x509', '-in', path, '-noout', '-subject'], { encoding: 'utf8' })
+      .stdout ?? '';
+
+  it("serves the Let's Encrypt certificate when there is one", () => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'tp-le-'));
+    try {
+      issue(resolve(dir, 'letsencrypt/live/trade.example'), 'trade.example');
+      const out = run(dir, 'trade.example');
+      expect(out.status).toBe(0);
+      expect(out.stderr).not.toContain('NO CERTIFICATE');
+      expect(subjectOf(resolve(out.active, 'fullchain.pem'))).toContain('trade.example');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * A certificate the operator put there by hand is an explicit instruction, and
+   * an automated issuer must not quietly override it.
+   */
+  it('prefers a mounted certificate over an issued one', () => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'tp-both-'));
+    try {
+      issue(resolve(dir, 'letsencrypt/live/trade.example'), 'issued.example');
+      issue(resolve(dir, 'mounted'), 'operator.example');
+      const out = run(dir, 'trade.example');
+      expect(subjectOf(resolve(out.active, 'fullchain.pem'))).toContain('operator.example');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * Linked rather than copied, so a renewal behind the link is picked up by a
+   * reload. A copy would serve the old certificate until the container restarted
+   * — up to ninety days after it stopped being valid.
+   */
+  it('links to the certificate rather than copying it', () => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'tp-link-'));
+    try {
+      const live = resolve(dir, 'letsencrypt/live/trade.example');
+      issue(live, 'first.example');
+      const out = run(dir, 'trade.example');
+      expect(subjectOf(resolve(out.active, 'fullchain.pem'))).toContain('first.example');
+
+      // Renewal: the file behind the link is replaced, nothing re-runs.
+      issue(live, 'renewed.example');
+      expect(subjectOf(resolve(out.active, 'fullchain.pem'))).toContain('renewed.example');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('trusted proxies', () => {
+  /**
+   * `real_ip_header` without `set_real_ip_from` does not weaken the rate limits,
+   * it removes them: any client can then claim any address, and a different one
+   * on every request.
+   */
+  it('trusts nobody by default', () => {
+    const conf = read('docker/nginx/trusted-proxies.conf');
+    expect(conf).not.toMatch(/^\s*real_ip_header/m);
+    expect(conf).not.toMatch(/^\s*set_real_ip_from/m);
+  });
+
+  it('names who may set the header wherever it reads one', () => {
+    for (const file of readdirSync(resolve(ROOT, 'docker/nginx')).filter((n) =>
+      n.startsWith('trusted-proxies.'),
+    )) {
+      const conf = read(`docker/nginx/${file}`);
+      if (!/^\s*real_ip_header/m.test(conf)) continue;
+      expect(conf).toMatch(/^\s*set_real_ip_from\s+\d/m);
+    }
+  });
+
+  it('reads the trusted-proxy file before the zones that key on an address', () => {
+    const conf = read('docker/nginx/nginx.conf');
+    const include = conf.indexOf('include /etc/nginx/trusted-proxies.conf;');
+    const firstZone = conf.indexOf('limit_req_zone');
+    expect(include).toBeGreaterThan(-1);
+    expect(firstZone).toBeGreaterThan(include);
+  });
+});
+
+describe('ACME', () => {
+  const conf = read('docker/nginx/nginx.conf');
+
+  /**
+   * Let's Encrypt fetches the challenge over port 80 and follows no redirect to
+   * a certificate that does not exist yet. An unconditional 308 is how a first
+   * issuance fails, on a server serving the file perfectly well one redirect
+   * away.
+   */
+  it('answers the challenge over HTTP, ahead of the HTTPS redirect', () => {
+    const challenge = conf.indexOf('location ^~ /.well-known/acme-challenge/');
+    const redirect = conf.indexOf('return 308 https://');
+    expect(challenge).toBeGreaterThan(-1);
+    expect(redirect).toBeGreaterThan(challenge);
+    // `^~` so a regex location cannot take it first.
+    expect(conf).toMatch(/location \^~ \/\.well-known\/acme-challenge\//);
+  });
+
+  /**
+   * A container with the Docker socket can start any container it likes as root
+   * on the host, and `:ro` protects the socket file rather than the API behind
+   * it. Reloading a web server is not worth that, and this is the guard that
+   * keeps the convenient version from coming back.
+   */
+  it('reloads Nginx without handing any container the Docker socket', () => {
+    expect(read('docker-compose.prod.yml')).not.toContain('docker.sock');
+    expect(read('docker/nginx/entrypoint/20-watch-renewals.sh')).toContain('nginx -s reload');
   });
 });

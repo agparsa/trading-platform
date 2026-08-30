@@ -27,7 +27,7 @@ until the bundle is dropped in.
 
 |                   |                                                                                     |
 | ----------------- | ----------------------------------------------------------------------------------- |
-| Tests             | **1031** across 83 files, all passing                                               |
+| Tests             | **1043** across 83 files, all passing                                               |
 | Database          | 30 tables, **59 NUMERIC columns, 0 floating-point columns** (CI-enforced)           |
 | Verified          | `lint → typecheck → test → build` green, plus smoke, WebSocket smoke, pentest, load |
 | Security          | **25** attacks attempted against a running instance, all refused                    |
@@ -203,12 +203,19 @@ cases, which is why it gets its own database and never points at your working on
 
 [`docs/deployment.md`](./docs/deployment.md) is the procedure. In outline:
 
+On the server, from a checkout:
+
 ```bash
-cp .env.production.example .env.production
-pnpm keygen credentials
-docker compose -f docker-compose.prod.yml build
-docker compose -f docker-compose.prod.yml up -d
+./scripts/first-deploy.sh trade.example.com you@example.com --cdn arvancloud
 ```
+
+That checks Docker is usable and ports 80 and 443 are actually free (a web
+server already sitting there produces a container that restarts forever rather
+than a clear error), writes `.env.production` with secrets generated **on that
+host** and stored nowhere else, builds, starts, waits for `/ready`, then
+rehearses the Let's Encrypt issuance before doing it for real. It is safe to
+re-run: the env file is written once and a certificate that exists is left
+alone.
 
 The `migrate` service runs `prisma migrate deploy` once and exits; `api` waits for
 it. Only `nginx` publishes ports. `MARKET_INGEST_ENABLED` and
@@ -220,6 +227,12 @@ Before pointing traffic at it, run the four checks the platform ships with
 against the real deployment: `pnpm smoke`, `pnpm smoke:ws`, `pnpm pentest` and
 `pnpm restore:rehearse`. Each of them boots or attacks something rather than
 reading a config file.
+
+**Behind a CDN**, set `TRUSTED_PROXIES_FILE` to that provider's ranges. Without
+it every per-IP rate limit — nginx's and the application's — counts the CDN
+rather than the client, so one attacker gets the same allowance as the entire
+legitimate population. Never enable `real_ip_header` without naming who may set
+it: that does not weaken the limits, it removes them.
 
 ---
 

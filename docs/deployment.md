@@ -96,6 +96,38 @@ in production is a way to run code nobody built or tested.
 **Migrations are a job.** Two API replicas racing `migrate deploy` is lock
 contention at best.
 
+### Behind a CDN
+
+If anything sits between the internet and this host — a CDN, a load balancer, a
+reverse proxy someone else runs — then every request arrives from _its_
+addresses, not from the client's. Three things follow, and the first is not
+optional.
+
+**Rate limits count the wrong subject.** `limit_req_zone $binary_remote_addr`
+and every per-IP decision the application makes are only as meaningful as the
+address behind them. Unfixed, the whole platform shares one bucket per CDN edge
+node: an attacker gets the same allowance as every legitimate user put together,
+and a single abusive client rate-limits everybody else. Point
+`TRUSTED_PROXIES_FILE` at a file naming the provider's ranges —
+`docker/nginx/trusted-proxies.arvancloud.conf` is one, from ArvanCloud's
+published list — and Nginx resolves the real client address from
+`X-Forwarded-For`.
+
+Never enable `real_ip_header` without also naming who may set it. That does not
+weaken the limits; it removes them, because any client can then send
+`X-Forwarded-For: 1.2.3.4` and present a different address on every request.
+
+**WebSockets need to be allowed through.** The terminal's entire realtime path is
+one connection to `/ws`. Most CDNs support WebSocket but not always by default,
+and a CDN that silently downgrades the upgrade request produces a terminal whose
+prices never move and whose console says nothing useful. Check it explicitly
+after the first deploy: `pnpm smoke:ws` run against the public hostname either
+connects or it does not.
+
+**`/api/` and `/ws` must not be cached.** A cached account balance is a wrong
+account balance. Configure the CDN to bypass cache for both paths; the static
+web bundle is the only thing here worth caching.
+
 ### TLS, and what happens before you have a certificate
 
 `ssl_certificate` is not a conditional directive: Nginx refuses to start when the
@@ -104,22 +136,51 @@ bring-up on a fresh host start every service and then fail on the only container
 through which any of them could be reached — with the reason in a log nobody was
 watching yet.
 
-So the Nginx image runs one script before Nginx starts. If `TLS_CERT_DIR`
-contains `fullchain.pem` and `privkey.pem`, those are what gets served. If it
-does not, the script generates a self-signed certificate and prints a warning to
-stderr on every boot. The stack comes up reachable and obviously provisional,
-which is the honest state of a host with no certificate.
+So the Nginx image runs one script before Nginx starts, and it looks in three
+places in order of how explicit each one is:
 
-Replace it before anyone signs in. HSTS is sent from the first response, so a
-browser that accepts the self-signed certificate once will refuse to speak plain
-HTTP to that hostname afterwards:
+1. **`TLS_CERT_DIR`** — a certificate you put there yourself. It wins, because
+   putting a file there is an instruction.
+2. **`/etc/letsencrypt/live/$TLS_DOMAIN/`** — one the `certbot` service issued.
+3. **A self-signed certificate** it generates, with a warning on stderr every
+   boot. The stack comes up reachable and obviously provisional, which is the
+   honest state of a host with no certificate.
+
+The first two are _linked_, not copied, so a renewal behind the link takes effect
+on reload. Nginx watches that file itself and reloads when it changes — a
+renewed certificate that nothing reloads keeps being served as the old one until
+the container happens to restart, and the failure then arrives up to ninety days
+after its cause.
+
+Nothing here holds the Docker socket. The usual sidecar that runs
+`docker kill -s HUP` needs it, and a container with that socket can start any
+container it likes as root on the host; mounting it `:ro` protects the socket
+file, not the API reachable through it. Reloading a web server is not worth that.
+
+**Issuing the first certificate.** Port 80 must reach this host from the internet
+— through the CDN, if there is one, with the CDN not caching
+`/.well-known/acme-challenge/`. Nginx answers that path over plain HTTP ahead of
+its HTTPS redirect, because Let's Encrypt follows no redirect to a certificate
+that does not exist yet.
 
 ```bash
-cp fullchain.pem privkey.pem "$TLS_CERT_DIR"/
+docker compose -f docker-compose.prod.yml --env-file .env.production run --rm \
+  --entrypoint certbot certbot certonly --webroot -w /var/www/certbot \
+  -d "$TLS_DOMAIN" --email you@example.com --agree-tos --no-eff-email
 docker compose -f docker-compose.prod.yml --env-file .env.production restart nginx
 ```
 
-The mounted directory stays read-only and is never written to. Nothing in
+Add `--dry-run` first. Let's Encrypt rate-limits failed issuance per domain per
+week, and a rehearsal costs nothing.
+
+After that the `certbot` service checks for renewal twice a day and does nothing
+until a certificate is within thirty days of expiry.
+
+HSTS is sent from the first response, so a browser that accepts a self-signed
+certificate once will refuse to speak plain HTTP to that hostname afterwards.
+Get the real certificate in place before anyone signs in.
+
+`TLS_CERT_DIR` is mounted read-only and never written to. Nothing in
 `docker/nginx/certs/` is committed.
 
 ### The web image is built for one hostname

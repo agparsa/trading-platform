@@ -157,12 +157,24 @@ services:
     ports:
       - '${HTTP_PORT:-80}:80'
       - '${HTTPS_PORT:-443}:443'
+    environment:
+      # Names the Let's Encrypt certificate to look for, and the CN of the
+      # self-signed stand-in when there is none.
+      TLS_DOMAIN: ${TLS_DOMAIN:-localhost}
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Who is allowed to set X-Forwarded-For. The default file trusts nobody;
+      # behind a CDN, point this at that provider's ranges — otherwise every
+      # per-IP rate limit counts the CDN instead of the client.
+      - ${TRUSTED_PROXIES_FILE:-./docker/nginx/trusted-proxies.conf}:/etc/nginx/trusted-proxies.conf:ro
       # Certificates live outside the image. Mount whatever your issuer produces
       # at fullchain.pem and privkey.pem. Without them the stack still comes up,
       # on a self-signed certificate, and says so on every boot.
       - ${TLS_CERT_DIR:-./docker/nginx/certs}:/etc/nginx/certs:ro
+      # Shared with certbot: the ACME challenge webroot, and the certificates it
+      # issues. Read-only here — Nginx serves them, certbot owns them.
+      - certbot-www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - api
       - web
@@ -172,6 +184,35 @@ services:
       timeout: 3s
       retries: 3
 
+  # Issues and renews the origin certificate.
+  #
+  # Renewal is checked twice a day — Let's Encrypt's own advice, and the reason
+  # is jitter: a fleet that all renews at the same hour is a fleet that fails at
+  # the same hour. Nothing happens until a certificate is inside thirty days of
+  # expiry, so most of these runs do nothing and cost nothing.
+  #
+  # Nothing here reloads Nginx. Doing so from another container needs the Docker
+  # socket, and a container holding that socket can start any container it likes
+  # as root on the host — `:ro` protects the socket file, not the API behind it.
+  # Nginx watches its own certificate file instead; see
+  # docker/nginx/entrypoint/20-watch-renewals.sh.
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - certbot-www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+    entrypoint: >
+      sh -c 'trap exit TERM;
+             while :; do
+               certbot renew --webroot -w /var/www/certbot --quiet;
+               sleep 12h & wait $${!};
+             done'
+    depends_on:
+      - nginx
+
 volumes:
   postgres-data:
   redis-data:
+  certbot-www:
+  letsencrypt:
