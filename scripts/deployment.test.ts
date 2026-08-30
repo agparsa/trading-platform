@@ -684,3 +684,43 @@ describe('what the runtime images actually contain', () => {
     }
   });
 });
+
+describe('the WebSocket path', () => {
+  const conf = read('docker/nginx/nginx.conf');
+
+  /**
+   * Verified against the running deployment: this configuration answers an
+   * upgrade request with `101 Switching Protocols`. The test keeps the three
+   * things that make that true, because each of them silently degrades the
+   * socket to polling — or breaks it outright — if it goes missing.
+   */
+  it('carries the upgrade: HTTP/1.1, the header, and the mapped Connection', () => {
+    const ws = /location \/ws \{([\s\S]*?)\n {4}\}/.exec(conf)?.[1] ?? '';
+    expect(ws).toMatch(/proxy_http_version 1\.1;/);
+    expect(ws).toMatch(/proxy_set_header Upgrade\s+\$http_upgrade;/);
+    // Not a hard-coded "upgrade": the same location serves Socket.IO's polling
+    // transport, which is not an upgrade and must not claim to be one.
+    expect(ws).toMatch(/proxy_set_header Connection \$connection_upgrade;/);
+    expect(conf).toMatch(/map \$http_upgrade \$connection_upgrade \{/);
+  });
+
+  it('sends it to an upstream that is not pooling connections', () => {
+    const ws = /location \/ws \{([\s\S]*?)\n {4}\}/.exec(conf)?.[1] ?? '';
+    const upstream = /proxy_pass http:\/\/(\w+);/.exec(ws)?.[1];
+    expect(upstream).toBeDefined();
+    const block =
+      new RegExp(`upstream ${upstream} \\{([\\s\\S]*?)\\n {2}\\}`).exec(conf)?.[1] ?? '';
+    expect(block).not.toMatch(/keepalive/);
+  });
+
+  /**
+   * A quiet market can go minutes without a tick. A short read timeout closes
+   * every socket on a slow Sunday and reconnects them all at once, which is a
+   * thundering herd nobody asked for.
+   */
+  it('does not close a socket that is merely quiet', () => {
+    const ws = /location \/ws \{([\s\S]*?)\n {4}\}/.exec(conf)?.[1] ?? '';
+    const timeout = /proxy_read_timeout (\d+)s;/.exec(ws)?.[1];
+    expect(Number(timeout)).toBeGreaterThanOrEqual(600);
+  });
+});
