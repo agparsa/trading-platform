@@ -1,4 +1,5 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { DevicesModule } from './devices/devices.module';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
@@ -100,6 +101,7 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
     MarketModule,
     TradingModule,
     RealtimeModule,
+    DevicesModule,
     PlatformMetricsModule,
   ],
   providers: [

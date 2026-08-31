@@ -90,6 +90,14 @@ handler is responsible for scoping the result to that user — which for
 | `POST`   | `/auth/password`               | `changePassword`          | SELF-SERVICE            |
 | `GET`    | `/auth/me`                     | `me`                      | _authenticated only_    |
 
+### `devices/devices.controller.ts` — base `/devices`
+
+| Verb     | Path           | Handler      | Requires             |
+| -------- | -------------- | ------------ | -------------------- |
+| `GET`    | `/devices`     | `list`       | _authenticated only_ |
+| `POST`   | `/devices`     | `register`   | SELF-SERVICE         |
+| `DELETE` | `/devices/:id` | `deactivate` | SELF-SERVICE         |
+
 ### `health/health.controller.ts` — base `/`
 
 | Verb  | Path             | Handler  | Requires       |
@@ -133,12 +141,15 @@ handler is responsible for scoping the result to that user — which for
 
 ### `notifications/notifications.controller.ts` — base `/notifications`
 
-| Verb   | Path                          | Handler   | Requires             |
-| ------ | ----------------------------- | --------- | -------------------- |
-| `GET`  | `/notifications`              | `list`    | _authenticated only_ |
-| `GET`  | `/notifications/unread-count` | `unread`  | _authenticated only_ |
-| `POST` | `/notifications/:id/read`     | `read`    | SELF-SERVICE         |
-| `POST` | `/notifications/read-all`     | `readAll` | SELF-SERVICE         |
+| Verb    | Path                                   | Handler          | Requires             |
+| ------- | -------------------------------------- | ---------------- | -------------------- |
+| `GET`   | `/notifications`                       | `list`           | _authenticated only_ |
+| `GET`   | `/notifications/unread-count`          | `unread`         | _authenticated only_ |
+| `POST`  | `/notifications/:id/read`              | `read`           | SELF-SERVICE         |
+| `POST`  | `/notifications/read-all`              | `readAll`        | SELF-SERVICE         |
+| `GET`   | `/notifications/preferences`           | `preferencesFor` | _authenticated only_ |
+| `PATCH` | `/notifications/preferences`           | `updateSettings` | SELF-SERVICE         |
+| `PATCH` | `/notifications/preferences/:category` | `updateCategory` | SELF-SERVICE         |
 
 ### `operations/operations.controller.ts` — base `/operations`
 
@@ -196,7 +207,7 @@ handler is responsible for scoping the result to that user — which for
 | `GET`   | `/users/me` | `me`     | _authenticated only_ |
 | `PATCH` | `/users/me` | `update` | SELF-SERVICE         |
 
-**87 routes:** 44 `GET`, 37 `POST`, 3 `DELETE`, 3 `PATCH`.
+**93 routes:** 46 `GET`, 38 `POST`, 5 `PATCH`, 4 `DELETE`.
 
 <!-- END GENERATED ROUTES -->
 
@@ -279,7 +290,12 @@ these routes are present in any form:
 
 ```
 /kyc/*            /wallet/*         /deposits/*       /withdrawals/*
-/payments/*       /api-keys/*       /webhooks/*       /devices/*
-/tenants/*        /notification-preferences/*         /security/*
-/ai/*
+/payments/*       /api-keys/*       /webhooks/*       /tenants/*
+/security/*       /ai/*
 ```
+
+`/devices/*` and `/notifications/preferences` were on that list until the
+notification platform work began; they are in the table above now. The rest
+still is not there, and this section is kept accurate rather than aspirational
+— a specification item that is listed as done and is not is worse for a reader
+than one honestly listed as missing.

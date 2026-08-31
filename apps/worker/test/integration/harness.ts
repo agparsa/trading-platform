@@ -57,7 +57,9 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
         audit_logs, risk_events, account_snapshots, balance_ledger,
         trades, executions, position_events, positions,
         order_events, orders, account_settings,
-        reconciliation_findings, reconciliation_runs, notifications, accounts,
+        reconciliation_findings, reconciliation_runs,
+        devices, notification_preferences, notification_settings, notifications,
+        accounts,
         system_settings, tenants,
         invite_redemptions, invite_codes,
         totp_recovery_codes, refresh_tokens, users, idempotency_keys

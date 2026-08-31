@@ -53,36 +53,39 @@ model Tenant {
 
   status TenantStatus @default(ACTIVE)
 
-  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt              DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
-  users                  User[]
-  totpRecoveryCodes      TotpRecoveryCode[]
-  refreshTokens          RefreshToken[]
-  accounts               Account[]
-  accountSettings        AccountSettings[]
-  orders                 Order[]
-  orderEvents            OrderEvent[]
-  positions              Position[]
-  positionEvents         PositionEvent[]
-  executions             Execution[]
-  trades                 Trade[]
-  balanceLedgers         BalanceLedger[]
-  accountSnapshots       AccountSnapshot[]
-  riskRuleConfigs        RiskRuleConfig[]
-  riskEvents             RiskEvent[]
-  auditLogs              AuditLog[]
-  idempotencyKeys        IdempotencyKey[]
-  masterAccounts         MasterAccount[]
-  masterAccountLinks     MasterAccountLink[]
-  integritySignals       IntegritySignal[]
-  integritySignalEvents  IntegritySignalEvent[]
-  systemSettings         SystemSetting[]
-  inviteCodes            InviteCode[]
-  inviteRedemptions      InviteRedemption[]
-  reconciliationRuns     ReconciliationRun[]
-  reconciliationFindings ReconciliationFinding[]
-  notifications          Notification[]
-  tenantSymbolTerms      TenantSymbolTerms[]
+  createdAt               DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  users                   User[]
+  totpRecoveryCodes       TotpRecoveryCode[]
+  refreshTokens           RefreshToken[]
+  accounts                Account[]
+  accountSettings         AccountSettings[]
+  orders                  Order[]
+  orderEvents             OrderEvent[]
+  positions               Position[]
+  positionEvents          PositionEvent[]
+  executions              Execution[]
+  trades                  Trade[]
+  balanceLedgers          BalanceLedger[]
+  accountSnapshots        AccountSnapshot[]
+  riskRuleConfigs         RiskRuleConfig[]
+  riskEvents              RiskEvent[]
+  auditLogs               AuditLog[]
+  idempotencyKeys         IdempotencyKey[]
+  masterAccounts          MasterAccount[]
+  masterAccountLinks      MasterAccountLink[]
+  integritySignals        IntegritySignal[]
+  integritySignalEvents   IntegritySignalEvent[]
+  systemSettings          SystemSetting[]
+  inviteCodes             InviteCode[]
+  inviteRedemptions       InviteRedemption[]
+  reconciliationRuns      ReconciliationRun[]
+  reconciliationFindings  ReconciliationFinding[]
+  notifications           Notification[]
+  tenantSymbolTerms       TenantSymbolTerms[]
+  devices                 Device[]
+  notificationPreferences NotificationPreference[]
+  notificationSettings    NotificationSetting[]
 
   @@map("tenants")
 }
@@ -143,14 +146,17 @@ model User {
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  accounts       Account[]
-  refreshTokens  RefreshToken[]
-  auditLogs      AuditLog[]
-  recoveryCodes  TotpRecoveryCode[]
-  masterAccounts MasterAccount[]
-  notifications  Notification[]
-  invitesCreated InviteCode[]       @relation("InviteCreator")
-  invitesUsed    InviteRedemption[]
+  accounts                Account[]
+  refreshTokens           RefreshToken[]
+  auditLogs               AuditLog[]
+  recoveryCodes           TotpRecoveryCode[]
+  masterAccounts          MasterAccount[]
+  notifications           Notification[]
+  invitesCreated          InviteCode[]             @relation("InviteCreator")
+  invitesUsed             InviteRedemption[]
+  devices                 Device[]
+  notificationPreferences NotificationPreference[]
+  notificationSettings    NotificationSetting[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
@@ -1263,6 +1269,39 @@ model ReconciliationFinding {
 enum NotificationChannel {
   IN_APP
   EMAIL
+  PUSH
+}
+
+/// The operating system a registered device runs.
+///
+/// `WEB` is here because a browser is a push target too: the Web Push protocol
+/// carries the same payloads to a closed tab that APNs carries to a closed app.
+/// Keeping it in one enum means the fan-out asks "which devices" once rather
+/// than once per platform.
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+/// A group of notifications a person can turn off as a unit.
+///
+/// Deliberately coarser than `Notification.kind`. A trader wants one switch for
+/// "tell me when a stop loss fires", not one per instrument, and a kind is free
+/// to be added without every existing preference row becoming wrong: an unknown
+/// kind maps to a category, and a category with no row falls back to its
+/// default rather than to silence.
+enum NotificationCategory {
+  TRADE_OPENED
+  TRADE_CLOSED
+  TRADE_MODIFIED
+  ORDER_FILLED
+  ORDER_CANCELLED
+  STOP_LOSS
+  TAKE_PROFIT
+  RISK_ALERT
+  SECURITY_ALERT
+  SYSTEM
 }
 
 /// Something the platform decided a person should be told.
@@ -1304,4 +1343,144 @@ model Notification {
   @@index([userId, readAt, createdAt(sort: Desc)])
   @@index([tenantId])
   @@map("notifications")
+}
+
+/// A phone, tablet or browser this person has signed in from.
+///
+/// ## Why the push token is sealed
+///
+/// A push token is a bearer credential: anyone holding it can deliver a
+/// notification to that device, and a notification that looks like it came from
+/// a trading platform is a phishing vector aimed at someone who is already
+/// expecting messages about their money. So it is sealed with AES-256-GCM the
+/// same way the TOTP secret is, and — per §28 — never returned by any endpoint
+/// a trader can call. `pushTokenFingerprint` exists so support can say "the
+/// token ending 4f21 stopped working" without the token being readable.
+///
+/// ## Why `installationId` and not the token
+///
+/// FCM and APNs both rotate tokens without being asked. Keyed on the token, a
+/// rotation creates a second row and the trader gets every notification twice;
+/// keyed on a client-generated installation id that survives the rotation, the
+/// same row is updated. This is the whole of the duplicate-device problem and
+/// it is solved here rather than by deduplicating at delivery time.
+model Device {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+
+  platform DevicePlatform
+
+  /// Stable per-installation identifier generated by the client. Survives token
+  /// rotation, app updates and re-login; changes on reinstall, which is correct
+  /// — a reinstall is a new installation.
+  installationId String @map("installation_id")
+
+  /// Sealed push token. Null for a device that has registered but not yet been
+  /// granted notification permission, which is the normal state on first run.
+  pushToken String? @map("push_token")
+
+  /// Last 4 characters of the plaintext token, for support and for logs. Not a
+  /// secret and not enough to send anything.
+  pushTokenFingerprint String? @map("push_token_fingerprint")
+
+  /// Set when the provider tells us the token is dead (FCM `UNREGISTERED`).
+  /// Kept rather than cleared so a device that stops receiving has a reason.
+  pushTokenRejectedAt DateTime? @map("push_token_rejected_at") @db.Timestamptz(6)
+
+  appVersion String? @map("app_version")
+  osVersion  String? @map("os_version")
+  /// Human-readable hardware name, e.g. 'iPhone 15 Pro'. For the user's own
+  /// device list, so they can recognise which one to revoke.
+  model      String?
+
+  /// The locale the device asked for, so a notification can be written in it.
+  locale String?
+
+  isActive   Boolean  @default(true) @map("is_active")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  /// One row per installation per user. Two people sharing a phone get two
+  /// rows, which is right: signing out of one account must not silence the
+  /// other.
+  @@unique([tenantId, userId, installationId])
+  @@index([tenantId, userId, isActive])
+  @@index([tenantId])
+  @@map("devices")
+}
+
+/// Whether this person wants to hear about one category, and how.
+///
+/// A missing row means "the default for that category", not "off". That
+/// distinction is what lets a category be added later without silently muting
+/// it for everyone who has ever saved a preference.
+model NotificationPreference {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+
+  category NotificationCategory
+
+  /// Shown in the notification centre and streamed to an open terminal.
+  inApp Boolean @default(true) @map("in_app")
+  /// Delivered to registered devices when the app is not in the foreground.
+  push  Boolean @default(true)
+  /// Whether the client plays this category's sound. The server carries the
+  /// flag because the setting must follow the person to a new device.
+  sound Boolean @default(true)
+  email Boolean @default(false)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, userId, category])
+  @@index([tenantId])
+  @@map("notification_preferences")
+}
+
+/// The switches that apply across every category.
+///
+/// Separate from `NotificationPreference` because they are a different shape:
+/// one row per person rather than one per person per category, and turning
+/// `pushEnabled` off must silence push for every category at once without
+/// rewriting ten rows and without losing what those rows said.
+model NotificationSetting {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+
+  /// Master switch for everything that is not security-critical.
+  tradingEnabled   Boolean @default(true) @map("trading_enabled")
+  pushEnabled      Boolean @default(true) @map("push_enabled")
+  soundEnabled     Boolean @default(true) @map("sound_enabled")
+  vibrationEnabled Boolean @default(true) @map("vibration_enabled")
+
+  /// 0–100. Stored as an integer because it is a UI setting, not money.
+  soundVolume Int @default(80) @map("sound_volume")
+
+  /// Local time range during which push is withheld, as minutes from midnight
+  /// in `quietHoursTimezone`. Null means no quiet hours. In-app notices are
+  /// unaffected: the row is still written, it just does not wake the phone.
+  quietHoursStartMinute Int?    @map("quiet_hours_start_minute")
+  quietHoursEndMinute   Int?    @map("quiet_hours_end_minute")
+  quietHoursTimezone    String? @map("quiet_hours_timezone")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@map("notification_settings")
 }

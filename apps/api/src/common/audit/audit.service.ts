@@ -36,6 +36,12 @@ const REDACTED_KEYS = new Set([
   // ever reaches an audit payload it is a mistake, and this catches it.
   'invitecode',
   'codehash',
+  // A push token is a bearer credential for delivering a message to somebody's
+  // phone. `token` above does not catch it: the check is an exact match on the
+  // lower-cased key, not a substring.
+  'pushtoken',
+  'devicetoken',
+  'registrationtoken',
 ]);
 
 /**

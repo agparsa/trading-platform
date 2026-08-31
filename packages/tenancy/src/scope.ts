@@ -72,6 +72,9 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'AuditLog',
   'IdempotencyKey',
   'Notification',
+  'Device',
+  'NotificationPreference',
+  'NotificationSetting',
 ]);
 
 /**
