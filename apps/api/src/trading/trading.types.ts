@@ -95,3 +95,47 @@ export interface PendingOrderResult {
   expiresAt: string | null;
   createdAt: string;
 }
+
+/**
+ * What a trader would be committing to, before they commit to it.
+ *
+ * §14 asks the order ticket to show the estimated commission and margin before
+ * submission. The figures come from the server, computed by the same functions
+ * that will execute the order, because the alternative — reimplementing margin
+ * and commission in the client — is money arithmetic in JavaScript floats on
+ * three platforms that will drift apart.
+ */
+export interface OrderPreview {
+  readonly symbol: string;
+  readonly side: OrderSide;
+  /** After snapping down to the lot grid, which is what will actually trade. */
+  readonly volume: string;
+  /** The side of the spread this order would cross. */
+  readonly price: string;
+  readonly bid: string;
+  readonly ask: string;
+  readonly spread: string;
+  readonly notional: string;
+  readonly requiredMargin: string;
+  readonly estimatedCommission: string;
+  readonly accountCurrency: string;
+
+  /** Free margin as it stands, and what would be left. */
+  readonly freeMarginBefore: string;
+  readonly freeMarginAfter: string;
+  readonly marginLevelAfter: string | null;
+
+  /**
+   * Whether risk would allow it **at this instant**.
+   *
+   * An estimate, and deliberately labelled as one. The real check runs inside
+   * the transaction, under the account lock, because a check outside the lock
+   * is a check of a number that can change before it is used — see
+   * `OrdersService.openPosition`. Two orders that each preview as fine can
+   * still not both fit.
+   */
+  readonly wouldBeAccepted: boolean;
+  readonly violations: readonly string[];
+  /** Anything the trader should read before pressing the button. */
+  readonly warnings: readonly string[];
+}

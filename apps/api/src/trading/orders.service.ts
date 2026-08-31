@@ -37,6 +37,7 @@ import { RiskContextBuilder } from './risk-context.builder';
 import type {
   ModifyPendingRequest,
   OpenPositionRequest,
+  OrderPreview,
   OrderResult,
   PendingOrderResult,
   PlacePendingRequest,
@@ -110,6 +111,158 @@ export class OrdersService {
     private readonly events: EventsService,
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
   ) {}
+
+  /**
+   * What this order would cost, without placing it.
+   *
+   * ## Why this is on the server
+   *
+   * §14 wants the order ticket to show estimated commission and margin before
+   * submission. The obvious alternative is to compute them in the client — and
+   * that means money arithmetic in JavaScript floats, reimplemented on the web,
+   * on Android and on iOS, drifting apart from each other and from the engine
+   * that actually charges the trader. Every figure below comes from the same
+   * functions `openPosition` uses a few lines down.
+   *
+   * ## Why the answer is explicitly an estimate
+   *
+   * The risk evaluation here runs **outside** the account lock. `openPosition`
+   * takes that lock before it evaluates, for a reason its own comment sets out
+   * at length: two orders that each read the same free margin and each conclude
+   * they fit will both open, and the account ends up past its stop-out level on
+   * positions it should never have held.
+   *
+   * A preview cannot hold a lock — it would serialise every keystroke in every
+   * order ticket against real order flow. So it reports what risk says right
+   * now and calls that `wouldBeAccepted`, and the real decision is still made
+   * under the lock. Two tickets that both preview as fine can still not both
+   * fill, and that is correct rather than a defect.
+   *
+   * ## What it deliberately does not do
+   *
+   * Write anything. No order row, no audit entry, no idempotency key. It is a
+   * read, it is safe to call on every keystroke, and it consults the kill
+   * switch only to *report* a halt rather than to refuse the question.
+   */
+  async preview(userId: string, request: OpenPositionRequest): Promise<OrderPreview> {
+    const now = Date.now();
+    const symbolCode = request.symbol.toUpperCase();
+    const instrument = this.symbols.require(symbolCode);
+    const spec = instrument.spec;
+
+    const { account } = await this.access.resolve(
+      userId,
+      request.accountId,
+      Permission.ORDERS_READ,
+    );
+
+    const warnings: string[] = [];
+    if (account.status !== 'ACTIVE') {
+      warnings.push(`This account is ${account.status.toLowerCase()} and cannot open positions.`);
+    }
+    if (!isSessionOpen(instrument.session, now)) {
+      warnings.push(`${symbolCode} is outside its trading session.`);
+    }
+    try {
+      // Asked rather than asserted: a preview reports a halt, it does not refuse
+      // to answer because of one. A trader who cannot open should still be able
+      // to see what they would have been committing to.
+      this.killSwitch.assertMayOpenRisk();
+    } catch (error) {
+      warnings.push(error instanceof DomainError ? error.message : 'Trading is halted.');
+    }
+
+    // Snapped down to the lot grid, exactly as the real order would, so the
+    // ticket shows the volume that will actually trade rather than the one the
+    // trader typed.
+    const volume = normalizeVolume(spec, request.volume);
+    const volumeCheck = checkVolume(spec, volume);
+    if (!volumeCheck.ok) {
+      throw new DomainError(
+        TradingErrorCode.INVALID_VOLUME,
+        `Volume ${request.volume} is not tradeable for ${symbolCode} (${volumeCheck.reason})`,
+        {
+          requested: request.volume,
+          min: spec.minVolume,
+          max: spec.maxVolume,
+          step: spec.volumeStep,
+        },
+      );
+    }
+
+    const tick = await this.quotes.requireFresh(symbolCode, now);
+    const entryPrice = normalizePrice(spec, entryPriceFor(request.side, tick));
+
+    try {
+      validateProtectiveLevels(spec, request.side, entryPrice.toString(), {
+        stopLoss: request.stopLoss ?? null,
+        takeProfit: request.takeProfit ?? null,
+      });
+    } catch (error) {
+      // Reported, not thrown. A trader dragging a stop loss through the current
+      // price should see why the ticket refuses, not have the preview vanish.
+      warnings.push(error instanceof DomainError ? error.message : 'Invalid protective levels.');
+    }
+
+    const rate = await this.conversion.rate(spec.quoteCurrency, account.currency);
+    const margin = requiredMargin({
+      spec,
+      volume,
+      price: entryPrice,
+      accountLeverage: account.leverage,
+      accountCurrency: account.currency,
+      quoteToAccountRate: rate,
+    });
+    const notional = Money.of(
+      notionalValue(spec, volume, entryPrice),
+      spec.quoteCurrency,
+    ).convertTo(account.currency, rate);
+    const commission = commissionForLeg(spec, volume, account.currency, rate);
+
+    const valuation = await this.accountState.valuate(account.id);
+    const context = await this.riskContext.build(valuation, now);
+    const decision = this.risk.evaluate(
+      {
+        symbol: symbolCode,
+        spec,
+        side: request.side,
+        volume: volume.toString(),
+        price: entryPrice.toString(),
+        requiredMargin: margin,
+        notional,
+      },
+      context,
+    );
+
+    const usedAfter = valuation.state.usedMargin.plus(margin);
+    const freeAfter = valuation.state.equity.minus(usedAfter);
+    const marginLevelAfter = usedAfter.isZero()
+      ? null
+      : // Percentage, and null rather than Infinity when nothing is used — the
+        // same convention `computeAccountState` follows, so the ticket and the
+        // account screen agree.
+        valuation.state.equity.amount.div(usedAfter.amount).mul(100).toFixed(2);
+
+    return {
+      symbol: symbolCode,
+      side: request.side,
+      volume: volume.toString(),
+      price: entryPrice.toString(),
+      bid: tick.bid,
+      ask: tick.ask,
+      spread: toDecimal(tick.ask).minus(toDecimal(tick.bid)).toString(),
+      notional: notional.toString(),
+      requiredMargin: margin.toString(),
+      estimatedCommission: commission.toString(),
+      accountCurrency: account.currency,
+      freeMarginBefore: valuation.state.freeMargin.toString(),
+      freeMarginAfter: freeAfter.toString(),
+      marginLevelAfter,
+      wouldBeAccepted: decision.allowed && warnings.length === 0,
+      violations: decision.violations.map((violation) => violation.message),
+      warnings,
+    };
+  }
 
   async openPosition(userId: string, request: OpenPositionRequest): Promise<OrderResult> {
     // Opening a position takes on risk, so the halt applies. Closing one does

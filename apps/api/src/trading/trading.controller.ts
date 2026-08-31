@@ -31,7 +31,7 @@ import {
   OpenPositionDto,
   PlacePendingDto,
 } from './dto/trading.dto';
-import type { CloseResult, OrderResult } from './trading.types';
+import type { CloseResult, OrderPreview, OrderResult } from './trading.types';
 
 /**
  * Runs an operation under an idempotency key.
@@ -89,6 +89,36 @@ export class TradingController {
         takeProfit: body.takeProfit ?? null,
       }),
     );
+  }
+
+  /**
+   * What an order would cost, without placing it.
+   *
+   * A read, and typed as one everywhere it matters: `ORDERS_READ` rather than
+   * `ORDERS_CREATE`, no idempotency key, and nothing written. An order ticket
+   * calls this as the trader types, so it must be cheap to call and impossible
+   * to mistake for a submission.
+   *
+   * `POST` rather than `GET` because the input is a structured order, not a
+   * handful of query parameters — and because a stop loss in a URL ends up in
+   * an access log.
+   */
+  @Throttle({ default: { limit: rateLimits.api, ttl: RATE_LIMIT_WINDOW_MS } })
+  @RequirePermissions(Permission.ORDERS_READ)
+  @Post('orders/preview')
+  @ApiOperation({ summary: 'Estimate margin, commission and risk for an order without placing it' })
+  async preview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: OpenPositionDto,
+  ): Promise<OrderPreview> {
+    return this.orders.preview(user.id, {
+      accountId: body.accountId,
+      symbol: body.symbol,
+      side: body.side,
+      volume: body.volume,
+      stopLoss: body.stopLoss ?? null,
+      takeProfit: body.takeProfit ?? null,
+    });
   }
 
   @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })

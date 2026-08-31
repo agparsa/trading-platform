@@ -122,9 +122,48 @@ distinguishable from a stop loss without looking. Replace them with recorded
 assets when there is a designer; the contract they satisfy is in
 [sounds.md](sounds.md).
 
+## Prices come from the socket, not a poll
+
+The repository has a lint rule that forbids `setInterval` — "polling is not a
+substitute for the realtime architecture" — and it is right. A refetch every two
+seconds costs the same whether or not anything moved, and arrives late by up to
+the interval on the one tick that mattered.
+
+`RealtimeClient` connects with the access token, subscribes to quotes, orders,
+positions, account and P&L, and re-snapshots after every reconnect: whatever
+happened while disconnected was never delivered, and a client that carries on
+from stale state shows a P&L that is quietly wrong and stays wrong.
+
+`seq` and `eventId` are two different checks and both are needed. `seq` counts
+every frame the server _sent_, duplicates included, so it is noted **before** the
+duplicate check — discarding a duplicate first would manufacture a gap and force
+a pointless re-snapshot. The `eventId` memory is the same `SeenEvents` the push
+path uses, so a fill arriving by both routes is handled once between them rather
+than once each.
+
+## The order ticket
+
+Nothing on it is computed on the device. `POST /orders/preview` runs the same
+`requiredMargin`, `notionalValue` and `commissionForLeg` the order itself will
+run, so the estimate a trader sizes from is the figure they will be charged. The
+alternative — reimplementing money arithmetic in JavaScript floats on three
+clients — drifts from the engine and from itself.
+
+The preview's risk answer is explicitly an estimate. It runs outside the account
+lock, because a preview that held one would serialise every keystroke in every
+order ticket against real order flow. The real decision is still made under the
+lock inside the transaction, so two tickets that both preview as fine can still
+not both fill. That is correct rather than a defect, and the field is named
+`wouldBeAccepted` for that reason.
+
+Two presses, always. Review, then place — §43, and placing a trade is the most
+dangerous thing in the app. The confirmation shows the **snapped** volume and
+the crossed price, because those are what will actually happen and they are not
+always what was typed.
+
 ## What is not built yet
 
-The market screen, the chart, the order ticket, position modification and
-closing, order management, trade history, KYC and profile, and support. Phase 13
-of `IMPLEMENTATION_PLAN.md`. The account, positions, notification centre and
-settings screens exist and read real data from real endpoints.
+The chart, order modification, resting-order management, trade history, KYC and
+profile, and support. Phase 13 of `IMPLEMENTATION_PLAN.md` is partly done:
+account, market, positions with closing, the order ticket, the notification
+centre and settings all exist and read real endpoints.

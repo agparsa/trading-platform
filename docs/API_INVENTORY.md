@@ -187,6 +187,7 @@ handler is responsible for scoping the result to that user — which for
 | Verb     | Path                     | Handler         | Requires                                  |
 | -------- | ------------------------ | --------------- | ----------------------------------------- |
 | `POST`   | `/orders`                | `open`          | throttled, ORDERS_CREATE                  |
+| `POST`   | `/orders/preview`        | `preview`       | throttled, ORDERS_READ                    |
 | `POST`   | `/orders/pending`        | `placePending`  | throttled, ORDERS_CREATE                  |
 | `GET`    | `/orders/pending`        | `listPending`   | ORDERS_READ                               |
 | `PATCH`  | `/orders/:id`            | `modifyPending` | throttled, ORDERS_MODIFY                  |
@@ -207,7 +208,7 @@ handler is responsible for scoping the result to that user — which for
 | `GET`   | `/users/me` | `me`     | _authenticated only_ |
 | `PATCH` | `/users/me` | `update` | SELF-SERVICE         |
 
-**93 routes:** 46 `GET`, 38 `POST`, 5 `PATCH`, 4 `DELETE`.
+**94 routes:** 46 `GET`, 39 `POST`, 5 `PATCH`, 4 `DELETE`.
 
 <!-- END GENERATED ROUTES -->
 

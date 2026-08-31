@@ -31,6 +31,15 @@ interface SessionValue {
   signIn(email: string, password: string): Promise<{ twoFactorRequired: boolean }>;
   completeTwoFactor(challengeId: string, code: string): Promise<void>;
   signOut(): Promise<void>;
+  /**
+   * A token good for right now, refreshing first if it is close to expiry.
+   *
+   * Exposed for the WebSocket, which authenticates on connect and cannot go
+   * through the REST client's own retry hook. Routed through the same
+   * `TokenStore` so a socket reconnect during a refresh does not start a second
+   * one — refresh tokens rotate, and two in flight means one gets rejected.
+   */
+  accessToken(): Promise<string | null>;
   /** Everything the settings screen shows, refreshed on demand. */
   readonly preferences: NotificationSettingsDto | null;
   refreshPreferences(): Promise<void>;
@@ -213,6 +222,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
     [api, tokens, registerDevice, refreshPreferences],
   );
 
+  const accessToken = useCallback(async () => {
+    const current = await tokens.current();
+    return current?.accessToken ?? null;
+  }, [tokens]);
+
   const signOut = useCallback(async () => {
     await tokens.clear();
     // The next person on this phone must not inherit a memory of the last
@@ -230,10 +244,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
       signIn,
       completeTwoFactor,
       signOut,
+      accessToken,
       preferences,
       refreshPreferences,
     }),
-    [api, signedIn, loading, signIn, completeTwoFactor, signOut, preferences, refreshPreferences],
+    [
+      api,
+      signedIn,
+      loading,
+      signIn,
+      completeTwoFactor,
+      signOut,
+      accessToken,
+      preferences,
+      refreshPreferences,
+    ],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
