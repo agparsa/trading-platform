@@ -1,0 +1,182 @@
+# Security Audit
+
+**Audited:** commit `76fd42a`. Every control below was located in source before
+it was described. Where a control is asserted by a test or a probe, the file is
+named so the claim can be checked rather than believed.
+
+---
+
+## 1. Authentication
+
+| Control                 | Implementation                                                              | Verified by                                  |
+| ----------------------- | --------------------------------------------------------------------------- | -------------------------------------------- |
+| Password hashing        | Argon2id (`@node-rs/argon2`)                                                | `auth/password.service.ts`                   |
+| Plaintext passwords     | Never stored, never logged, never returned                                  | pino `redact` list; `User.passwordHash` only |
+| Access tokens           | JWT, short-lived, `type` claim checked                                      | `auth/token.service.ts`                      |
+| Refresh tokens          | httpOnly + secure + sameSite cookie, rotated on use, revocable              | `auth/refresh-cookie.ts`                     |
+| Refresh reuse detection | A replayed token is rejected                                                | `scripts/pentest.ts:221`                     |
+| 2FA                     | TOTP with a sealed secret, one-time step enforcement, hashed recovery codes | `auth/totp.service.ts`                       |
+| Account lockout         | Per-account failed-attempt counter, independent of the IP limiter           | `User.failedLoginAttempts`, `lockedUntil`    |
+| Email verification      | Single-use token, stored **hashed**                                         | `emailVerificationTokenHash`                 |
+| Password reset          | Single-use token, stored **hashed**, expiry enforced                        | `passwordResetTokenHash`                     |
+
+Storing the reset and verification tokens hashed rather than plain is the detail
+most implementations get wrong. Here a database leak does not hand the attacker
+a working password-reset link.
+
+**The TOTP secret is the one reversible secret in the database.** It has to be —
+verifying a six-digit code requires the secret itself. It is sealed with
+AES-256-GCM and bound to the row it belongs to, so a secret lifted from one row
+cannot be pasted into another. `common/crypto/secret-box.ts`.
+
+## 2. Authorization
+
+Four global guards: `ThrottlerGuard` → `JwtAuthGuard` → `RolesGuard` →
+`PermissionsGuard`. Registration is asserted by
+`common/guards/permissions-coverage.test.ts`, which exists for a specific
+reason: deleting the `APP_GUARD` line would make the API public while every unit
+test continued to pass. The test reads `app.module.ts` as text and fails if the
+registration is gone.
+
+The backend enforces every permission. The frontend's permission awareness is
+presentation only — it hides buttons; it does not decide anything. This matches
+the specification's rule.
+
+**Separation of duties is real.** `ADMIN` holds `accounts.adjust` and holds none
+of `orders.create`, `positions.close`, `positions.modify` — on any account,
+including their own. An administrator can credit an account or they can trade,
+never both from one login. `scripts/pentest.ts:682` probes exactly this by
+calling the adjustment endpoint as a trader.
+
+## 3. Transport and headers
+
+- `helmet` with `default-src 'none'` and `frame-ancestors 'none'`. The API
+  serves JSON, so the strictest possible CSP costs nothing.
+- CORS with an explicit origin allow-list from configuration, `credentials: true`,
+  and only `X-Request-Id` exposed.
+- `crossOriginResourcePolicy: same-site`.
+- TLS terminates at the edge; the stack listens on 127.0.0.1 only.
+
+## 4. Input validation
+
+One validation library for the whole platform: Zod. Request DTOs, the
+environment contract and the shared wire types are all Zod schemas, so a rule
+about a price format is written once instead of once per layer.
+`ZodValidationPipe` is global — an unvalidated body cannot reach a handler by
+someone forgetting a decorator, because there is no decorator to forget.
+
+## 5. Logging
+
+pino, structured, with a `redact` list that **removes** rather than masks:
+`authorization`, `cookie`, `password`, `currentPassword`, `newPassword`,
+`totpCode`, `set-cookie`. Secrets do not reach the aggregator.
+
+## 6. Audit trail
+
+`AuditService` writes an immutable record with actor, action, resource,
+before-state, after-state, request id, IP and user agent. Sensitive operations
+audit **before and after**, so a change can be reconstructed and reversed.
+
+**Gap against the specification.** The requirement is that _normal
+administrators must not be able to modify or delete audit logs_. In this
+codebase that is true of the application — nothing offers an edit — but not of
+the database: the application's own role holds `UPDATE` and `DELETE` on
+`audit_logs`. The protection is a convention, and conventions do not survive an
+attacker with a database connection.
+
+**Fix:** a migration issuing `REVOKE UPDATE, DELETE ON audit_logs FROM <app role>`
+while leaving `INSERT` and `SELECT`. One migration; converts a convention into a
+constraint. Scheduled as Phase 2 of the implementation plan.
+
+## 7. Adversarial testing
+
+`scripts/pentest.ts` — 826 lines, run with `pnpm pentest` against a live API.
+It is not a linter; it attacks. The probes, verbatim from their own descriptions:
+
+```
+reach a trading endpoint with no token at all
+forge an access token by signing it with a guessed secret
+strip the signature with alg:none
+present the refresh token as if it were an access token
+forge a token with the real access secret but the wrong type
+replay a refresh token that has already been rotated
+grant yourself a role by putting it in a profile update
+register with a role of your choosing
+pollute Object.prototype through a JSON body
+inject SQL through the login email
+inject SQL through a path parameter and a query string
+find a credential in an ordinary response
+make the server describe its own internals in an error
+read the server and framework version from the headers
+open a position with a negative or absurd volume
+reuse an idempotency key with a different order
+guess a password until it is found
+read every user on the platform with an ordinary trader token
+credit an account by calling the adjustment endpoint directly
+```
+
+Two of these deserve note because they test the _quality_ of a control rather
+than its presence: the brute-force probe fails if "the lockout let the correct
+password straight through, so it only delays a guesser", and the adjustment
+probe fails if "an administrative ledger entry exists that no administrator
+created". Both check the consequence, not the response code.
+
+## 8. Findings
+
+### F-1 — Registration is open on a public domain · **High**
+
+`https://devopss.ir` accepts any registration. 21 accounts from earlier
+verification runs (emails matching `ws-`, `iso-`, `diag-`, `@test.invalid`)
+remain in the production database. Until registration is gated — invite code,
+allow-list, or disabled — the deployment is a demo anyone can enter.
+**Fix:** `REGISTRATION_MODE=closed|invite|open` in the environment contract,
+default `closed` in production.
+
+### F-2 — Audit log is deletable at the database level · **Medium**
+
+§6 above. One migration.
+
+### F-3 — A write gated by a read permission · **Medium**
+
+`POST /reconciliation/findings/:id/status` requires `RECONCILIATION_READ`.
+`OPERATOR` holds it. A permission named read should not authorize a write, and
+the mismatch will outlive whoever remembers why.
+**Fix:** add `RECONCILIATION_MANAGE`.
+
+### F-4 — No tenant isolation · **High, structural**
+
+There is no tenancy, so the specification's rule that "Tenant A user MUST NOT
+access Tenant B data" is currently vacuous rather than satisfied. It becomes a
+live requirement the moment a second tenant exists, and retrofitting isolation
+into 84 routes after the fact is how isolation bugs happen. Defence must be
+layered: a Prisma extension that refuses an unscoped query on a tenant-scoped
+model, **and** Postgres row-level security beneath it, so a bug in one is
+contained by the other.
+
+### F-5 — Roles are compile-time constants · **Low today, High under tenancy**
+
+A new role requires a deployment. Acceptable for one firm; not for a platform
+where each tenant defines its own roles.
+
+### F-6 — No API key or service-token mechanism · **Informational**
+
+Nothing to audit yet. When it lands, the specification's rule is explicit and
+must be honoured: never store the raw secret, hash it, store a fingerprint for
+identification, and show the generated secret exactly once.
+
+### F-7 — Email transport unverified in production · **Informational**
+
+Verification and reset flows are implemented and tested against a fake
+transport. Whether mail actually leaves the production host is **UNVERIFIED**.
+Verified by triggering a real registration on the deployed host and reading the
+transport log.
+
+## 9. What is not a finding
+
+Recorded so they are not re-raised:
+
+- **`ADMIN` cannot trade.** Deliberate. See §2.
+- **`/metrics` refuses external requests.** Correct; it is restricted to private
+  ranges and returned a refusal from outside during deployment verification.
+- **`/symbols` and `/market/*` are not permission-checked.** Instrument
+  definitions and quotes are not per-user data. This changes under tenancy.

@@ -2,6 +2,21 @@
 
 Phase 0 deliverables — the design the implementation is held to.
 
+**The audit against the master specification**
+
+Eight documents produced by inspecting the repository, not by recalling it.
+Start with the architecture audit; the plan sequences everything the audit
+found missing.
+
+- [ARCHITECTURE_AUDIT.md](./ARCHITECTURE_AUDIT.md) — what exists, what works, what is missing outright
+- [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) — sixteen phases, dependencies, honest estimates
+- [API_INVENTORY.md](./API_INVENTORY.md) — all 84 routes with the permission each demands, generated from source
+- [DATABASE_AUDIT.md](./DATABASE_AUDIT.md) — 29 models, zero float columns, and the tenancy problem
+- [SECURITY_AUDIT.md](./SECURITY_AUDIT.md) — controls located in source, seven findings
+- [TRADING_AUDIT.md](./TRADING_AUDIT.md) — orders, positions, risk, the trigger loop, and what is simulated
+- [MOBILE_AUDIT.md](./MOBILE_AUDIT.md) — there is no mobile application; what it would take
+- [ADMIN_AUDIT.md](./ADMIN_AUDIT.md) — seven panels, all real, and six findings
+
 **Start here**
 
 - [architecture.md](./architecture.md) — layering, topology, and the one rule everything follows
