@@ -139,7 +139,31 @@ say "6/8  Migrating — the downtime starts here"
 # writing ticks and firing stops against the new schema.
 "${COMPOSE[@]}" stop api api-ingest worker
 "${COMPOSE[@]}" run --rm migrate || die "The migration failed. The old images are still built; 'docker compose up -d api worker' restores service on the old schema only if the migration made no changes."
-"${COMPOSE[@]}" run --rm --entrypoint sh api -c "pnpm db:seed" || die "The seed failed. The default tenant may not exist, and the API will refuse to resolve a tenant without it."
+#
+# `pnpm db:seed` does not work here, and finding that out the hard way is why
+# this is spelled out. The production image carries `node_modules`, `prisma/`
+# and the built application — but **not** the root `package.json`, so pnpm has
+# no manifest to read a script from and fails inside its own dependency check
+# with a stack trace that says nothing about the real cause. `tsx` is in the
+# image; calling it directly is what works. It is `sh -c`, not `node`, because
+# `node_modules/.bin/tsx` is a shell wrapper rather than a JavaScript file.
+#
+# And a failure here is a **warning**, not a stop. The first version of this
+# script died on it, after the migration and before the containers came back —
+# turning a seed that refreshes instrument definitions into an outage. What the
+# platform actually cannot start without is a tenant, and the migration creates
+# that, so the invariant is checked below instead of the mechanism being trusted.
+if ! "${COMPOSE[@]}" run --rm --entrypoint sh api -c './node_modules/.bin/tsx prisma/seed.ts'; then
+  warn "The seed did not run. Instrument definitions were not refreshed; the upgrade continues."
+fi
+
+TENANTS=$("${COMPOSE[@]}" exec -T postgres psql -U "${POSTGRES_USER:-trading}" \
+  -d "${POSTGRES_DB:-trading_platform}" -tAc \
+  "SELECT count(*) FROM tenants WHERE status = 'ACTIVE'" 2>/dev/null | tr -d '[:space:]')
+if [ "${TENANTS:-0}" -lt 1 ]; then
+  die "No active tenant exists. The API resolves every request to one and will refuse every request without it."
+fi
+echo "    $TENANTS active tenant(s)"
 
 # ---------------------------------------------------------------------------
 say "7/8  Starting the new version"

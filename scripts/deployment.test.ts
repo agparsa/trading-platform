@@ -785,6 +785,38 @@ describe('scripts/upgrade-server.sh', () => {
     expect(script).toMatch(/gzip -dc "\$OUT" \| head -c 200 \| wc -c/);
   });
 
+  it('does not use pnpm inside the production image', () => {
+    /**
+     * The production image carries node_modules, prisma/ and the built app but
+     * not the root package.json, so pnpm has no manifest to read a script from
+     * and fails inside its own dependency check with a stack trace that says
+     * nothing about the cause. This cost an outage: the script died on it after
+     * the migration and before the containers came back.
+     */
+    // The comment above the fix names pnpm, so match the invocation rather
+    // than the word: `run ... -c "pnpm ..."` is what must not be there.
+    expect(script).not.toMatch(/-c ["']pnpm/);
+    expect(script).toContain('./node_modules/.bin/tsx prisma/seed.ts');
+    // `sh -c`, not `node`: .bin/tsx is a shell wrapper, not a JavaScript file.
+    expect(script).toMatch(/--entrypoint sh api -c '\.\/node_modules\/\.bin\/tsx/);
+  });
+
+  it('warns on a failed seed rather than stopping half-upgraded', () => {
+    // Aborting between the migration and the restart is an outage. The seed
+    // refreshes instrument definitions; it is not what the platform cannot
+    // start without.
+    const seedBlock = script.slice(script.indexOf('tsx prisma/seed.ts'));
+    expect(seedBlock.slice(0, 300)).toMatch(/warn "The seed did not run/);
+  });
+
+  it('checks that a tenant exists, which is the thing that actually blocks boot', () => {
+    // The invariant, not the mechanism: the migration creates the default
+    // tenant, so a failed seed does not mean there is no tenant — and a
+    // successful seed does not prove there is one.
+    expect(script).toMatch(/SELECT count\(\*\) FROM tenants WHERE status = 'ACTIVE'/);
+    expect(script).toMatch(/die "No active tenant exists/);
+  });
+
   it('seeds after migrating, so the default tenant exists before the API starts', () => {
     const migrate = script.indexOf('run --rm migrate');
     const seed = script.indexOf('db:seed');
