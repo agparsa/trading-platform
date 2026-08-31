@@ -800,6 +800,24 @@ const checks: Check[] = [
     name: 'metrics endpoint exposes the declared trading counters',
     run: async () => {
       const response = await fetch(`${BASE}/metrics`);
+      /**
+       * Against a deployment, being refused is the right answer.
+       *
+       * `/metrics` carries the shape of the whole platform — how many accounts,
+       * how many positions, how far behind the feed is — and the edge restricts
+       * it to private ranges. Reaching it from outside would be the finding, so
+       * that is what is asserted here rather than the reachability the local run
+       * checks.
+       */
+      if (TARGET !== undefined && (response.status === 403 || response.status === 404)) {
+        console.log('      (refused from outside a private network, which is correct)');
+        return;
+      }
+      if (TARGET !== undefined && response.ok) {
+        throw new Error(
+          'metrics answered a request from outside the deployment. It should be restricted to private ranges.',
+        );
+      }
       assert(response.ok, `metrics returned ${response.status}`);
       const text = await response.text();
       for (const metric of ['tp_orders_submitted_total', 'tp_market_ticks_total']) {
@@ -854,7 +872,30 @@ async function main(): Promise<void> {
     // The rate-limit check spends a raised allowance this run cannot set on a
     // deployment it did not start, so it is skipped rather than reported as a
     // failure of the limiter — which would be a lie in the other direction.
-    const applicable = checks.filter((c) => !c.name.includes('rate limiter'));
+    /**
+     * Skipped against a deployment, each for a reason worth printing.
+     *
+     * These sign in several times over. At the production limit of five a
+     * minute they starve, and a starved check reports a broken login — the
+     * opposite of the truth, since the limiter refusing is the limiter working.
+     * The local run raises the allowance on a process it started; this one
+     * cannot, and pretending otherwise would turn a correct refusal into a red
+     * line nobody should chase.
+     */
+    const NEEDS_A_RAISED_LOGIN_LIMIT = [
+      'rate limiter',
+      'two-factor authentication',
+      'see and end their own sessions',
+      'permission guard',
+    ];
+    const skippedFor = new Map<string, string>();
+    const applicable = checks.filter((c) => {
+      const reason = NEEDS_A_RAISED_LOGIN_LIMIT.find((needle) => c.name.includes(needle));
+      if (reason === undefined) return true;
+      skippedFor.set(c.name, 'signs in more than the production limit allows');
+      return false;
+    });
+    for (const [name, reason] of skippedFor) console.log(`  skip ${name} — ${reason}`);
     let failed = 0;
     for (const check of applicable) {
       try {
