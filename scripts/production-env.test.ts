@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -127,8 +127,18 @@ describe('bootstrap-production-env.sh', () => {
    */
   const bootstrap = (domain: string, cdn?: string) => {
     const dir = mkdtempSync(resolve(tmpdir(), 'tp-bootstrap-'));
-    for (const part of ['scripts', 'docker', '.env.production.example', 'apps', 'packages']) {
+    // Copy what the script writes into; link what it only reads.
+    //
+    // Copying `apps`, `packages` and their node_modules took twenty-three
+    // seconds and timed the test out — a test that is slow enough to fail on a
+    // busy machine is a test people learn to re-run rather than read. Links
+    // cost nothing and the script cannot tell the difference: it writes exactly
+    // one file, and that file is in a real directory.
+    for (const part of ['scripts', 'docker', '.env.production.example']) {
       cpSync(resolve(ROOT, part), resolve(dir, part), { recursive: true });
+    }
+    for (const part of ['apps', 'packages', 'node_modules', 'tsconfig.base.json', 'package.json']) {
+      symlinkSync(resolve(ROOT, part), resolve(dir, part));
     }
     const args = [resolve(dir, 'scripts/bootstrap-production-env.sh'), domain];
     if (cdn !== undefined) args.push('--cdn', cdn);
