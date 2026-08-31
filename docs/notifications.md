@@ -112,29 +112,43 @@ no permission that could grant it and no code path that could be talked into it.
 
 ## Push
 
-`PushProvider` is a port with two implementations, chosen at worker boot from
-`PUSH_PROVIDER`:
+`PushProvider` is a port. `PlatformPushProvider` routes each device to the
+service that can actually reach it:
 
-| Value  | Provider           | What it does                                        |
-| ------ | ------------------ | --------------------------------------------------- |
-| `none` | `NoopPushProvider` | records every push as **SKIPPED**, and says so once |
-| `fcm`  | `FcmPushProvider`  | Firebase Cloud Messaging, HTTP v1                   |
+| Platform | Transport                         | Credential                 |
+| -------- | --------------------------------- | -------------------------- |
+| Android  | Firebase Cloud Messaging, HTTP v1 | `FCM_SERVICE_ACCOUNT_JSON` |
+| Web      | FCM (Web Push on our behalf)      | `FCM_SERVICE_ACCOUNT_JSON` |
+| iOS      | APNs directly, HTTP/2             | `APNS_CREDENTIALS_JSON`    |
 
-The no-op records `SKIPPED` rather than `SENT`, and that is not fussiness. A
-no-op reporting success would make the Admin panel's delivery statistics — the
-numbers an operator uses to answer "are our notifications working" — read 100%
-on a deployment that has never sent a single push.
+A platform is served if — and only if — its credentials are present. There is no
+per-platform on/off switch that could get out of step with the credentials
+themselves.
 
-`PUSH_PROVIDER=fcm` without `FCM_SERVICE_ACCOUNT_JSON` or
-`SECRET_ENCRYPTION_KEYS` refuses to boot. Both are configuration mistakes whose
+`PUSH_ENABLED=false` (the default) records every push as **SKIPPED**, not
+`SENT`, and that is not fussiness: a no-op reporting success would make the
+Admin panel's delivery statistics — the numbers an operator uses to answer "are
+our notifications working" — read 100% on a deployment that has never sent a
+single push. So does a platform with no credentials.
+
+`PUSH_ENABLED=true` without `SECRET_ENCRYPTION_KEYS`, or without at least one
+transport credential, refuses to boot. Both are configuration mistakes whose
 only symptom is silence, which is the hardest kind to notice.
 
-### iOS goes through FCM too
+### Why iOS does not go through FCM
 
-FCM forwards to APNs when the `apns` block is present, so one credential and one
-code path cover both platforms. Talking to APNs directly would mean a second
-provider, a second key format and a second set of error semantics for no gain
-this platform can currently name.
+Because of what the client holds. Expo's documented path for a self-hosted
+server is `getDevicePushTokenAsync()`, which returns an **FCM registration token
+on Android and a raw APNs token on iOS**. FCM cannot send to a raw APNs token.
+
+Routing iPhones through the FCM adapter anyway would fail every send with
+`INVALID_ARGUMENT` — which the FCM classifier deliberately treats as _our_ bug
+rather than a dead token, so it would retry indefinitely and nobody's iPhone
+would ever ring while the delivery statistics quietly filled with failures.
+
+The alternative was adding the Firebase iOS SDK to the app so it returns an FCM
+token. That trades one server file for a native dependency, a config plugin, and
+a known-awkward interaction with `expo-notifications`' own delegate handling.
 
 ### Which failures kill a token
 
@@ -208,3 +222,32 @@ id rather than the token, because FCM and APNs rotate tokens unasked and keying
 on the token means a rotation creates a second row and the trader hears
 everything twice. The token itself is sealed with AES-256-GCM bound to its own
 row, and never appears in any API response.
+
+### The APNs failures that must not delete a token
+
+Apple's reason strings, and one of them is genuinely dangerous:
+
+| Reason                                          | What we do                           |
+| ----------------------------------------------- | ------------------------------------ |
+| `Unregistered`, `ExpiredToken`                  | mark the device rejected             |
+| `DeviceTokenNotForTopic`                        | mark the device rejected             |
+| `TooManyRequests`, 5xx                          | retry                                |
+| `ExpiredProviderToken`                          | re-sign the provider token and retry |
+| `BadTopic`, `InvalidProviderToken`, `Forbidden` | stop; an operator must look          |
+| **`BadDeviceToken`**                            | **stop, and leave the token alone**  |
+
+Apple returns `BadDeviceToken` both for a malformed token _and_ for a sandbox
+token sent to the production host. The second is a deployment mistake that
+affects every device at once — treating it as a dead token would unsubscribe the
+entire estate within minutes of a bad deploy, and nothing would say why.
+
+The provider token is re-signed every fifty minutes. Apple rejects one older
+than an hour (`ExpiredProviderToken`) _and_ rejects a new one presented more
+often than every twenty minutes (`TooManyProviderTokenUpdates`), so the interval
+has to sit strictly inside a window with an error on each side.
+
+`apns-expiration` is never `0`. Zero means "try once and discard", and a trader
+in a tunnel when their stop loss fires should still learn about it when they
+surface. Risk and security notices are held for an hour, trade notices for
+fifteen minutes — a stale "BTC opened at 64,120" arriving after the position has
+closed is worse than none.

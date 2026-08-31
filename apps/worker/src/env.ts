@@ -22,21 +22,34 @@ export const workerEnvSchema = z.object({
   MAINTENANCE_CRON: z.string().default('30 * * * *'),
 
   /**
-   * Which push transport to use.
+   * Whether this worker sends push notifications at all.
    *
-   * `none` is the default and is honest about it: the no-op provider records
-   * every push as SKIPPED rather than SENT, so an unconfigured deployment looks
-   * unconfigured in the admin statistics instead of looking perfect.
+   * Off by default, and when off every push is recorded as SKIPPED rather than
+   * SENT — so an unconfigured deployment looks unconfigured in the admin
+   * statistics instead of looking perfect.
    */
-  PUSH_PROVIDER: z.enum(['none', 'fcm']).default('none'),
+  PUSH_ENABLED: z
+    .union([z.boolean(), z.enum(['true', 'false'])])
+    .default(false)
+    .transform((value) => value === true || value === 'true'),
 
   /**
-   * A Google service-account JSON blob, verbatim.
+   * A Google service-account JSON blob, verbatim. Serves Android and web.
    *
-   * Required when PUSH_PROVIDER=fcm. Contains a private key, so it belongs in
-   * secret management and never in an image, a log or a repository.
+   * Contains a private key, so it belongs in secret management and never in an
+   * image, a log or a repository.
    */
   FCM_SERVICE_ACCOUNT_JSON: z.string().optional(),
+
+  /**
+   * APNs credentials as JSON: `keyId`, `teamId`, `privateKey` (the .p8
+   * contents), `bundleId`, and `production`. Serves iOS.
+   *
+   * iOS does not go through FCM, and the reason is what the client holds:
+   * Expo's `getDevicePushTokenAsync()` returns an FCM registration token on
+   * Android and a *raw APNs token* on iOS. FCM cannot send to the latter.
+   */
+  APNS_CREDENTIALS_JSON: z.string().optional(),
 
   /**
    * The Android notification channel trading notices are posted to.
@@ -79,14 +92,17 @@ export function validateEnv(raw: Record<string, unknown>): WorkerEnv {
    * mistakes whose symptom is silence, which is the hardest kind to notice.
    */
   const env = result.data;
-  if (env.PUSH_PROVIDER === 'fcm') {
-    const missing: string[] = [];
-    if (env.FCM_SERVICE_ACCOUNT_JSON === undefined) missing.push('FCM_SERVICE_ACCOUNT_JSON');
-    if (env.SECRET_ENCRYPTION_KEYS === undefined) missing.push('SECRET_ENCRYPTION_KEYS');
-    if (missing.length > 0) {
+  if (env.PUSH_ENABLED) {
+    if (env.SECRET_ENCRYPTION_KEYS === undefined) {
       throw new Error(
-        `PUSH_PROVIDER=fcm requires ${missing.join(' and ')}. ` +
-          'Set them, or set PUSH_PROVIDER=none to run without push.',
+        'PUSH_ENABLED requires SECRET_ENCRYPTION_KEYS — the same keys the API seals push tokens with. ' +
+          'Without them this worker can read the device rows and not the tokens in them.',
+      );
+    }
+    if (env.FCM_SERVICE_ACCOUNT_JSON === undefined && env.APNS_CREDENTIALS_JSON === undefined) {
+      throw new Error(
+        'PUSH_ENABLED requires FCM_SERVICE_ACCOUNT_JSON (Android and web) or ' +
+          'APNS_CREDENTIALS_JSON (iOS), or both. Set PUSH_ENABLED=false to run without push.',
       );
     }
   }
