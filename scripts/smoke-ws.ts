@@ -15,7 +15,18 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { io, type Socket } from 'socket.io-client';
 
 const PORT = process.env['API_PORT'] ?? '4000';
-const BASE = `http://127.0.0.1:${PORT}`;
+
+/**
+ * Where the socket is opened.
+ *
+ * By default this spawns its own API and connects to it on loopback, so a green
+ * run means this binary's gateway is sound. `SMOKE_TARGET` aims it at a
+ * deployment that is already running — the only way to find out whether the
+ * upgrade survives whatever sits in front of it, which is the part most likely
+ * to be quietly broken and the part no local run can tell you about.
+ */
+const TARGET = process.env['SMOKE_TARGET']?.replace(/\/$/, '');
+const BASE = TARGET ?? `http://127.0.0.1:${PORT}`;
 const PASSWORD = 'a-sufficiently-long-passphrase';
 
 interface Frame {
@@ -99,6 +110,8 @@ const waitFor = async <T>(probe: () => T | undefined, ms: number, what: string):
  * documented.
  */
 async function assertPortFree(): Promise<void> {
+  // Aimed at a deployment on purpose: something listening is the point.
+  if (TARGET !== undefined) return;
   try {
     await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(2_000) });
   } catch {
@@ -112,10 +125,18 @@ async function assertPortFree(): Promise<void> {
 async function main(): Promise<void> {
   await assertPortFree();
 
-  const api = spawn('node', ['apps/api/dist/main.js'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  // Nothing is spawned when aimed at a deployment; `api` stays null and the
+  // teardown below skips the kill.
+  const api =
+    TARGET === undefined
+      ? spawn('node', ['apps/api/dist/main.js'], { stdio: ['ignore', 'pipe', 'pipe'] })
+      : null;
   const output: string[] = [];
-  api.stdout.on('data', (c: Buffer) => output.push(c.toString()));
-  api.stderr.on('data', (c: Buffer) => output.push(c.toString()));
+  api?.stdout.on('data', (c: Buffer) => output.push(c.toString()));
+  api?.stderr.on('data', (c: Buffer) => output.push(c.toString()));
+  if (TARGET !== undefined) {
+    console.log(`\n  Opening a socket against the deployment at ${TARGET}.\n`);
+  }
 
   const sockets: Socket[] = [];
   let failures = 0;
@@ -385,7 +406,7 @@ async function main(): Promise<void> {
     console.error(output.join('').slice(-3000));
   } finally {
     for (const socket of sockets) socket.close();
-    api.kill('SIGTERM');
+    api?.kill('SIGTERM');
   }
 
   if (failures > 0) {

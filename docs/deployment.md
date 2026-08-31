@@ -135,6 +135,32 @@ connects or it does not.
 account balance. Configure the CDN to bypass cache for both paths; the static
 web bundle is the only thing here worth caching.
 
+### Checking the deployment itself
+
+`pnpm smoke` and `pnpm smoke:ws` normally spawn their own API and talk to it on
+loopback, because a smoke test that might be hitting a stale binary proves
+nothing. `SMOKE_TARGET` aims them at a deployment that is already running
+instead:
+
+```bash
+SMOKE_TARGET=https://trade.example.com pnpm smoke
+SMOKE_TARGET=https://trade.example.com pnpm smoke:ws
+```
+
+The trade is explicit: they stop proving anything about the code and start
+proving something about the environment — whether TLS terminates where you
+think, whether the upgrade survives every proxy in front of it, whether the
+database that deployment actually uses is reachable. The rate-limit check is
+skipped, because it needs an allowance this run cannot set on a process it did
+not start.
+
+Run `smoke:ws` first. Everything else here fails visibly; a WebSocket that has
+been downgraded to polling looks entirely normal until prices stop moving.
+
+`pnpm pentest` has no such mode, on purpose. It brute-forces a login and creates
+users — against a live deployment that means tripping its own protections and
+leaving debris behind. Run it against a staging copy.
+
 ### TLS, and what happens before you have a certificate
 
 `ssl_certificate` is not a conditional directive: Nginx refuses to start when the

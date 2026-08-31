@@ -30,7 +30,22 @@ function nextTotpCode(secret: Buffer): string {
   return codeForStep(secret, stepFor(Date.now()) + 1);
 }
 
-const BASE = `http://127.0.0.1:${process.env.API_PORT ?? '4000'}`;
+/**
+ * Where the checks are aimed.
+ *
+ * By default this script builds nothing and trusts nothing: it spawns its own
+ * API from `dist` and talks to it on loopback, so a green run means *this*
+ * binary is sound.
+ *
+ * `SMOKE_TARGET` points it at a deployment that is already running instead —
+ * which is what the deployment guide tells an operator to do before letting
+ * anyone sign in, and what this script could not previously do. It then spawns
+ * nothing and asserts nothing about which build it is talking to. That is the
+ * trade: it stops proving anything about the code and starts proving something
+ * about the environment.
+ */
+const TARGET = process.env['SMOKE_TARGET']?.replace(/\/$/, '');
+const BASE = TARGET ?? `http://127.0.0.1:${process.env.API_PORT ?? '4000'}`;
 const BOOT_TIMEOUT_MS = 60_000;
 /** The login limit this run boots with. The last check spends exactly this many. */
 const LOGIN_LIMIT = 30;
@@ -818,6 +833,8 @@ async function waitForBoot(): Promise<void> {
  * documented.
  */
 async function assertPortFree(): Promise<void> {
+  // Aimed at a deployment on purpose: something listening is the whole point.
+  if (TARGET !== undefined) return;
   try {
     await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(2_000) });
   } catch {
@@ -830,6 +847,36 @@ async function assertPortFree(): Promise<void> {
 
 async function main(): Promise<void> {
   await assertPortFree();
+
+  if (TARGET !== undefined) {
+    console.log(`\n  Checking the deployment at ${TARGET}.`);
+    console.log('  Nothing is spawned; this says nothing about which build runs there.\n');
+    // The rate-limit check spends a raised allowance this run cannot set on a
+    // deployment it did not start, so it is skipped rather than reported as a
+    // failure of the limiter — which would be a lie in the other direction.
+    const applicable = checks.filter((c) => !c.name.includes('rate limiter'));
+    let failed = 0;
+    for (const check of applicable) {
+      try {
+        await check.run();
+        console.log(`  ok  ${check.name}`);
+      } catch (error) {
+        failed += 1;
+        console.error(`  FAIL ${check.name}: ${(error as Error).message}`);
+      }
+    }
+    const skipped = checks.length - applicable.length;
+    if (failed > 0) {
+      console.error(`\n${failed} check(s) failed against ${TARGET}.`);
+      process.exitCode = 1;
+    } else {
+      console.log(
+        `\nAll ${applicable.length} checks passed against ${TARGET}` +
+          (skipped > 0 ? ` (${skipped} skipped: needs a build this run controls).` : '.'),
+      );
+    }
+    return;
+  }
 
   const api = spawn('node', ['apps/api/dist/main.js'], {
     stdio: ['ignore', 'pipe', 'pipe'],
