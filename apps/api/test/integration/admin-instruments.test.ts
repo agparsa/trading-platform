@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
-import { Permission, UserRole, roleHasPermissions } from '@tp/shared-types';
+import { Permission, TradingErrorCode, UserRole, roleHasPermissions } from '@tp/shared-types';
+import { withTenant } from '@tp/tenancy';
 import { AdminInstrumentsService } from '../../src/admin/instruments.service';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
@@ -10,6 +11,7 @@ import {
   hasTestDatabase,
   resetDatabase,
   seedTradingSymbols,
+  createTenant,
   DEFAULT_TENANT_ID,
 } from './harness';
 
@@ -150,5 +152,79 @@ suite('Administering instruments (integration)', () => {
         role === UserRole.ADMIN,
       );
     }
+  });
+
+  describe('terms belong to one firm, not to the platform', () => {
+    /**
+     * Before `tenant_symbol_terms` existed this route wrote a global row — so
+     * one firm's administrator raising a margin rate put another firm's
+     * accounts into margin call without anybody touching them. That is a
+     * cross-tenant write, and it survived the first pass of the isolation work
+     * because it did not look like one.
+     */
+    it('leaves the other tenant on the platform’s rate', async () => {
+      const beta = await createTenant(prisma, 'beta-terms');
+
+      await instruments.setTerms(ADMIN, 'XAUUSD', { marginRate: '0.05' }, 'raising gold margin');
+
+      const mine = (await instruments.list()).find((row) => row.code === 'XAUUSD');
+      expect(mine?.marginRate).toBe('0.05');
+
+      const theirs = await withTenant({ tenantId: beta, slug: 'beta-terms' }, () =>
+        instruments.list(),
+      );
+      expect(theirs.find((row) => row.code === 'XAUUSD')?.marginRate).toBe('0.01');
+    });
+
+    it('does not touch the platform specification', async () => {
+      await instruments.setTerms(ADMIN, 'XAUUSD', { marginRate: '0.05' }, 'raising gold margin');
+
+      const symbol = await prisma.symbol.findUniqueOrThrow({
+        where: { code: 'XAUUSD' },
+        include: { spec: true },
+      });
+      expect(symbol.spec?.marginRate.toString()).toBe('0.01');
+    });
+
+    it('leaves fields it was not asked about following the platform', async () => {
+      /**
+       * The other reading of an unspecified field — freeze it at whatever it
+       * was the day the row was written — would mean a tenant that once changed
+       * its margin silently stops tracking the platform's commission for ever.
+       */
+      await instruments.setTerms(ADMIN, 'XAUUSD', { marginRate: '0.05' }, 'raising gold margin');
+      await prisma.symbolSpec.update({
+        where: {
+          symbolId: (await prisma.symbol.findUniqueOrThrow({ where: { code: 'XAUUSD' } })).id,
+        },
+        data: { commissionPerLot: '7' },
+      });
+
+      const mine = (await instruments.list()).find((row) => row.code === 'XAUUSD');
+      expect(mine?.marginRate).toBe('0.05');
+      expect(mine?.commissionPerLot).toBe('7');
+    });
+
+    it('lets a firm decline an instrument without withdrawing it for everybody', async () => {
+      const beta = await createTenant(prisma, 'beta-enabled');
+      await instruments.setEnabled(ADMIN, 'XAUUSD', false, 'not offering gold');
+
+      expect((await instruments.list()).find((row) => row.code === 'XAUUSD')?.enabled).toBe(false);
+
+      const theirs = await withTenant({ tenantId: beta, slug: 'beta-enabled' }, () =>
+        instruments.list(),
+      );
+      expect(theirs.find((row) => row.code === 'XAUUSD')?.enabled).toBe(true);
+
+      const symbol = await prisma.symbol.findUniqueOrThrow({ where: { code: 'XAUUSD' } });
+      expect(symbol.enabled).toBe(true);
+    });
+
+    it('will not let a firm offer an instrument the platform has withdrawn', async () => {
+      await prisma.symbol.update({ where: { code: 'XAUUSD' }, data: { enabled: false } });
+      await expect(
+        instruments.setEnabled(ADMIN, 'XAUUSD', true, 'we would like to offer gold'),
+      ).rejects.toMatchObject({ code: TradingErrorCode.VALIDATION_FAILED });
+    });
   });
 });

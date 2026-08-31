@@ -68,6 +68,7 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'ReconciliationFinding',
   'MasterAccount',
   'MasterAccountLink',
+  'TenantSymbolTerms',
   'AuditLog',
   'IdempotencyKey',
   'Notification',

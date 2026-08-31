@@ -33,14 +33,27 @@ whoever is trading it, its sessions are the market's, and its price history is
 one history. Copying that per tenant would mean N simulators printing N
 different gold prices, which is not multi-tenancy but N platforms.
 
-**A deliberate limitation, recorded so it is not mistaken for an oversight:**
-`SymbolSpec` currently holds both the contract specification (tick size,
-contract size, precision) and the firm's commercial terms (margin rate,
-commission, swap, size cap). The contract is global; the terms should be
-per-tenant. They are not yet. Until they are, every tenant trades on the same
-margin rate, and the admin console's instrument-terms screen edits it for
-everybody. `TenantSymbolTerms` is the fix and it is a later phase; the existing
-split between spec and terms is what makes it cheap when it comes.
+`SymbolSpec` holds the contract specification — tick size, contract size,
+precision — and the platform's default commercial terms. **`TenantSymbolTerms`
+holds a firm's own**, and it is what the admin console writes.
+
+That distinction started as a limitation and turned out to be a hole. Before it
+existed, `POST /admin/instruments/:code/terms` wrote a global row, so one firm's
+administrator raising a margin rate would put another firm's accounts into
+margin call without anybody touching them. A cross-tenant _write_ that survived
+the first pass of the isolation work because it did not look like one: no id was
+guessed, no filter was missing, and the route was correctly permission-checked.
+
+Every column on `TenantSymbolTerms` is nullable, and null means "the platform's
+value". A tenant that overrides only its margin rate keeps following the
+platform's commission when that changes. The other reading — freeze the rest at
+whatever they were the day the row was written — would mean one edit silently
+detaches a firm from every future correction, and nobody would notice for years.
+
+`enabled` is an AND, not an override: a firm may decline an instrument the
+platform offers, and may not offer one the platform has withdrawn. A withdrawn
+instrument is withdrawn because it cannot be priced or settled, and a firm's
+wish to trade it does not change that.
 
 **Tenant-scoped — everything else, twenty-six models:**
 
@@ -275,11 +288,15 @@ Recorded here rather than implied to be finished.
 
 - **RLS is not forced**, so the application role is exempt. §6 has the reasoning
   and the two ways to finish it.
-- **Instrument terms are still global.** Margin, commission and swap live on
-  `SymbolSpec`, which every tenant shares. `TenantSymbolTerms` is the fix.
+- **Nothing surfaces a tenant's terms to its traders yet.** The engine charges
+  them correctly and the admin console shows them; there is no customer-facing
+  contract-specification screen.
 - **A platform-wide kill switch cannot be set through the API.** The row is read
   and honoured; nothing writes it, because halting every firm should not sit
   behind the same permission as halting one's own.
 - **Roles are still compile-time constants**, so a tenant cannot define its own.
-- **Instrument terms are still global** (repeated here because it is the one
-  gap a customer would notice).
+- **The instrument cache is process-wide.** A tenant's terms are resolved into
+  it at load and refreshed on change, which keeps `require()` a map lookup on
+  the hottest path in the system. The cost is that a change is visible to the
+  process that made it immediately and to any other API instance on its next
+  reload.

@@ -82,6 +82,7 @@ model Tenant {
   reconciliationRuns     ReconciliationRun[]
   reconciliationFindings ReconciliationFinding[]
   notifications          Notification[]
+  tenantSymbolTerms      TenantSymbolTerms[]
 
   @@map("tenants")
 }
@@ -312,7 +313,51 @@ model Symbol {
   positions Position[]
   trades    Trade[]
 
+  tenantTerms TenantSymbolTerms[]
+
   @@map("symbols")
+}
+
+/// One tenant's commercial terms for one instrument.
+///
+/// The contract specification on `SymbolSpec` is a fact about the instrument —
+/// gold has a contract size of 100 whoever is trading it, and changing that
+/// under open positions re-values every trade ever made in it. The *terms* are
+/// a commercial decision, and two firms on one platform will legitimately set
+/// different ones.
+///
+/// Every column is nullable, and null means "use the platform default". A
+/// tenant that only wants a different margin rate does not have to restate the
+/// commission, the swap and the size cap, and will not silently freeze them at
+/// whatever they were the day the row was written.
+model TenantSymbolTerms {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  symbolId String @map("symbol_id") @db.Uuid
+
+  /// Whether this tenant offers the instrument at all.
+  ///
+  /// Distinct from `Symbol.enabled`, which is the platform saying the
+  /// instrument is not tradeable by anybody — a data feed gone wrong, a
+  /// contract rolled. A tenant can decline an instrument the platform offers;
+  /// it cannot offer one the platform has withdrawn.
+  enabled Boolean @default(true)
+
+  marginRate       Decimal? @map("margin_rate") @db.Decimal(18, 8)
+  commissionPerLot Decimal? @map("commission_per_lot") @db.Decimal(28, 10)
+  swapLongPerLot   Decimal? @map("swap_long_per_lot") @db.Decimal(28, 10)
+  swapShortPerLot  Decimal? @map("swap_short_per_lot") @db.Decimal(28, 10)
+  maxVolume        Decimal? @map("max_volume") @db.Decimal(18, 8)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  symbol Symbol @relation(fields: [symbolId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, symbolId])
+  @@index([tenantId])
+  @@map("tenant_symbol_terms")
 }
 
 model SymbolSpec {
