@@ -1,13 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import {
   DomainError,
-  NOTIFICATION_CATEGORIES,
   NotificationCategory,
   TradingErrorCode,
   isUnmutable,
-  type NotificationPreferenceDto,
   type NotificationSettingsDto,
 } from '@tp/shared-types';
+import {
+  DEFAULT_SETTINGS,
+  describePreferences,
+  resolveDelivery,
+  type ResolvedDelivery,
+  type StoredPreference,
+  type StoredSettings,
+} from '@tp/push-core';
 import { requireTenantId } from '@tp/tenancy';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -30,6 +36,12 @@ import { PrismaService } from '../prisma/prisma.service';
  * category. Reading a missing row as `false` would mean every category added in
  * future is born muted for the entire existing user base, and nobody would
  * notice until an incident.
+ *
+ * ## Where the rules actually live
+ *
+ * `@tp/push-core`, not here. The worker delivers and this process serves the
+ * settings screen; two implementations of the precedence rules would eventually
+ * disagree, and that disagreement presents as exactly the lying switch above.
  */
 @Injectable()
 export class PreferencesService {
@@ -37,53 +49,13 @@ export class PreferencesService {
 
   /** Everything a settings screen needs, defaults filled in. */
   async get(userId: string): Promise<NotificationSettingsDto> {
-    const [settings, rows] = await Promise.all([
-      this.prisma.notificationSetting.findFirst({ where: { userId } }),
-      this.prisma.notificationPreference.findMany({ where: { userId } }),
-    ]);
-
-    const byCategory = new Map(rows.map((row) => [row.category as NotificationCategory, row]));
-
-    const categories: NotificationPreferenceDto[] = NOTIFICATION_CATEGORIES.map((category) => {
-      const row = byCategory.get(category);
-      const unmutable = isUnmutable(category);
-      return {
-        category,
-        // An unmutable category reports itself on regardless of what is stored,
-        // because that is what will actually happen when one is raised.
-        inApp: unmutable ? true : (row?.inApp ?? true),
-        push: unmutable ? true : (row?.push ?? true),
-        sound: row?.sound ?? true,
-        email: row?.email ?? false,
-        unmutable,
-      };
-    });
-
-    return {
-      tradingEnabled: settings?.tradingEnabled ?? true,
-      pushEnabled: settings?.pushEnabled ?? true,
-      soundEnabled: settings?.soundEnabled ?? true,
-      vibrationEnabled: settings?.vibrationEnabled ?? true,
-      soundVolume: settings?.soundVolume ?? 80,
-      quietHoursStartMinute: settings?.quietHoursStartMinute ?? null,
-      quietHoursEndMinute: settings?.quietHoursEndMinute ?? null,
-      quietHoursTimezone: settings?.quietHoursTimezone ?? null,
-      categories,
-    };
+    const { settings, preferences } = await this.load(userId);
+    return describePreferences(settings, preferences);
   }
 
   async updateSettings(
     userId: string,
-    patch: {
-      tradingEnabled?: boolean;
-      pushEnabled?: boolean;
-      soundEnabled?: boolean;
-      vibrationEnabled?: boolean;
-      soundVolume?: number;
-      quietHoursStartMinute?: number | null;
-      quietHoursEndMinute?: number | null;
-      quietHoursTimezone?: string | null;
-    },
+    patch: Partial<StoredSettings>,
   ): Promise<NotificationSettingsDto> {
     if (
       (patch.quietHoursStartMinute ?? null) !== null &&
@@ -136,16 +108,6 @@ export class PreferencesService {
   /**
    * What the delivery path should actually do with one notification.
    *
-   * The single place the precedence rules live, so the in-app writer, the push
-   * fan-out and the client's sound decision cannot disagree about them:
-   *
-   *   1. An unmutable category is delivered in-app and by push, always.
-   *   2. Otherwise the master switches win over the per-category ones — turning
-   *      push off means off, without rewriting ten rows.
-   *   3. Quiet hours withhold *push* only, and never for an unmutable category.
-   *      A stop-out at three in the morning is exactly the notification a person
-   *      set quiet hours to avoid and exactly the one they need.
-   *
    * `at` is injectable so the quiet-hours arithmetic is testable without
    * waiting for 3am.
    */
@@ -154,95 +116,44 @@ export class PreferencesService {
     category: NotificationCategory,
     at: Date = new Date(),
   ): Promise<ResolvedDelivery> {
-    const settings = await this.get(userId);
-    const preference =
-      settings.categories.find((entry) => entry.category === category) ?? FALLBACK(category);
-    const unmutable = isUnmutable(category);
+    const { settings, preferences } = await this.load(userId);
+    return resolveDelivery(
+      settings,
+      preferences.find((entry) => entry.category === category),
+      category,
+      at,
+    );
+  }
 
-    if (unmutable) {
-      return {
-        inApp: true,
-        push: true,
-        email: preference.email,
-        sound: settings.soundEnabled && preference.sound,
-      };
-    }
-
-    const allowed = settings.tradingEnabled;
-    const quiet = inQuietHours(settings, at);
+  private async load(
+    userId: string,
+  ): Promise<{ settings: StoredSettings; preferences: StoredPreference[] }> {
+    const [row, rows] = await Promise.all([
+      this.prisma.notificationSetting.findFirst({ where: { userId } }),
+      this.prisma.notificationPreference.findMany({ where: { userId } }),
+    ]);
 
     return {
-      inApp: allowed && preference.inApp,
-      push: allowed && settings.pushEnabled && preference.push && !quiet,
-      email: allowed && preference.email,
-      sound: allowed && settings.soundEnabled && preference.sound,
+      settings:
+        row === null
+          ? DEFAULT_SETTINGS
+          : {
+              tradingEnabled: row.tradingEnabled,
+              pushEnabled: row.pushEnabled,
+              soundEnabled: row.soundEnabled,
+              vibrationEnabled: row.vibrationEnabled,
+              soundVolume: row.soundVolume,
+              quietHoursStartMinute: row.quietHoursStartMinute,
+              quietHoursEndMinute: row.quietHoursEndMinute,
+              quietHoursTimezone: row.quietHoursTimezone,
+            },
+      preferences: rows.map((entry) => ({
+        category: entry.category as NotificationCategory,
+        inApp: entry.inApp,
+        push: entry.push,
+        sound: entry.sound,
+        email: entry.email,
+      })),
     };
-  }
-}
-
-export interface ResolvedDelivery {
-  inApp: boolean;
-  push: boolean;
-  email: boolean;
-  /** Whether the client should play this category's sound. */
-  sound: boolean;
-}
-
-const FALLBACK = (category: NotificationCategory): NotificationPreferenceDto => ({
-  category,
-  inApp: true,
-  push: true,
-  sound: true,
-  email: false,
-  unmutable: isUnmutable(category),
-});
-
-/**
- * Is `at` inside the user's quiet hours?
- *
- * Handles the range that wraps midnight, which is the common case: 22:00 to
- * 07:00 is `start > end`, and treating it as an empty range would make quiet
- * hours do nothing for almost everyone who sets them.
- */
-export function inQuietHours(
-  settings: Pick<
-    NotificationSettingsDto,
-    'quietHoursStartMinute' | 'quietHoursEndMinute' | 'quietHoursTimezone'
-  >,
-  at: Date,
-): boolean {
-  const { quietHoursStartMinute: start, quietHoursEndMinute: end, quietHoursTimezone } = settings;
-  if (start === null || end === null || quietHoursTimezone === null) return false;
-  if (start === end) return false;
-
-  const minutes = minutesOfDayIn(at, quietHoursTimezone);
-  if (minutes === null) return false;
-
-  return start < end ? minutes >= start && minutes < end : minutes >= start || minutes < end;
-}
-
-/**
- * Minutes since midnight in a named timezone, or null if the zone is unknown.
- *
- * Uses `Intl` rather than an offset table: offsets change twice a year in most
- * of the world, and a stored offset is wrong for half of it. An unknown zone
- * returns null so the caller treats quiet hours as unset rather than throwing
- * inside a notification.
- */
-function minutesOfDayIn(at: Date, timeZone: string): number | null {
-  try {
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).formatToParts(at);
-    const hour = Number(parts.find((part) => part.type === 'hour')?.value);
-    const minute = Number(parts.find((part) => part.type === 'minute')?.value);
-    if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
-    // Intl renders midnight as 24 in some locales' 2-digit hour cycle.
-    return (hour % 24) * 60 + minute;
-  } catch {
-    return null;
   }
 }

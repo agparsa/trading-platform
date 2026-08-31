@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { parseEncryptionKeys } from '../common/crypto/secret-box';
+import { parseEncryptionKeys } from '@tp/crypto-core';
 
 /**
  * Environment contract.

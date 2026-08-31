@@ -96,7 +96,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
         trades, executions, position_events, positions,
         order_events, orders, account_settings,
         reconciliation_findings, reconciliation_runs,
-        devices, notification_preferences, notification_settings, notifications,
+        push_deliveries, devices, notification_preferences, notification_settings, notifications,
         accounts,
         system_settings,
         invite_redemptions, invite_codes,

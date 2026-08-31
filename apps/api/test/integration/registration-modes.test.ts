@@ -10,11 +10,7 @@ import { SessionsService } from '../../src/auth/sessions.service';
 import { TokenService } from '../../src/auth/token.service';
 import { PasswordService } from '../../src/auth/password.service';
 import { EmailPort } from '../../src/auth/email/email.port';
-import {
-  SecretBox,
-  generateEncryptionKey,
-  parseEncryptionKeys,
-} from '../../src/common/crypto/secret-box';
+import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import { AccountAccessService } from '../../src/accounts/account-access.service';
 import { AccountsService } from '../../src/accounts/accounts.service';
 import { LedgerService } from '../../src/accounts/ledger.service';

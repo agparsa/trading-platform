@@ -1,6 +1,6 @@
 import { Global, Injectable, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { parseEncryptionKeys, SecretBox } from './secret-box';
+import { parseEncryptionKeys, SecretBox } from '@tp/crypto-core';
 import type { Env } from '../../config/env.schema';
 
 /**

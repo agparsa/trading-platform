@@ -14,11 +14,7 @@ import { AccountAccessService } from '../../src/accounts/account-access.service'
 import { AccountsService } from '../../src/accounts/accounts.service';
 import { LedgerService } from '../../src/accounts/ledger.service';
 import { AuditService } from '../../src/common/audit/audit.service';
-import {
-  SecretBox,
-  generateEncryptionKey,
-  parseEncryptionKeys,
-} from '../../src/common/crypto/secret-box';
+import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { createTestClient, hasTestDatabase, resetDatabase } from './harness';
 

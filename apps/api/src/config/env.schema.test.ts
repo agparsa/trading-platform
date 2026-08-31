@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { corsOrigins, rateLimits, validateEnv } from './env.schema';
-import { generateEncryptionKey } from '../common/crypto/secret-box';
+import { generateEncryptionKey } from '@tp/crypto-core';
 
 const base = {
   DATABASE_URL: 'postgresql://trading:pw@localhost:5432/trading_platform?schema=public',

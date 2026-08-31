@@ -15,7 +15,7 @@
  * second factor, and the failure would not appear until each of them next signed
  * in — which is why the key id travels inside the ciphertext.
  */
-import { generateEncryptionKey } from '../apps/api/src/common/crypto/secret-box';
+import { generateEncryptionKey } from '@tp/crypto-core';
 
 const id = process.argv[2] ?? '1';
 if (!/^[A-Za-z0-9_-]+$/.test(id)) {

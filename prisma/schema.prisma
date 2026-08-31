@@ -86,6 +86,7 @@ model Tenant {
   devices                 Device[]
   notificationPreferences NotificationPreference[]
   notificationSettings    NotificationSetting[]
+  pushDeliveries          PushDelivery[]
 
   @@map("tenants")
 }
@@ -1336,7 +1337,8 @@ model Notification {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  pushDeliveries PushDelivery[]
 
   /// Deduplication is per tenant; two tenants may raise the same alert in the same minute.
   @@unique([tenantId, dedupeKey])
@@ -1409,6 +1411,8 @@ model Device {
   /// One row per installation per user. Two people sharing a phone get two
   /// rows, which is right: signing out of one account must not silence the
   /// other.
+  pushDeliveries PushDelivery[]
+
   @@unique([tenantId, userId, installationId])
   @@index([tenantId, userId, isActive])
   @@index([tenantId])
@@ -1483,4 +1487,59 @@ model NotificationSetting {
   @@unique([tenantId, userId])
   @@index([tenantId])
   @@map("notification_settings")
+}
+
+/// What happened when we tried to push one notification to one device.
+///
+/// §36 asks the Admin panel for Sent / Delivered / Failed / Pending. Three of
+/// those are knowable and one is not: FCM acknowledges that it *accepted* the
+/// message, never that the phone displayed it, and no push provider offers
+/// that. So this records what actually happened at our boundary and the admin
+/// view says "sent" rather than "delivered", because claiming delivery we
+/// cannot observe is the kind of number that gets believed and then acted on.
+model PushDelivery {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  notificationId String @map("notification_id") @db.Uuid
+  deviceId       String @map("device_id") @db.Uuid
+
+  status   PushDeliveryStatus @default(PENDING)
+  attempts Int                @default(0)
+
+  /// The provider's error code, verbatim, e.g. 'UNREGISTERED'. Kept as text
+  /// rather than an enum: a code we have never seen must still be recorded.
+  errorCode         String? @map("error_code")
+  /// The provider's own id for the message, for correlating with their console.
+  providerMessageId String? @map("provider_message_id")
+
+  sentAt    DateTime? @map("sent_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  device       Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  /// One attempt record per notification per device. A retried job updates the
+  /// row rather than writing a second one, so the count of rows is the count of
+  /// intended deliveries and not the count of tries.
+  @@unique([notificationId, deviceId])
+  @@index([tenantId, status, createdAt(sort: Desc)])
+  @@index([tenantId])
+  @@map("push_deliveries")
+}
+
+enum PushDeliveryStatus {
+  /// Queued, not yet attempted.
+  PENDING
+  /// Accepted by the provider. Not the same as shown on the phone.
+  SENT
+  /// The provider refused, and the reason may pass.
+  FAILED
+  /// The provider says this token is dead. The device was marked accordingly.
+  DROPPED
+  /// The user's preferences said not to send. Recorded so the admin view can
+  /// distinguish "we chose not to" from "we tried and failed".
+  SKIPPED
 }

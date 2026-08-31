@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inQuietHours } from './preferences.service';
+import { inQuietHours } from './preferences';
 
 /**
  * Quiet hours, which are almost always the range that wraps midnight.

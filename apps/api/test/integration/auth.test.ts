@@ -6,11 +6,7 @@ import { AuthService, type LoginResult } from '../../src/auth/auth.service';
 import { InvitesService } from '../../src/auth/invites.service';
 import { TotpService } from '../../src/auth/totp.service';
 import { SessionsService } from '../../src/auth/sessions.service';
-import {
-  SecretBox,
-  generateEncryptionKey,
-  parseEncryptionKeys,
-} from '../../src/common/crypto/secret-box';
+import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import { TokenService } from '../../src/auth/token.service';
 import { PasswordService } from '../../src/auth/password.service';
 import { EmailPort } from '../../src/auth/email/email.port';

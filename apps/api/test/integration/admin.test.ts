@@ -13,11 +13,7 @@ import { EmailPort } from '../../src/auth/email/email.port';
 import { PasswordService } from '../../src/auth/password.service';
 import { SessionsService } from '../../src/auth/sessions.service';
 import { TotpService } from '../../src/auth/totp.service';
-import {
-  SecretBox,
-  generateEncryptionKey,
-  parseEncryptionKeys,
-} from '../../src/common/crypto/secret-box';
+import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import { base32Decode, codeForStep, stepFor } from '../../src/auth/totp';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import {

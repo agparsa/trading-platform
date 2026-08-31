@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
+import { PushService } from '../push/push.service';
 import { withTenant } from '@tp/tenancy';
 
 /**
@@ -16,11 +17,20 @@ import { withTenant } from '@tp/tenancy';
  *
  * ## Delivery today
  *
- * **In-app only.** The row is written, `GET /notifications` serves it and the
- * terminal shows it. `emailedAt` exists and stays null: there is no email
+ * **In-app and push.** The row is written first; `GET /notifications` serves
+ * it, the terminal shows it, and `PushService` sends it to the person's
+ * registered devices. `emailedAt` exists and stays null: there is no email
  * transport in this process, and marking a row as emailed when nothing was sent
- * would be worse than not having the column. Wiring a provider means
- * implementing one port and setting `emailedAt` — nothing else here changes.
+ * would be worse than not having the column.
+ *
+ * ## Push happens only for a row this call created
+ *
+ * That single condition is what satisfies §26 for the whole platform. The
+ * `dedupeKey` unique constraint already collapses two producers noticing the
+ * same thing into one row; a second attempt therefore returns `created: false`
+ * and never reaches the push path. No separate push-side deduplication exists,
+ * because a second mechanism could disagree with the first — and the way that
+ * failure presents is a trader's phone buzzing twice for one fill.
  *
  * ## Duplicates
  *
@@ -75,6 +85,8 @@ export class NotificationsService {
           },
           select: { id: true },
         });
+
+        await this.pushQuietly(job, created.id);
         return { created: true, id: created.id };
       } catch (error) {
         // The unique constraint losing a race is the *expected* outcome when two
@@ -91,10 +103,54 @@ export class NotificationsService {
     });
   }
 
-  constructor(private readonly prisma: PrismaService) {}
+  /**
+   * Pushes, and never lets a push failure fail the job.
+   *
+   * The row is already committed. A thrown error here would retry the job,
+   * which would find the row present, return `created: false`, and never push
+   * at all — so the retry would be strictly worse than the failure. Recorded
+   * loudly and swallowed.
+   */
+  private async pushQuietly(job: NotificationJob, notificationId: string): Promise<void> {
+    try {
+      await this.push.deliver({
+        tenantId: job.tenantId,
+        userId: job.userId,
+        notificationId,
+        /**
+         * The occurrence this notice is about.
+         *
+         * Taken from the job when the producer supplied one, so a client that
+         * already handled the WebSocket frame for the same event discards the
+         * push instead of showing it twice and playing the sound twice. When
+         * the producer supplied none, the notification's own id is the next
+         * best thing: still stable, still unique, and still processed once.
+         */
+        eventId: eventIdOf(job, notificationId),
+        kind: job.kind,
+        severity: job.severity as 'INFO' | 'WARNING' | 'CRITICAL',
+        title: job.title,
+        body: job.body,
+        accountId: job.accountId,
+      });
+    } catch (error) {
+      this.logger.error({ err: error, notificationId }, 'Push delivery failed for a notification');
+    }
+  }
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly push: PushService,
+  ) {}
 }
 
-interface NotificationJob {
+/** The producer's event id when there is one, the notification's id otherwise. */
+export function eventIdOf(job: NotificationJob, notificationId: string): string {
+  const declared = job.data['eventId'];
+  return typeof declared === 'string' && declared.length > 0 ? declared : notificationId;
+}
+
+export interface NotificationJob {
   tenantId: string;
   userId: string;
   kind: string;

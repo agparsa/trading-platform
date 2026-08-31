@@ -3,11 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { DevicePlatform } from '@tp/shared-types';
 import { withTenant } from '@tp/tenancy';
 import { DevicesService } from '../../src/devices/devices.service';
-import {
-  SecretBox,
-  generateEncryptionKey,
-  parseEncryptionKeys,
-} from '../../src/common/crypto/secret-box';
+import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 import {
   DEFAULT_TENANT_ID,

@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@eslint/js": "catalog:",
+    "@tp/crypto-core": "workspace:*",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",

@@ -21,6 +21,40 @@ export const workerEnvSchema = z.object({
   RECONCILIATION_CRON: z.string().default('15 * * * *'),
   MAINTENANCE_CRON: z.string().default('30 * * * *'),
 
+  /**
+   * Which push transport to use.
+   *
+   * `none` is the default and is honest about it: the no-op provider records
+   * every push as SKIPPED rather than SENT, so an unconfigured deployment looks
+   * unconfigured in the admin statistics instead of looking perfect.
+   */
+  PUSH_PROVIDER: z.enum(['none', 'fcm']).default('none'),
+
+  /**
+   * A Google service-account JSON blob, verbatim.
+   *
+   * Required when PUSH_PROVIDER=fcm. Contains a private key, so it belongs in
+   * secret management and never in an image, a log or a repository.
+   */
+  FCM_SERVICE_ACCOUNT_JSON: z.string().optional(),
+
+  /**
+   * The Android notification channel trading notices are posted to.
+   *
+   * Channels are declared by the app, and a message naming a channel the app
+   * has not created is delivered silently on Android 8 and later — which is the
+   * quietest possible failure for a margin call.
+   */
+  PUSH_ANDROID_CHANNEL_ID: z.string().default('trading'),
+
+  /**
+   * The keys used to open sealed push tokens.
+   *
+   * The same list the API seals them with. Without it the worker can read the
+   * device rows and not the tokens in them.
+   */
+  SECRET_ENCRYPTION_KEYS: z.string().optional(),
+
   /** Runs the jobs once at startup. Development convenience; never in production. */
   RUN_JOBS_ON_BOOT: z
     .union([z.boolean(), z.enum(['true', 'false'])])
@@ -36,5 +70,25 @@ export function validateEnv(raw: Record<string, unknown>): WorkerEnv {
     const fields = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('\n  ');
     throw new Error(`Invalid worker environment configuration:\n  ${fields}`);
   }
-  return result.data;
+
+  /**
+   * Cross-field checks the schema cannot express.
+   *
+   * Refusing to boot beats booting and discovering it on the first margin call
+   * that should have woken somebody's phone. Both of these are configuration
+   * mistakes whose symptom is silence, which is the hardest kind to notice.
+   */
+  const env = result.data;
+  if (env.PUSH_PROVIDER === 'fcm') {
+    const missing: string[] = [];
+    if (env.FCM_SERVICE_ACCOUNT_JSON === undefined) missing.push('FCM_SERVICE_ACCOUNT_JSON');
+    if (env.SECRET_ENCRYPTION_KEYS === undefined) missing.push('SECRET_ENCRYPTION_KEYS');
+    if (missing.length > 0) {
+      throw new Error(
+        `PUSH_PROVIDER=fcm requires ${missing.join(' and ')}. ` +
+          'Set them, or set PUSH_PROVIDER=none to run without push.',
+      );
+    }
+  }
+  return env;
 }

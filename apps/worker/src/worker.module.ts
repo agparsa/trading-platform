@@ -8,6 +8,7 @@ import { SwapAccrualService } from './jobs/swap-accrual.service';
 import { ReconciliationService } from './jobs/reconciliation.service';
 import { MaintenanceService } from './jobs/maintenance.service';
 import { NotificationsService } from './jobs/notifications.service';
+import { PushModule } from './push/push.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { NotificationsService } from './jobs/notifications.service';
         },
       }),
     }),
+    PushModule,
   ],
   providers: [
     PrismaService,

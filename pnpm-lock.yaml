@@ -180,6 +180,9 @@ importers:
       '@eslint/js':
         specifier: 'catalog:'
         version: 9.39.5
+      '@tp/crypto-core':
+        specifier: workspace:*
+        version: link:packages/crypto-core
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1
@@ -255,6 +258,9 @@ importers:
       '@tp/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@tp/crypto-core':
+        specifier: workspace:*
+        version: link:../../packages/crypto-core
       '@tp/financial-core':
         specifier: workspace:*
         version: link:../../packages/financial-core
@@ -264,6 +270,9 @@ importers:
       '@tp/market-core':
         specifier: workspace:*
         version: link:../../packages/market-core
+      '@tp/push-core':
+        specifier: workspace:*
+        version: link:../../packages/push-core
       '@tp/risk-core':
         specifier: workspace:*
         version: link:../../packages/risk-core
@@ -428,12 +437,18 @@ importers:
       '@prisma/client':
         specifier: 'catalog:'
         version: 6.19.3(prisma@6.19.3(magicast@0.3.5)(typescript@5.9.3))(typescript@5.9.3)
+      '@tp/crypto-core':
+        specifier: workspace:*
+        version: link:../../packages/crypto-core
       '@tp/financial-core':
         specifier: workspace:*
         version: link:../../packages/financial-core
       '@tp/market-core':
         specifier: workspace:*
         version: link:../../packages/market-core
+      '@tp/push-core':
+        specifier: workspace:*
+        version: link:../../packages/push-core
       '@tp/reconciliation-core':
         specifier: workspace:*
         version: link:../../packages/reconciliation-core
@@ -503,6 +518,18 @@ importers:
         specifier: 'catalog:'
         version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.12)
 
+  packages/crypto-core:
+    devDependencies:
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.3
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.12)
+
   packages/financial-core:
     dependencies:
       '@tp/shared-types':
@@ -546,6 +573,22 @@ importers:
       '@tp/financial-core':
         specifier: workspace:*
         version: link:../financial-core
+      '@tp/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+    devDependencies:
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.3
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.12)
+
+  packages/push-core:
+    dependencies:
       '@tp/shared-types':
         specifier: workspace:*
         version: link:../shared-types
