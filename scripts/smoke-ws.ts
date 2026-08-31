@@ -390,7 +390,21 @@ async function main(): Promise<void> {
       const { socket } = connect(alice.token);
       sockets.push(socket);
       await waitFor(() => (socket.connected ? true : undefined), 10_000, 'connection');
-      socket.emit('subscribe', { channel: 'quotes' });
+      /**
+       * Acknowledged, not fired and forgotten.
+       *
+       * `emit` returns as soon as the frame is written. Socket.IO delivers
+       * frames on one socket in order, but nothing makes the server *finish*
+       * handling `subscribe` before it answers `whoami` — and `subscribe` reads
+       * the database while `whoami` answers from memory. Over loopback the
+       * first always won; against a deployment, with real latency between the
+       * two, `whoami` overtook it and the check failed on a subscription that
+       * was recorded a millisecond later.
+       *
+       * The race was in this test, not in the gateway. Waiting for the ack is
+       * what the other checks here already do.
+       */
+      await socket.emitWithAck('subscribe', { channel: 'quotes' });
       const reply = (await socket.emitWithAck('whoami', {})) as {
         authenticated: boolean;
         accounts: number;

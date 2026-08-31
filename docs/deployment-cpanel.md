@@ -87,6 +87,74 @@ Then:
 /scripts/restartsrv_httpd
 ```
 
+## The cache, which served one user another user's account
+
+The panel's `location /` caches proxied 200s for sixty minutes on a key of
+scheme, host and URI — with no account of who asked. A freshly registered user
+calling `/api/v1/accounts` was handed another user's account and balance,
+because that user had asked first. That is not a hypothetical: a brand new
+account came back as `TP-100001`, and two fresh users saw the same one.
+
+Nothing under `/api/` may be cached, ever. The include below also takes the API
+past Apache, which is where the WebSocket dies anyway:
+
+```
+/etc/nginx/conf.d/users/<user>/<domain>/trading-platform.conf
+```
+
+```nginx
+location /api/ {
+    proxy_pass https://127.0.0.1:8443;
+    proxy_ssl_verify off;
+    proxy_ssl_server_name on;
+    proxy_cache off;
+    proxy_buffering off;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /ws {
+    proxy_pass https://127.0.0.1:8443;
+    proxy_ssl_verify off;
+    proxy_ssl_server_name on;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+    proxy_cache off;
+}
+```
+
+`$connection_upgrade` has to exist. cPanel's nginx does not define it; add the
+usual map in a file under `/etc/nginx/conf.d/`.
+
+Then clear what is already cached — the poisoned entries outlive the fix by an
+hour otherwise:
+
+```bash
+/scripts/ea-nginx clear_cache <user>
+```
+
+**Verify it, rather than assuming.** Register two users and check they see
+different accounts. One command's worth of proof against a bug that hands one
+trader another's balance.
+
+## The WebSocket, which Apache would not carry
+
+`mod_proxy_wstunnel` is installed but not enough: with `ProxyPass /ws
+wss://127.0.0.1:8443/ws`, and with a `RewriteRule [P]`, Apache answered the
+upgrade with 404 or hung. The platform's own edge answers the identical request
+with `101 Switching Protocols`. The `location /ws` above skips Apache for that
+path alone; everything else still travels the panel's normal route.
+
 ## The client address, all the way through
 
 Every per-IP rate limit — this stack's and cPanel's — is only as meaningful as
