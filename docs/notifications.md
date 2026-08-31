@@ -58,15 +58,51 @@ notification's own id is used: still stable, still unique, still processed once.
 
 ## What raises one today
 
-| Kind               | When                                  |
-| ------------------ | ------------------------------------- |
-| `risk.margin_call` | an account crosses into margin call   |
-| `risk.stop_out`    | an account reaches its stop-out level |
+| Kind                     | When                                    | Category          |
+| ------------------------ | --------------------------------------- | ----------------- |
+| `position.opened`        | a position opens                        | `TRADE_OPENED`    |
+| `position.closed`        | a position closes manually              | `TRADE_CLOSED`    |
+| `position.partial_close` | part of a position closes               | `TRADE_CLOSED`    |
+| `position.stop_loss`     | a stop loss or trailing stop fires      | `STOP_LOSS`       |
+| `position.take_profit`   | a take profit fires                     | `TAKE_PROFIT`     |
+| `position.modified`      | SL or TP changed                        | `TRADE_MODIFIED`  |
+| `order.cancelled`        | a resting order is cancelled or expires | `ORDER_CANCELLED` |
+| `risk.margin_call`       | an account crosses into margin call     | `RISK_ALERT`      |
+| `risk.stop_out`          | an account reaches its stop-out level   | `RISK_ALERT`      |
 
-Recovering to normal deliberately raises nothing. It is good news that needs no
-chasing, and a bell that rings for every recovery teaches people to ignore it.
-The _toast_ does mention a recovery, because it replaces the warning still on
-screen.
+The trading rows come from **one subscriber** on the domain event bus, not from
+eight call sites. Orders and positions publish from eight places and the trigger
+engine will add more; a `raise(...)` beside each is the change that gets
+forgotten at the ninth, and a missing notification is invisible until somebody
+complains that their stop loss fired without telling them.
+
+Subscribing there also inherits the guarantee §16 asks for. Those events are
+published _after the transaction commits_ — so there is no path from a rejected
+or rolled-back order to a notification, because there is no event.
+
+`ORDER_FILLED` deliberately raises nothing. Every fill in this platform opens a
+position and both events are published together; notifying on both would buzz
+the phone twice for one action.
+
+Recovering to normal deliberately raises nothing either. It is good news that
+needs no chasing, and a bell that rings for every recovery teaches people to
+ignore it. The _toast_ does mention a recovery, because it replaces the warning
+still on screen.
+
+### Two instances, one notice
+
+A handler registered on the bus runs on the instance that published _and_ on
+every instance that receives the envelope over Redis, so both raise the same
+notice. The `dedupeKey` is the envelope's own `eventId` — generated once at
+publication and carried with it — so the second job is a no-op at the database.
+The same mechanism that already collapses two producers noticing one margin
+call, reused rather than reinvented.
+
+The envelope carries `tenantId` for the same reason. A handler on another
+instance has no request behind it and therefore no tenant scope; it enters one
+from the envelope. An event with no tenant is dropped loudly rather than filed
+under a default, because filing it would put one firm's trade in another firm's
+notification list.
 
 ## Reading
 

@@ -92,6 +92,7 @@ describe('EventsService', () => {
       eventId: 'evt-1',
       origin: 'a-different-process',
       accountId: 'account-1',
+      tenantId: '00000000-0000-4000-8000-0000000000ff',
       data: {},
       timestamp: Date.now(),
     };

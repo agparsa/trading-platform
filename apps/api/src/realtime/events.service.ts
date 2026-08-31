@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { DomainEvent } from '@tp/shared-types';
+import { currentTenant } from '@tp/tenancy';
 import { RedisService } from '../redis/redis.service';
 
 /** Redis channel every API instance relays to its own connected sockets. */
@@ -26,6 +27,17 @@ export interface DomainEventEnvelope {
   readonly origin: string;
   /** Owning account, so an instance can route the frame to the right sockets. */
   readonly accountId: string;
+  /**
+   * The tenant this happened in.
+   *
+   * Carried on the envelope rather than looked up, because a handler on
+   * *another* instance receives this over Redis with no request and therefore
+   * no tenant scope at all — `requireTenantId()` there throws, and a handler
+   * that needs to touch the database has nothing to go on. Null only for an
+   * envelope published outside any scope, which should not happen and is
+   * treated as "cannot be handled" rather than "belongs to the default tenant".
+   */
+  readonly tenantId: string | null;
   readonly data: Record<string, unknown>;
   readonly timestamp: number;
 }
@@ -78,6 +90,9 @@ export class EventsService {
       eventId: randomUUID(),
       origin: INSTANCE_ID,
       accountId,
+      // Captured here, where a request scope still exists. By the time a
+      // handler on another instance sees this, there is none.
+      tenantId: currentTenant()?.tenantId ?? null,
       data,
       timestamp: Date.now(),
     };
