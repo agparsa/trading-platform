@@ -97,6 +97,14 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # The mobile app has no bundle step in CI — a native build needs Xcode or
+      # the Android SDK, neither of which belongs on this runner. What CI can
+      # check is that its source is consistent with the packages it imports,
+      # which `pnpm typecheck` above already does. This step exists to say so
+      # rather than to leave the omission looking like an oversight.
+      - name: Note on the mobile app
+        run: echo "apps/mobile is typechecked and unit-tested above; native builds run in EAS."
+
       - name: Smoke test the API
         run: pnpm smoke
 

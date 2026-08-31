@@ -19,6 +19,7 @@ export default defineConfig({
       '@tp/reconciliation-core': pkg('reconciliation-core'),
       '@tp/integrity-core': pkg('integrity-core'),
       '@tp/api-client': pkg('api-client'),
+      '@tp/push-core': pkg('push-core'),
       '@tp/ui': pkg('ui'),
       // The web app's own path alias, so its pure modules can be tested without
       // a Next.js build. Only non-React modules are included below.
@@ -39,6 +40,17 @@ export default defineConfig({
       // so anything importing React or JSX belongs in a component test instead.
       'apps/web/src/lib/**/*.{test,spec}.ts',
       'apps/worker/src/**/*.{test,spec}.ts',
+      /**
+       * The mobile app's pure logic only.
+       *
+       * There is no React Native test environment configured here, and adding
+       * one would mean a second renderer in a repository that already has
+       * enough moving parts. What can be tested without a device — the event
+       * deduplication, the sound decisions, the token store — is exactly the
+       * logic where a bug is invisible on a screenshot, so this is the half
+       * worth having.
+       */
+      'apps/mobile/src/lib/**/*.{test,spec}.ts',
       // Integration tests live inside the app so they resolve its dependencies
       // (NestJS, Prisma) the same way the application code does.
       'apps/api/test/**/*.{test,spec}.ts',

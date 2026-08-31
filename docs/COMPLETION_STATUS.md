@@ -19,7 +19,7 @@ myself.
 pnpm build:packages   ok
 pnpm typecheck        ok
 pnpm lint             ok
-pnpm test             101 files, 1263 tests, 0 failures
+pnpm test             111 files, 1362 tests, 0 failures
 ```
 
 37 Prisma models. Roughly 62,000 lines of TypeScript in `apps/`, `packages/`, `prisma/`
@@ -113,7 +113,7 @@ exist_.
 | 14 — AI context layer                                  | not started                               |
 | 15 — real market data                                  | not started, plus a commercial dependency |
 
-**2 of 16 complete, plus the backend of phase 8.**
+**2 of 16 complete, plus all of phase 8 and the foundation of phase 12.**
 
 ## What the Definition of Done still needs
 
@@ -124,7 +124,11 @@ Admin: dashboard ✅ users ✅ accounts ✅ trading management ✅ risk ✅
 permissions ⚠️ tokens ❌ API management ❌ notification management ❌ audit ✅
 security center ❌
 
-Mobile: **every row ❌.**
+Mobile: Android builds ❌ iOS builds ❌ (neither attempted — no toolchain here)
+authentication ✅ dashboard ✅ market data ❌ charts ❌ order placement ❌
+position management ⚠️ (read-only) history ❌ notifications ✅ push ✅ sounds ✅
+notification settings ✅ — **all of these verified by compiler and unit test
+only, never on a device.**
 
 Security: no critical vulnerabilities ✅ no secrets committed ✅ no cross-tenant
 access ✅ (application layer; database layer present but not armed) no

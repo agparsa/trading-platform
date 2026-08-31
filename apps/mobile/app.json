@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Trading Platform",
+    "slug": "trading-platform",
+    "scheme": "tradingplatform",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ir.devopss.trading",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
+      }
+    },
+    "android": {
+      "package": "ir.devopss.trading",
+      "edgeToEdgeEnabled": true,
+      "permissions": ["POST_NOTIFICATIONS", "VIBRATE"]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-localization",
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./assets/sounds/trade_opened.wav",
+            "./assets/sounds/trade_closed.wav",
+            "./assets/sounds/trade_modified.wav",
+            "./assets/sounds/order_filled.wav",
+            "./assets/sounds/order_cancelled.wav",
+            "./assets/sounds/stop_loss.wav",
+            "./assets/sounds/take_profit.wav",
+            "./assets/sounds/risk_warning.wav"
+          ]
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
