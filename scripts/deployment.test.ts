@@ -735,3 +735,78 @@ describe('the WebSocket path', () => {
     expect(Number(timeout)).toBeGreaterThanOrEqual(600);
   });
 });
+
+/**
+ * The upgrade script exists to prevent three specific failures, each of which
+ * has happened on the customer's host. A test that only checked it parsed would
+ * miss the point; these check that the guards are still in it.
+ */
+describe('scripts/upgrade-server.sh', () => {
+  const script = readFileSync(resolve(ROOT, 'scripts/upgrade-server.sh'), 'utf8');
+
+  it('completes the environment file before it stops anything', () => {
+    /**
+     * The API refuses to boot with REGISTRATION_MODE=open under
+     * NODE_ENV=production. An env file written before that variable existed has
+     * no value for it, the default is `open`, and the refusal lands after the
+     * old container is already gone. So the check must come first.
+     */
+    const envStep = script.indexOf('add_if_missing REGISTRATION_MODE');
+    const stopStep = script.indexOf('stop api api-ingest worker');
+    expect(envStep).toBeGreaterThan(0);
+    expect(stopStep).toBeGreaterThan(envStep);
+  });
+
+  it('never overwrites a value an operator already chose', () => {
+    // Its job is to stop the process refusing to boot, not to have opinions.
+    expect(script).toMatch(/grep -qE "\^\$\{key\}=" "\$ENV_FILE"/);
+  });
+
+  it('builds one image at a time', () => {
+    // `docker compose build` with no service builds every image in parallel.
+    // On two cores serving live sites that saturated the machine and the host
+    // rebooted.
+    expect(script).toMatch(/for service in [a-z\- ]+; do\n\s+echo " {4}building \$service"/);
+    expect(script).not.toMatch(/COMPOSE\[@\]}" build\s*$/m);
+  });
+
+  it('stops api-ingest as well as api', () => {
+    // A separate service running the same code. Left up, the old build writes
+    // ticks and fires stops against the new schema.
+    expect(script).toMatch(/stop api api-ingest worker/);
+  });
+
+  it('takes a backup before migrating, and checks the dump is not empty', () => {
+    const backup = script.indexOf('pg_dump');
+    const migrate = script.indexOf('run --rm migrate');
+    expect(backup).toBeGreaterThan(0);
+    expect(migrate).toBeGreaterThan(backup);
+    // A failed dump still leaves a file.
+    expect(script).toMatch(/gzip -dc "\$OUT" \| head -c 200 \| wc -c/);
+  });
+
+  it('seeds after migrating, so the default tenant exists before the API starts', () => {
+    const migrate = script.indexOf('run --rm migrate');
+    const seed = script.indexOf('db:seed');
+    /**
+     * The *command*, not the phrase. `up -d` also appears inside the migration
+     * failure message, earlier in the file — which is what this assertion
+     * matched on the first attempt, and it failed for a reason that had nothing
+     * to do with the ordering it was checking.
+     */
+    const start = script.indexOf('"${COMPOSE[@]}" up -d');
+    expect(seed).toBeGreaterThan(migrate);
+    expect(start).toBeGreaterThan(seed);
+  });
+
+  it('waits on readiness rather than liveness', () => {
+    // Liveness answers while the database is unreachable, which is exactly the
+    // state a bad migration leaves behind.
+    expect(script).toContain('/ready');
+    expect(script).not.toContain("fetch('http://127.0.0.1:4000/health')");
+  });
+
+  it('refuses to run against a checkout that has diverged', () => {
+    expect(script).toMatch(/merge --ff-only/);
+  });
+});
