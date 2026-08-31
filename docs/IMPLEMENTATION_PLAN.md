@@ -174,9 +174,14 @@ are still global; the platform-wide kill switch cannot be set through the API;
 roles are still compile-time constants; the worker is cross-tenant by
 construction rather than scoped per tenant.
 
-**Remaining Phase 1 work, in order:** run the application as a non-owner
-database role and force RLS; move commercial instrument terms to a per-tenant
-table; give the worker a per-tenant scope.
+Since written, two of the three items below have been done: the worker now
+carries the same scope and extension the API does (`@tp/tenancy`), and
+commercial instrument terms moved to `tenant_symbol_terms` — which turned out to
+be a live cross-tenant _write_, not merely a missing feature.
+
+**Remaining Phase 1 work:** run the application as a database role that does not
+own its tables, add per-connection `app.tenant_id` plumbing, and force RLS. That
+one needs a deployment change and cannot be finished from the codebase alone.
 
 ---
 
