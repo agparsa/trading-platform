@@ -15,8 +15,28 @@ export interface SimulatedInstrument {
   readonly definition: InstrumentDefinition;
   /** Price the walk starts from. */
   readonly startPrice: string;
-  /** Per-tick volatility as a fraction of price, e.g. 0.0002 for 2 bps. */
-  readonly volatility: number;
+  /**
+   * Standard deviation of one day's return, as a fraction: 0.01 is a 1% day.
+   *
+   * Expressed per day rather than per tick because per day is the number anyone
+   * can sanity-check. The per-tick step is derived from it and the tick
+   * interval, which is what makes it possible to be wrong by a factor of six
+   * hundred without noticing: at 250ms there are 345,600 ticks in a day, so a
+   * "0.0009 per tick" that looks tiny is a 53% daily sigma. Ether was quoting
+   * -37% on a Tuesday, and the number responsible read like a rounding error.
+   */
+  readonly dailyVolatility: number;
+  /**
+   * How hard the price is pulled back towards `startPrice`, as a half-life in
+   * hours. Omitted means no pull at all.
+   *
+   * A pure random walk has no memory of where it started, so over a weekend of
+   * uptime it wanders anywhere — gold at 4457 having started at 4583, silver at
+   * 44 having started at 69. Neither is a *wrong* random walk; both are useless
+   * as a demonstration market. The pull keeps prices in the neighbourhood a
+   * trader recognises without making the short-run behaviour any less random.
+   */
+  readonly reversionHalfLifeHours?: number;
   /** Half-spread in price units at rest. */
   readonly baseHalfSpread: string;
   /** Milliseconds between ticks for this instrument. */
@@ -63,6 +83,12 @@ export class InternalMarketSimulator implements MarketDataProvider {
   private readonly historyDepth: number;
 
   private readonly mid = new Map<string, string>();
+  /** Where each instrument is pulled back towards. */
+  private readonly anchor = new Map<string, string>();
+  /** Per-tick standard deviation, derived from the daily figure. */
+  private readonly perTickSigma = new Map<string, number>();
+  /** Per-tick reversion strength, derived from the half-life. */
+  private readonly perTickPull = new Map<string, number>();
   private readonly latest = new Map<string, Tick>();
   private readonly nextTickAt = new Map<string, number>();
   private readonly listeners = new Map<string, Set<TickListener>>();
@@ -80,7 +106,20 @@ export class InternalMarketSimulator implements MarketDataProvider {
     for (const instrument of this.instruments) {
       const code = instrument.definition.spec.code;
       this.mid.set(code, instrument.startPrice);
+      this.anchor.set(code, instrument.startPrice);
       this.nextTickAt.set(code, this.clock.now());
+
+      // Derived once, from the day figure and this instrument's own tick rate.
+      const ticksPerDay = 86_400_000 / instrument.tickIntervalMs;
+      this.perTickSigma.set(code, instrument.dailyVolatility / Math.sqrt(ticksPerDay));
+
+      const halfLife = instrument.reversionHalfLifeHours;
+      this.perTickPull.set(
+        code,
+        halfLife === undefined || halfLife <= 0
+          ? 0
+          : Math.LN2 / ((halfLife * 3_600_000) / instrument.tickIntervalMs),
+      );
       for (const resolution of this.resolutions) {
         this.aggregators.set(this.key(code, resolution), new CandleAggregator(code, resolution));
         this.history.set(this.key(code, resolution), []);
@@ -187,15 +226,31 @@ export class InternalMarketSimulator implements MarketDataProvider {
     const spec = instrument.definition.spec;
     const previousMid = toDecimal(this.mid.get(spec.code) ?? instrument.startPrice);
 
-    // Multiplicative random walk: keeps prices positive and makes volatility
-    // proportional to price, which is how real instruments behave.
-    const shock = this.rng.normal() * instrument.volatility;
-    const rawMid = previousMid.mul(1 + shock);
+    /**
+     * A random walk that remembers where it lives.
+     *
+     * Multiplicative, so prices stay positive and volatility scales with price
+     * the way a real instrument's does. The `pull` term is the only addition to
+     * a plain walk: it moves the price a fixed fraction of the way back to its
+     * anchor each tick, which over a long run keeps it in a recognisable range
+     * without touching the short-run randomness a trader actually sees. With a
+     * pull of zero this is exactly the walk it was before.
+     */
+    const sigma = this.perTickSigma.get(spec.code) ?? 0;
+    const pull = this.perTickPull.get(spec.code) ?? 0;
+    const anchor = toDecimal(this.anchor.get(spec.code) ?? instrument.startPrice);
+
+    const shock = this.rng.normal() * sigma;
+    // Proportional distance from the anchor, which is the quantity the pull
+    // acts on — a 1% gap is the same pull at gold's price as at the euro's.
+    const gap = previousMid.minus(anchor).div(anchor).toNumber();
+    const drift = -pull * gap;
+    const rawMid = previousMid.mul(1 + drift + shock);
     const newMid = normalizePrice(spec, rawMid.lte(0) ? previousMid : rawMid);
     this.mid.set(spec.code, newMid.toString());
 
     // Spread widens with the size of the move, as it does around news.
-    const widening = 1 + Math.abs(shock) / Math.max(instrument.volatility, Number.EPSILON) / 4;
+    const widening = 1 + Math.abs(shock) / Math.max(sigma, Number.EPSILON) / 4;
     const halfSpread = toDecimal(instrument.baseHalfSpread).mul(toDecimal(widening.toFixed(6)));
 
     const bid = normalizePrice(spec, newMid.minus(halfSpread));

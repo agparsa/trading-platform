@@ -61,6 +61,30 @@ export const envSchema = z.object({
   MARKET_SIMULATOR_TICK_MS: z.coerce.number().int().min(10).default(250),
   MARKET_SIMULATOR_SEED: z.coerce.number().int().default(20260821),
 
+  /**
+   * Reference levels for the simulated market: `XAUUSD:3350,BTCUSD:95000`.
+   *
+   * The prices shipped in code are plausible, not live, and they were plausible
+   * on the day they were written. A demonstration market quoting gold two
+   * hundred dollars from anywhere real is a demonstration of nothing, and
+   * nobody should need a rebuild to correct it — so the anchor each instrument
+   * is pulled towards can be set here.
+   *
+   * Anything not named keeps the built-in level. Anything named that is not an
+   * instrument is ignored.
+   */
+  MARKET_SIMULATOR_PRICES: z
+    .string()
+    .default('')
+    .refine(
+      (raw) =>
+        raw
+          .split(',')
+          .filter((part) => part.trim().length > 0)
+          .every((part) => /^[A-Za-z0-9_]+:\d+(\.\d+)?$/.test(part.trim())),
+      { message: 'must be SYMBOL:price pairs, comma-separated, e.g. XAUUSD:3350,BTCUSD:95000' },
+    ),
+
   APP_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
   // 'log' prints verification and reset links to the server log. It is a
   // development stand-in and refuses to run under NODE_ENV=production.

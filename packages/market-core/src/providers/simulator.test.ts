@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toDecimal } from '@tp/financial-core';
+import { type Decimal, toDecimal } from '@tp/financial-core';
 import { ManualClock } from '../clock';
 import { Resolution } from '../types';
 import { InternalMarketSimulator } from './simulator';
@@ -233,5 +233,103 @@ describe('InternalMarketSimulator', () => {
     expect(await sim.getLatestTick('XAUUSD')).toBeNull();
     const ticks = await run(sim, clock, 3);
     expect(await sim.getLatestTick('XAUUSD')).toEqual(ticks[ticks.length - 1]);
+  });
+});
+
+// ─── What a day looks like ─────────────────────────────────────────────────
+
+describe('the shape of a simulated day', () => {
+  const DAY_MS = 86_400_000;
+
+  /**
+   * A minute-resolution instrument, so a week is ten thousand steps rather than
+   * two and a half million.
+   *
+   * This is not a shortcut around the thing being tested — it *is* the thing
+   * being tested. The per-tick step is derived from the daily figure and the
+   * interval, so a minute tick and a 250ms tick must produce the same size of
+   * day. If they ever stop doing so, that derivation is broken, which is
+   * exactly the bug this describe block exists for.
+   */
+  const TICK_MS = 60_000;
+
+  const runFor = (
+    days: number,
+    dailyVolatility: number,
+    reversionHalfLifeHours?: number,
+    seed = 4242,
+  ) => {
+    const clock = new ManualClock(T0);
+    const sim = new InternalMarketSimulator({
+      instruments: [
+        { ...XAUUSD_SIMULATED, tickIntervalMs: TICK_MS, dailyVolatility, reversionHalfLifeHours },
+      ],
+      seed,
+      clock,
+      resolutions: [Resolution.M1],
+    });
+    void sim.start();
+
+    const start = toDecimal(XAUUSD_SIMULATED.startPrice);
+    let low = start;
+    let high = start;
+    let last = start;
+    for (let elapsed = 0; elapsed < DAY_MS * days; elapsed += TICK_MS) {
+      clock.advance(TICK_MS);
+      for (const tick of sim.pump()) {
+        const mid = toDecimal(tick.bid).plus(toDecimal(tick.ask)).div(2);
+        if (mid.lt(low)) low = mid;
+        if (mid.gt(high)) high = mid;
+        last = mid;
+      }
+    }
+    const away = (d: Decimal) => d.minus(start).div(start).abs().toNumber();
+    return {
+      close: away(last),
+      range: high.minus(low).div(start).toNumber(),
+      worst: Math.max(away(low), away(high)),
+    };
+  };
+
+  /**
+   * The bug this block guards against.
+   *
+   * Volatility was configured per tick. At a 250ms tick there are 345,600 ticks
+   * in a day, so a per-tick figure is multiplied by ~588 on the way to a daily
+   * one — and gold's "0.0002", which reads like two basis points, was an 11.8%
+   * day. Ether's was 53%. The terminal duly showed ETHUSD down 37.59% and
+   * AUDUSD up 4.80%: every number arithmetically correct, and none of them a
+   * market.
+   */
+  it('moves about as much in a day as the daily figure says', () => {
+    expect(runFor(1, 0.011).close).toBeLessThan(0.011 * 4);
+  });
+
+  it('does not turn a one-percent instrument into a ten-percent one', () => {
+    expect(runFor(1, 0.011).range).toBeLessThan(0.08);
+  });
+
+  it('scales with the figure it is given', () => {
+    expect(runFor(1, 0.041).range).toBeGreaterThan(runFor(1, 0.005).range * 3);
+  });
+
+  /**
+   * Left running, a pure walk ends up anywhere: on the deployment silver
+   * started at 69.61 and was quoting 44. The pull is what keeps a
+   * demonstration market recognisable a week later.
+   */
+  it('stays near its anchor over a week when pulled back', () => {
+    expect(runFor(7, 0.011, 12).worst).toBeLessThan(0.08);
+  });
+
+  it('wanders much further over the same week without the pull', () => {
+    const pulled = runFor(7, 0.02, 12, 7).worst;
+    const free = runFor(7, 0.02, undefined, 7).worst;
+    expect(free).toBeGreaterThan(pulled);
+  });
+
+  it('is still random in the short run, not a flat line', () => {
+    // A pull strong enough to flatten the chart would be worse than the drift.
+    expect(runFor(1, 0.011, 12).range).toBeGreaterThan(0.002);
   });
 });

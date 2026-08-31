@@ -42,7 +42,8 @@ export const XAUUSD_INSTRUMENT: InstrumentDefinition = {
 export const XAUUSD_SIMULATED: SimulatedInstrument = {
   definition: XAUUSD_INSTRUMENT,
   startPrice: '4583.65',
-  volatility: 0.0002,
+  dailyVolatility: 0.012,
+  reversionHalfLifeHours: 8,
   baseHalfSpread: '0.07',
   tickIntervalMs: 250,
 };

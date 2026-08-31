@@ -315,11 +315,20 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
   private buildSimulator(): InternalMarketSimulator {
     const seed = this.config.getOrThrow('MARKET_SIMULATOR_SEED', { infer: true });
     const tickIntervalMs = this.config.getOrThrow('MARKET_SIMULATOR_TICK_MS', { infer: true });
+    // Operator-set reference levels win over the ones written into this file,
+    // which were plausible on the day they were written and no longer are.
+    const overriddenPrices = parseSimulatorPrices(
+      this.config.get('MARKET_SIMULATOR_PRICES', { infer: true }) ?? '',
+    );
 
     const instruments: SimulatedInstrument[] = this.symbols.list().map((definition) => ({
       definition,
-      startPrice: SIMULATOR_START_PRICES[definition.spec.code] ?? '100',
-      volatility: SIMULATOR_VOLATILITY[definition.spec.code] ?? 0.0002,
+      startPrice:
+        overriddenPrices[definition.spec.code] ??
+        SIMULATOR_START_PRICES[definition.spec.code] ??
+        '100',
+      dailyVolatility: SIMULATOR_DAILY_VOLATILITY[definition.spec.code] ?? 0.01,
+      reversionHalfLifeHours: SIMULATOR_REVERSION_HOURS,
       // Half the typical spread seen on the reference terminal for this class
       // of instrument, expressed in price units.
       baseHalfSpread: SIMULATOR_HALF_SPREAD[definition.spec.code] ?? '0.05',
@@ -333,6 +342,26 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
       resolutions: this.resolutions,
     });
   }
+}
+
+/**
+ * Reads `MARKET_SIMULATOR_PRICES` — `XAUUSD:3350,BTCUSD:95000`.
+ *
+ * Validated at boot by the env schema, so a malformed value never reaches
+ * here; this only has to split what the schema already accepted. An unknown
+ * symbol is ignored rather than rejected, because the set of instruments is a
+ * database question and this is configuration.
+ */
+export function parseSimulatorPrices(raw: string): Readonly<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const part of raw.split(',')) {
+    const trimmed = part.trim();
+    if (trimmed.length === 0) continue;
+    const [code, price] = trimmed.split(':');
+    if (code === undefined || price === undefined) continue;
+    out[code.toUpperCase()] = price;
+  }
+  return out;
 }
 
 /**
@@ -353,16 +382,42 @@ const SIMULATOR_START_PRICES: Readonly<Record<string, string>> = {
   USDJPY: '155.250',
 };
 
-const SIMULATOR_VOLATILITY: Readonly<Record<string, number>> = {
-  XAUUSD: 0.0002,
-  XAGUSD: 0.0004,
-  BTCUSD: 0.0006,
-  ETHUSD: 0.0009,
-  EURUSD: 0.00008,
-  AUDUSD: 0.0001,
-  GBPUSD: 0.00009,
-  USDJPY: 0.00007,
+/**
+ * Standard deviation of one day's move, per instrument.
+ *
+ * Per *day*, which is the figure anyone can check against a real chart: gold
+ * moves about a percent on an ordinary day, ether several. The simulator
+ * derives the per-tick step from this and the tick interval.
+ *
+ * These were per-tick before, and being per-tick is how they came to be wrong
+ * by a factor of six hundred: at a 250ms tick there are 345,600 ticks in a day,
+ * so ether's "0.0009" — which reads like nothing — was a 53% daily sigma. The
+ * terminal duly showed ETHUSD down 37.59% and gold two hundred dollars from
+ * where it opened, and every one of those numbers was arithmetically correct.
+ */
+const SIMULATOR_DAILY_VOLATILITY: Readonly<Record<string, number>> = {
+  XAUUSD: 0.011,
+  XAGUSD: 0.019,
+  BTCUSD: 0.032,
+  ETHUSD: 0.041,
+  EURUSD: 0.0045,
+  AUDUSD: 0.0062,
+  GBPUSD: 0.005,
+  USDJPY: 0.005,
 };
+
+/**
+ * How long it takes the pull towards the opening level to close half the gap.
+ *
+ * A pure random walk has no memory of where it started, so an instance left
+ * running over a weekend drifts anywhere at all — which is what happened here:
+ * silver started at 69.61 and was quoting 44. Twelve hours is long enough that
+ * a session's trading looks like a market and short enough that the price a
+ * trader sees on Monday is still one they recognise.
+ *
+ * A real feed needs none of this. It is a property of pretending.
+ */
+const SIMULATOR_REVERSION_HOURS = 12;
 
 const SIMULATOR_HALF_SPREAD: Readonly<Record<string, string>> = {
   XAUUSD: '0.07',
