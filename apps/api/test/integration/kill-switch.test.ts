@@ -39,6 +39,15 @@ suite('Kill switch (integration)', () => {
   });
 
   afterAll(async () => {
+    /**
+     * Leave trading on.
+     *
+     * This suite halts the platform, and the halt is a row that outlives the
+     * process. Cleaning up in `beforeEach` protects the next *test*; it does
+     * nothing for the next *suite*, or for whoever starts the server afterwards
+     * and finds every order refused with a reason from a test.
+     */
+    await prisma.systemSetting.deleteMany();
     await prisma.$disconnect();
   });
 

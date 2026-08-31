@@ -40,6 +40,16 @@ export const Permission = {
    */
   INSTRUMENTS_MANAGE: 'instruments.manage',
 
+  // --- registration ---
+  /**
+   * Mint, list and revoke invitations, when the platform runs in invite mode.
+   *
+   * Separate from `users.manage` because inviting someone in and acting on an
+   * existing user are different powers, and a support role that can suspend an
+   * account should not thereby be able to create the next hundred.
+   */
+  INVITES_MANAGE: 'invites.manage',
+
   // --- people ---
   /** Read any user's profile, accounts and sessions. */
   USERS_READ_ANY: 'users.read_any',
@@ -62,6 +72,20 @@ export const Permission = {
   INTEGRITY_READ: 'integrity.read',
   INTEGRITY_MANAGE: 'integrity.manage',
   RECONCILIATION_READ: 'reconciliation.read',
+  /**
+   * Record a decision about a finding: acknowledged, investigating, resolved,
+   * false positive.
+   *
+   * Separate from `RECONCILIATION_READ` because closing a finding is a write,
+   * and a permission whose name says read must not authorise one. The two were
+   * the same permission until the API audit noticed that an operator holding
+   * only read could mark a discrepancy resolved.
+   *
+   * Separate from `RECONCILIATION_RUN` too: starting a comparison and deciding
+   * what its output means are different acts, and the second is the one that
+   * makes a discrepancy stop being visible.
+   */
+  RECONCILIATION_MANAGE: 'reconciliation.manage',
   RECONCILIATION_RUN: 'reconciliation.run',
 
   // --- master accounts ---
@@ -165,6 +189,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.INTEGRITY_MANAGE,
     Permission.INSTRUMENTS_READ,
     Permission.RECONCILIATION_READ,
+    Permission.RECONCILIATION_MANAGE,
     Permission.RECONCILIATION_RUN,
     Permission.SYSTEM_OPERATIONS,
     Permission.SYSTEM_KILL_SWITCH,
@@ -177,6 +202,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.ACCOUNTS_ADJUST,
     Permission.USERS_READ_ANY,
     Permission.USERS_MANAGE,
+    Permission.INVITES_MANAGE,
     Permission.ORDERS_READ,
     Permission.ORDERS_CANCEL,
     Permission.POSITIONS_READ,
@@ -190,6 +216,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.INSTRUMENTS_READ,
     Permission.INSTRUMENTS_MANAGE,
     Permission.RECONCILIATION_READ,
+    Permission.RECONCILIATION_MANAGE,
     Permission.RECONCILIATION_RUN,
     Permission.SYSTEM_OPERATIONS,
     Permission.SYSTEM_KILL_SWITCH,

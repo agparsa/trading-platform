@@ -7,6 +7,7 @@ import { PasswordService } from './password.service';
 import { TokenService } from './token.service';
 import { TotpService } from './totp.service';
 import { SessionsService } from './sessions.service';
+import { InvitesService } from './invites.service';
 
 @Module({
   // Secrets are passed per sign/verify call rather than registered globally:
@@ -14,7 +15,14 @@ import { SessionsService } from './sessions.service';
   // make it easy to sign one with the other's secret by omission.
   imports: [JwtModule.register({}), AccountsModule],
   controllers: [AuthController],
-  providers: [AuthService, PasswordService, TokenService, TotpService, SessionsService],
-  exports: [TokenService, PasswordService, TotpService, SessionsService],
+  providers: [
+    AuthService,
+    PasswordService,
+    TokenService,
+    TotpService,
+    SessionsService,
+    InvitesService,
+  ],
+  exports: [TokenService, PasswordService, TotpService, SessionsService, InvitesService],
 })
 export class AuthModule {}

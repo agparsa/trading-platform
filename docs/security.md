@@ -56,6 +56,42 @@ request id, IP, user agent. Every sensitive operation writes one — login, orde
 create/modify/cancel, position close, SL/TP change, account update, admin action.
 Before/after payloads are redacted of anything sensitive before being written.
 
+### Append-only means the database refuses, not just the application
+
+Nothing in the API offers a way to edit or delete an audit row. That is a
+convention, and a convention holds only for people who are following it. The
+requirement is that a normal administrator cannot alter audit records, and the
+person the requirement exists for is the one who has reached a database
+connection.
+
+So `UPDATE`, `DELETE` and `TRUNCATE` on `audit_logs` are refused by trigger and
+raise `42501 insufficient_privilege`. `INSERT` and `SELECT` are unaffected.
+
+A trigger rather than `REVOKE UPDATE, DELETE`, deliberately: a table's owner
+keeps every privilege regardless of what is granted, and in most deployments
+here the application role owns its tables, so the `REVOKE` would look like it
+worked and do nothing. A trigger fires for the owner too. `TRUNCATE` needs a
+statement-level trigger of its own because it does not fire row-level ones —
+without that it would be the one statement that empties the table while the
+other two are refused.
+
+**What this does not claim.** An actor who can run DDL as the table's owner can
+`ALTER TABLE audit_logs DISABLE TRIGGER USER` and then do as they like. The
+integration harness does exactly that to reset between runs, which is the honest
+demonstration of the limit. Closing it properly is a deployment decision, and
+there are two ways:
+
+1. **Run the application as a role that does not own its tables.** Grant it
+   `INSERT, SELECT` on `audit_logs` and nothing else. Then the `REVOKE` becomes
+   load-bearing and the trigger becomes the second line rather than the only one.
+2. **Ship audit records to an append-only sink outside this database** — an
+   object store with object-lock, or a log service with retention. This is what
+   survives an attacker who owns the whole database, and it is the only thing
+   that does.
+
+Neither is done here. Recorded so it is a known limit rather than an assumed
+guarantee.
+
 ## Rate limiting
 
 Per-bucket limits, tightest on the endpoints that move money. Login is the

@@ -147,6 +147,14 @@ SMOKE_TARGET=https://trade.example.com pnpm smoke
 SMOKE_TARGET=https://trade.example.com pnpm smoke:ws
 ```
 
+If the deployment runs `REGISTRATION_MODE=invite` — which production examples do
+— mint a multi-use invitation first and pass it, or every check that needs a
+token will fail on the registration rather than on what it was testing:
+
+```bash
+SMOKE_INVITE_CODE=<code> SMOKE_TARGET=https://trade.example.com pnpm smoke
+```
+
 The trade is explicit: they stop proving anything about the code and start
 proving something about the environment — whether TLS terminates where you
 think, whether the upgrade survives every proxy in front of it, whether the

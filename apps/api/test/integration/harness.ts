@@ -27,17 +27,34 @@ export function createTestClient(): PrismaClient {
  * failure is reproducible.
  */
 export async function resetDatabase(prisma: PrismaClient): Promise<void> {
-  await prisma.$executeRawUnsafe(`
-    TRUNCATE TABLE
-      integrity_signal_events, integrity_signals,
-      master_account_links, master_accounts,
-      audit_logs, risk_events, account_snapshots, balance_ledger,
-      trades, executions, position_events, positions,
-      order_events, orders, account_settings,
-      reconciliation_findings, reconciliation_runs, notifications, accounts,
-      totp_recovery_codes, refresh_tokens, users, idempotency_keys
-    RESTART IDENTITY CASCADE
-  `);
+  /**
+   * `audit_logs` refuses UPDATE, DELETE and TRUNCATE — see the
+   * `audit_log_append_only` migration. Emptying it between runs therefore takes
+   * an explicit, privileged act rather than an ordinary statement, and that is
+   * the point: the two lines below are precisely the work an attacker would
+   * have to do, and they need ownership of the table to do it.
+   *
+   * Written out here rather than hidden behind a helper so that anybody reading
+   * the harness sees what the audit log's guarantee actually costs to break.
+   */
+  await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs DISABLE TRIGGER USER`);
+  try {
+    await prisma.$executeRawUnsafe(`
+      TRUNCATE TABLE
+        integrity_signal_events, integrity_signals,
+        master_account_links, master_accounts,
+        audit_logs, risk_events, account_snapshots, balance_ledger,
+        trades, executions, position_events, positions,
+        order_events, orders, account_settings,
+        reconciliation_findings, reconciliation_runs, notifications, accounts,
+        system_settings,
+        invite_redemptions, invite_codes,
+        totp_recovery_codes, refresh_tokens, users, idempotency_keys
+      RESTART IDENTITY CASCADE
+    `);
+  } finally {
+    await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs ENABLE TRIGGER USER`);
+  }
 }
 
 export async function seedSymbols(prisma: PrismaClient): Promise<void> {

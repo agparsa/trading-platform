@@ -55,6 +55,7 @@ found missing.
 - [two-factor.md](./two-factor.md) — TOTP proved against the RFC, and why a code works once
 - [encryption-at-rest.md](./encryption-at-rest.md) — the secret box, and the row a ciphertext is bound to
 - [sessions.md](./sessions.md) — where you are signed in, and what is deliberately not collected
+- [registration.md](./registration.md) — who may open an account, and why production refuses to boot open
 - [penetration-checklist.md](./penetration-checklist.md) — attacks attempted, and the two gaps it found in itself
 - [permissions.md](./permissions.md) — the capability catalogue, and why ADMIN cannot trade
 - [master-accounts.md](./master-accounts.md) — delegated access, and why an account id is never enough

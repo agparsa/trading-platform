@@ -79,6 +79,8 @@ model User {
   recoveryCodes  TotpRecoveryCode[]
   masterAccounts MasterAccount[]
   notifications  Notification[]
+  invitesCreated InviteCode[]       @relation("InviteCreator")
+  invitesUsed    InviteRedemption[]
 
   @@map("users")
 }
@@ -848,6 +850,64 @@ model SystemSetting {
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("system_settings")
+}
+
+// ---------------------------------------------------------------------------
+// Registration control
+// ---------------------------------------------------------------------------
+
+/// An invitation to open an account, when REGISTRATION_MODE=invite.
+///
+/// The code itself is never stored. What is stored is its SHA-256 and a short
+/// fingerprint, so a code can be identified in a list and matched at
+/// redemption, and a database leak yields no usable invitations. The plaintext
+/// is shown once, to the administrator who minted it, and then is gone —
+/// the same contract the specification requires of API keys.
+model InviteCode {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// SHA-256 of the code, hex. Unique so a redemption is a single indexed read.
+  codeHash    String  @unique @map("code_hash")
+  /// First eight characters of the code, to identify it in a list. Not enough
+  /// to redeem: the remainder carries the entropy.
+  fingerprint String
+  /// What this invitation is for, in a human's words. Shown in the admin list.
+  label       String?
+
+  createdById String? @map("created_by_id") @db.Uuid
+
+  /// How many accounts this code may open. One, unless deliberately widened.
+  maxUses  Int @default(1) @map("max_uses")
+  useCount Int @default(0) @map("use_count")
+
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  createdBy   User?              @relation("InviteCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  redemptions InviteRedemption[]
+
+  @@index([createdAt(sort: Desc)])
+  @@map("invite_codes")
+}
+
+/// Who used which invitation, and when.
+///
+/// Separate from a counter on the code because "how many are left" and "who
+/// came in on this" are different questions, and only the second one survives
+/// somebody asking where a user came from six months later.
+model InviteRedemption {
+  id           String   @id @default(uuid()) @db.Uuid
+  inviteCodeId String   @map("invite_code_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  redeemedAt   DateTime @default(now()) @map("redeemed_at") @db.Timestamptz(6)
+
+  inviteCode InviteCode @relation(fields: [inviteCodeId], references: [id], onDelete: Restrict)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([inviteCodeId, userId])
+  @@index([userId])
+  @@map("invite_redemptions")
 }
 
 // ---------------------------------------------------------------------------

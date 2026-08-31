@@ -55,20 +55,44 @@ tests** are connected. Specifically, for every phase:
 
 ---
 
-## Phase 0 — Close what is open · ~1 day
+## Phase 0 — Close what is open · ~1 day · **done, except the two operator decisions**
 
-Not a feature. Three defects that should not survive another week.
+Not a feature. Four defects that should not survive another week.
 
-| Item                                                                                         | Why now                                                                                                   |
-| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Gate registration (`REGISTRATION_MODE=closed\|invite\|open`, default `closed` in production) | A public domain currently accepts anyone                                                                  |
-| Remove the 21 test accounts from the production database                                     | Left over from verification runs                                                                          |
-| `REVOKE UPDATE, DELETE ON audit_logs` from the application role                              | The specification requires administrators cannot alter audit logs; today only the application prevents it |
-| Add `RECONCILIATION_MANAGE`; move the finding-status write off `RECONCILIATION_READ`         | A write gated by a read permission                                                                        |
+| Item                                                                                 | Why now                                                                                                   |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| Gate registration (`REGISTRATION_MODE`: open / invite / closed)                      | A public domain currently accepts anyone                                                                  |
+| Remove the 21 test accounts from the production database                             | Left over from verification runs                                                                          |
+| Make `audit_logs` append-only in the database, not only in the application           | The specification requires administrators cannot alter audit logs; today only the application prevents it |
+| Add `RECONCILIATION_MANAGE`; move the finding-status write off `RECONCILIATION_READ` | A write gated by a read permission                                                                        |
 
 **Done when:** registration refuses an uninvited address in production, the
 database refuses an `UPDATE` on `audit_logs`, and the pentest script has a probe
 for each.
+
+### What actually happened
+
+Three of the four are done and verified.
+
+- **Registration modes** — `open` / `invite` / `closed`, with the API refusing to
+  boot `open` in production unless told to in as many words. Real invitations:
+  120-bit codes, hashed at rest, shown once, single-use by default, claimed in
+  one atomic statement so two simultaneous redemptions cannot both win. 17
+  integration tests and 8 unit tests. [registration.md](./registration.md).
+- **Append-only audit log** — `UPDATE`, `DELETE` and `TRUNCATE` refused by
+  trigger, raising `42501`. A `REVOKE` alone would not have worked; the reasoning
+  is in [security.md](./security.md#audit).
+- **`RECONCILIATION_MANAGE`** — the finding-status write no longer rides on a
+  read permission. `OPERATOR` can see findings and can no longer close them.
+
+Three new pentest probes, 28 attacks refused. Suite is 1,134 tests across 89
+files, and `pnpm smoke` boots the application and passes 13/13 — which is the
+check that catches a service added to a controller but not reachable from its
+module, a mistake this repository has made before.
+
+**Not done, because neither is a commit:** the deployment still runs the old
+build with registration open, and the 21 test accounts are still in the
+production database. Both need the operator to decide and act.
 
 ---
 

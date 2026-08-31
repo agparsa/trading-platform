@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { PrismaClient } from '@prisma/client';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { AuthService, type LoginResult } from '../../src/auth/auth.service';
+import { InvitesService } from '../../src/auth/invites.service';
 import { TotpService } from '../../src/auth/totp.service';
 import { SessionsService } from '../../src/auth/sessions.service';
 import { TokenService } from '../../src/auth/token.service';
@@ -88,6 +89,7 @@ suite('Two-factor authentication (integration)', () => {
       accounts,
       audit,
       new SilentEmailAdapter(),
+      new InvitesService(prismaService, audit, config as never),
       config as never,
     );
   });

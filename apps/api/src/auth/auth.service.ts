@@ -10,6 +10,7 @@ import { TokenService, type IssueContext } from './token.service';
 import { TotpService } from './totp.service';
 import { SessionsService } from './sessions.service';
 import { EmailPort } from './email/email.port';
+import { InvitesService } from './invites.service';
 import type { Env } from '../config/env.schema';
 import type { TokenPair } from './token.types';
 
@@ -17,6 +18,8 @@ export interface RegisterInput {
   email: string;
   password: string;
   displayName: string;
+  /** Required when REGISTRATION_MODE=invite; ignored otherwise. */
+  inviteCode?: string | undefined;
 }
 
 export interface AuthContext extends IssueContext {
@@ -56,6 +59,7 @@ export class AuthService {
     private readonly accounts: AccountsService,
     private readonly audit: AuditService,
     private readonly email: EmailPort,
+    private readonly invites: InvitesService,
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
   ) {
     this.dummyHash = this.passwords.hash(DUMMY_PASSWORD);
@@ -73,7 +77,31 @@ export class AuthService {
    * entry, is a state the rest of the system would have to defend against
    * forever; it is cheaper to make it impossible.
    */
+  /**
+   * Open an account.
+   *
+   * The mode check comes first, before any work and before the
+   * already-registered branch, so a closed platform does not spend an Argon2
+   * hash on every attempt — and, more importantly, so it does not answer
+   * differently depending on whether the address exists. A refusal that leaks
+   * "that email is taken" is the enumeration hole this method spends the rest
+   * of its body avoiding.
+   */
   async register(input: RegisterInput, context: AuthContext = {}): Promise<{ userId: string }> {
+    const mode = this.config.get('REGISTRATION_MODE', { infer: true });
+    if (mode === 'closed') {
+      throw new DomainError(
+        TradingErrorCode.FORBIDDEN,
+        'This platform is not open for registration.',
+      );
+    }
+    if (mode === 'invite' && (input.inviteCode ?? '').trim().length === 0) {
+      throw new DomainError(
+        TradingErrorCode.VALIDATION_FAILED,
+        'Registration is by invitation. Enter the code you were given.',
+      );
+    }
+
     const passwordHash = await this.passwords.hash(input.password);
     const verificationToken = randomBytes(32).toString('base64url');
 
@@ -87,7 +115,16 @@ export class AuthService {
       return { userId: existing.id };
     }
 
-    const user = await this.prisma.$transaction(async (tx) => {
+    /**
+     * The invitation is claimed inside the same transaction that creates the
+     * user, so the two commit together. Claiming first and creating after would
+     * spend an invitation on a registration that then failed; creating first
+     * and claiming after would let a spent code open a second account.
+     */
+    const { user, inviteFingerprint } = await this.prisma.$transaction(async (tx) => {
+      const inviteCodeId =
+        mode === 'invite' ? await this.invites.claim(tx, input.inviteCode as string) : null;
+
       const created = await tx.user.create({
         data: {
           email: input.email,
@@ -101,7 +138,15 @@ export class AuthService {
         },
       });
       await this.accounts.openAccount(tx, created.id, { type: 'DEMO' });
-      return created;
+
+      if (inviteCodeId !== null) {
+        await this.invites.recordRedemption(tx, inviteCodeId, created.id);
+        return {
+          user: created,
+          inviteFingerprint: await this.invites.fingerprintOf(tx, inviteCodeId),
+        };
+      }
+      return { user: created, inviteFingerprint: null };
     });
 
     await this.email.send({
@@ -116,7 +161,14 @@ export class AuthService {
       action: 'USER_REGISTERED',
       resourceType: 'User',
       resourceId: user.id,
-      after: { email: user.email, displayName: user.displayName },
+      after: {
+        email: user.email,
+        displayName: user.displayName,
+        registrationMode: mode,
+        // The fingerprint identifies the invitation. The code itself is not
+        // stored here or anywhere else.
+        ...(inviteFingerprint === null ? {} : { inviteFingerprint }),
+      },
       requestId: context.requestId ?? null,
       ipAddress: context.ipAddress ?? null,
       userAgent: context.userAgent ?? null,

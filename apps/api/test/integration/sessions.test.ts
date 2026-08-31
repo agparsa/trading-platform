@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { PrismaClient } from '@prisma/client';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { AuthService, type LoginResult } from '../../src/auth/auth.service';
+import { InvitesService } from '../../src/auth/invites.service';
 import { SessionsService } from '../../src/auth/sessions.service';
 import { TotpService } from '../../src/auth/totp.service';
 import { TokenService } from '../../src/auth/token.service';
@@ -101,6 +102,7 @@ suite('Sessions and device visibility (integration)', () => {
       ),
       audit,
       email,
+      new InvitesService(prismaService, audit, config as never),
       config as never,
     );
   });

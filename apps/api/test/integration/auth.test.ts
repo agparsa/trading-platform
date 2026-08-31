@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import type { PrismaClient } from '@prisma/client';
 import { AuthService, type LoginResult } from '../../src/auth/auth.service';
+import { InvitesService } from '../../src/auth/invites.service';
 import { TotpService } from '../../src/auth/totp.service';
 import { SessionsService } from '../../src/auth/sessions.service';
 import {
@@ -113,6 +114,7 @@ suite('Auth (integration)', () => {
       accounts,
       audit,
       email,
+      new InvitesService(prismaService, audit, config as any),
       config as any,
     );
   });

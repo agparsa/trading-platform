@@ -11,6 +11,7 @@ import { AdjustmentsService } from './adjustments.service';
 import { RiskConsoleService } from './risk-console.service';
 import { AuditQueryService } from './audit-query.service';
 import { AdminInstrumentsService } from './instruments.service';
+import { InvitesService } from '../auth/invites.service';
 
 const decimal = z.string().regex(/^-?\d+(\.\d+)?$/, 'Must be a decimal number');
 /** Terms are quantities, never negative: a negative margin rate is not a discount. */
@@ -33,6 +34,16 @@ const instrumentTermsSchema = z
 
 class InstrumentEnabledDto extends createZodDto(instrumentEnabledSchema) {}
 class InstrumentTermsDto extends createZodDto(instrumentTermsSchema) {}
+
+const mintInviteSchema = z
+  .object({
+    label: z.string().trim().min(1).max(200).optional(),
+    maxUses: z.coerce.number().int().min(1).max(1_000).optional(),
+    ttlHours: z.coerce.number().int().min(1).max(8_760).optional(),
+  })
+  .strict();
+
+class MintInviteDto extends createZodDto(mintInviteSchema) {}
 
 const userSearchSchema = z
   .object({
@@ -143,6 +154,11 @@ export class AdminController {
     private readonly risk: RiskConsoleService,
     private readonly auditQuery: AuditQueryService,
     private readonly instruments: AdminInstrumentsService,
+    // Provided by AuthModule, which AdminModule imports. A service that is not
+    // reachable from this module's imports crashes the container at boot, not
+    // at the first request — which is why `pnpm smoke` and not `pnpm verify`
+    // is what proves this file is wired.
+    private readonly invites: InvitesService,
   ) {}
 
   // ─── People ──────────────────────────────────────────────────────────────
@@ -369,5 +385,38 @@ export class AdminController {
   ) {
     const { reason, ...terms } = body;
     return this.instruments.setTerms(actor.id, code.toUpperCase(), terms, reason);
+  }
+
+  /**
+   * Mint an invitation. The response carries the code, once.
+   *
+   * There is no route that returns it again, because the platform does not have
+   * it: only a SHA-256 and the first eight characters are stored. An
+   * administrator who loses a code mints another and revokes the first.
+   */
+  @RequirePermissions(Permission.INVITES_MANAGE)
+  @Post('invites')
+  @ApiOperation({ summary: 'Create an invitation; the code is shown once and never again' })
+  mintInvite(@CurrentUser() actor: AuthenticatedUser, @Body() body: MintInviteDto) {
+    return this.invites.mint(actor.id, body);
+  }
+
+  /** Invitations, by fingerprint. The codes themselves are not stored. */
+  @RequirePermissions(Permission.INVITES_MANAGE)
+  @Get('invites')
+  @ApiOperation({ summary: 'Invitations, identified by fingerprint' })
+  listInvites() {
+    return this.invites.list();
+  }
+
+  @RequirePermissions(Permission.INVITES_MANAGE)
+  @Post('invites/:id/revoke')
+  @ApiOperation({ summary: 'Stop an invitation being redeemed again' })
+  async revokeInvite(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    await this.invites.revoke(actor.id, id);
+    return { status: 'revoked' };
   }
 }

@@ -19,6 +19,76 @@ describe('validateEnv', () => {
     expect(env.DEFAULT_ACCOUNT_LEVERAGE).toBe(100);
   });
 
+  describe('REGISTRATION_MODE', () => {
+    it('defaults to open, because a fresh checkout should let you sign up', () => {
+      expect(validateEnv(base).REGISTRATION_MODE).toBe('open');
+    });
+
+    it('refuses to boot open in production', () => {
+      /**
+       * A public hostname that accepts any registration is not a configuration
+       * anybody chooses; it is one nobody made. The process refusing to start
+       * is the only moment at which somebody is definitely looking.
+       */
+      expect(() =>
+        validateEnv({ ...base, NODE_ENV: 'production', REGISTRATION_MODE: 'open' }),
+      ).toThrow(/REGISTRATION_MODE/);
+    });
+
+    it('refuses to boot open in production by default, not only when set explicitly', () => {
+      // The dangerous case is the one where the variable is absent altogether
+      // and the default fills it in.
+      expect(() => validateEnv({ ...base, NODE_ENV: 'production' })).toThrow(/REGISTRATION_MODE/);
+    });
+
+    it('allows invite and closed in production', () => {
+      for (const mode of ['invite', 'closed'] as const) {
+        expect(
+          validateEnv({ ...base, NODE_ENV: 'production', REGISTRATION_MODE: mode })
+            .REGISTRATION_MODE,
+        ).toBe(mode);
+      }
+    });
+
+    it('allows open in production when somebody says so on purpose', () => {
+      const env = validateEnv({
+        ...base,
+        NODE_ENV: 'production',
+        REGISTRATION_MODE: 'open',
+        REGISTRATION_ALLOW_OPEN_IN_PRODUCTION: 'true',
+      });
+      expect(env.REGISTRATION_MODE).toBe('open');
+      expect(env.REGISTRATION_ALLOW_OPEN_IN_PRODUCTION).toBe(true);
+    });
+
+    it('does not treat any other truthy-looking value as consent', () => {
+      // 'yes', '1' and 'TRUE' are what somebody types when they are guessing.
+      // Guessing is not consent, and a near miss must refuse rather than open.
+      for (const value of ['yes', '1', 'TRUE', 'on']) {
+        expect(() =>
+          validateEnv({
+            ...base,
+            NODE_ENV: 'production',
+            REGISTRATION_MODE: 'open',
+            REGISTRATION_ALLOW_OPEN_IN_PRODUCTION: value,
+          }),
+        ).toThrow();
+      }
+    });
+
+    it('leaves staging alone, which is what staging is for', () => {
+      expect(
+        validateEnv({ ...base, NODE_ENV: 'staging', REGISTRATION_MODE: 'open' }).REGISTRATION_MODE,
+      ).toBe('open');
+    });
+
+    it('rejects a mode nobody implemented', () => {
+      expect(() => validateEnv({ ...base, REGISTRATION_MODE: 'public' })).toThrow(
+        /REGISTRATION_MODE/,
+      );
+    });
+  });
+
   it('refuses to boot on a short JWT secret', () => {
     expect(() => validateEnv({ ...base, JWT_ACCESS_SECRET: 'short' })).toThrow(/JWT_ACCESS_SECRET/);
   });

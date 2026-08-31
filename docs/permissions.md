@@ -31,7 +31,7 @@ should be able to place an order on it.
 | `risk.read` / `.manage`                           | Read risk state; change limits            |
 | `audit.read`                                      | Read the audit log                        |
 | `integrity.read` / `.manage`                      | Integrity signals; act on them            |
-| `reconciliation.read` / `.run`                    | Reconciliation reports; trigger a run     |
+| `reconciliation.read` / `.manage` / `.run`        | Read findings; decide one; trigger a run  |
 | `master.read` / `.manage`                         | Master-account links                      |
 | `system.operations`                               | The operations dashboard                  |
 | `system.kill_switch`                              | Halt trading                              |
@@ -48,7 +48,7 @@ both would be spelled the same way.
 | `USER`         | Their own accounts, and the full order and position lifecycle on them                            |
 | `SUPPORT`      | Read-only across accounts, orders, positions and master links                                    |
 | `OPERATOR`     | Support's reads, plus cancel/close/modify, account management, ops dashboard                     |
-| `RISK_MANAGER` | Operator's set, plus `risk.manage`, `audit.read`, reconciliation runs, kill switch               |
+| `RISK_MANAGER` | Operator's set, plus `risk.manage`, `audit.read`, reconciliation manage and run, kill switch     |
 | `ADMIN`        | Everything administrative — but **not** `orders.create`, `positions.close` or `positions.modify` |
 
 ### Why ADMIN cannot trade
@@ -222,3 +222,18 @@ surface with an ordinary trader's token: reading every user, changing another
 user's state, and crediting an account. Each asserts a 403 _and_ that nothing
 moved — the last one checks the attacker's balance and that no
 `admin_adjustment` ledger row exists.
+
+## Why closing a finding is not a read
+
+`reconciliation.read` shows a discrepancy. `reconciliation.manage` decides what
+it means — acknowledged, investigating, resolved, false positive. They are
+separate because closing a finding is a write, and a permission whose name says
+read must not authorise one.
+
+They were the same permission until an inventory of the API noticed that
+`OPERATOR`, who holds read and not run, could mark a money discrepancy resolved.
+That is not an outrageous power, but it is the power to make a discrepancy stop
+being visible, and it belongs with risk management rather than with operations.
+
+An operator can still see every finding and escalate it. What they can no longer
+do is close it.

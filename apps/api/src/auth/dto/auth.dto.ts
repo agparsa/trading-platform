@@ -20,6 +20,13 @@ export const registerSchema = z
     email,
     password,
     displayName: z.string().trim().min(1).max(120),
+    /**
+     * Required only when the platform is running in invite mode, which the
+     * schema cannot see — so it is optional here and the service refuses a
+     * missing one. Bounded because it is unauthenticated input, and normalised
+     * downstream so a code retyped with spaces or dashes still works.
+     */
+    inviteCode: z.string().trim().min(1).max(64).optional(),
   })
   .strict();
 

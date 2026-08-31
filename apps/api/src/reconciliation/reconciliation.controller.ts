@@ -65,7 +65,16 @@ export class ReconciliationController {
     });
   }
 
-  @RequirePermissions(Permission.RECONCILIATION_READ)
+  /**
+   * Recording a decision is a write, so it takes a write permission.
+   *
+   * This route used to require `RECONCILIATION_READ`, which meant anyone who
+   * could see a discrepancy could also declare it resolved. `OPERATOR` holds
+   * read and no longer holds this: an operator can see a finding and escalate
+   * it, and deciding that a money discrepancy is a false positive is a
+   * judgement that belongs with risk management.
+   */
+  @RequirePermissions(Permission.RECONCILIATION_MANAGE)
   @Post('findings/:id/status')
   @ApiOperation({ summary: 'Record what a person decided about a finding' })
   setStatus(

@@ -31,6 +31,10 @@ const REDACTED_KEYS = new Set([
   'totpcode',
   'secret',
   'authorization',
+  // Invitations are identified in the audit trail by fingerprint. If a raw code
+  // ever reaches an audit payload it is a mistake, and this catches it.
+  'invitecode',
+  'codehash',
 ]);
 
 /**

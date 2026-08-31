@@ -123,25 +123,49 @@ created". Both check the consequence, not the response code.
 
 ## 8. Findings
 
-### F-1 — Registration is open on a public domain · **High**
+Three of these were fixed immediately after the audit, in the Phase 0 commit that
+follows it. Their entries are kept rather than deleted, marked with what changed,
+because a findings list that quietly loses its resolved entries teaches a reader
+that nothing was ever wrong.
+
+### F-1 — Registration is open on a public domain · **High** · _fixed in code, not yet deployed_
 
 `https://devopss.ir` accepts any registration. 21 accounts from earlier
 verification runs (emails matching `ws-`, `iso-`, `diag-`, `@test.invalid`)
-remain in the production database. Until registration is gated — invite code,
-allow-list, or disabled — the deployment is a demo anyone can enter.
-**Fix:** `REGISTRATION_MODE=closed|invite|open` in the environment contract,
-default `closed` in production.
+remain in the production database.
 
-### F-2 — Audit log is deletable at the database level · **Medium**
+**Fixed:** `REGISTRATION_MODE` takes `open`, `invite` or `closed`, and the API
+**refuses to boot** with `open` under `NODE_ENV=production` unless
+`REGISTRATION_ALLOW_OPEN_IN_PRODUCTION=true` says so explicitly. Invitations are
+real: 120-bit codes, stored hashed with an eight-character fingerprint, shown
+once, single-use by default, claimed atomically. See
+[registration.md](./registration.md).
 
-§6 above. One migration.
+**Still open:** the deployment has not been updated, and the 21 test accounts are
+still in the production database. Both need a decision from the operator rather
+than a commit.
 
-### F-3 — A write gated by a read permission · **Medium**
+### F-2 — Audit log is deletable at the database level · **Medium** · _fixed_
 
-`POST /reconciliation/findings/:id/status` requires `RECONCILIATION_READ`.
-`OPERATOR` holds it. A permission named read should not authorize a write, and
-the mismatch will outlive whoever remembers why.
-**Fix:** add `RECONCILIATION_MANAGE`.
+`UPDATE`, `DELETE` and `TRUNCATE` on `audit_logs` are now refused by trigger and
+raise `42501 insufficient_privilege`. A `REVOKE` alone would not have worked: a
+table's owner keeps every privilege regardless of grants, and the application
+role owns its tables here, so the revoke would have looked like it worked and
+done nothing.
+
+The residual limit is stated rather than papered over — an actor who can run DDL
+as the owner can disable the trigger. `security.md` names the two deployment
+changes that would close that, neither of which is done.
+
+### F-3 — A write gated by a read permission · **Medium** · _fixed_
+
+`RECONCILIATION_MANAGE` now gates the finding-status write. `RISK_MANAGER` and
+`ADMIN` hold it; `OPERATOR` keeps read and can no longer close a finding.
+
+A pentest probe promotes an actor to `OPERATOR`, confirms they can still _list_
+findings — otherwise the probe would prove nothing — and confirms the write is
+refused. Reverting the permission makes that probe report a breach, which is how
+the probe was checked.
 
 ### F-4 — No tenant isolation · **High, structural**
 

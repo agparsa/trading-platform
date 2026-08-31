@@ -172,6 +172,70 @@ describe('instrument capabilities', () => {
   });
 });
 
+describe('reconciliation capabilities', () => {
+  /**
+   * The defect this describes: `reconciliation.read` and the finding-status
+   * write were once the same permission, so an `OPERATOR` who could see a money
+   * discrepancy could also declare it a false positive. Closing a finding is
+   * the act that makes a discrepancy stop being visible, which is exactly the
+   * act that should not sit behind a permission called read.
+   */
+  it('lets the operational roles see findings', () => {
+    for (const role of [UserRole.OPERATOR, UserRole.RISK_MANAGER, UserRole.ADMIN]) {
+      expect(roleHasPermissions(role, [Permission.RECONCILIATION_READ])).toBe(true);
+    }
+  });
+
+  it('does not let an operator decide what a finding means', () => {
+    expect(roleHasPermissions(UserRole.OPERATOR, [Permission.RECONCILIATION_READ])).toBe(true);
+    expect(roleHasPermissions(UserRole.OPERATOR, [Permission.RECONCILIATION_MANAGE])).toBe(false);
+  });
+
+  it('gives the decision to risk management and administration', () => {
+    for (const role of [UserRole.RISK_MANAGER, UserRole.ADMIN]) {
+      expect(roleHasPermissions(role, [Permission.RECONCILIATION_MANAGE])).toBe(true);
+    }
+  });
+
+  it('keeps a trader out of all of it', () => {
+    for (const permission of [
+      Permission.RECONCILIATION_READ,
+      Permission.RECONCILIATION_MANAGE,
+      Permission.RECONCILIATION_RUN,
+    ]) {
+      expect(roleHasPermissions(UserRole.USER, [permission])).toBe(false);
+    }
+  });
+
+  it('never lets a master-account link carry any of them', () => {
+    // A link delegates trading on one account. Reconciliation is platform-wide.
+    for (const permission of [
+      Permission.RECONCILIATION_READ,
+      Permission.RECONCILIATION_MANAGE,
+      Permission.RECONCILIATION_RUN,
+    ]) {
+      expect(isLinkableCapability(permission)).toBe(false);
+    }
+  });
+});
+
+describe('invitations', () => {
+  /**
+   * Inviting someone in and acting on someone already here are different
+   * powers. A support role that can suspend an account should not thereby be
+   * able to create the next hundred.
+   */
+  it('is an administrator capability alone', () => {
+    for (const role of Object.values(UserRole)) {
+      expect(roleHasPermissions(role, [Permission.INVITES_MANAGE])).toBe(role === UserRole.ADMIN);
+    }
+  });
+
+  it('is not delegable through a master-account link', () => {
+    expect(isLinkableCapability(Permission.INVITES_MANAGE)).toBe(false);
+  });
+});
+
 describe('an administrator is not a trader', () => {
   /**
    * The rule that surprises everyone once, and the reason it exists: an

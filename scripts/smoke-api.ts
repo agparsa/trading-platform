@@ -64,6 +64,27 @@ async function getJson(path: string): Promise<{ status: number; body: unknown }>
   return { status: response.status, body: await response.json() };
 }
 
+/**
+ * A registration body, carrying an invitation when the target needs one.
+ *
+ * These checks register throwaway users to get tokens. A platform running in
+ * invite mode refuses them, which would make every check fail for a reason that
+ * has nothing to do with what it is testing — so an operator smoke-testing such
+ * a deployment mints a multi-use invitation first and passes it as
+ * `SMOKE_INVITE_CODE`. Against an open platform the variable is unset and this
+ * adds nothing.
+ */
+const INVITE_CODE = process.env['SMOKE_INVITE_CODE'];
+
+function registration(email: string, password: string, displayName: string): string {
+  return JSON.stringify({
+    email,
+    password,
+    displayName,
+    ...(INVITE_CODE === undefined || INVITE_CODE.length === 0 ? {} : { inviteCode: INVITE_CODE }),
+  });
+}
+
 const checks: Check[] = [
   {
     name: 'liveness responds inside the success envelope',
@@ -120,7 +141,7 @@ const checks: Check[] = [
       const register = await fetch(`${BASE}/api/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, displayName: 'Smoke Test' }),
+        body: registration(email, password, 'Smoke Test'),
       });
       assert(register.status === 202, `register returned ${register.status}`);
 
@@ -169,7 +190,7 @@ const checks: Check[] = [
       await fetch(`${BASE}/api/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, displayName: 'Smoke Trade' }),
+        body: registration(email, password, 'Smoke Trade'),
       });
       const login = await fetch(`${BASE}/api/v1/auth/login`, {
         method: 'POST',
@@ -246,7 +267,7 @@ const checks: Check[] = [
       await fetch(`${BASE}/api/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, displayName: 'Smoke Pending' }),
+        body: registration(email, password, 'Smoke Pending'),
       });
       const login = await fetch(`${BASE}/api/v1/auth/login`, {
         method: 'POST',
@@ -355,7 +376,7 @@ const checks: Check[] = [
       await fetch(`${BASE}/api/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, displayName: 'Smoke Cookie' }),
+        body: registration(email, password, 'Smoke Cookie'),
       });
 
       const login = await fetch(`${BASE}/api/v1/auth/login`, {
@@ -451,7 +472,7 @@ const checks: Check[] = [
       await fetch(`${BASE}/api/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, displayName: 'Smoke 2FA' }),
+        body: registration(email, password, 'Smoke 2FA'),
       });
 
       const signIn = async () =>
@@ -586,7 +607,7 @@ const checks: Check[] = [
         await fetch(`${BASE}/api/v1/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'User-Agent': userAgent },
-          body: JSON.stringify({ email, password, displayName: 'Smoke Sessions' }),
+          body: registration(email, password, 'Smoke Sessions'),
         }).then((response) => response.body?.cancel());
         const login = await fetch(`${BASE}/api/v1/auth/login`, {
           method: 'POST',
@@ -675,7 +696,7 @@ const checks: Check[] = [
       await fetch(`${BASE}/api/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, displayName: 'Smoke Perm' }),
+        body: registration(email, password, 'Smoke Perm'),
       });
 
       const prisma = new PrismaClient();
@@ -757,9 +778,141 @@ const checks: Check[] = [
   },
   {
     /**
+     * Invitations, end to end over HTTP.
+     *
+     * The service has integration tests; this checks the parts they cannot —
+     * that the admin routes are reachable and guarded, that the minted code
+     * survives the wire, and that the plaintext is not in the listing. A route
+     * that exists in a controller and is not reachable from its module fails
+     * here and nowhere else, which is the mistake this repository has made.
+     *
+     * Skipped against a deployment: minting a real invitation on somebody's
+     * production platform is not a smoke check.
+     */
+    name: 'an invitation can be minted, is never shown again, and behaves as the mode says',
+    run: async () => {
+      if (TARGET !== undefined) {
+        console.log('      (skipped against a deployment — this one mints real invitations)');
+        return;
+      }
+
+      const prisma = new PrismaClient();
+      const password = 'a-sufficiently-long-passphrase';
+      const adminEmail = `smoke-inviter-${Date.now()}@test.local`;
+      try {
+        const { PasswordService } = await import('../apps/api/src/auth/password.service');
+        const admin = await prisma.user.create({
+          data: {
+            email: adminEmail,
+            passwordHash: await new PasswordService().hash(password),
+            displayName: 'Smoke Inviter',
+            role: 'ADMIN',
+            emailVerified: true,
+          },
+        });
+
+        const login = await fetch(`${BASE}/api/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: adminEmail, password }),
+        });
+        assert(login.ok, `admin login returned ${login.status}`);
+        const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+
+        const minted = await fetch(`${BASE}/api/v1/admin/invites`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ label: 'smoke', maxUses: 1 }),
+        });
+        assert(minted.status === 201, `minting returned ${minted.status}`);
+        const invite = ((await minted.json()) as { data: { id: string; code: string } }).data;
+        assert(
+          typeof invite.code === 'string' && invite.code.length === 24,
+          'no usable code came back',
+        );
+
+        const listed = await fetch(`${BASE}/api/v1/admin/invites`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        assert(listed.ok, `listing returned ${listed.status}`);
+        const listing = await listed.text();
+        assert(!listing.includes(invite.code), 'the listing carried the plaintext code');
+        assert(!listing.includes('codeHash'), 'the listing carried the stored hash');
+
+        /**
+         * The API runs in whatever mode its environment says — the same
+         * `process.env` this script hands the child — so the check asserts what
+         * that mode actually promises rather than what would be convenient.
+         *
+         * Under `open`, offering a code must change nothing: the registration
+         * succeeds and the invitation is left unspent. That is a real assertion
+         * and it has a real failure mode, which is a claim path that runs
+         * whatever the mode.
+         *
+         * Under `invite`, the code is consumed exactly once and the redemption
+         * is recorded.
+         */
+        const mode = process.env['REGISTRATION_MODE'] ?? 'open';
+        const redeem = (email: string) =>
+          fetch(`${BASE}/api/v1/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              password,
+              displayName: 'Invited',
+              inviteCode: invite.code,
+            }),
+          });
+
+        if (mode === 'closed') {
+          const refusedRegistration = await redeem(`smoke-closed-${Date.now()}@test.local`);
+          assert(
+            refusedRegistration.status === 403,
+            `a closed platform answered ${refusedRegistration.status} to a registration`,
+          );
+        } else {
+          const first = await redeem(`smoke-invited-${Date.now()}@test.local`);
+          assert(first.status === 202, `redeeming returned ${first.status}`);
+
+          const after = await prisma.inviteCode.findUniqueOrThrow({ where: { id: invite.id } });
+          const redemptions = await prisma.inviteRedemption.count({
+            where: { inviteCodeId: invite.id },
+          });
+          const expected = mode === 'invite' ? 1 : 0;
+          assert(
+            after.useCount === expected,
+            `use count is ${after.useCount}, expected ${expected} in ${mode} mode`,
+          );
+          assert(
+            redemptions === expected,
+            `${redemptions} redemptions recorded, expected ${expected} in ${mode} mode`,
+          );
+        }
+
+        await prisma.user.update({ where: { id: admin.id }, data: { role: 'USER' } });
+        const refused = await fetch(`${BASE}/api/v1/admin/invites`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ label: 'should not happen' }),
+        });
+        assert(
+          refused.status === 403,
+          `minting answered ${refused.status} to a demoted administrator — ` +
+            'the permission is read from the token, not the database, so this is the check that the token carries it',
+        );
+      } finally {
+        await prisma.$disconnect();
+      }
+    },
+  },
+  {
+    /**
      * The login rate limiter, proved against the running binary.
      *
-     * Runs last because it deliberately exhausts the bucket. Every attempt uses
+     * Runs last because it deliberately exhausts the bucket — any check placed
+     * after it that signs in will be answered 429, which is a real failure of
+     * the check rather than of the platform. New checks go above this one. Every attempt uses
      * an address that was never registered, so nothing here trips the per-user
      * lockout — this is measuring the limiter in front of the endpoint, not the
      * counter behind it.
