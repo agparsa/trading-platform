@@ -5,7 +5,7 @@ import { AuditService } from '../common/audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueuePublisher } from '../jobs/queue-publisher.service';
 import { QueueName } from '../jobs/queues';
-import { requireTenantId } from '../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 /**
  * Reading reconciliation, and deciding what to do about it.

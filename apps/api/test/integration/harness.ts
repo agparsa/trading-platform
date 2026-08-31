@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { enterTenantScope } from '../../src/tenancy/tenant-context';
-import { tenantScopeExtension } from '../../src/tenancy/tenant-scope';
+import { enterTenantScope, tenantScopeExtension } from '@tp/tenancy';
 
 /**
  * Integration-test harness.

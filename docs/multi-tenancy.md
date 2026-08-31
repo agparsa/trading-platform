@@ -116,11 +116,20 @@ value is free.
 ## 5. How the tenant reaches the code
 
 An `AsyncLocalStorage` holds the current tenant for the duration of a request or
-a job. It is set in exactly three places and nowhere else:
+a job. It lives in `@tp/tenancy` — a package rather than in the API, because the
+worker needs the same scope and the same extension, and two copies of an
+isolation boundary is one copy that will be a version behind.
 
-- **The auth guard**, from the `tid` claim in the access token.
-- **The tenant middleware**, from the hostname, for unauthenticated routes.
-- **The worker**, explicitly, per tenant, as it iterates.
+It is set in exactly four places and nowhere else:
+
+- **The tenant middleware**, from the hostname, before anything is authenticated.
+- **The auth guard** checks the `tid` claim against it and refuses a mismatch.
+- **The realtime gateway**, on connection, making the same check on the
+  handshake — a socket is otherwise the one door with no middleware in front.
+- **The worker**, per tenant as it iterates. Its sweeps read across tenants and
+  say so with `withoutTenantScope(reason)`; everything it _writes_ runs inside
+  `withTenant` for the row's own tenant, so a bug in a posting path cannot put
+  one firm's charge on another's ledger.
 
 The token carries the tenant. It is signed, so it cannot be edited; it is
 minted at login from the user's own row, so it cannot be chosen.
@@ -272,8 +281,5 @@ Recorded here rather than implied to be finished.
   and honoured; nothing writes it, because halting every firm should not sit
   behind the same permission as halting one's own.
 - **Roles are still compile-time constants**, so a tenant cannot define its own.
-- **The worker is cross-tenant by construction.** It sweeps every account and
-  carries each row's `tenantId` explicitly rather than entering a scope per
-  tenant. That is sound — the FK constrains it and the values come from the rows
-  themselves — but it is not the same guarantee the API has, and a worker job
-  that queried without a tenant filter would not be stopped by anything.
+- **Instrument terms are still global** (repeated here because it is the one
+  gap a customer would notice).

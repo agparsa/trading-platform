@@ -45,7 +45,7 @@ import type { Tick } from '@tp/market-core';
 import { ConfigService } from '@nestjs/config';
 import { Inject } from '@nestjs/common';
 import type { Env } from '../config/env.schema';
-import { requireTenantId } from '../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 /**
  * Carries a risk rejection out of the transaction that discovered it.

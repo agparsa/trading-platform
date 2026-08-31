@@ -3,7 +3,7 @@ import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueuePublisher } from '../jobs/queue-publisher.service';
 import { QueueName } from '../jobs/queues';
-import { requireTenantId } from '../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 /**
  * What the platform has told this person.

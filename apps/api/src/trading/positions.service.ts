@@ -30,7 +30,7 @@ import { AuditService } from '../common/audit/audit.service';
 import { EventsService } from '../realtime/events.service';
 import { OrdersService } from './orders.service';
 import type { CloseResult, ModifyPositionRequest, OrderResult } from './trading.types';
-import { requireTenantId } from '../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 interface LoadedPosition {
   id: string;

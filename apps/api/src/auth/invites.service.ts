@@ -6,7 +6,7 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import type { Env } from '../config/env.schema';
-import { requireTenantId } from '../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 /**
  * Invitations to open an account.

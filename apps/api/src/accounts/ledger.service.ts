@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { LedgerEntryType, Prisma } from '@prisma/client';
 import { Money, toDecimal } from '@tp/financial-core';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
-import { requireTenantId } from '../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 export interface LedgerPosting {
   readonly accountId: string;

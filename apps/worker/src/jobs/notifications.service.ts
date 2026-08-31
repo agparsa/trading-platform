@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
+import { withTenant } from '@tp/tenancy';
 
 /**
  * Turns a queued event into something a person will see.
@@ -42,42 +43,52 @@ export class NotificationsService {
       return { created: false, id: null };
     }
 
-    if (job.dedupeKey !== null) {
-      const existing = await this.prisma.notification.findUnique({
-        where: { tenantId_dedupeKey: { tenantId: job.tenantId, dedupeKey: job.dedupeKey } },
-        select: { id: true },
-      });
-      if (existing !== null) return { created: false, id: existing.id };
-    }
-
-    try {
-      const created = await this.prisma.notification.create({
-        data: {
-          tenantId: job.tenantId,
-          userId: job.userId,
-          kind: job.kind,
-          severity: job.severity,
-          title: job.title,
-          body: job.body,
-          data: job.data as Prisma.InputJsonValue,
-          accountId: job.accountId,
-          dedupeKey: job.dedupeKey,
-        },
-        select: { id: true },
-      });
-      return { created: true, id: created.id };
-    } catch (error) {
-      // The unique constraint losing a race is the *expected* outcome when two
-      // producers notice the same thing at once. It is not a failure.
-      if (isUniqueViolation(error) && job.dedupeKey !== null) {
-        const winner = await this.prisma.notification.findUnique({
+    /**
+     * Everything below runs inside the job's own tenant.
+     *
+     * The tenant comes from the job payload, which the parser refuses to accept
+     * without — see its note on why it is not looked up from `userId`. Entering
+     * the scope here rather than passing the id around means a query added to
+     * this method later is scoped by default instead of by remembering.
+     */
+    return withTenant({ tenantId: job.tenantId, slug: job.tenantId }, async () => {
+      if (job.dedupeKey !== null) {
+        const existing = await this.prisma.notification.findUnique({
           where: { tenantId_dedupeKey: { tenantId: job.tenantId, dedupeKey: job.dedupeKey } },
           select: { id: true },
         });
-        return { created: false, id: winner?.id ?? null };
+        if (existing !== null) return { created: false, id: existing.id };
       }
-      throw error;
-    }
+
+      try {
+        const created = await this.prisma.notification.create({
+          data: {
+            tenantId: job.tenantId,
+            userId: job.userId,
+            kind: job.kind,
+            severity: job.severity,
+            title: job.title,
+            body: job.body,
+            data: job.data as Prisma.InputJsonValue,
+            accountId: job.accountId,
+            dedupeKey: job.dedupeKey,
+          },
+          select: { id: true },
+        });
+        return { created: true, id: created.id };
+      } catch (error) {
+        // The unique constraint losing a race is the *expected* outcome when two
+        // producers notice the same thing at once. It is not a failure.
+        if (isUniqueViolation(error) && job.dedupeKey !== null) {
+          const winner = await this.prisma.notification.findUnique({
+            where: { tenantId_dedupeKey: { tenantId: job.tenantId, dedupeKey: job.dedupeKey } },
+            select: { id: true },
+          });
+          return { created: false, id: winner?.id ?? null };
+        }
+        throw error;
+      }
+    });
   }
 
   constructor(private readonly prisma: PrismaService) {}

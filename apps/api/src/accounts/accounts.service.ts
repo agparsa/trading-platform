@@ -7,7 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AccountAccessService } from './account-access.service';
 import { LedgerService } from './ledger.service';
 import type { Env } from '../config/env.schema';
-import { requireTenantId } from '../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 export interface AccountSummary {
   id: string;

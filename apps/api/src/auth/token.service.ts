@@ -5,7 +5,7 @@ import { JwtService } from '@nestjs/jwt';
 import { DomainError, TradingErrorCode, type UserRole } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Env } from '../config/env.schema';
-import { requireTenantId } from '../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 import type {
   AccessTokenClaims,
   RefreshTokenClaims,

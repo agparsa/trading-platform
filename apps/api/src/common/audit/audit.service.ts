@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { requireTenantId } from '../../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 export type AuditActorType = 'USER' | 'ADMIN' | 'SYSTEM';
 

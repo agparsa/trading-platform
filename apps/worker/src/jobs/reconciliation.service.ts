@@ -9,6 +9,7 @@ import {
   type LedgerTotals,
 } from '@tp/reconciliation-core';
 import { PrismaService } from '../prisma.service';
+import { withTenant, withoutTenantScope } from '@tp/tenancy';
 
 export interface ReconciliationSummary {
   readonly runId: string;
@@ -85,6 +86,7 @@ export class ReconciliationService {
      * recorded against theirs.
      */
     const runTenantId = options.tenantId ?? (await this.defaultTenantId());
+    // The run row itself is written under whichever tenant owns it.
     const run =
       options.runId === undefined
         ? await this.prisma.reconciliationRun.create({
@@ -100,11 +102,25 @@ export class ReconciliationService {
           });
 
     try {
-      const accounts = await this.prisma.account.findMany({
-        where: options.tenantId === undefined ? {} : { tenantId: options.tenantId },
-        select: { id: true, number: true, balance: true, currency: true, tenantId: true },
-        orderBy: { createdAt: 'asc' },
-      });
+      /**
+       * Read across every tenant, and say so.
+       *
+       * A sweep that only checked the tenant that happened to ask for it would
+       * leave every other one unchecked and report itself clean, which is worse
+       * than not running. `withoutTenantScope` is the one call that makes this
+       * legitimate rather than a leak, and it takes a reason so that grepping
+       * for every crossing of the boundary turns up an argument rather than a
+       * shrug.
+       */
+      const accounts = await withoutTenantScope(
+        'reconciliation sweeps every tenant; a per-tenant run would report itself clean',
+        () =>
+          this.prisma.account.findMany({
+            where: options.tenantId === undefined ? {} : { tenantId: options.tenantId },
+            select: { id: true, number: true, balance: true, currency: true, tenantId: true },
+            orderBy: { createdAt: 'asc' },
+          }),
+      );
 
       const reports: AccountReport[] = [];
       let findings = 0;
@@ -113,25 +129,44 @@ export class ReconciliationService {
       let critical = 0;
 
       for (const account of accounts) {
-        const records = await this.loadRecords(account);
-        const report = reconcileAccount(records);
-        if (report.findings.length === 0) continue;
+        /**
+         * Each account's work runs inside its own tenant's scope.
+         *
+         * The sweep crosses tenants; the *checking* does not. So every read of
+         * this account's trades, executions and ledger is scoped, and a bug in
+         * one of those queries cannot quietly pull in another firm's rows and
+         * report the difference as a discrepancy.
+         */
+        const outcome = await withTenant(
+          { tenantId: account.tenantId, slug: account.tenantId },
+          async () => {
+            const records = await this.loadRecords(account);
+            const report = reconcileAccount(records);
+            if (report.findings.length === 0) return null;
 
-        reports.push(report);
-        findings += report.findings.length;
-        critical += report.findings.filter((f) => f.severity === Severity.CRITICAL).length;
+            let localRaised = 0;
+            let localRecurred = 0;
+            for (const found of report.findings) {
+              const written = await this.record(
+                run.id,
+                account.id,
+                account.tenantId,
+                report.number,
+                found,
+              );
+              if (written === 'raised') localRaised += 1;
+              else localRecurred += 1;
+            }
+            return { report, localRaised, localRecurred };
+          },
+        );
+        if (outcome === null) continue;
 
-        for (const found of report.findings) {
-          const outcome = await this.record(
-            run.id,
-            account.id,
-            account.tenantId,
-            report.number,
-            found,
-          );
-          if (outcome === 'raised') raised += 1;
-          else recurred += 1;
-        }
+        reports.push(outcome.report);
+        findings += outcome.report.findings.length;
+        critical += outcome.report.findings.filter((f) => f.severity === Severity.CRITICAL).length;
+        raised += outcome.localRaised;
+        recurred += outcome.localRecurred;
       }
 
       await this.prisma.reconciliationRun.update({
@@ -378,6 +413,7 @@ export class ReconciliationService {
    * first time somebody renamed it.
    */
   private async defaultTenantId(): Promise<string> {
+    // `Tenant` is not a scoped model, so this needs no scope of its own.
     const tenant = await this.prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' } });
     if (tenant === null) {
       throw new Error('Reconciliation cannot run: the platform has no tenants.');

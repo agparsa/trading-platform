@@ -32,7 +32,7 @@ import { DOMAIN_EVENT_CHANNEL, EventsService, type DomainEventEnvelope } from '.
 import { rateLimits, socketCorsOrigins } from '../config/env.schema';
 import { initialState, type TradingSocket } from './socket.types';
 import { TenantResolver } from '../tenancy/tenant-resolver.service';
-import { withTenant } from '../tenancy/tenant-context';
+import { withTenant } from '@tp/tenancy';
 
 const subscribeSchema = z
   .object({

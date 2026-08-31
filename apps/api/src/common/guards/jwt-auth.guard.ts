@@ -5,7 +5,7 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { TokenService } from '../../auth/token.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { RequestWithContext } from '../request-context';
-import { currentTenant } from '../../tenancy/tenant-context';
+import { currentTenant } from '@tp/tenancy';
 
 /**
  * Global authentication guard.

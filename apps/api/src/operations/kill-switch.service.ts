@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
-import { currentTenant, requireTenantId } from '../tenancy/tenant-context';
+import { currentTenant, requireTenantId } from '@tp/tenancy';
 
 export const TradingState = {
   ENABLED: 'TRADING_ENABLED',

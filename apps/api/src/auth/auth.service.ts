@@ -13,7 +13,7 @@ import { EmailPort } from './email/email.port';
 import { InvitesService } from './invites.service';
 import type { Env } from '../config/env.schema';
 import type { TokenPair } from './token.types';
-import { requireTenantId } from '../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 export interface RegisterInput {
   email: string;

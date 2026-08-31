@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { withoutTenantScope } from '@tp/tenancy';
 
 /**
  * Housekeeping that keeps unbounded tables from becoming unbounded.
@@ -15,9 +16,16 @@ export class MaintenanceService {
   constructor(private readonly prisma: PrismaService) {}
 
   async sweepIdempotencyKeys(now: Date = new Date()): Promise<number> {
-    const result = await this.prisma.idempotencyKey.deleteMany({
-      where: { expiresAt: { lt: now } },
-    });
+    /**
+     * Expiry is a property of the row, not of whose firm wrote it.
+     *
+     * Sweeping per tenant would mean a tenant with no scheduled sweep keeps its
+     * expired keys forever, and the table grows without bound for reasons
+     * nobody would connect to tenancy.
+     */
+    const result = await withoutTenantScope('housekeeping expires keys for every tenant', () =>
+      this.prisma.idempotencyKey.deleteMany({ where: { expiresAt: { lt: now } } }),
+    );
     if (result.count > 0) {
       this.logger.log(`Swept ${result.count} expired idempotency key(s)`);
     }
@@ -34,9 +42,13 @@ export class MaintenanceService {
    */
   async releaseAbandonedClaims(now: Date = new Date()): Promise<number> {
     const cutoff = new Date(now.getTime() - 3_600_000);
-    const result = await this.prisma.idempotencyKey.deleteMany({
-      where: { status: 'IN_PROGRESS', createdAt: { lt: cutoff } },
-    });
+    const result = await withoutTenantScope(
+      'an abandoned claim blocks its own tenant whichever one it belongs to',
+      () =>
+        this.prisma.idempotencyKey.deleteMany({
+          where: { status: 'IN_PROGRESS', createdAt: { lt: cutoff } },
+        }),
+    );
     if (result.count > 0) {
       this.logger.warn(
         `Released ${result.count} idempotency claim(s) abandoned by a process that did not finish`,

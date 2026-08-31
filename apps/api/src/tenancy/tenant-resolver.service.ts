@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Env } from '../config/env.schema';
-import type { TenantContext } from './tenant-context';
+import type { TenantContext } from '@tp/tenancy';
 
 /**
  * Which tenant a request belongs to, when nothing has authenticated yet.

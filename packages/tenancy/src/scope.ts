@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { currentScope, isCrossTenant } from './tenant-context';
+import { currentScope, isCrossTenant } from './context';
 
 /**
  * Tenant isolation, layer one.

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Money, swapAccrual, toDecimal, type SymbolSpec } from '@tp/financial-core';
 import { PrismaService } from '../prisma.service';
 import type { WorkerEnv } from '../env';
+import { withTenant, withoutTenantScope } from '@tp/tenancy';
 
 export interface SwapAccrualSummary {
   /** The trading day the accrual was booked for, as YYYY-MM-DD. */
@@ -65,10 +66,22 @@ export class SwapAccrualService {
     const forDate = this.tradingDay(at);
     const nights = this.nightsFor(at);
 
-    const positions = await this.prisma.position.findMany({
-      where: { status: 'OPEN' },
-      include: { account: true, symbol: { include: { spec: true } } },
-    });
+    /**
+     * Every open position on the platform, across every tenant.
+     *
+     * Financing is charged on the calendar, not on whose firm holds the
+     * position, so the sweep is genuinely cross-tenant — and says so. Each
+     * accrual is then written inside the position's own tenant, so a bug in the
+     * posting path cannot put one firm's charge on another's ledger.
+     */
+    const positions = await withoutTenantScope(
+      'overnight financing is charged on every open position, whichever tenant holds it',
+      () =>
+        this.prisma.position.findMany({
+          where: { status: 'OPEN' },
+          include: { account: true, symbol: { include: { spec: true } } },
+        }),
+    );
 
     let accrued = 0;
     let skipped = 0;
@@ -109,13 +122,15 @@ export class SwapAccrualService {
       }
 
       try {
-        await this.postAccrual(
-          position.id,
-          position.accountId,
-          position.tenantId,
-          amount,
-          forDate,
-          nights,
+        await withTenant({ tenantId: position.tenantId, slug: position.tenantId }, () =>
+          this.postAccrual(
+            position.id,
+            position.accountId,
+            position.tenantId,
+            amount,
+            forDate,
+            nights,
+          ),
         );
         accrued += 1;
       } catch (error) {

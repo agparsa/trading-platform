@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { withTenant, withoutTenantScope } from '../../src/tenancy/tenant-context';
+import { withTenant, withoutTenantScope } from '@tp/tenancy';
 import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_SLUG,

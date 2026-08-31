@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { DELIBERATELY_UNSCOPED_MODELS, TENANT_SCOPED_MODELS } from './tenant-scope';
+import { DELIBERATELY_UNSCOPED_MODELS, TENANT_SCOPED_MODELS } from './scope';
 
 /**
  * The scoped-model list is written by hand, and a hand-written list of things
@@ -10,7 +10,15 @@ import { DELIBERATELY_UNSCOPED_MODELS, TENANT_SCOPED_MODELS } from './tenant-sco
  * added here would be silently unprotected by the extension — the exact failure
  * this test exists to make loud.
  */
-const schema = readFileSync('prisma/schema.prisma', 'utf8');
+/**
+ * Resolved from the working directory, because Vitest runs from the workspace
+ * root and this package is compiled to CommonJS where `import.meta` is absent.
+ * The fallback covers running the package's own tests from its own directory.
+ */
+const SCHEMA_PATH = existsSync('prisma/schema.prisma')
+  ? 'prisma/schema.prisma'
+  : '../../prisma/schema.prisma';
+const schema = readFileSync(SCHEMA_PATH, 'utf8');
 
 function modelsWithTenantId(): string[] {
   const found: string[] = [];

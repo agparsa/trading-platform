@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { enterTenantScope, tenantScopeExtension } from '@tp/tenancy';
 
 /**
  * Integration-test harness for the worker.
@@ -18,9 +19,16 @@ export const TEST_DATABASE_URL = process.env['TEST_DATABASE_URL'];
 export const hasTestDatabase =
   typeof TEST_DATABASE_URL === 'string' && TEST_DATABASE_URL.length > 0;
 
+/**
+ * The test client carries the tenant-scope extension, exactly as the worker's
+ * does. A test client without it would exercise a different Prisma than the
+ * process under test, and the difference would be the isolation itself.
+ */
 export function createTestClient(): PrismaClient {
   if (!hasTestDatabase) throw new Error('TEST_DATABASE_URL is not set');
-  return new PrismaClient({ datasources: { db: { url: TEST_DATABASE_URL } } });
+  return new PrismaClient({
+    datasources: { db: { url: TEST_DATABASE_URL } },
+  }).$extends(tenantScopeExtension()) as unknown as PrismaClient;
 }
 
 /**
@@ -62,6 +70,9 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
   const tenant = await prisma.tenant.create({
     data: { id: DEFAULT_TENANT_ID, slug: DEFAULT_TENANT_SLUG, name: 'Test Tenant' },
   });
+  // `enterWith` rather than `withTenant`, because a `beforeEach` cannot wrap the
+  // test body. See the API harness for the full note.
+  enterTenantScope({ tenantId: tenant.id, slug: tenant.slug });
   return tenant.id;
 }
 
@@ -97,15 +108,22 @@ export async function seedSymbols(prisma: PrismaClient): Promise<void> {
 }
 
 /** Creates a user and one funded account directly, bypassing the HTTP layer. */
+/** A second tenant, for tests that need the boundary rather than the default. */
+export async function createTenant(prisma: PrismaClient, slug: string): Promise<string> {
+  const tenant = await prisma.tenant.create({ data: { slug, name: slug } });
+  return tenant.id;
+}
+
 export async function createAccount(
   prisma: PrismaClient,
-  options: { balance?: string; currency?: string; email?: string } = {},
+  options: { balance?: string; currency?: string; email?: string; tenantId?: string } = {},
 ): Promise<{ userId: string; accountId: string; currency: string }> {
+  const tenantId = options.tenantId ?? DEFAULT_TENANT_ID;
   const currency = options.currency ?? 'USD';
   const suffix = Math.floor(Number(process.hrtime.bigint() % 1_000_000_000n));
   const user = await prisma.user.create({
     data: {
-      tenantId: DEFAULT_TENANT_ID,
+      tenantId,
       email: options.email ?? `trader-${suffix}@test.local`,
       passwordHash: 'not-a-real-hash',
       displayName: 'Test Trader',
@@ -121,14 +139,14 @@ export async function createAccount(
       type: 'DEMO',
       currency,
       balance: '0',
-      tenantId: DEFAULT_TENANT_ID,
-      settings: { create: { tenantId: DEFAULT_TENANT_ID } },
+      tenantId,
+      settings: { create: { tenantId } },
     },
   });
   if (options.balance !== undefined) {
     await prisma.balanceLedger.create({
       data: {
-        tenantId: DEFAULT_TENANT_ID,
+        tenantId,
         accountId: account.id,
         type: 'DEPOSIT',
         amount: options.balance,

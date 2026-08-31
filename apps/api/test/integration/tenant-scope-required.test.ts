@@ -1,7 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { tenantScopeExtension } from '../../src/tenancy/tenant-scope';
-import { withoutTenantScope } from '../../src/tenancy/tenant-context';
+import { tenantScopeExtension, withoutTenantScope } from '@tp/tenancy';
 import { TEST_DATABASE_URL, hasTestDatabase } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;

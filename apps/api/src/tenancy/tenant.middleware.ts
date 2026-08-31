@@ -1,7 +1,7 @@
 import { Injectable, type NestMiddleware } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 import { TenantResolver } from './tenant-resolver.service';
-import { withTenant } from './tenant-context';
+import { withTenant } from '@tp/tenancy';
 
 /**
  * Puts a tenant in scope for the whole request, before anything else runs.

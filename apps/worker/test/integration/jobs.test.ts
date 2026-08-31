@@ -6,6 +6,7 @@ import { SwapAccrualService } from '../../src/jobs/swap-accrual.service';
 import { ReconciliationService } from '../../src/jobs/reconciliation.service';
 import { MaintenanceService } from '../../src/jobs/maintenance.service';
 import type { PrismaService } from '../../src/prisma.service';
+import { withTenant, withoutTenantScope } from '@tp/tenancy';
 import {
   createAccount,
   createTestClient,
@@ -13,6 +14,7 @@ import {
   resetDatabase,
   seedSymbols,
   DEFAULT_TENANT_ID,
+  createTenant,
 } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
@@ -63,51 +65,68 @@ suite('Worker jobs (integration)', () => {
    * produce, and a test built on one is testing against a shape that cannot
    * exist. It costs eight lines to be a real position instead.
    */
-  const openPosition = async (side: 'BUY' | 'SELL', volume: string, accountBalance = '100000') => {
-    const { userId, accountId } = await createAccount(prisma, { balance: accountBalance });
-    const symbol = await prisma.symbol.findUniqueOrThrow({ where: { code: 'XAUUSD' } });
-    const position = await prisma.position.create({
-      data: {
-        tenantId: DEFAULT_TENANT_ID,
-        accountId,
-        symbolId: symbol.id,
-        side,
-        status: 'OPEN',
-        volume,
-        initialVolume: volume,
-        entryPrice: '4583.72',
-        margin: '4583.72',
-      },
+  const openPosition = async (
+    side: 'BUY' | 'SELL',
+    volume: string,
+    accountBalance = '100000',
+    tenantId: string = DEFAULT_TENANT_ID,
+  ) =>
+    /**
+     * The whole fixture is built inside its tenant's scope.
+     *
+     * Passing `tenantId` alone is not enough and should not be: the extension
+     * refuses a row written for a tenant that is not in scope, which is exactly
+     * the check that catches a service using an id it got from somewhere else.
+     * A test fixture is not an exception to that.
+     */
+    withTenant({ tenantId, slug: tenantId }, async () => {
+      const { userId, accountId } = await createAccount(prisma, {
+        balance: accountBalance,
+        tenantId,
+      });
+      const symbol = await prisma.symbol.findUniqueOrThrow({ where: { code: 'XAUUSD' } });
+      const position = await prisma.position.create({
+        data: {
+          tenantId,
+          accountId,
+          symbolId: symbol.id,
+          side,
+          status: 'OPEN',
+          volume,
+          initialVolume: volume,
+          entryPrice: '4583.72',
+          margin: '4583.72',
+        },
+      });
+      const order = await prisma.order.create({
+        data: {
+          tenantId,
+          accountId,
+          symbolId: symbol.id,
+          positionId: position.id,
+          side,
+          type: 'MARKET',
+          status: 'FILLED',
+          timeInForce: 'IOC',
+          volume,
+          filledVolume: volume,
+        },
+      });
+      await prisma.execution.create({
+        data: {
+          tenantId,
+          orderId: order.id,
+          accountId,
+          side,
+          volume,
+          price: '4583.72',
+          quoteBid: '4583.58',
+          quoteAsk: '4583.72',
+          quoteAt: new Date(),
+        },
+      });
+      return { userId, accountId, positionId: position.id };
     });
-    const order = await prisma.order.create({
-      data: {
-        tenantId: DEFAULT_TENANT_ID,
-        accountId,
-        symbolId: symbol.id,
-        positionId: position.id,
-        side,
-        type: 'MARKET',
-        status: 'FILLED',
-        timeInForce: 'IOC',
-        volume,
-        filledVolume: volume,
-      },
-    });
-    await prisma.execution.create({
-      data: {
-        tenantId: DEFAULT_TENANT_ID,
-        orderId: order.id,
-        accountId,
-        side,
-        volume,
-        price: '4583.72',
-        quoteBid: '4583.58',
-        quoteAsk: '4583.72',
-        quoteAt: new Date(),
-      },
-    });
-    return { userId, accountId, positionId: position.id };
-  };
 
   describe('swap accrual', () => {
     const service = (overrides: Record<string, unknown> = {}) =>
@@ -283,6 +302,84 @@ suite('Worker jobs (integration)', () => {
       const reconciliation = new ReconciliationService(prismaService);
       const summary = await reconciliation.check();
       expect(summary.reports.filter((report) => report.accountId === accountId)).toHaveLength(0);
+    });
+  });
+
+  describe('across tenants', () => {
+    const swap = (overrides: Record<string, unknown> = {}) =>
+      new SwapAccrualService(prismaService, buildConfig(overrides) as never);
+
+    /**
+     * The worker is the one process with no request and no middleware, so
+     * nothing puts a tenant in scope for it. Its sweeps are deliberately
+     * cross-tenant and its writes are deliberately not — and the difference is
+     * what these tests hold in place.
+     */
+    it('charges financing on every tenant’s positions, and files each under its own', async () => {
+      const beta = await createTenant(prisma, 'beta');
+      const alpha = await openPosition('BUY', '1.00');
+      const other = await openPosition('BUY', '2.00', '100000', beta);
+
+      const summary = await swap().accrue(new Date('2026-08-24T00:00:00Z'));
+      expect(summary.accrued).toBe(2);
+
+      const alphaEntry = await withTenant({ tenantId: DEFAULT_TENANT_ID, slug: 'a' }, () =>
+        prisma.balanceLedger.findFirstOrThrow({
+          where: { accountId: alpha.accountId, type: 'SWAP' },
+        }),
+      );
+      const betaEntry = await withTenant({ tenantId: beta, slug: 'b' }, () =>
+        prisma.balanceLedger.findFirstOrThrow({
+          where: { accountId: other.accountId, type: 'SWAP' },
+        }),
+      );
+
+      expect(alphaEntry.tenantId).toBe(DEFAULT_TENANT_ID);
+      expect(betaEntry.tenantId).toBe(beta);
+      // Two lots, so twice the charge — proof the right position was read for
+      // the right ledger rather than one entry being written twice.
+      expect(alphaEntry.amount.toString()).toBe('-12.5');
+      expect(betaEntry.amount.toString()).toBe('-25');
+    });
+
+    it('does not let one tenant’s ledger see the other’s financing', async () => {
+      const beta = await createTenant(prisma, 'beta');
+      await openPosition('BUY', '1.00');
+      await openPosition('BUY', '2.00', '100000', beta);
+      await swap().accrue(new Date('2026-08-24T00:00:00Z'));
+
+      const alphaSwaps = await withTenant({ tenantId: DEFAULT_TENANT_ID, slug: 'a' }, () =>
+        prisma.balanceLedger.findMany({ where: { type: 'SWAP' } }),
+      );
+      expect(alphaSwaps).toHaveLength(1);
+      expect(alphaSwaps[0]?.tenantId).toBe(DEFAULT_TENANT_ID);
+    });
+
+    it('reconciles every tenant, not only the one that asked', async () => {
+      /**
+       * The failure this guards is quiet: a sweep restricted to one tenant
+       * reports itself clean, and every other tenant's drift goes unlooked-for
+       * while an operator reads a green dashboard.
+       */
+      const beta = await createTenant(prisma, 'beta');
+      const alpha = await openPosition('BUY', '1.00');
+      const other = await openPosition('BUY', '1.00', '100000', beta);
+
+      // Drift both accounts: the cached balance no longer matches the ledger.
+      for (const id of [alpha.accountId, other.accountId]) {
+        await prisma.$executeRawUnsafe(
+          `UPDATE accounts SET balance = balance + 500 WHERE id = $1::uuid`,
+          id,
+        );
+      }
+
+      const summary = await new ReconciliationService(prismaService).check();
+      expect(summary.checked).toBe(2);
+
+      const findings = await withoutTenantScope('test: assert across both tenants', () =>
+        prisma.reconciliationFinding.findMany(),
+      );
+      expect(new Set(findings.map((f) => f.tenantId))).toEqual(new Set([DEFAULT_TENANT_ID, beta]));
     });
   });
 

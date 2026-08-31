@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
 import type { Env } from '../config/env.schema';
-import { tenantScopeExtension } from '../tenancy/tenant-scope';
+import { tenantScopeExtension } from '@tp/tenancy';
 
 /**
  * The Prisma client, owned by Nest's lifecycle.
@@ -44,7 +44,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
      * the note: the alternative is exposing the extended client as a property,
      * which leaves the raw one sitting beside it on the same service. Somebody
      * would use it — not maliciously, just by autocomplete — and the whole
-     * point of injection over validation (see tenancy/tenant-scope.ts) is that
+     * point of injection over validation (see @tp/tenancy) is that
      * the safe path is the only path.
      *
      * The class's own members survive: `ping`, `onModuleInit` and

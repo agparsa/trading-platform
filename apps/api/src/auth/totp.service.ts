@@ -16,7 +16,7 @@ import {
   RECOVERY_CODE_COUNT,
 } from './totp';
 import type { Env } from '../config/env.schema';
-import { requireTenantId } from '../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 export interface EnrolmentOffer {
   /** Shown once, so a user without a camera can type it in. */

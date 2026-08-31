@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { Env } from '../../config/env.schema';
-import { requireTenantId } from '../../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 export type IdempotencyOutcome<T> =
   | { kind: 'fresh'; complete: (result: T) => Promise<void>; abandon: () => Promise<void> }

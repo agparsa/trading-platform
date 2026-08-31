@@ -18,6 +18,7 @@
     "@tp/market-core": "workspace:*",
     "@tp/reconciliation-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
+    "@tp/tenancy": "workspace:*",
     "@tp/trading-core": "workspace:*",
     "bullmq": "catalog:",
     "ioredis": "catalog:",

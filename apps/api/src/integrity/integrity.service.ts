@@ -4,7 +4,7 @@ import { detectAll, type ActivityWindow, type Signal } from '@tp/integrity-core'
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
-import { requireTenantId } from '../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 export interface SignalSummary {
   id: string;

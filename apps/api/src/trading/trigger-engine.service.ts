@@ -27,7 +27,7 @@ import { AccountStateService } from './account-state.service';
 import { PositionsService } from './positions.service';
 import { OrdersService } from './orders.service';
 import type { Env } from '../config/env.schema';
-import { requireTenantId } from '../tenancy/tenant-context';
+import { requireTenantId } from '@tp/tenancy';
 
 /**
  * Closes positions from price movement.
