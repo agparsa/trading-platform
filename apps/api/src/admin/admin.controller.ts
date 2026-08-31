@@ -10,8 +10,29 @@ import { AdminService } from './admin.service';
 import { AdjustmentsService } from './adjustments.service';
 import { RiskConsoleService } from './risk-console.service';
 import { AuditQueryService } from './audit-query.service';
+import { AdminInstrumentsService } from './instruments.service';
 
 const decimal = z.string().regex(/^-?\d+(\.\d+)?$/, 'Must be a decimal number');
+/** Terms are quantities, never negative: a negative margin rate is not a discount. */
+const positiveDecimal = z.string().regex(/^\d+(\.\d+)?$/, 'Must be a non-negative decimal');
+
+const instrumentEnabledSchema = z
+  .object({ enabled: z.boolean(), reason: z.string().trim().min(8).max(500) })
+  .strict();
+
+const instrumentTermsSchema = z
+  .object({
+    marginRate: positiveDecimal.optional(),
+    commissionPerLot: positiveDecimal.optional(),
+    swapLongPerLot: decimal.optional(),
+    swapShortPerLot: decimal.optional(),
+    maxVolume: positiveDecimal.optional(),
+    reason: z.string().trim().min(8).max(500),
+  })
+  .strict();
+
+class InstrumentEnabledDto extends createZodDto(instrumentEnabledSchema) {}
+class InstrumentTermsDto extends createZodDto(instrumentTermsSchema) {}
 
 const userSearchSchema = z
   .object({
@@ -121,6 +142,7 @@ export class AdminController {
     private readonly adjustments: AdjustmentsService,
     private readonly risk: RiskConsoleService,
     private readonly auditQuery: AuditQueryService,
+    private readonly instruments: AdminInstrumentsService,
   ) {}
 
   // ─── People ──────────────────────────────────────────────────────────────
@@ -301,5 +323,51 @@ export class AdminController {
   @ApiOperation({ summary: 'Which actions appear in the trail, and how often' })
   auditActions() {
     return this.auditQuery.actions();
+  }
+  // ─── Instruments ─────────────────────────────────────────────────────────
+
+  @RequirePermissions(Permission.INSTRUMENTS_READ)
+  @Get('instruments')
+  @ApiOperation({ summary: 'What the platform trades, and on what terms' })
+  listInstruments() {
+    return this.instruments.list();
+  }
+
+  /**
+   * Suspending an instrument stops new orders and closes nothing.
+   *
+   * Liquidating open positions because an administrator suspended an instrument
+   * would turn an operational decision into a market one taken on the trader's
+   * behalf. The reply reports what is left open, so whoever pressed the button
+   * can see it and decide.
+   */
+  @RequirePermissions(Permission.INSTRUMENTS_MANAGE)
+  @Post('instruments/:code/enabled')
+  @ApiOperation({ summary: 'Suspend or resume trading in one instrument' })
+  setInstrumentEnabled(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('code') code: string,
+    @Body() body: InstrumentEnabledDto,
+  ) {
+    return this.instruments.setEnabled(actor.id, code.toUpperCase(), body.enabled, body.reason);
+  }
+
+  /**
+   * Margin, commission, swap and the largest order accepted.
+   *
+   * Not tick size, contract size or precision: those describe the instrument
+   * rather than the firm's terms, and changing one under open positions
+   * re-values every trade ever made in it.
+   */
+  @RequirePermissions(Permission.INSTRUMENTS_MANAGE)
+  @Post('instruments/:code/terms')
+  @ApiOperation({ summary: "Change an instrument's margin, commission, swap or size cap" })
+  setInstrumentTerms(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('code') code: string,
+    @Body() body: InstrumentTermsDto,
+  ) {
+    const { reason, ...terms } = body;
+    return this.instruments.setTerms(actor.id, code.toUpperCase(), terms, reason);
   }
 }

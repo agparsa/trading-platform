@@ -27,6 +27,19 @@ export const Permission = {
    */
   ACCOUNTS_ADJUST: 'accounts.adjust',
 
+  // --- instruments ---
+  /** See what the platform trades, and on what terms. */
+  INSTRUMENTS_READ: 'instruments.read',
+  /**
+   * Enable or suspend an instrument, and change its trading terms.
+   *
+   * Sensitive well beyond an on/off switch: raising a margin rate changes the
+   * margin required by every position already open in that instrument, and can
+   * put an account into margin call without anyone touching it. Administrators
+   * only, and every change is audited with both the old and the new value.
+   */
+  INSTRUMENTS_MANAGE: 'instruments.manage',
+
   // --- people ---
   /** Read any user's profile, accounts and sessions. */
   USERS_READ_ANY: 'users.read_any',
@@ -119,6 +132,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.RISK_READ,
     Permission.MASTER_READ,
     Permission.INTEGRITY_READ,
+    Permission.INSTRUMENTS_READ,
     Permission.RECONCILIATION_READ,
     Permission.SYSTEM_OPERATIONS,
   ],
@@ -138,6 +152,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.MASTER_READ,
     Permission.INTEGRITY_READ,
     Permission.INTEGRITY_MANAGE,
+    Permission.INSTRUMENTS_READ,
     Permission.RECONCILIATION_READ,
     Permission.RECONCILIATION_RUN,
     Permission.SYSTEM_OPERATIONS,
@@ -161,6 +176,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.MASTER_MANAGE,
     Permission.INTEGRITY_READ,
     Permission.INTEGRITY_MANAGE,
+    Permission.INSTRUMENTS_READ,
+    Permission.INSTRUMENTS_MANAGE,
     Permission.RECONCILIATION_READ,
     Permission.RECONCILIATION_RUN,
     Permission.SYSTEM_OPERATIONS,

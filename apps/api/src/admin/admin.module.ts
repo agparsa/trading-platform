@@ -7,11 +7,18 @@ import { AdminService } from './admin.service';
 import { AdjustmentsService } from './adjustments.service';
 import { AuditQueryService } from './audit-query.service';
 import { RiskConsoleService } from './risk-console.service';
+import { AdminInstrumentsService } from './instruments.service';
 
 @Module({
   imports: [AccountsModule, AuthModule, TradingModule],
   controllers: [AdminController],
-  providers: [AdminService, AdjustmentsService, AuditQueryService, RiskConsoleService],
+  providers: [
+    AdminService,
+    AdjustmentsService,
+    AuditQueryService,
+    RiskConsoleService,
+    AdminInstrumentsService,
+  ],
   exports: [AdminService, RiskConsoleService, AuditQueryService],
 })
 export class AdminModule {}

@@ -6,6 +6,7 @@ import {
   permissionsFor,
   ROLE_PERMISSIONS,
   roleHasPermissions,
+  isLinkableCapability,
 } from './permissions';
 
 /**
@@ -135,5 +136,38 @@ describe('the catalogue itself', () => {
 
   it('reports a role’s own set', () => {
     expect(permissionsFor(UserRole.USER)).toContain(Permission.ORDERS_CREATE);
+  });
+});
+
+describe('instrument capabilities', () => {
+  /**
+   * Changing an instrument's terms is not an on/off switch. Raising a margin
+   * rate changes the margin required by every position already open in it, and
+   * can put an account into margin call without anyone touching that account.
+   * Administrators only.
+   */
+  it('lets only an administrator change what the platform trades', () => {
+    for (const role of Object.values(UserRole)) {
+      const may = roleHasPermissions(role, [Permission.INSTRUMENTS_MANAGE]);
+      expect(may, `${role} should ${role === UserRole.ADMIN ? '' : 'not '}manage instruments`).toBe(
+        role === UserRole.ADMIN,
+      );
+    }
+  });
+
+  it('lets the operational roles read them', () => {
+    for (const role of [UserRole.OPERATOR, UserRole.RISK_MANAGER, UserRole.ADMIN]) {
+      expect(roleHasPermissions(role, [Permission.INSTRUMENTS_READ])).toBe(true);
+    }
+    expect(roleHasPermissions(UserRole.USER, [Permission.INSTRUMENTS_READ])).toBe(false);
+  });
+
+  /**
+   * A master-account link is a trading delegation. Nothing that reconfigures
+   * the platform belongs in one, however the link was worded.
+   */
+  it('never lets a master-account link carry either of them', () => {
+    expect(isLinkableCapability(Permission.INSTRUMENTS_MANAGE)).toBe(false);
+    expect(isLinkableCapability(Permission.INSTRUMENTS_READ)).toBe(false);
   });
 });

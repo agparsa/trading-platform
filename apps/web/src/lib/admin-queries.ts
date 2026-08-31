@@ -146,7 +146,28 @@ const adminKeys = {
   audit: (action: string) => ['admin', 'audit', action] as const,
   summary: ['admin', 'summary'] as const,
   signals: ['admin', 'signals'] as const,
+  instruments: ['admin', 'instruments'] as const,
 };
+
+export interface AdminInstrumentRow {
+  code: string;
+  description: string;
+  category: string;
+  quoteCurrency: string;
+  enabled: boolean;
+  contractSize: string;
+  tickSize: string;
+  pricePrecision: number;
+  minVolume: string;
+  maxVolume: string;
+  volumeStep: string;
+  marginRate: string;
+  commissionPerLot: string;
+  swapLongPerLot: string;
+  swapShortPerLot: string;
+  openPositions: number;
+  restingOrders: number;
+}
 
 export function useAdminUsers(search: string) {
   const { api, accessToken } = useSession();
@@ -448,5 +469,61 @@ export function useRequestReconciliation() {
         { idempotencyKey: crypto.randomUUID() },
       ),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['admin'] }),
+  });
+}
+
+/** What the platform trades, and on what terms. */
+export function useAdminInstruments() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: adminKeys.instruments,
+    queryFn: () => api.get<AdminInstrumentRow[]>('/admin/instruments'),
+    enabled: accessToken !== null,
+  });
+}
+
+/**
+ * Suspend or resume one instrument.
+ *
+ * The reply carries how many positions are open in it, because suspending
+ * closes none of them and whoever pressed the button should see what they have
+ * left standing.
+ */
+export function useSetInstrumentEnabled() {
+  const { api } = useSession();
+  const invalidate = useAdminInvalidate();
+  return useMutation({
+    mutationFn: (input: { code: string; enabled: boolean; reason: string }) =>
+      api.post<{ code: string; enabled: boolean; openPositions: number }>(
+        `/admin/instruments/${input.code}/enabled`,
+        { enabled: input.enabled, reason: input.reason },
+        { idempotencyKey: crypto.randomUUID() },
+      ),
+    onSuccess: invalidate,
+  });
+}
+
+/** Margin, commission, swap and the largest order accepted. */
+export function useSetInstrumentTerms() {
+  const { api } = useSession();
+  const invalidate = useAdminInvalidate();
+  return useMutation({
+    mutationFn: (input: {
+      code: string;
+      reason: string;
+      marginRate?: string;
+      commissionPerLot?: string;
+      swapLongPerLot?: string;
+      swapShortPerLot?: string;
+      maxVolume?: string;
+    }) => {
+      const { code, ...body } = input;
+      return api.post<{ code: string; changed: string[]; openPositions: number }>(
+        `/admin/instruments/${code}/terms`,
+        body,
+        { idempotencyKey: crypto.randomUUID() },
+      );
+    },
+    onSuccess: invalidate,
   });
 }
