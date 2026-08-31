@@ -171,3 +171,46 @@ describe('instrument capabilities', () => {
     expect(isLinkableCapability(Permission.INSTRUMENTS_READ)).toBe(false);
   });
 });
+
+describe('an administrator is not a trader', () => {
+  /**
+   * The rule that surprises everyone once, and the reason it exists: an
+   * administrator can post to the ledger and change an instrument's margin
+   * rate. One who could also trade could credit an account and trade the
+   * credit. Someone who needs to do both holds two logins.
+   */
+  it('gives ADMIN no way to place or close a trade, on any account', () => {
+    for (const capability of [
+      Permission.ORDERS_CREATE,
+      Permission.ORDERS_MODIFY,
+      Permission.POSITIONS_CLOSE,
+      Permission.POSITIONS_MODIFY,
+    ]) {
+      expect(
+        roleHasPermissions(UserRole.ADMIN, [capability]),
+        `ADMIN must not carry ${capability}`,
+      ).toBe(false);
+    }
+  });
+
+  /** And the two capabilities that make trading dangerous for an admin to hold. */
+  it('gives ADMIN the money and configuration powers that are the reason why', () => {
+    expect(roleHasPermissions(UserRole.ADMIN, [Permission.ACCOUNTS_ADJUST])).toBe(true);
+    expect(roleHasPermissions(UserRole.ADMIN, [Permission.INSTRUMENTS_MANAGE])).toBe(true);
+  });
+
+  it('leaves the ordinary trader able to trade', () => {
+    expect(
+      roleHasPermissions(UserRole.USER, [Permission.ORDERS_CREATE, Permission.POSITIONS_CLOSE]),
+    ).toBe(true);
+  });
+
+  /**
+   * The documented way for an administrator to act on an account: a
+   * master-account link, granted per account, leaving a record.
+   */
+  it('allows trading to be delegated per account through a link', () => {
+    expect(isLinkableCapability(Permission.ORDERS_CREATE)).toBe(true);
+    expect(isLinkableCapability(Permission.POSITIONS_CLOSE)).toBe(true);
+  });
+});

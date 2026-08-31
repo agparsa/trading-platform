@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@tp/ui';
-import { DomainError } from '@tp/shared-types';
+import { DomainError, Permission, roleHasPermissions, type UserRole } from '@tp/shared-types';
 import { price as formatPrice, signedMoney, toneClass, toneOf } from '@/lib/format';
 import {
   estimateCosts,
@@ -25,6 +25,7 @@ import {
   type SymbolRow,
 } from '@/lib/queries';
 import { useRealtime } from '@/lib/realtime-store';
+import { useSession } from '@/lib/session';
 import { ShortcutAction } from '@/lib/shortcuts';
 import { needsConfirmation } from '@/lib/shortcuts';
 import type { TradingPreferences } from '@/lib/trading-preferences';
@@ -144,6 +145,21 @@ export function OrderTicket({
   const busy = open.isPending || place.isPending;
 
   /**
+   * What this login may do, read from the role the session already carries.
+   *
+   * No API call: `permissionsFor` is the same table the server enforces with,
+   * so the ticket and the guard cannot disagree about what is allowed. The
+   * server still decides — this only stops the ticket from offering something
+   * it knows will be refused.
+   */
+  const { user } = useSession();
+  const role = user?.role ?? 'USER';
+  const mayTrade = useMemo(
+    () => roleHasPermissions(role as UserRole, [Permission.ORDERS_CREATE]),
+    [role],
+  );
+
+  /**
    * Why this ticket cannot be sent, or `null`.
    *
    * Computed here rather than inside the button's `disabled` prop because the
@@ -154,6 +170,19 @@ export function OrderTicket({
    * after a round trip.
    */
   const blockedReason = useMemo(() => {
+    /**
+     * Checked first, because it is the one condition nothing else can fix.
+     *
+     * An administrator login carries no `orders.create` — deliberately: it can
+     * post to the ledger and change an instrument's margin, and one login that
+     * could also trade could credit an account and trade the credit. Saying so
+     * here, before the button is pressed, replaces a round trip that ends in
+     * "your role does not carry orders.create" — an error that reads like a
+     * fault rather than a rule.
+     */
+    if (!mayTrade) {
+      return `Signed in as ${role}, which cannot place orders. Trading needs a trader login.`;
+    }
     if (accountId === null) return 'No account selected.';
     if (symbol === undefined) return 'Select an instrument.';
     if (!symbol.enabled) return `${symbol.code} is not tradeable right now.`;
@@ -161,7 +190,7 @@ export function OrderTicket({
     if (priceError !== null) return priceError;
     if (executable === null) return 'No price yet for this instrument.';
     return null;
-  }, [accountId, symbol, validation.error, priceError, executable]);
+  }, [mayTrade, role, accountId, symbol, validation.error, priceError, executable]);
 
   /**
    * Sends one order. The only path that does.

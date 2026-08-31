@@ -104,10 +104,21 @@ const TRADER: readonly Permission[] = [
  * everything a junior one can — which stops being true the moment a role exists
  * to *restrict* someone, and by then the assumption is load-bearing.
  *
- * Note what ADMIN does **not** get: the ability to place or close trades on
- * another person's account. That is `OPERATOR` and `RISK_MANAGER` work, granted
- * per master-account link, and an administrator who needs it grants it to
- * themselves in a way that leaves a record.
+ * Note what ADMIN does **not** get: `orders.create`, `positions.close` or
+ * `positions.modify` — at all, on any account, including their own.
+ *
+ * This is stronger than it first reads, and deliberately so. An administrator
+ * can post to the ledger and change an instrument's margin rate; one who could
+ * also trade could credit an account and trade the credit. Separating the two
+ * is the whole point of having the capabilities apart, and a boundary that
+ * bends for the administrator's own account is not a boundary.
+ *
+ * The practical consequence is worth stating plainly, because it surprises
+ * everyone once: **an administrator cannot trade from their administrator
+ * login.** Someone who needs to do both holds two logins, which is what
+ * separation of duties means in practice. Where an administrator genuinely
+ * needs to act on an account, a master-account link grants it per account and
+ * leaves a record — see LINKABLE_CAPABILITIES.
  */
 export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
   [UserRole.USER]: TRADER,
