@@ -27,9 +27,10 @@ until the bundle is dropped in.
 
 |                   |                                                                                     |
 | ----------------- | ----------------------------------------------------------------------------------- |
-| Tests             | **1045** across 83 files, all passing                                               |
+| Tests             | **1058** across 83 files, all passing                                               |
 | Database          | 30 tables, **59 NUMERIC columns, 0 floating-point columns** (CI-enforced)           |
 | Verified          | `lint → typecheck → test → build` green, plus smoke, WebSocket smoke, pentest, load |
+| Deployed          | Run against a live deployment: 9/9 WebSocket checks, 9/9 applicable API checks      |
 | Security          | **25** attacks attempted against a running instance, all refused                    |
 | Load              | 100 traders · 200 sockets · 1000 orders; newest price stays ~200ms old under it     |
 | Reference vectors | 8 P&L / margin / equity figures reproduced exactly from a live broker terminal      |
