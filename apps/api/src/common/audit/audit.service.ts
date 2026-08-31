@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { requireTenantId } from '../../tenancy/tenant-context';
 
 export type AuditActorType = 'USER' | 'ADMIN' | 'SYSTEM';
 
@@ -72,6 +73,7 @@ export class AuditService {
     try {
       await this.prisma.auditLog.create({
         data: {
+          tenantId: requireTenantId(),
           actorId: entry.actorId ?? null,
           actorType: entry.actorType,
           action: entry.action,

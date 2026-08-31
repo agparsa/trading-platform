@@ -16,6 +16,7 @@ import {
   RECOVERY_CODE_COUNT,
 } from './totp';
 import type { Env } from '../config/env.schema';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 export interface EnrolmentOffer {
   /** Shown once, so a user without a camera can type it in. */
@@ -178,7 +179,11 @@ export class TotpService {
       // secret that no longer exists must not still open the door.
       await tx.totpRecoveryCode.deleteMany({ where: { userId } });
       await tx.totpRecoveryCode.createMany({
-        data: codes.map((value) => ({ userId, codeHash: hashRecoveryCode(value) })),
+        data: codes.map((value) => ({
+          tenantId: requireTenantId(),
+          userId,
+          codeHash: hashRecoveryCode(value),
+        })),
       });
     });
 

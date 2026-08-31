@@ -5,7 +5,13 @@ import { AdminInstrumentsService } from '../../src/admin/instruments.service';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { SymbolsService } from '../../src/symbols/symbols.service';
-import { createTestClient, hasTestDatabase, resetDatabase, seedTradingSymbols } from './harness';
+import {
+  createTestClient,
+  hasTestDatabase,
+  resetDatabase,
+  seedTradingSymbols,
+  DEFAULT_TENANT_ID,
+} from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 
@@ -42,6 +48,7 @@ suite('Administering instruments (integration)', () => {
 
     const administrator = await prisma.user.create({
       data: {
+        tenantId: DEFAULT_TENANT_ID,
         email: `instruments-admin-${Date.now()}@test.local`,
         passwordHash: 'not-a-real-hash',
         displayName: 'An Administrator',

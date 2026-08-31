@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { Env } from '../../config/env.schema';
+import { requireTenantId } from '../../tenancy/tenant-context';
 
 export type IdempotencyOutcome<T> =
   | { kind: 'fresh'; complete: (result: T) => Promise<void>; abandon: () => Promise<void> }
@@ -42,7 +43,14 @@ export class IdempotencyService {
 
     try {
       const claimed = await this.prisma.idempotencyKey.create({
-        data: { scope, key, requestHash, status: 'IN_PROGRESS', expiresAt },
+        data: {
+          tenantId: requireTenantId(),
+          scope,
+          key,
+          requestHash,
+          status: 'IN_PROGRESS',
+          expiresAt,
+        },
       });
       return {
         kind: 'fresh',
@@ -71,7 +79,7 @@ export class IdempotencyService {
     }
 
     const existing = await this.prisma.idempotencyKey.findUnique({
-      where: { scope_key: { scope, key } },
+      where: { tenantId_scope_key: { tenantId: requireTenantId(), scope, key } },
     });
     if (existing === null) {
       // The row vanished between the failed insert and this read — another

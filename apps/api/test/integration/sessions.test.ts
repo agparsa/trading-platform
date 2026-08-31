@@ -124,7 +124,7 @@ suite('Sessions and device visibility (integration)', () => {
     return result.pair;
   }
 
-  const userId = async () => (await prisma.user.findUniqueOrThrow({ where: { email: EMAIL } })).id;
+  const userId = async () => (await prisma.user.findFirstOrThrow({ where: { email: EMAIL } })).id;
 
   describe('the list', () => {
     /**
@@ -237,7 +237,7 @@ suite('Sessions and device visibility (integration)', () => {
         password: PASSWORD,
         displayName: 'Attacker',
       });
-      const attacker = await prisma.user.findUniqueOrThrow({
+      const attacker = await prisma.user.findFirstOrThrow({
         where: { email: 'attacker@test.local' },
       });
 

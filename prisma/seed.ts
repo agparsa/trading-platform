@@ -1,8 +1,8 @@
 /**
- * Reference instrument data.
+ * Reference instrument data, and the tenant a fresh deployment falls back to.
  *
- * Seeds instruments only. It deliberately creates no users, accounts or
- * balances: a seeded balance is a fabricated financial record, and this
+ * Seeds instruments and one tenant. It deliberately creates no users, accounts
+ * or balances: a seeded balance is a fabricated financial record, and this
  * database is the ledger of record even in development.
  *
  * The XAUUSD and BTCUSD contract specifications match the reference terminal
@@ -229,6 +229,25 @@ const SESSIONS: Record<SeedInstrument['session'], Array<[number, number, number]
 };
 
 async function main(): Promise<void> {
+  /**
+   * The tenant a request falls back to when no tenant claims its hostname.
+   *
+   * Upserted by slug rather than created, so running the seed twice is not an
+   * error and so an existing deployment's default tenant is left exactly as it
+   * is — including a `primaryHost` somebody set by hand.
+   *
+   * `TENANT_DEFAULT_SLUG` in the API's environment must name this slug. They
+   * are two halves of one setting, and the resolver refuses to start rather
+   * than guess if they disagree.
+   */
+  const slug = process.env['TENANT_DEFAULT_SLUG'] ?? 'default';
+  const tenant = await prisma.tenant.upsert({
+    where: { slug },
+    create: { slug, name: 'Default Tenant' },
+    update: {},
+  });
+  console.log(`tenant '${tenant.slug}' ready`);
+
   for (const instrument of INSTRUMENTS) {
     const symbol = await prisma.symbol.upsert({
       where: { code: instrument.code },

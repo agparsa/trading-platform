@@ -118,6 +118,11 @@ Each of the following was searched for by name. Zero occurrences.
 
 ## 10. The tenancy problem, stated plainly
 
+> **Resolved in the `multi_tenancy` migration.** What follows is the audit as it
+> stood, kept because the reasoning is what the implementation was built to; see
+> [multi-tenancy.md](./multi-tenancy.md) for what was actually done and what was
+> deliberately left.
+
 **Zero occurrences of `tenantId`, `tenant_id`, or `model Tenant` in the entire
 repository.** The platform is single-tenant in a way that is invisible right now
 because there is exactly one tenant, and will be expensive later because it is

@@ -20,7 +20,7 @@ import { AccountsService } from '../../src/accounts/accounts.service';
 import { LedgerService } from '../../src/accounts/ledger.service';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { createTestClient, hasTestDatabase, resetDatabase } from './harness';
+import { createTestClient, hasTestDatabase, resetDatabase, DEFAULT_TENANT_ID } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 
@@ -101,6 +101,7 @@ suite('Registration modes (integration)', () => {
     await resetDatabase(prisma);
     const admin = await prisma.user.create({
       data: {
+        tenantId: DEFAULT_TENANT_ID,
         email: 'admin@test.local',
         passwordHash: 'not-a-real-hash',
         displayName: 'Admin',

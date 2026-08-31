@@ -5,6 +5,7 @@ import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionsService } from '../auth/sessions.service';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 /**
  * Reading and changing other people's accounts.
@@ -385,7 +386,7 @@ export class AdminService {
 
     await this.prisma.accountSettings.upsert({
       where: { accountId },
-      create: { accountId, ...data },
+      create: { tenantId: requireTenantId(), accountId, ...data },
       update: data,
     });
 

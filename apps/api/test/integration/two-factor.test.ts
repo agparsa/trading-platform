@@ -318,7 +318,7 @@ suite('Two-factor authentication (integration)', () => {
       await auth.login('trader@test.local', 'wrong').catch(() => undefined);
       await auth.login('trader@test.local', PASSWORD);
 
-      const row = await prisma.user.findUniqueOrThrow({ where: { email: 'trader@test.local' } });
+      const row = await prisma.user.findFirstOrThrow({ where: { email: 'trader@test.local' } });
       expect(row.failedLoginAttempts).toBe(1);
       // And nobody has signed in, so this is untouched.
       expect(row.lastLoginAt).toBeNull();

@@ -26,6 +26,7 @@ import {
   hasTestDatabase,
   resetDatabase,
   seedTradingSymbols,
+  DEFAULT_TENANT_ID,
 } from './harness';
 import { buildTradingStack, type TradingStack } from './trading-stack';
 
@@ -65,6 +66,7 @@ suite('Administration (integration)', () => {
   async function anAdministrator(): Promise<{ id: string; secret: Buffer }> {
     const user = await prisma.user.create({
       data: {
+        tenantId: DEFAULT_TENANT_ID,
         email: `admin-${Date.now()}-${Math.random()}@test.local`,
         passwordHash: 'not-a-real-hash',
         displayName: 'An Administrator',
@@ -188,6 +190,7 @@ suite('Administration (integration)', () => {
 
       await prisma.refreshToken.createMany({
         data: [1, 2].map((n) => ({
+          tenantId: DEFAULT_TENANT_ID,
           userId: trader.userId,
           tokenHash: `hash-${n}-${Date.now()}`,
           familyId: randomUUID(),
@@ -231,6 +234,7 @@ suite('Administration (integration)', () => {
       const trader = await createAccount(prisma);
       await prisma.refreshToken.create({
         data: {
+          tenantId: DEFAULT_TENANT_ID,
           userId: trader.userId,
           tokenHash: `hash-${Date.now()}`,
           familyId: randomUUID(),
@@ -252,6 +256,7 @@ suite('Administration (integration)', () => {
       const trader = await createAccount(prisma);
       await prisma.refreshToken.create({
         data: {
+          tenantId: DEFAULT_TENANT_ID,
           userId: trader.userId,
           tokenHash: `hash-${Date.now()}`,
           familyId: randomUUID(),

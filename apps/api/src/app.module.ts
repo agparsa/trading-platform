@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
@@ -32,6 +32,8 @@ import { PlatformMetricsModule } from './metrics/platform-metrics.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
+import { TenancyModule } from './tenancy/tenancy.module';
+import { TenantMiddleware } from './tenancy/tenant.middleware';
 
 @Module({
   imports: [
@@ -77,6 +79,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
       }),
     }),
     PrismaModule,
+    TenancyModule,
     RedisModule,
     CryptoModule,
     AuditModule,
@@ -110,4 +113,20 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  /**
+   * The tenant scope is opened here, before every route.
+   *
+   * Middleware rather than a guard, because middleware can wrap `next()`: the
+   * scope then begins and ends exactly where the request does. A guard can only
+   * set the scope and return, which leaves it to `AsyncLocalStorage.enterWith`
+   * and to hoping the store does not outlive the request.
+   *
+   * `*` includes the unversioned health and metrics routes. They need no tenant
+   * and reading one costs a cached lookup; excluding them would mean a list of
+   * exceptions that the next unversioned route would be missing from.
+   */
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(TenantMiddleware).forRoutes('*');
+  }
+}

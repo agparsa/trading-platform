@@ -8,6 +8,7 @@ import {
 } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 export interface MasterAccountSummary {
   id: string;
@@ -64,7 +65,7 @@ export class MasterAccountsService {
     }
 
     const master = await this.prisma.masterAccount.create({
-      data: { userId: input.operatorUserId, name: input.name },
+      data: { tenantId: requireTenantId(), userId: input.operatorUserId, name: input.name },
     });
     await this.audit.record({
       actorId: actorUserId,
@@ -128,6 +129,7 @@ export class MasterAccountsService {
     const link = await this.prisma.masterAccountLink.upsert({
       where: { masterAccountId_accountId: { masterAccountId, accountId: input.accountId } },
       create: {
+        tenantId: requireTenantId(),
         masterAccountId,
         accountId: input.accountId,
         capabilities: [...capabilities],

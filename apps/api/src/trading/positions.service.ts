@@ -30,6 +30,7 @@ import { AuditService } from '../common/audit/audit.service';
 import { EventsService } from '../realtime/events.service';
 import { OrdersService } from './orders.service';
 import type { CloseResult, ModifyPositionRequest, OrderResult } from './trading.types';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 interface LoadedPosition {
   id: string;
@@ -227,6 +228,7 @@ export class PositionsService {
 
         const closingOrder = await tx.order.create({
           data: {
+            tenantId: requireTenantId(),
             accountId: position.accountId,
             symbolId: position.symbolId,
             side: position.side === 'BUY' ? 'SELL' : 'BUY',
@@ -240,9 +242,21 @@ export class PositionsService {
         });
         await tx.orderEvent.createMany({
           data: [
-            { orderId: closingOrder.id, type: 'CREATED', toStatus: 'NEW' },
-            { orderId: closingOrder.id, type: 'ACCEPTED', fromStatus: 'NEW', toStatus: 'ACCEPTED' },
             {
+              tenantId: requireTenantId(),
+              orderId: closingOrder.id,
+              type: 'CREATED',
+              toStatus: 'NEW',
+            },
+            {
+              tenantId: requireTenantId(),
+              orderId: closingOrder.id,
+              type: 'ACCEPTED',
+              fromStatus: 'NEW',
+              toStatus: 'ACCEPTED',
+            },
+            {
+              tenantId: requireTenantId(),
               orderId: closingOrder.id,
               type: 'FILLED',
               fromStatus: 'ACCEPTED',
@@ -253,6 +267,7 @@ export class PositionsService {
         });
         await tx.execution.create({
           data: {
+            tenantId: requireTenantId(),
             orderId: closingOrder.id,
             accountId: position.accountId,
             side: position.side === 'BUY' ? 'SELL' : 'BUY',
@@ -266,6 +281,7 @@ export class PositionsService {
 
         await tx.trade.create({
           data: {
+            tenantId: requireTenantId(),
             accountId: position.accountId,
             positionId: position.id,
             symbolId: position.symbolId,
@@ -367,6 +383,7 @@ export class PositionsService {
 
         await tx.positionEvent.create({
           data: {
+            tenantId: requireTenantId(),
             positionId: position.id,
             type: fullyClosed ? 'CLOSED' : 'PARTIALLY_CLOSED',
             fromStatus: 'CLOSING',
@@ -511,6 +528,7 @@ export class PositionsService {
 
     await this.prisma.positionEvent.create({
       data: {
+        tenantId: requireTenantId(),
         positionId: position.id,
         type: 'MODIFIED',
         fromStatus: 'OPEN',

@@ -519,7 +519,7 @@ const checks: Check[] = [
       // the assertion a mocked test cannot make.
       const prisma = new PrismaClient();
       try {
-        const row = await prisma.user.findUniqueOrThrow({ where: { email } });
+        const row = await prisma.user.findFirstOrThrow({ where: { email } });
         assert(row.totpSecret !== null, 'no secret was stored');
         assert(
           !(row.totpSecret ?? '').includes(offer.secret),
@@ -701,7 +701,7 @@ const checks: Check[] = [
 
       const prisma = new PrismaClient();
       try {
-        await prisma.user.update({ where: { email }, data: { role: 'SUPPORT' } });
+        await prisma.user.updateMany({ where: { email }, data: { role: 'SUPPORT' } });
       } finally {
         await prisma.$disconnect();
       }
@@ -801,8 +801,16 @@ const checks: Check[] = [
       const adminEmail = `smoke-inviter-${Date.now()}@test.local`;
       try {
         const { PasswordService } = await import('../apps/api/src/auth/password.service');
+        /**
+         * The administrator is created in whichever tenant the API is serving,
+         * found by asking rather than assumed: a smoke run against a deployment
+         * with several tenants must not quietly file its test administrator
+         * under the first one in the table.
+         */
+        const tenant = await prisma.tenant.findFirstOrThrow({ orderBy: { createdAt: 'asc' } });
         const admin = await prisma.user.create({
           data: {
+            tenantId: tenant.id,
             email: adminEmail,
             passwordHash: await new PasswordService().hash(password),
             displayName: 'Smoke Inviter',

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { LedgerEntryType, Prisma } from '@prisma/client';
 import { Money, toDecimal } from '@tp/financial-core';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 export interface LedgerPosting {
   readonly accountId: string;
@@ -132,6 +133,7 @@ export class LedgerService {
 
     const entry = await tx.balanceLedger.create({
       data: {
+        tenantId: requireTenantId(),
         accountId: posting.accountId,
         type: posting.type,
         amount: amount.toString(),

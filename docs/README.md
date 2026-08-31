@@ -51,6 +51,7 @@ found missing.
 - [reconciliation.md](./reconciliation.md) — what is compared, what is never repaired
 - [anti-fraud.md](./anti-fraud.md) — integrity signals: observations, never verdicts
 - [database.md](./database.md) — schema conventions, the ledger, transactions, indexes
+- [multi-tenancy.md](./multi-tenancy.md) — how one platform holds several firms, and where the boundary is enforced
 - [security.md](./security.md) — boot refusal, credentials, logging, audit
 - [two-factor.md](./two-factor.md) — TOTP proved against the RFC, and why a code works once
 - [encryption-at-rest.md](./encryption-at-rest.md) — the secret box, and the row a ciphertext is bound to

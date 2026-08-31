@@ -12,6 +12,7 @@ import {
   hasTestDatabase,
   resetDatabase,
   seedSymbols,
+  DEFAULT_TENANT_ID,
 } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
@@ -67,6 +68,7 @@ suite('Worker jobs (integration)', () => {
     const symbol = await prisma.symbol.findUniqueOrThrow({ where: { code: 'XAUUSD' } });
     const position = await prisma.position.create({
       data: {
+        tenantId: DEFAULT_TENANT_ID,
         accountId,
         symbolId: symbol.id,
         side,
@@ -79,6 +81,7 @@ suite('Worker jobs (integration)', () => {
     });
     const order = await prisma.order.create({
       data: {
+        tenantId: DEFAULT_TENANT_ID,
         accountId,
         symbolId: symbol.id,
         positionId: position.id,
@@ -92,6 +95,7 @@ suite('Worker jobs (integration)', () => {
     });
     await prisma.execution.create({
       data: {
+        tenantId: DEFAULT_TENANT_ID,
         orderId: order.id,
         accountId,
         side,
@@ -344,7 +348,7 @@ suite('Worker jobs (integration)', () => {
 
     it('carries the run id and trigger a person asked for', async () => {
       const requested = await prisma.reconciliationRun.create({
-        data: { trigger: 'MANUAL' },
+        data: { tenantId: DEFAULT_TENANT_ID, trigger: 'MANUAL' },
       });
       const summary = await service().check({ runId: requested.id, trigger: 'MANUAL' });
 
@@ -424,6 +428,10 @@ suite('Worker jobs (integration)', () => {
 
     it('records a failed run as failed, not as a clean one', async () => {
       const broken = new ReconciliationService({
+        // The tenant lookup is real: a sweep files its run under a tenant
+        // before it reads a single account, and stubbing it away would make
+        // this test fail on the wrong thing.
+        tenant: prismaService.tenant,
         reconciliationRun: prismaService.reconciliationRun,
         account: {
           findMany: async () => {
@@ -493,6 +501,7 @@ suite('Worker jobs (integration)', () => {
       // and the position reduced to match.
       const closingOrder = await prisma.order.create({
         data: {
+          tenantId: DEFAULT_TENANT_ID,
           accountId,
           symbolId: symbol.id,
           positionId,
@@ -506,6 +515,7 @@ suite('Worker jobs (integration)', () => {
       });
       await prisma.execution.create({
         data: {
+          tenantId: DEFAULT_TENANT_ID,
           orderId: closingOrder.id,
           accountId,
           side: 'SELL',
@@ -570,7 +580,14 @@ suite('Worker jobs (integration)', () => {
 
     const claim = async (key: string, status: string, createdAt: Date, expiresAt: Date) => {
       const row = await prisma.idempotencyKey.create({
-        data: { scope: 'orders:test', key, requestHash: 'hash', status, expiresAt },
+        data: {
+          tenantId: DEFAULT_TENANT_ID,
+          scope: 'orders:test',
+          key,
+          requestHash: 'hash',
+          status,
+          expiresAt,
+        },
       });
       // createdAt has a database default, so it is set afterwards.
       await prisma.$executeRawUnsafe(

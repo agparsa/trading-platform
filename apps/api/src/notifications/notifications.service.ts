@@ -3,6 +3,7 @@ import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueuePublisher } from '../jobs/queue-publisher.service';
 import { QueueName } from '../jobs/queues';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 /**
  * What the platform has told this person.
@@ -98,6 +99,9 @@ export class NotificationsService {
   }): Promise<void> {
     try {
       await this.queues.publish(QueueName.NOTIFICATIONS, job.kind, {
+        // Carried on the job rather than looked up from `userId` in the worker:
+        // see the parser's note on why a missing tenant is refused there.
+        tenantId: requireTenantId(),
         userId: job.userId,
         kind: job.kind,
         severity: job.severity,

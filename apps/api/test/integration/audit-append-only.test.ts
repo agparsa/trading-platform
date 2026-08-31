@@ -1,6 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
-import { createTestClient, hasTestDatabase } from './harness';
+import { enterTenantScope } from '../../src/tenancy/tenant-context';
+import {
+  DEFAULT_TENANT_ID,
+  DEFAULT_TENANT_SLUG,
+  createTestClient,
+  hasTestDatabase,
+} from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 
@@ -24,8 +30,23 @@ suite('audit_logs is append-only (integration)', () => {
   beforeAll(async () => {
     prisma = createTestClient();
     await prisma.$connect();
+
+    /**
+     * This suite deliberately does not call `resetDatabase` — it must not
+     * truncate the very table it is checking cannot be truncated. So it enters
+     * a tenant of its own, and upserts rather than creates, because the tenant
+     * may already be there from another suite.
+     */
+    await prisma.tenant.upsert({
+      where: { id: DEFAULT_TENANT_ID },
+      create: { id: DEFAULT_TENANT_ID, slug: DEFAULT_TENANT_SLUG, name: 'Test Tenant' },
+      update: {},
+    });
+    enterTenantScope({ tenantId: DEFAULT_TENANT_ID, slug: DEFAULT_TENANT_SLUG });
+
     const row = await prisma.auditLog.create({
       data: {
+        tenantId: DEFAULT_TENANT_ID,
         actorType: 'SYSTEM',
         action: 'APPEND_ONLY_PROOF',
         resourceType: 'Test',

@@ -25,6 +25,74 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
+// Tenancy
+// ---------------------------------------------------------------------------
+
+/// A firm operating on this platform.
+///
+/// Every owned row carries `tenantId` directly rather than deriving it through
+/// a join. Row-level security is a predicate on the row, so a policy that has to
+/// join to find its tenant runs on every read and is easy to write subtly wrong;
+/// and application queries do not always start at the root — `orderEvent
+/// .findMany({ where: { orderId } })` is legitimate and must be scopeable
+/// without the caller remembering to join. See docs/multi-tenancy.md.
+model Tenant {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Stable machine name, e.g. 'devopss'. Used in configuration and in logs.
+  slug String @unique
+  name String
+
+  /// The hostname this tenant answers on, when it has one of its own.
+  ///
+  /// Read only for requests that carry no authentication yet — sign-in,
+  /// registration, password reset. Every authenticated request takes its tenant
+  /// from the token instead, because a client that can name its own tenant is a
+  /// client that can name somebody else's.
+  primaryHost String? @unique @map("primary_host")
+
+  status TenantStatus @default(ACTIVE)
+
+  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  users                  User[]
+  totpRecoveryCodes      TotpRecoveryCode[]
+  refreshTokens          RefreshToken[]
+  accounts               Account[]
+  accountSettings        AccountSettings[]
+  orders                 Order[]
+  orderEvents            OrderEvent[]
+  positions              Position[]
+  positionEvents         PositionEvent[]
+  executions             Execution[]
+  trades                 Trade[]
+  balanceLedgers         BalanceLedger[]
+  accountSnapshots       AccountSnapshot[]
+  riskRuleConfigs        RiskRuleConfig[]
+  riskEvents             RiskEvent[]
+  auditLogs              AuditLog[]
+  idempotencyKeys        IdempotencyKey[]
+  masterAccounts         MasterAccount[]
+  masterAccountLinks     MasterAccountLink[]
+  integritySignals       IntegritySignal[]
+  integritySignalEvents  IntegritySignalEvent[]
+  systemSettings         SystemSetting[]
+  inviteCodes            InviteCode[]
+  inviteRedemptions      InviteRedemption[]
+  reconciliationRuns     ReconciliationRun[]
+  reconciliationFindings ReconciliationFinding[]
+  notifications          Notification[]
+
+  @@map("tenants")
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+// ---------------------------------------------------------------------------
 // Identity & access
 // ---------------------------------------------------------------------------
 
@@ -38,7 +106,8 @@ enum UserRole {
 
 model User {
   id            String    @id @default(uuid()) @db.Uuid
-  email         String    @unique
+  tenantId      String    @map("tenant_id") @db.Uuid
+  email         String
   /// Argon2id hash. The plaintext password never reaches the database or a log.
   passwordHash  String    @map("password_hash")
   displayName   String    @map("display_name")
@@ -82,6 +151,11 @@ model User {
   invitesCreated InviteCode[]       @relation("InviteCreator")
   invitesUsed    InviteRedemption[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  /// One address per tenant, not per platform: the same person may hold an account with two firms.
+  @@unique([tenantId, email])
+  @@index([tenantId])
   @@map("users")
 }
 
@@ -93,6 +167,7 @@ model User {
 /// is a question worth being able to answer.
 model TotpRecoveryCode {
   id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
   userId    String    @map("user_id") @db.Uuid
   codeHash  String    @unique @map("code_hash")
   usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
@@ -100,12 +175,16 @@ model TotpRecoveryCode {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([userId, usedAt])
+  @@index([tenantId])
   @@map("totp_recovery_codes")
 }
 
 model RefreshToken {
   id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
   userId     String    @map("user_id") @db.Uuid
   /// SHA-256 of the token. A database leak must not yield usable sessions.
   tokenHash  String    @unique @map("token_hash")
@@ -123,8 +202,11 @@ model RefreshToken {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([userId, revokedAt])
   @@index([familyId])
+  @@index([tenantId])
   @@map("refresh_tokens")
 }
 
@@ -147,9 +229,10 @@ enum AccountType {
 
 model Account {
   id       String        @id @default(uuid()) @db.Uuid
+  tenantId String        @map("tenant_id") @db.Uuid
   userId   String        @map("user_id") @db.Uuid
   /// Human-facing account number, e.g. 'TP-100284'. Not the primary key.
-  number   String        @unique
+  number   String
   type     AccountType   @default(DEMO)
   status   AccountStatus @default(ACTIVE)
   currency String        @db.VarChar(3)
@@ -175,12 +258,18 @@ model Account {
   integritySignals       IntegritySignal[]
   reconciliationFindings ReconciliationFinding[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  /// Account numbers are a tenant's own sequence, and two tenants may reach TP-100001.
+  @@unique([tenantId, number])
   @@index([userId, status])
+  @@index([tenantId])
   @@map("accounts")
 }
 
 model AccountSettings {
   accountId String @id @map("account_id") @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
 
   marginCallLevelPercent Decimal @default(100) @map("margin_call_level_percent") @db.Decimal(10, 4)
   stopOutLevelPercent    Decimal @default(50) @map("stop_out_level_percent") @db.Decimal(10, 4)
@@ -195,6 +284,9 @@ model AccountSettings {
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
   @@map("account_settings")
 }
 
@@ -350,6 +442,7 @@ enum CloseReason {
 
 model Order {
   id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
   accountId String @map("account_id") @db.Uuid
   symbolId  String @map("symbol_id") @db.Uuid
 
@@ -383,16 +476,20 @@ model Order {
   events     OrderEvent[]
   executions Execution[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([accountId, status])
   @@index([accountId, createdAt(sort: Desc)])
   /// Partial index for the trigger engine's hot query: resting orders only.
   @@index([symbolId, status])
+  @@index([tenantId])
   @@map("orders")
 }
 
 /// Append-only. One row per state change, with the full before/after snapshot.
 model OrderEvent {
   id         String         @id @default(uuid()) @db.Uuid
+  tenantId   String         @map("tenant_id") @db.Uuid
   orderId    String         @map("order_id") @db.Uuid
   type       OrderEventType
   fromStatus OrderStatus?   @map("from_status")
@@ -403,12 +500,16 @@ model OrderEvent {
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([orderId, createdAt])
+  @@index([tenantId])
   @@map("order_events")
 }
 
 model Position {
   id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
   accountId String @map("account_id") @db.Uuid
   symbolId  String @map("symbol_id") @db.Uuid
 
@@ -446,14 +547,18 @@ model Position {
   events  PositionEvent[]
   trades  Trade[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([accountId, status])
   @@index([symbolId, status])
+  @@index([tenantId])
   @@map("positions")
 }
 
 /// Append-only history of everything that happened to a position.
 model PositionEvent {
   id         String          @id @default(uuid()) @db.Uuid
+  tenantId   String          @map("tenant_id") @db.Uuid
   positionId String          @map("position_id") @db.Uuid
   type       String
   fromStatus PositionStatus? @map("from_status")
@@ -463,13 +568,17 @@ model PositionEvent {
 
   position Position @relation(fields: [positionId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([positionId, createdAt])
+  @@index([tenantId])
   @@map("position_events")
 }
 
 /// One fill. Immutable. Retains the quote it executed against for disputes.
 model Execution {
   id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
   orderId   String @map("order_id") @db.Uuid
   accountId String @map("account_id") @db.Uuid
 
@@ -486,14 +595,18 @@ model Execution {
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([accountId, executedAt(sort: Desc)])
   @@index([orderId])
+  @@index([tenantId])
   @@map("executions")
 }
 
 /// A completed round trip. Written once when a position (or part of one) closes.
 model Trade {
   id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
   accountId  String @map("account_id") @db.Uuid
   positionId String @map("position_id") @db.Uuid
   symbolId   String @map("symbol_id") @db.Uuid
@@ -530,8 +643,11 @@ model Trade {
   position Position @relation(fields: [positionId], references: [id], onDelete: Restrict)
   symbol   Symbol   @relation(fields: [symbolId], references: [id], onDelete: Restrict)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([accountId, exitTime(sort: Desc)])
   @@index([positionId])
+  @@index([tenantId])
   @@map("trades")
 }
 
@@ -556,6 +672,7 @@ enum LedgerEntryType {
 /// readable without replaying the whole account.
 model BalanceLedger {
   id           String          @id @default(uuid()) @db.Uuid
+  tenantId     String          @map("tenant_id") @db.Uuid
   accountId    String          @map("account_id") @db.Uuid
   type         LedgerEntryType
   /// Signed: positive credits the account, negative debits it.
@@ -577,8 +694,11 @@ model BalanceLedger {
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([accountId, createdAt(sort: Desc)])
   @@index([referenceType, referenceId])
+  @@index([tenantId])
   @@map("balance_ledger")
 }
 
@@ -586,6 +706,7 @@ model BalanceLedger {
 /// the daily reset that a future evaluation product would build on.
 model AccountSnapshot {
   id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
   accountId String   @map("account_id") @db.Uuid
   takenAt   DateTime @map("taken_at") @db.Timestamptz(6)
 
@@ -600,8 +721,11 @@ model AccountSnapshot {
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([accountId, takenAt])
   @@index([accountId, takenAt(sort: Desc)])
+  @@index([tenantId])
   @@map("account_snapshots")
 }
 
@@ -612,18 +736,25 @@ model AccountSnapshot {
 /// Named, versioned risk rule configuration. Rules are data, never constants.
 model RiskRuleConfig {
   id         String   @id @default(uuid()) @db.Uuid
-  name       String   @unique
+  tenantId   String   @map("tenant_id") @db.Uuid
+  name       String
   enabled    Boolean  @default(true)
   /// Rule-specific parameters, validated against the rule's schema on write.
   parameters Json     @default("{}")
   updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  /// Each tenant configures its own rules under the same names.
+  @@unique([tenantId, name])
+  @@index([tenantId])
   @@map("risk_rules")
 }
 
 /// Every risk decision worth remembering: a rejection, a margin call, a stop-out.
 model RiskEvent {
   id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
   accountId String   @map("account_id") @db.Uuid
   rule      String
   code      String
@@ -635,14 +766,18 @@ model RiskEvent {
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([accountId, createdAt(sort: Desc)])
   @@index([rule, createdAt(sort: Desc)])
+  @@index([tenantId])
   @@map("risk_events")
 }
 
 /// Append-only audit trail. Secrets, tokens and passwords are never written here.
 model AuditLog {
   id           String  @id @default(uuid()) @db.Uuid
+  tenantId     String  @map("tenant_id") @db.Uuid
   actorId      String? @map("actor_id") @db.Uuid
   /// 'USER' | 'ADMIN' | 'SYSTEM' — who acted, when actorId is absent.
   actorType    String  @map("actor_type")
@@ -660,9 +795,12 @@ model AuditLog {
 
   actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([actorId, createdAt(sort: Desc)])
   @@index([resourceType, resourceId])
   @@index([action, createdAt(sort: Desc)])
+  @@index([tenantId])
   @@map("audit_logs")
 }
 
@@ -676,10 +814,11 @@ model AuditLog {
 /// order from becoming two trades: the second request loses the insert race and
 /// is served the stored response instead of executing again.
 model IdempotencyKey {
-  id    String @id @default(uuid()) @db.Uuid
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
   /// Namespaced per account so two users cannot collide on the same key.
-  scope String
-  key   String
+  scope    String
+  key      String
 
   /// Hash of the request body. A key reused with a *different* payload is a
   /// client bug and must be rejected, not silently answered from cache.
@@ -692,8 +831,11 @@ model IdempotencyKey {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
 
-  @@unique([scope, key])
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, scope, key])
   @@index([expiresAt])
+  @@index([tenantId])
   @@map("idempotency_keys")
 }
 
@@ -713,10 +855,11 @@ enum MasterLinkStatus {
 /// one: it holds no accounts by itself and confers nothing until a link exists.
 /// A master with no links can see exactly as much as a stranger.
 model MasterAccount {
-  id     String              @id @default(uuid()) @db.Uuid
-  userId String              @map("user_id") @db.Uuid
-  name   String
-  status MasterAccountStatus @default(ACTIVE)
+  id       String              @id @default(uuid()) @db.Uuid
+  tenantId String              @map("tenant_id") @db.Uuid
+  userId   String              @map("user_id") @db.Uuid
+  name     String
+  status   MasterAccountStatus @default(ACTIVE)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -724,7 +867,10 @@ model MasterAccount {
   user  User                @relation(fields: [userId], references: [id], onDelete: Restrict)
   links MasterAccountLink[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([userId, status])
+  @@index([tenantId])
   @@map("master_accounts")
 }
 
@@ -735,6 +881,7 @@ model MasterAccount {
 /// able to answer after the answer has stopped being true.
 model MasterAccountLink {
   id              String @id @default(uuid()) @db.Uuid
+  tenantId        String @map("tenant_id") @db.Uuid
   masterAccountId String @map("master_account_id") @db.Uuid
   accountId       String @map("account_id") @db.Uuid
 
@@ -754,8 +901,11 @@ model MasterAccountLink {
   master  MasterAccount @relation(fields: [masterAccountId], references: [id], onDelete: Restrict)
   account Account       @relation(fields: [accountId], references: [id], onDelete: Restrict)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([masterAccountId, accountId])
   @@index([accountId, status])
+  @@index([tenantId])
   @@map("master_account_links")
 }
 
@@ -782,6 +932,7 @@ enum IntegritySignalEventType {
 /// what a reviewer needs and what a thousand duplicate rows would hide.
 model IntegritySignal {
   id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @map("tenant_id") @db.Uuid
   accountId String @map("account_id") @db.Uuid
 
   code     String
@@ -805,9 +956,12 @@ model IntegritySignal {
   account Account                @relation(fields: [accountId], references: [id], onDelete: Restrict)
   events  IntegritySignalEvent[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([accountId, code])
   @@index([status, severity])
   @@index([lastSeenAt(sort: Desc)])
+  @@index([tenantId])
   @@map("integrity_signals")
 }
 
@@ -818,6 +972,7 @@ model IntegritySignal {
 /// has to stay answerable after somebody has reviewed and closed it.
 model IntegritySignalEvent {
   id       String                   @id @default(uuid()) @db.Uuid
+  tenantId String                   @map("tenant_id") @db.Uuid
   signalId String                   @map("signal_id") @db.Uuid
   type     IntegritySignalEventType
 
@@ -834,7 +989,10 @@ model IntegritySignalEvent {
 
   signal IntegritySignal @relation(fields: [signalId], references: [id], onDelete: Restrict)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([signalId, createdAt])
+  @@index([tenantId])
   @@map("integrity_signal_events")
 }
 
@@ -843,12 +1001,32 @@ model IntegritySignalEvent {
 /// One row per setting, with the actor who last changed it. Deliberately not an
 /// environment variable: a kill switch that needs a deployment to flip is a kill
 /// switch that will not be flipped in the minute it is needed.
+/// Platform and per-tenant settings — the kill switch, principally.
+///
+/// `tenantId` null means the whole platform. That is the one hybrid in the
+/// schema and it earns its complexity: an operator must be able to halt one
+/// tenant, and the platform operator must be able to halt everything.
+///
+/// The key was the primary key when there was one tenant. It is now a plain
+/// column with a surrogate id, because `@@id([key, tenantId])` cannot hold a
+/// nullable column. Uniqueness is enforced twice, and the second one is not
+/// visible here: `@@unique([tenantId, key])` covers the tenant rows, and the
+/// migration adds a partial unique index on `key WHERE tenant_id IS NULL` for
+/// the platform-wide ones — which the composite cannot do, because Postgres
+/// treats two NULLs as distinct and would happily store two platform-wide kill
+/// switches disagreeing with each other.
 model SystemSetting {
-  key             String   @id
+  id              String   @id @default(uuid()) @db.Uuid
+  key             String
+  tenantId        String?  @map("tenant_id") @db.Uuid
   value           Json
   updatedByUserId String?  @map("updated_by_user_id") @db.Uuid
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
   @@map("system_settings")
 }
 
@@ -864,7 +1042,8 @@ model SystemSetting {
 /// is shown once, to the administrator who minted it, and then is gone —
 /// the same contract the specification requires of API keys.
 model InviteCode {
-  id String @id @default(uuid()) @db.Uuid
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
 
   /// SHA-256 of the code, hex. Unique so a redemption is a single indexed read.
   codeHash    String  @unique @map("code_hash")
@@ -887,7 +1066,10 @@ model InviteCode {
   createdBy   User?              @relation("InviteCreator", fields: [createdById], references: [id], onDelete: SetNull)
   redemptions InviteRedemption[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([createdAt(sort: Desc)])
+  @@index([tenantId])
   @@map("invite_codes")
 }
 
@@ -898,6 +1080,7 @@ model InviteCode {
 /// somebody asking where a user came from six months later.
 model InviteRedemption {
   id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
   inviteCodeId String   @map("invite_code_id") @db.Uuid
   userId       String   @map("user_id") @db.Uuid
   redeemedAt   DateTime @default(now()) @map("redeemed_at") @db.Timestamptz(6)
@@ -905,8 +1088,11 @@ model InviteRedemption {
   inviteCode InviteCode @relation(fields: [inviteCodeId], references: [id], onDelete: Restrict)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([inviteCodeId, userId])
   @@index([userId])
+  @@index([tenantId])
   @@map("invite_redemptions")
 }
 
@@ -938,6 +1124,7 @@ enum ReconciliationFindingStatus {
 /// findings are stored, and only one of them is reassuring.
 model ReconciliationRun {
   id                String                  @id @default(uuid()) @db.Uuid
+  tenantId          String                  @map("tenant_id") @db.Uuid
   status            ReconciliationRunStatus @default(RUNNING)
   /// 'SCHEDULED' | 'MANUAL' — how this run came to happen.
   trigger           String                  @default("SCHEDULED")
@@ -958,8 +1145,11 @@ model ReconciliationRun {
 
   findings ReconciliationFinding[]
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@index([startedAt(sort: Desc)])
   @@index([status, startedAt(sort: Desc)])
+  @@index([tenantId])
   @@map("reconciliation_runs")
 }
 
@@ -975,9 +1165,10 @@ model ReconciliationRun {
 /// unique index — a nullable subject would let the same account-wide finding be
 /// inserted without limit. The empty string means "about the account itself".
 model ReconciliationFinding {
-  id    String @id @default(uuid()) @db.Uuid
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
   /// The run that most recently saw it. The first is in `firstSeenAt`.
-  runId String @map("run_id") @db.Uuid
+  runId    String @map("run_id") @db.Uuid
 
   accountId String @map("account_id") @db.Uuid
   code      String
@@ -1011,9 +1202,12 @@ model ReconciliationFinding {
   run     ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Restrict)
   account Account           @relation(fields: [accountId], references: [id], onDelete: Restrict)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
   @@unique([accountId, code, subjectKey])
   @@index([status, severity])
   @@index([lastSeenAt(sort: Desc)])
+  @@index([tenantId])
   @@map("reconciliation_findings")
 }
 
@@ -1032,8 +1226,9 @@ enum NotificationChannel {
 /// notification that only exists because somebody's browser was open is a
 /// notification the person who was away never gets.
 model Notification {
-  id     String @id @default(uuid()) @db.Uuid
-  userId String @map("user_id") @db.Uuid
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
 
   /// Stable machine name, e.g. 'risk.margin_call'. The UI maps it to wording.
   kind     String
@@ -1051,12 +1246,17 @@ model Notification {
   emailedAt DateTime? @map("emailed_at") @db.Timestamptz(6)
   /// Deduplication key. A risk engine that raises the same alert twice in a
   /// minute must not produce two rows.
-  dedupeKey String?   @unique @map("dedupe_key")
+  dedupeKey String?   @map("dedupe_key")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  /// Deduplication is per tenant; two tenants may raise the same alert in the same minute.
+  @@unique([tenantId, dedupeKey])
   @@index([userId, readAt, createdAt(sort: Desc)])
+  @@index([tenantId])
   @@map("notifications")
 }

@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { enterTenantScope } from '../../src/tenancy/tenant-context';
+import { tenantScopeExtension } from '../../src/tenancy/tenant-scope';
 
 /**
  * Integration-test harness.
@@ -14,9 +16,56 @@ export const TEST_DATABASE_URL = process.env['TEST_DATABASE_URL'];
 export const hasTestDatabase =
   typeof TEST_DATABASE_URL === 'string' && TEST_DATABASE_URL.length > 0;
 
+/**
+ * The test client carries the tenant-scope extension, exactly as the
+ * application's does.
+ *
+ * A test client without it would exercise a different Prisma than production
+ * runs — and the difference would be precisely the isolation these tests exist
+ * to check. The cast keeps `PrismaClient` as the type the tests see; the
+ * extension is transparent to every call that is correctly scoped.
+ */
 export function createTestClient(): PrismaClient {
   if (!hasTestDatabase) throw new Error('TEST_DATABASE_URL is not set');
-  return new PrismaClient({ datasources: { db: { url: TEST_DATABASE_URL } } });
+  return new PrismaClient({
+    datasources: { db: { url: TEST_DATABASE_URL } },
+  }).$extends(tenantScopeExtension()) as unknown as PrismaClient;
+}
+
+/** The tenant every test runs inside unless it says otherwise. */
+export const DEFAULT_TENANT_SLUG = 'test-tenant';
+
+/**
+ * A fixed id, not a generated one.
+ *
+ * `resetDatabase` truncates and recreates the tenant between every test, and
+ * `AsyncLocalStorage.enterWith` set once in a `beforeEach` does not reliably
+ * re-take on the second and subsequent hooks — the store from the first test
+ * persists. With a generated id that means test two writes rows referencing a
+ * tenant test one deleted, and the failure is a foreign-key violation a long
+ * way from its cause.
+ *
+ * A stable id makes the stale scope correct rather than merely tolerated, and
+ * makes a failing test reproducible in the bargain.
+ */
+export const DEFAULT_TENANT_ID = '00000000-0000-4000-8000-0000000000ff';
+
+/**
+ * Creates a tenant and returns its id. Not scoped — `Tenant` has no tenant.
+ */
+export async function createTenant(
+  prisma: PrismaClient,
+  slug: string,
+  primaryHost?: string,
+): Promise<string> {
+  const tenant = await prisma.tenant.create({
+    data: {
+      slug,
+      name: slug,
+      ...(primaryHost === undefined ? {} : { primaryHost }),
+    },
+  });
+  return tenant.id;
 }
 
 /**
@@ -26,7 +75,7 @@ export function createTestClient(): PrismaClient {
  * us; RESTART IDENTITY keeps sequence values from drifting between runs so a
  * failure is reproducible.
  */
-export async function resetDatabase(prisma: PrismaClient): Promise<void> {
+export async function resetDatabase(prisma: PrismaClient): Promise<string> {
   /**
    * `audit_logs` refuses UPDATE, DELETE and TRUNCATE — see the
    * `audit_log_append_only` migration. Emptying it between runs therefore takes
@@ -41,6 +90,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   try {
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
+        tenants,
         integrity_signal_events, integrity_signals,
         master_account_links, master_accounts,
         audit_logs, risk_events, account_snapshots, balance_ledger,
@@ -55,6 +105,26 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   } finally {
     await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs ENABLE TRIGGER USER`);
   }
+
+  /**
+   * Every test runs inside a tenant, because every request does.
+   *
+   * `enterWith` rather than `withTenant` because a `beforeEach` cannot wrap the
+   * test body — see tenancy/tenant-context.ts. It propagates from the hook into
+   * the test, which is checked rather than assumed: without it, the first
+   * `prisma.user.create` in any suite throws "no tenant in scope".
+   *
+   * `Tenant` is not a tenant-scoped model, so this create needs no scope of its
+   * own. That matters more than it looks: wrapping it in `withoutTenantScope`
+   * — which uses `AsyncLocalStorage.run` — made the `enterWith` immediately
+   * after it silently do nothing, and every suite failed with "no tenant in
+   * scope" while the line that set it sat right there in the source.
+   */
+  const tenant = await prisma.tenant.create({
+    data: { id: DEFAULT_TENANT_ID, slug: DEFAULT_TENANT_SLUG, name: 'Test Tenant' },
+  });
+  enterTenantScope({ tenantId: tenant.id, slug: tenant.slug });
+  return tenant.id;
 }
 
 export async function seedSymbols(prisma: PrismaClient): Promise<void> {
@@ -91,12 +161,14 @@ export async function seedSymbols(prisma: PrismaClient): Promise<void> {
 /** Creates a user and one funded account directly, bypassing the HTTP layer. */
 export async function createAccount(
   prisma: PrismaClient,
-  options: { balance?: string; currency?: string; email?: string } = {},
+  options: { balance?: string; currency?: string; email?: string; tenantId?: string } = {},
 ): Promise<{ userId: string; accountId: string; currency: string }> {
+  const tenantId = options.tenantId ?? DEFAULT_TENANT_ID;
   const currency = options.currency ?? 'USD';
   const suffix = Math.floor(Number(process.hrtime.bigint() % 1_000_000_000n));
   const user = await prisma.user.create({
     data: {
+      tenantId,
       email: options.email ?? `trader-${suffix}@test.local`,
       passwordHash: 'not-a-real-hash',
       displayName: 'Test Trader',
@@ -112,12 +184,14 @@ export async function createAccount(
       type: 'DEMO',
       currency,
       balance: '0',
-      settings: { create: {} },
+      tenantId,
+      settings: { create: { tenantId } },
     },
   });
   if (options.balance !== undefined) {
     await prisma.balanceLedger.create({
       data: {
+        tenantId,
         accountId: account.id,
         type: 'DEPOSIT',
         amount: options.balance,

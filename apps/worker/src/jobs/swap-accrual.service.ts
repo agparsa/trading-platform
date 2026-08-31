@@ -109,7 +109,14 @@ export class SwapAccrualService {
       }
 
       try {
-        await this.postAccrual(position.id, position.accountId, amount, forDate, nights);
+        await this.postAccrual(
+          position.id,
+          position.accountId,
+          position.tenantId,
+          amount,
+          forDate,
+          nights,
+        );
         accrued += 1;
       } catch (error) {
         this.logger.error(
@@ -133,6 +140,7 @@ export class SwapAccrualService {
   private async postAccrual(
     positionId: string,
     accountId: string,
+    tenantId: string,
     amount: Money,
     forDate: string,
     nights: number,
@@ -153,6 +161,7 @@ export class SwapAccrualService {
 
       await tx.balanceLedger.create({
         data: {
+          tenantId,
           accountId,
           type: 'SWAP',
           amount: amount.round().toString(),

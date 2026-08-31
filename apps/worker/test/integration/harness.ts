@@ -30,7 +30,11 @@ export function createTestClient(): PrismaClient {
  * us; RESTART IDENTITY keeps sequence values from drifting between runs so a
  * failure is reproducible.
  */
-export async function resetDatabase(prisma: PrismaClient): Promise<void> {
+/** The tenant every worker test runs inside. Fixed, for the reasons in the API harness. */
+export const DEFAULT_TENANT_ID = '00000000-0000-4000-8000-0000000000ff';
+export const DEFAULT_TENANT_SLUG = 'test-tenant';
+
+export async function resetDatabase(prisma: PrismaClient): Promise<string> {
   /**
    * `audit_logs` refuses UPDATE, DELETE and TRUNCATE — see the
    * `audit_log_append_only` migration. Emptying it between runs therefore takes
@@ -46,7 +50,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
         trades, executions, position_events, positions,
         order_events, orders, account_settings,
         reconciliation_findings, reconciliation_runs, notifications, accounts,
-        system_settings,
+        system_settings, tenants,
         invite_redemptions, invite_codes,
         totp_recovery_codes, refresh_tokens, users, idempotency_keys
       RESTART IDENTITY CASCADE
@@ -54,6 +58,11 @@ export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   } finally {
     await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs ENABLE TRIGGER USER`);
   }
+
+  const tenant = await prisma.tenant.create({
+    data: { id: DEFAULT_TENANT_ID, slug: DEFAULT_TENANT_SLUG, name: 'Test Tenant' },
+  });
+  return tenant.id;
 }
 
 export async function seedSymbols(prisma: PrismaClient): Promise<void> {
@@ -96,6 +105,7 @@ export async function createAccount(
   const suffix = Math.floor(Number(process.hrtime.bigint() % 1_000_000_000n));
   const user = await prisma.user.create({
     data: {
+      tenantId: DEFAULT_TENANT_ID,
       email: options.email ?? `trader-${suffix}@test.local`,
       passwordHash: 'not-a-real-hash',
       displayName: 'Test Trader',
@@ -111,12 +121,14 @@ export async function createAccount(
       type: 'DEMO',
       currency,
       balance: '0',
-      settings: { create: {} },
+      tenantId: DEFAULT_TENANT_ID,
+      settings: { create: { tenantId: DEFAULT_TENANT_ID } },
     },
   });
   if (options.balance !== undefined) {
     await prisma.balanceLedger.create({
       data: {
+        tenantId: DEFAULT_TENANT_ID,
         accountId: account.id,
         type: 'DEPOSIT',
         amount: options.balance,

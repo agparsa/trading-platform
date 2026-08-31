@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
+import { currentTenant, requireTenantId } from '../tenancy/tenant-context';
 
 export const TradingState = {
   ENABLED: 'TRADING_ENABLED',
@@ -16,8 +17,17 @@ export interface KillSwitchState {
   changedByUserId: string | null;
 }
 
-/** The single row this lives in. One switch, one name, no ambiguity about which. */
+/** The setting these rows live under. One name, no ambiguity about which. */
 const KEY = 'trading';
+
+/**
+ * The cache key for the platform-wide halt, whose row has a null `tenantId`.
+ *
+ * A string rather than `null` because a Map keyed on `string | null` reads
+ * badly at every use, and because a halt that applies to everybody deserves to
+ * be named rather than represented by an absence.
+ */
+const PLATFORM = '__platform__';
 
 /**
  * The global halt.
@@ -50,12 +60,7 @@ export class KillSwitchService {
    * propagates on the next refresh, which is why `refresh()` is called at boot
    * and the state is re-read whenever it is set.
    */
-  private cached: KillSwitchState = {
-    state: TradingState.ENABLED,
-    reason: null,
-    changedAt: null,
-    changedByUserId: null,
-  };
+  private readonly cached = new Map<string, KillSwitchState>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -66,22 +71,43 @@ export class KillSwitchService {
     await this.refresh();
   }
 
-  /** Re-reads the stored state. Cheap, and safe to call often. */
-  async refresh(): Promise<KillSwitchState> {
-    const row = await this.prisma.systemSetting.findUnique({ where: { key: KEY } });
-    if (row === null) return this.cached;
-    const value = row.value as Partial<KillSwitchState> | null;
-    this.cached = {
-      state: value?.state === TradingState.DISABLED ? TradingState.DISABLED : TradingState.ENABLED,
-      reason: value?.reason ?? null,
-      changedAt: row.updatedAt.toISOString(),
-      changedByUserId: row.updatedByUserId,
-    };
-    return this.cached;
+  /**
+   * Re-reads every stored halt: each tenant's, and the platform's.
+   *
+   * One query rather than one per tenant. There are few of these rows — at most
+   * one per tenant plus one — and reading them together means a process cannot
+   * hold a halt for tenant A and a stale absence for tenant B.
+   */
+  async refresh(): Promise<void> {
+    const rows = await this.prisma.systemSetting.findMany({ where: { key: KEY } });
+    this.cached.clear();
+    for (const row of rows) {
+      const value = row.value as Partial<KillSwitchState> | null;
+      this.cached.set(row.tenantId ?? PLATFORM, {
+        state:
+          value?.state === TradingState.DISABLED ? TradingState.DISABLED : TradingState.ENABLED,
+        reason: value?.reason ?? null,
+        changedAt: row.updatedAt.toISOString(),
+        changedByUserId: row.updatedByUserId,
+      });
+    }
   }
 
+  /**
+   * The halt in force for the caller's tenant.
+   *
+   * **A platform-wide halt wins.** If the platform is halted, it does not matter
+   * what a tenant has set: the reason the platform switch exists is that
+   * something is wrong below the level any tenant can see, and a tenant being
+   * able to trade through it would defeat it.
+   */
   current(): KillSwitchState {
-    return this.cached;
+    const platform = this.cached.get(PLATFORM);
+    if (platform?.state === TradingState.DISABLED) return platform;
+
+    const tenant = currentTenant();
+    const mine = tenant === undefined ? undefined : this.cached.get(tenant.tenantId);
+    return mine ?? platform ?? ENABLED;
   }
 
   /**
@@ -93,13 +119,14 @@ export class KillSwitchService {
    * it.
    */
   assertMayOpenRisk(): void {
-    if (this.cached.state !== TradingState.DISABLED) return;
+    const state = this.current();
+    if (state.state !== TradingState.DISABLED) return;
     throw new DomainError(
       TradingErrorCode.TRADING_HALTED,
-      this.cached.reason === null
+      state.reason === null
         ? 'Trading is halted. Existing positions can still be closed.'
-        : `Trading is halted: ${this.cached.reason}. Existing positions can still be closed.`,
-      { state: this.cached.state },
+        : `Trading is halted: ${state.reason}. Existing positions can still be closed.`,
+      { state: state.state },
     );
   }
 
@@ -112,19 +139,29 @@ export class KillSwitchService {
    * an answer.
    */
   async set(actorId: string, state: TradingState, reason: string | null): Promise<KillSwitchState> {
-    const before = this.cached;
+    /**
+     * Halts the caller's own tenant, never the platform.
+     *
+     * The platform-wide row is read here and honoured, and there is deliberately
+     * no route that writes it: halting every firm on the platform is not a
+     * power that should sit behind the same permission as halting one's own.
+     * It is set by whoever runs the platform, out of band, and until there is a
+     * platform-operator role there is nothing here that could check for one.
+     */
+    const tenantId = requireTenantId();
+    const before = this.current();
     const row = await this.prisma.systemSetting.upsert({
-      where: { key: KEY },
-      create: { key: KEY, value: { state, reason }, updatedByUserId: actorId },
+      where: { tenantId_key: { tenantId, key: KEY } },
+      create: { key: KEY, tenantId, value: { state, reason }, updatedByUserId: actorId },
       update: { value: { state, reason }, updatedByUserId: actorId },
     });
 
-    this.cached = {
+    this.cached.set(tenantId, {
       state,
       reason,
       changedAt: row.updatedAt.toISOString(),
       changedByUserId: actorId,
-    };
+    });
 
     if (state === TradingState.DISABLED) {
       this.logger.error({ actorId, reason }, 'TRADING HALTED. Closing remains available.');
@@ -142,6 +179,13 @@ export class KillSwitchService {
       after: { state, reason },
     });
 
-    return this.cached;
+    return this.current();
   }
 }
+
+const ENABLED: KillSwitchState = {
+  state: TradingState.ENABLED,
+  reason: null,
+  changedAt: null,
+  changedByUserId: null,
+};

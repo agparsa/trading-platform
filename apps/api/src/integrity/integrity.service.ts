@@ -4,6 +4,7 @@ import { detectAll, type ActivityWindow, type Signal } from '@tp/integrity-core'
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 export interface SignalSummary {
   id: string;
@@ -111,12 +112,14 @@ export class IntegrityService {
     if (existing === null) {
       const created = await this.prisma.integritySignal.create({
         data: {
+          tenantId: requireTenantId(),
           accountId,
           code: signal.code,
           severity: signal.severity,
           message: signal.message,
           events: {
             create: {
+              tenantId: requireTenantId(),
               type: 'RAISED',
               toStatus: 'OPEN',
               severity: signal.severity,
@@ -149,6 +152,7 @@ export class IntegrityService {
         message: signal.message,
         events: {
           create: {
+            tenantId: requireTenantId(),
             type: 'RECURRED',
             severity: signal.severity,
             message: signal.message,
@@ -222,6 +226,7 @@ export class IntegrityService {
         reviewedAt: new Date(),
         events: {
           create: {
+            tenantId: requireTenantId(),
             type: 'STATUS_CHANGED',
             fromStatus: existing.status,
             toStatus: status as never,

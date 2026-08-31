@@ -59,13 +59,37 @@ export class ReconciliationService {
    * the row already exists; otherwise one is created here.
    */
   async check(
-    options: { runId?: string; trigger?: string; requestedByUserId?: string } = {},
+    options: {
+      runId?: string;
+      trigger?: string;
+      requestedByUserId?: string;
+      /**
+       * Restricts the sweep to one tenant.
+       *
+       * Absent means every tenant, which is what the scheduled run does: a
+       * reconciliation that only checked the tenant that happened to ask for it
+       * would leave every other one unchecked, and nobody would notice because
+       * the run would report itself clean.
+       */
+      tenantId?: string;
+    } = {},
   ): Promise<ReconciliationSummary> {
     const startedAt = Date.now();
+    /**
+     * A sweep across tenants still has to file its run row under one of them.
+     *
+     * The alternative — a nullable `tenantId` on `ReconciliationRun` — would
+     * mean the one table an operator reads during an incident is the one table
+     * with a special case in its scoping. So a scheduled sweep is recorded
+     * against the platform's default tenant, and a run somebody asked for is
+     * recorded against theirs.
+     */
+    const runTenantId = options.tenantId ?? (await this.defaultTenantId());
     const run =
       options.runId === undefined
         ? await this.prisma.reconciliationRun.create({
             data: {
+              tenantId: runTenantId,
               trigger: options.trigger ?? 'SCHEDULED',
               requestedByUserId: options.requestedByUserId ?? null,
             },
@@ -77,7 +101,8 @@ export class ReconciliationService {
 
     try {
       const accounts = await this.prisma.account.findMany({
-        select: { id: true, number: true, balance: true, currency: true },
+        where: options.tenantId === undefined ? {} : { tenantId: options.tenantId },
+        select: { id: true, number: true, balance: true, currency: true, tenantId: true },
         orderBy: { createdAt: 'asc' },
       });
 
@@ -97,7 +122,13 @@ export class ReconciliationService {
         critical += report.findings.filter((f) => f.severity === Severity.CRITICAL).length;
 
         for (const found of report.findings) {
-          const outcome = await this.record(run.id, account.id, report.number, found);
+          const outcome = await this.record(
+            run.id,
+            account.id,
+            account.tenantId,
+            report.number,
+            found,
+          );
           if (outcome === 'raised') raised += 1;
           else recurred += 1;
         }
@@ -339,9 +370,25 @@ export class ReconciliationService {
    * inconsistency sit behind a tick somebody put there in good faith when it had
    * genuinely gone away.
    */
+  /**
+   * The tenant a platform-wide sweep files its run under.
+   *
+   * Looked up rather than configured: a constant would be a second place the
+   * default tenant's identity is written down, and the two would disagree the
+   * first time somebody renamed it.
+   */
+  private async defaultTenantId(): Promise<string> {
+    const tenant = await this.prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' } });
+    if (tenant === null) {
+      throw new Error('Reconciliation cannot run: the platform has no tenants.');
+    }
+    return tenant.id;
+  }
+
   private async record(
     runId: string,
     accountId: string,
+    tenantId: string,
     number: string,
     found: Finding,
   ): Promise<'raised' | 'recurred'> {
@@ -369,6 +416,7 @@ export class ReconciliationService {
     if (existing === null) {
       await this.prisma.reconciliationFinding.create({
         data: {
+          tenantId,
           runId,
           accountId,
           code: found.code,
@@ -411,6 +459,7 @@ export class ReconciliationService {
      */
     await this.prisma.riskEvent.create({
       data: {
+        tenantId,
         accountId,
         rule: 'reconciliation',
         code: found.code,

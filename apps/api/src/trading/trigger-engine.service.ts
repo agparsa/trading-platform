@@ -27,6 +27,7 @@ import { AccountStateService } from './account-state.service';
 import { PositionsService } from './positions.service';
 import { OrdersService } from './orders.service';
 import type { Env } from '../config/env.schema';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 /**
  * Closes positions from price movement.
@@ -402,6 +403,7 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
 
       await this.prisma.riskEvent.create({
         data: {
+          tenantId: requireTenantId(),
           accountId,
           rule: 'stop-out',
           code: 'STOP_OUT',

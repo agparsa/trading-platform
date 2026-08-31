@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountStateService } from './account-state.service';
 import type { Env } from '../config/env.schema';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 /**
  * Periodic account snapshots.
@@ -99,6 +100,7 @@ export class SnapshotService implements OnApplicationBootstrap, OnApplicationShu
           // corrects the row rather than creating a second one for the instant.
           where: { accountId_takenAt: { accountId, takenAt: at } },
           create: {
+            tenantId: requireTenantId(),
             accountId,
             takenAt: at,
             balance: state.balance.toString(),

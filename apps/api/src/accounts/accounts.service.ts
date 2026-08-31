@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AccountAccessService } from './account-access.service';
 import { LedgerService } from './ledger.service';
 import type { Env } from '../config/env.schema';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 export interface AccountSummary {
   id: string;
@@ -60,7 +61,8 @@ export class AccountsService {
         currency,
         leverage,
         balance: '0',
-        settings: { create: {} },
+        settings: { create: { tenantId: requireTenantId() } },
+        tenantId: requireTenantId(),
       },
     });
 

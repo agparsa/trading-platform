@@ -5,6 +5,7 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { TokenService } from '../../auth/token.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { RequestWithContext } from '../request-context';
+import { currentTenant } from '../../tenancy/tenant-context';
 
 /**
  * Global authentication guard.
@@ -39,6 +40,24 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const claims = await this.tokens.verifyAccessToken(header.slice('Bearer '.length).trim());
+
+    /**
+     * The token's tenant must be the one this hostname serves.
+     *
+     * The middleware has already put a tenant in scope from the hostname; the
+     * token carries the tenant it was minted for. If they disagree, the token
+     * was issued somewhere else — either an attack, or a deployment where one
+     * firm's hostname is answering with another's certificate. Neither is a
+     * request to serve, and neither is a case where guessing which one is right
+     * would help.
+     *
+     * Answered as "invalid token" rather than "wrong tenant": telling a caller
+     * that their token is valid *somewhere* is telling them where to try next.
+     */
+    const tenant = currentTenant();
+    if (tenant === undefined || claims.tid !== tenant.tenantId) {
+      throw new DomainError(TradingErrorCode.UNAUTHENTICATED, 'Invalid access token');
+    }
 
     const user = await this.prisma.user.findUnique({
       where: { id: claims.sub },

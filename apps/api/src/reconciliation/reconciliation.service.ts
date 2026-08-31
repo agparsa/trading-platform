@@ -5,6 +5,7 @@ import { AuditService } from '../common/audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueuePublisher } from '../jobs/queue-publisher.service';
 import { QueueName } from '../jobs/queues';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 /**
  * Reading reconciliation, and deciding what to do about it.
@@ -182,7 +183,7 @@ export class ReconciliationReadService {
     }
 
     const run = await this.prisma.reconciliationRun.create({
-      data: { trigger: 'MANUAL', requestedByUserId: actorId },
+      data: { tenantId: requireTenantId(), trigger: 'MANUAL', requestedByUserId: actorId },
     });
 
     await this.queues.publish(

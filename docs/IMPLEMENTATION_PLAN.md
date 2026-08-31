@@ -96,7 +96,7 @@ production database. Both need the operator to decide and act.
 
 ---
 
-## Phase 1 — Multi-tenancy · ~3–4 weeks · **the hinge of the whole plan**
+## Phase 1 — Multi-tenancy · ~3–4 weeks · **the hinge of the whole plan** · _schema, enforcement and isolation done; see "What actually happened" below_
 
 The largest single item and the one everything else waits on.
 
@@ -139,6 +139,44 @@ trivial; code migration is not.
 **Done when:** every tenant-scoped model carries `tenantId`, the extension throws
 on an unscoped query, RLS is enabled, the cross-tenant probes pass, and the
 existing 1,095 tests still pass.
+
+### What actually happened
+
+Done:
+
+- **Schema.** `Tenant`, `TenantStatus`, and `tenantId` on 26 models — every one
+  that is owned. `SystemSetting` carries a nullable one, where null means the
+  platform. `Symbol`, `SymbolSpec`, `MarketSession` and `Candle` stay global.
+- **Uniques became per-tenant** where identity is per-firm: `User.email`,
+  `Account.number`, `RiskRuleConfig.name`, `IdempotencyKey`, `Notification`'s
+  dedupe key. High-entropy secrets stayed global.
+- **The migration is hand-written and non-destructive** — nullable column,
+  backfill, then NOT NULL, because the generated version adds a NOT NULL column
+  to twenty-six populated tables and fails on the first row.
+- **Enforcement, layer one.** A Prisma extension that injects the tenant into
+  every filter, stamps every create including nested ones, throws when a payload
+  names a different tenant, and throws when there is no tenant at all. Its model
+  list is checked against the schema by a test.
+- **Enforcement, layer two.** RLS policies on all 27 tables, verified against a
+  non-owner role: no `app.tenant_id` reads zero rows; setting it reads exactly
+  one tenant's. Not `FORCE`d — see [multi-tenancy.md](./multi-tenancy.md) §6.
+- **Derivation.** The tenant comes from the hostname before authentication and
+  from the token's signed `tid` after, and the guard refuses a token whose
+  tenant is not the one the hostname serves. The WebSocket gateway makes the
+  same check on the handshake.
+- **Tests.** 18 isolation tests and an adversarial probe that creates a second
+  tenant on its own hostname. 1,169 tests green, 29 pentest probes refused,
+  14 smoke checks against a booted application.
+
+Not done, and named as such in
+[multi-tenancy.md](./multi-tenancy.md) §9: RLS is not forced; instrument terms
+are still global; the platform-wide kill switch cannot be set through the API;
+roles are still compile-time constants; the worker is cross-tenant by
+construction rather than scoped per tenant.
+
+**Remaining Phase 1 work, in order:** run the application as a non-owner
+database role and force RLS; move commercial instrument terms to a per-tenant
+table; give the worker a per-tenant scope.
 
 ---
 

@@ -13,6 +13,7 @@ import { EmailPort } from './email/email.port';
 import { InvitesService } from './invites.service';
 import type { Env } from '../config/env.schema';
 import type { TokenPair } from './token.types';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 export interface RegisterInput {
   email: string;
@@ -105,7 +106,9 @@ export class AuthService {
     const passwordHash = await this.passwords.hash(input.password);
     const verificationToken = randomBytes(32).toString('base64url');
 
-    const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
+    const existing = await this.prisma.user.findUnique({
+      where: { tenantId_email: { tenantId: requireTenantId(), email: input.email } },
+    });
     if (existing !== null) {
       // Deliberately the same shape of response as a successful registration
       // would produce for the caller: see the controller. Enumerating registered
@@ -127,6 +130,7 @@ export class AuthService {
 
       const created = await tx.user.create({
         data: {
+          tenantId: requireTenantId(),
           email: input.email,
           passwordHash,
           displayName: input.displayName,
@@ -185,7 +189,9 @@ export class AuthService {
    * alone tells an attacker which addresses are registered.
    */
   async login(email: string, password: string, context: AuthContext = {}): Promise<LoginResult> {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({
+      where: { tenantId_email: { tenantId: requireTenantId(), email } },
+    });
 
     if (user === null) {
       await this.passwords.verify(await this.dummyHash, password);
@@ -381,7 +387,9 @@ export class AuthService {
    * turns it into an account-enumeration oracle.
    */
   async requestPasswordReset(email: string): Promise<void> {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({
+      where: { tenantId_email: { tenantId: requireTenantId(), email } },
+    });
     if (user === null) return;
 
     const token = randomBytes(32).toString('base64url');

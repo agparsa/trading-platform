@@ -11,6 +11,19 @@ import type { UserRole } from '@tp/shared-types';
 export interface AccessTokenClaims {
   /** Subject: the user id. */
   sub: string;
+  /**
+   * The tenant this token was minted for.
+   *
+   * Short because it is on every request, and the specification's rule is what
+   * it exists to satisfy: tenant identity comes from the authenticated context,
+   * never from the request. A signed claim is the only thing on a request that
+   * the holder cannot change.
+   *
+   * The guard checks it against the tenant the hostname resolved to. A token
+   * minted for one tenant and presented on another's hostname is either an
+   * attack or a misconfiguration, and refusing both is right.
+   */
+  tid: string;
   email: string;
   role: UserRole;
   /**

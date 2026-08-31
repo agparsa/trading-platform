@@ -167,15 +167,24 @@ findings — otherwise the probe would prove nothing — and confirms the write 
 refused. Reverting the permission makes that probe report a breach, which is how
 the probe was checked.
 
-### F-4 — No tenant isolation · **High, structural**
+### F-4 — No tenant isolation · **High, structural** · _largely fixed_
 
-There is no tenancy, so the specification's rule that "Tenant A user MUST NOT
-access Tenant B data" is currently vacuous rather than satisfied. It becomes a
-live requirement the moment a second tenant exists, and retrofitting isolation
-into 84 routes after the fact is how isolation bugs happen. Defence must be
-layered: a Prisma extension that refuses an unscoped query on a tenant-scoped
-model, **and** Postgres row-level security beneath it, so a bug in one is
-contained by the other.
+There is now a `Tenant` model and `tenantId` on 26 owned models, enforced in two
+layers: a Prisma extension that injects the tenant into every query and refuses
+to run without one, and Postgres row-level security beneath it. The tenant is
+derived from the hostname before authentication and from a signed token claim
+after, and never from anything else on the request.
+
+Verified rather than asserted: 18 isolation tests, and a pentest probe that
+creates a second tenant on its own hostname, promotes its user to `ADMIN` — the
+role that is _meant_ to see everybody — and confirms the first tenant's users,
+accounts and audit trail are absent. Disabling the tenant filter makes that
+probe report a breach.
+
+**Still open:** RLS is enabled but not `FORCE`d, so it constrains every database
+role except the application's own, which owns the tables. Closing that needs a
+deployment change (a non-owner role) and per-connection tenant plumbing.
+`multi-tenancy.md` §6 has the reasoning and §9 the rest of the list.
 
 ### F-5 — Roles are compile-time constants · **Low today, High under tenancy**
 

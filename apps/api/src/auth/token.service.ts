@@ -5,6 +5,7 @@ import { JwtService } from '@nestjs/jwt';
 import { DomainError, TradingErrorCode, type UserRole } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Env } from '../config/env.schema';
+import { requireTenantId } from '../tenancy/tenant-context';
 import type {
   AccessTokenClaims,
   RefreshTokenClaims,
@@ -45,6 +46,10 @@ export class TokenService {
   ): Promise<TokenPair> {
     const accessClaims: AccessTokenClaims = {
       sub: user.id,
+      // From the ambient scope, never from the caller: this is the claim the
+      // whole isolation boundary rests on, and a parameter would be a way for a
+      // call site to mint a token for somebody else's tenant.
+      tid: requireTenantId(),
       email: user.email,
       role: user.role,
       fam: familyId,
@@ -73,6 +78,7 @@ export class TokenService {
 
     await this.prisma.refreshToken.create({
       data: {
+        tenantId: requireTenantId(),
         id: tokenId,
         userId: user.id,
         familyId,

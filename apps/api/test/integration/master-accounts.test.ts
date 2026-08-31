@@ -13,6 +13,7 @@ import {
   hasTestDatabase,
   resetDatabase,
   seedTradingSymbols,
+  DEFAULT_TENANT_ID,
 } from './harness';
 import { buildTradingStack, type TradingStack } from './trading-stack';
 
@@ -357,7 +358,9 @@ suite('Master accounts (integration)', () => {
     });
 
     const gateway = new RealtimeGateway(
-      { verifyAccessToken: async () => ({ sub: operator.userId }) } as never,
+      {
+        verifyAccessToken: async () => ({ sub: operator.userId, tid: DEFAULT_TENANT_ID }),
+      } as never,
       prisma as unknown as PrismaService,
       {} as never,
       {} as never,
@@ -365,10 +368,11 @@ suite('Master accounts (integration)', () => {
       {} as never,
       {} as never,
       new MetricsService(),
+      { forHost: async () => ({ tenantId: DEFAULT_TENANT_ID, slug: 'test-tenant' }) } as never,
     );
     const socket = {
       state: initialState(),
-      handshake: { auth: { token: 'stand-in-for-a-real-token' } },
+      handshake: { auth: { token: 'stand-in-for-a-real-token' }, headers: {} },
       emit: () => true,
     } as unknown as TradingSocket;
 
@@ -383,7 +387,7 @@ suite('Master accounts (integration)', () => {
     await masters.revokeLink(operator.userId, master.id, alice.accountId);
     const afterRevoke = {
       state: initialState(),
-      handshake: { auth: { token: 'stand-in-for-a-real-token' } },
+      handshake: { auth: { token: 'stand-in-for-a-real-token' }, headers: {} },
       emit: () => true,
     } as unknown as TradingSocket;
     await gateway.handleConnection(afterRevoke);

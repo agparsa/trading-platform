@@ -6,6 +6,9 @@ import { initialState, type TradingSocket } from './socket.types';
 import { CandleBus } from '../market/candle-bus';
 import { TickBus } from '../market/tick-bus';
 
+/** The tenant every socket in this file authenticates into. */
+const TENANT_ID = '00000000-0000-4000-8000-0000000000ff';
+
 /**
  * Subscription routing.
  *
@@ -97,6 +100,7 @@ function buildGateway(
     events as never,
     redis as never,
     metrics as never,
+    { forHost: async () => ({ tenantId: TENANT_ID, slug: 'test' }) } as never,
   );
   return { gateway, ticks, candles };
 }

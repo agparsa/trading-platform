@@ -12,7 +12,14 @@ import {
 } from '@nestjs/websockets';
 import type { Server } from 'socket.io';
 import { z } from 'zod';
-import { isDomainError, PUBLIC_CHANNELS, WsChannel, type WsEvent } from '@tp/shared-types';
+import {
+  DomainError,
+  TradingErrorCode,
+  isDomainError,
+  PUBLIC_CHANNELS,
+  WsChannel,
+  type WsEvent,
+} from '@tp/shared-types';
 import type { Tick } from '@tp/market-core';
 import { TokenService } from '../auth/token.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -24,6 +31,8 @@ import { RedisService } from '../redis/redis.service';
 import { DOMAIN_EVENT_CHANNEL, EventsService, type DomainEventEnvelope } from './events.service';
 import { rateLimits, socketCorsOrigins } from '../config/env.schema';
 import { initialState, type TradingSocket } from './socket.types';
+import { TenantResolver } from '../tenancy/tenant-resolver.service';
+import { withTenant } from '../tenancy/tenant-context';
 
 const subscribeSchema = z
   .object({
@@ -123,6 +132,7 @@ export class RealtimeGateway
     private readonly events: EventsService,
     private readonly redis: RedisService,
     private readonly metrics: MetricsService,
+    private readonly tenants: TenantResolver,
   ) {}
 
   async afterInit(): Promise<void> {
@@ -225,6 +235,20 @@ export class RealtimeGateway
 
     try {
       const claims = await this.tokens.verifyAccessToken(token);
+
+      /**
+       * The same check the HTTP guard makes: the token's tenant must be the one
+       * this hostname serves.
+       *
+       * A socket carries no request and runs no middleware, so the tenant is
+       * resolved here from the handshake's Host header and then verified
+       * against the signed claim. Skipping it and trusting `tid` alone would
+       * make the socket the one door where a token from another tenant works.
+       */
+      const tenant = await this.tenants.forHost(client.handshake.headers.host);
+      if (claims.tid !== tenant.tenantId) {
+        throw new DomainError(TradingErrorCode.UNAUTHENTICATED, 'Invalid access token');
+      }
       /**
        * Two ways to reach an account, resolved the same way the REST resolver
        * resolves them: the ones this user owns, and the ones an active link
@@ -236,17 +260,20 @@ export class RealtimeGateway
        * always was for ownership, and the reconnect contract in
        * docs/websocket.md is what refreshes it.
        */
-      const [owned, linked] = await Promise.all([
-        this.prisma.account.findMany({ where: { userId: claims.sub }, select: { id: true } }),
-        this.prisma.masterAccountLink.findMany({
-          where: {
-            status: 'ACTIVE',
-            master: { userId: claims.sub, status: 'ACTIVE' },
-          },
-          select: { accountId: true },
-        }),
-      ]);
+      const [owned, linked] = await withTenant(tenant, () =>
+        Promise.all([
+          this.prisma.account.findMany({ where: { userId: claims.sub }, select: { id: true } }),
+          this.prisma.masterAccountLink.findMany({
+            where: {
+              status: 'ACTIVE',
+              master: { userId: claims.sub, status: 'ACTIVE' },
+            },
+            select: { accountId: true },
+          }),
+        ]),
+      );
       client.state.userId = claims.sub;
+      client.state.tenantId = tenant.tenantId;
       // `exp` is in seconds, as the JWT standard writes it.
       client.state.tokenExpiresAt = claims.exp === undefined ? null : claims.exp * 1000;
       for (const account of owned) client.state.accountIds.add(account.id);

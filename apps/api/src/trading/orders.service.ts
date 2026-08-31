@@ -45,6 +45,7 @@ import type { Tick } from '@tp/market-core';
 import { ConfigService } from '@nestjs/config';
 import { Inject } from '@nestjs/common';
 import type { Env } from '../config/env.schema';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 /**
  * Carries a risk rejection out of the transaction that discovered it.
@@ -223,6 +224,7 @@ export class OrdersService {
 
       const order = await tx.order.create({
         data: {
+          tenantId: requireTenantId(),
           accountId: account.id,
           symbolId,
           side: request.side,
@@ -241,18 +243,21 @@ export class OrdersService {
       await tx.orderEvent.createMany({
         data: [
           {
+            tenantId: requireTenantId(),
             orderId: order.id,
             type: 'CREATED',
             toStatus: OrderStatus.NEW,
             payload: { volume: volume.toString() },
           },
           {
+            tenantId: requireTenantId(),
             orderId: order.id,
             type: 'ACCEPTED',
             fromStatus: OrderStatus.NEW,
             toStatus: OrderStatus.ACCEPTED,
           },
           {
+            tenantId: requireTenantId(),
             orderId: order.id,
             type: 'FILLED',
             fromStatus: OrderStatus.ACCEPTED,
@@ -264,6 +269,7 @@ export class OrdersService {
 
       await tx.execution.create({
         data: {
+          tenantId: requireTenantId(),
           orderId: order.id,
           accountId: account.id,
           side: request.side,
@@ -368,6 +374,7 @@ export class OrdersService {
   ) {
     const position = await tx.position.create({
       data: {
+        tenantId: requireTenantId(),
         accountId: params.accountId,
         symbolId: params.symbolId,
         side: params.side,
@@ -386,6 +393,7 @@ export class OrdersService {
     await tx.order.update({ where: { id: params.orderId }, data: { positionId: position.id } });
     await tx.positionEvent.create({
       data: {
+        tenantId: requireTenantId(),
         positionId: position.id,
         type: 'OPENED',
         toStatus: 'OPEN',
@@ -487,6 +495,7 @@ export class OrdersService {
     const order = await this.prisma.$transaction(async (tx) => {
       const created = await tx.order.create({
         data: {
+          tenantId: requireTenantId(),
           accountId: account.id,
           symbolId,
           side: request.side,
@@ -504,12 +513,14 @@ export class OrdersService {
       await tx.orderEvent.createMany({
         data: [
           {
+            tenantId: requireTenantId(),
             orderId: created.id,
             type: 'CREATED',
             toStatus: OrderStatus.NEW,
             payload: { volume: volume.toString(), price: request.price, type: request.type },
           },
           {
+            tenantId: requireTenantId(),
             orderId: created.id,
             type: 'ACCEPTED',
             fromStatus: OrderStatus.NEW,
@@ -676,6 +687,7 @@ export class OrdersService {
           await tx.orderEvent.createMany({
             data: [
               {
+                tenantId: requireTenantId(),
                 orderId: order.id,
                 type: 'TRIGGERED',
                 fromStatus: OrderStatus.PENDING,
@@ -683,6 +695,7 @@ export class OrdersService {
                 payload: { restingPrice, bid: tick.bid, ask: tick.ask },
               },
               {
+                tenantId: requireTenantId(),
                 orderId: order.id,
                 type: 'FILLED',
                 fromStatus: OrderStatus.TRIGGERED,
@@ -700,6 +713,7 @@ export class OrdersService {
           });
           await tx.execution.create({
             data: {
+              tenantId: requireTenantId(),
               orderId: order.id,
               accountId: order.accountId,
               side,
@@ -811,6 +825,7 @@ export class OrdersService {
       });
       await tx.orderEvent.create({
         data: {
+          tenantId: requireTenantId(),
           orderId,
           type: 'REJECTED',
           fromStatus: OrderStatus.TRIGGERED,
@@ -847,6 +862,7 @@ export class OrdersService {
     });
     await this.prisma.orderEvent.create({
       data: {
+        tenantId: requireTenantId(),
         orderId,
         type: 'EXPIRED',
         fromStatus: OrderStatus.PENDING,
@@ -900,12 +916,14 @@ export class OrdersService {
       await tx.orderEvent.createMany({
         data: [
           {
+            tenantId: requireTenantId(),
             orderId,
             type: 'CANCEL_REQUESTED',
             fromStatus: OrderStatus.PENDING,
             toStatus: OrderStatus.CANCEL_REQUESTED,
           },
           {
+            tenantId: requireTenantId(),
             orderId,
             type: 'CANCELLED',
             fromStatus: OrderStatus.CANCEL_REQUESTED,
@@ -1022,6 +1040,7 @@ export class OrdersService {
       });
       await tx.orderEvent.create({
         data: {
+          tenantId: requireTenantId(),
           orderId: request.orderId,
           type: 'MODIFIED',
           fromStatus: OrderStatus.MODIFY_REQUESTED,
@@ -1219,6 +1238,7 @@ export class OrdersService {
     await this.prisma.riskEvent
       .create({
         data: {
+          tenantId: requireTenantId(),
           accountId,
           rule: first.rule,
           code: first.code,

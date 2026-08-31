@@ -125,6 +125,26 @@ export const envSchema = z
     /** How long a minted invite code stays usable, unless one is minted with its own. */
     INVITE_CODE_TTL_HOURS: z.coerce.number().int().min(1).default(168),
 
+    /**
+     * The tenant a request falls back to when no tenant claims its hostname.
+     *
+     * With one tenant that is every request, and the fallback is what makes a
+     * single-tenant deployment work with no configuration at all.
+     */
+    TENANT_DEFAULT_SLUG: z.string().min(1).default('default'),
+    /**
+     * Refuse a request whose hostname no tenant claims, rather than falling back.
+     *
+     * Off by default because a fresh checkout has one tenant and no hostname.
+     * **Turn it on the moment a second tenant exists**: until then the fallback
+     * is a convenience, and after that it is a way of serving one firm's data to
+     * a request that was meant for another.
+     */
+    TENANT_HOST_STRICT: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+
     DEFAULT_ACCOUNT_CURRENCY: z.string().length(3).default('USD'),
     // Virtual funds credited to a new demo account, posted as a real DEPOSIT
     // ledger entry. Set to '0' to open demo accounts unfunded.

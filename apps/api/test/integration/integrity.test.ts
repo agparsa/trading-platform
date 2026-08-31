@@ -9,6 +9,7 @@ import {
   hasTestDatabase,
   resetDatabase,
   seedTradingSymbols,
+  DEFAULT_TENANT_ID,
 } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
@@ -64,6 +65,7 @@ suite('Integrity engine (integration)', () => {
     for (let i = 0; i < count; i += 1) {
       await prisma.order.create({
         data: {
+          tenantId: DEFAULT_TENANT_ID,
           accountId,
           symbolId: symbol.id,
           side: 'BUY',

@@ -11,6 +11,16 @@ import type { WsChannel } from '@tp/shared-types';
  */
 export interface SocketState {
   userId: string | null;
+  /**
+   * The tenant this socket authenticated into, or null if it never did.
+   *
+   * A socket has no request and no middleware, so the tenant scope its database
+   * reads run in comes from here. It is set once, at connection, from the
+   * token's `tid` after that claim has been checked against the hostname the
+   * socket connected to — the same check the HTTP guard makes, for the same
+   * reason.
+   */
+  tenantId: string | null;
   /** Accounts this socket is allowed to receive private frames for. */
   accountIds: Set<string>;
   channels: Set<WsChannel>;
@@ -61,6 +71,7 @@ export type TradingSocket = Socket & { state: SocketState };
 export function initialState(): SocketState {
   return {
     userId: null,
+    tenantId: null,
     accountIds: new Set(),
     channels: new Set(),
     symbols: new Set(),

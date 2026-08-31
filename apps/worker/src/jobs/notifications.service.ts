@@ -44,7 +44,7 @@ export class NotificationsService {
 
     if (job.dedupeKey !== null) {
       const existing = await this.prisma.notification.findUnique({
-        where: { dedupeKey: job.dedupeKey },
+        where: { tenantId_dedupeKey: { tenantId: job.tenantId, dedupeKey: job.dedupeKey } },
         select: { id: true },
       });
       if (existing !== null) return { created: false, id: existing.id };
@@ -53,6 +53,7 @@ export class NotificationsService {
     try {
       const created = await this.prisma.notification.create({
         data: {
+          tenantId: job.tenantId,
           userId: job.userId,
           kind: job.kind,
           severity: job.severity,
@@ -70,7 +71,7 @@ export class NotificationsService {
       // producers notice the same thing at once. It is not a failure.
       if (isUniqueViolation(error) && job.dedupeKey !== null) {
         const winner = await this.prisma.notification.findUnique({
-          where: { dedupeKey: job.dedupeKey },
+          where: { tenantId_dedupeKey: { tenantId: job.tenantId, dedupeKey: job.dedupeKey } },
           select: { id: true },
         });
         return { created: false, id: winner?.id ?? null };
@@ -83,6 +84,7 @@ export class NotificationsService {
 }
 
 interface NotificationJob {
+  tenantId: string;
   userId: string;
   kind: string;
   severity: string;
@@ -111,16 +113,29 @@ export function parse(payload: unknown): NotificationJob | null {
     return trimmed === '' || trimmed.length > max ? null : trimmed;
   };
 
+  const tenantId = text('tenantId', 64);
   const userId = text('userId', 64);
   const kind = text('kind', 64);
   const title = text('title', 200);
   const body = text('body', 2_000);
-  if (userId === null || kind === null || title === null || body === null) return null;
+  /**
+   * A job with no tenant is refused rather than defaulted.
+   *
+   * The tempting alternative is to look the tenant up from `userId`. That would
+   * work, and it would mean a producer that forgot the field kept working — so
+   * nobody would ever fix it, and the day a job arrived with a userId from a
+   * different tenant than the one that raised it, the notification would be
+   * filed under the wrong firm with no trace of how.
+   */
+  if (tenantId === null || userId === null || kind === null || title === null || body === null) {
+    return null;
+  }
 
   const severity = text('severity', 16) ?? 'INFO';
   if (!['INFO', 'WARNING', 'CRITICAL'].includes(severity)) return null;
 
   return {
+    tenantId,
     userId,
     kind,
     severity,

@@ -6,6 +6,7 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import type { Env } from '../config/env.schema';
+import { requireTenantId } from '../tenancy/tenant-context';
 
 /**
  * Invitations to open an account.
@@ -90,6 +91,7 @@ export class InvitesService {
     const code = generateCode();
     const created = await this.prisma.inviteCode.create({
       data: {
+        tenantId: requireTenantId(),
         codeHash: hashCode(code),
         fingerprint: code.slice(0, FINGERPRINT_LENGTH),
         label: input.label ?? null,
@@ -225,7 +227,9 @@ export class InvitesService {
     inviteCodeId: string,
     userId: string,
   ): Promise<void> {
-    await tx.inviteRedemption.create({ data: { inviteCodeId, userId } });
+    await tx.inviteRedemption.create({
+      data: { tenantId: requireTenantId(), inviteCodeId, userId },
+    });
   }
 
   /** For the audit record on the resulting registration. */
