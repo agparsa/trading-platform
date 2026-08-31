@@ -13,6 +13,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { cn } from '@tp/ui';
+import { currencySymbol, markClasses, markFor } from '@/lib/instrument-marks';
 import { price as formatPrice, signedMoney } from '@/lib/format';
 import { RESOLUTIONS, RESOLUTION_LABEL, mergeBars, type ChartBar } from '@/lib/datafeed';
 import {
@@ -79,12 +80,29 @@ export function ChartPanel({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center justify-between border-b border-terminal-border px-3 py-1.5">
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-2">
+          {symbol === undefined ? null : (
+            <span
+              aria-hidden
+              title={markFor(symbol.code).label}
+              className={cn(
+                'inline-flex h-5 w-7 shrink-0 items-center justify-center rounded text-[11px] font-semibold leading-none ring-1 ring-inset',
+                markClasses(markFor(symbol.code).kind),
+              )}
+            >
+              {markFor(symbol.code).glyph}
+            </span>
+          )}
           <span className="text-sm font-medium text-terminal-text">{symbol?.code ?? '—'}</span>
+          {symbol === undefined ? null : (
+            <span className="text-[10px] uppercase tracking-wider text-terminal-muted">
+              {markFor(symbol.code).label}
+            </span>
+          )}
           <span className="numeric text-xs text-terminal-muted">
             {quote === undefined || symbol === undefined
               ? ''
-              : formatPrice(quote.bid, symbol.pricePrecision)}
+              : `${currencySymbol(symbol.quoteCurrency)} ${formatPrice(quote.bid, symbol.pricePrecision)}`}
           </span>
         </div>
         <div className="flex items-center gap-0.5">

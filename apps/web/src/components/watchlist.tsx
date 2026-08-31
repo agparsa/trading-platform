@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@tp/ui';
 import { percent, price as formatPrice } from '@/lib/format';
 import { useMarketStats, useQuoteSnapshot, type SymbolRow } from '@/lib/queries';
+import { markClasses, markFor } from '@/lib/instrument-marks';
 import { useRealtime, type Quote } from '@/lib/realtime-store';
 import { loadFavourites, saveFavourites, toggleFavourite, viewFor } from '@/lib/watchlist-prefs';
 import { EmptyState, inputClass } from './primitives';
@@ -157,6 +158,32 @@ interface DailyStatsRow {
   low: string | null;
 }
 
+/**
+ * The instrument's mark.
+ *
+ * Eight six-letter codes in one weight is a wall of text — XAUUSD, XAGUSD and
+ * AUDUSD are the same shape to an eye that is scanning rather than reading. The
+ * badge is what the eye lands on; the code beside it is what confirms.
+ *
+ * `aria-hidden`, because the code is right there in the same cell and a screen
+ * reader announcing "Gold XAUUSD" would be reading the row twice.
+ */
+function InstrumentBadge({ code }: { code: string }) {
+  const mark = markFor(code);
+  return (
+    <span
+      aria-hidden
+      title={mark.label}
+      className={cn(
+        'inline-flex h-4 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-semibold leading-none ring-1 ring-inset',
+        markClasses(mark.kind),
+      )}
+    >
+      {mark.glyph}
+    </span>
+  );
+}
+
 function WatchlistRow({
   symbol,
   quote,
@@ -209,6 +236,7 @@ function WatchlistRow({
           >
             ★
           </button>
+          <InstrumentBadge code={symbol.code} />
           <span className="font-medium text-terminal-text">{symbol.code}</span>
           {symbol.sessionOpen ? null : (
             <span
