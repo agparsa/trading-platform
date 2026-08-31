@@ -704,13 +704,24 @@ describe('the WebSocket path', () => {
     expect(conf).toMatch(/map \$http_upgrade \$connection_upgrade \{/);
   });
 
-  it('sends it to an upstream that is not pooling connections', () => {
-    const ws = /location \/ws \{([\s\S]*?)\n {4}\}/.exec(conf)?.[1] ?? '';
-    const upstream = /proxy_pass http:\/\/(\w+);/.exec(ws)?.[1];
-    expect(upstream).toBeDefined();
-    const block =
-      new RegExp(`upstream ${upstream} \\{([\\s\\S]*?)\\n {2}\\}`).exec(conf)?.[1] ?? '';
-    expect(block).not.toMatch(/keepalive/);
+  /**
+   * Resolved per request, through a variable, rather than by an `upstream`
+   * block resolved once at startup.
+   *
+   * A named upstream is looked up when Nginx starts and cached for the life of
+   * the process. Nginx then refuses to start at all while the API is down, and
+   * after a deploy recreates the API container it holds the old address and
+   * answers 502 until somebody restarts it by hand. Both happened here, twice,
+   * which is twice more than a deployment that must come back at three in the
+   * morning can afford.
+   */
+  it('resolves its upstream per request, so a redeploy needs no restart', () => {
+    expect(conf).not.toMatch(/^\s*upstream\s/m);
+    for (const found of conf.matchAll(/proxy_pass http:\/\/([^;\s]+);/g)) {
+      expect(found[1], `${found[0]} does not go through a variable`).toMatch(/^\$/);
+    }
+    // A variable upstream is only resolvable if there is a resolver to do it.
+    expect(conf).toMatch(/^\s*resolver\s+127\.0\.0\.11/m);
   });
 
   /**
