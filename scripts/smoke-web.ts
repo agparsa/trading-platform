@@ -348,6 +348,17 @@ async function main(): Promise<void> {
     await visit(page, '/terminal', { url: '/terminal' });
     await visit(page, '/account', { url: '/account', text: /Account/i });
     await visit(page, '/wallet', { url: '/wallet', text: /Wallet/i });
+    /**
+     * The deposit form must offer what the *server* has, not a list written in
+     * the client. A build that shipped card logos against a deployment with only
+     * a bank transfer would render fine and fail on submit.
+     */
+    const walletBody = await page.locator('body').innerText();
+    ok(
+      /Add money/i.test(walletBody) && /Bank transfer/i.test(walletBody),
+      'the wallet page offers the deposit method this deployment actually has',
+      walletBody.slice(0, 300),
+    );
     await visit(page, '/history', { url: '/history', text: /Trades/i });
     await visit(page, '/security', { url: '/security', text: /Two-factor/i });
     await visit(page, '/settings', { url: '/settings', text: /One-click/i });
@@ -372,6 +383,10 @@ async function main(): Promise<void> {
     await visit(adminPage, '/admin/instruments', { url: '/admin/instruments' });
     await visit(adminPage, '/admin/risk', { url: '/admin/risk' });
     await visit(adminPage, '/admin/reconciliation', { url: '/admin/reconciliation' });
+    await visit(adminPage, '/admin/payments', {
+      url: '/admin/payments',
+      text: /Awaiting confirmation/i,
+    });
     await visit(adminPage, '/admin/audit', { url: '/admin/audit' });
     await visit(adminPage, '/admin/roles', { url: '/admin/roles', text: /Administrator/i });
 

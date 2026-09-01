@@ -194,6 +194,8 @@ export const queryKeys = {
   permissions: ['permissions', 'me'] as const,
   wallets: ['wallets'] as const,
   walletTransactions: (walletId: string) => ['wallet-transactions', walletId] as const,
+  payments: ['payments'] as const,
+  paymentProviders: ['payment-providers'] as const,
 };
 
 /** Everything a trading event can invalidate, in one place. */
@@ -723,6 +725,66 @@ export function useWalletTransfer() {
       void client.invalidateQueries({ queryKey: ['wallet-transactions'] });
       void client.invalidateQueries({ queryKey: queryKeys.accounts });
       void client.invalidateQueries({ queryKey: queryKeys.accountState(input.accountId) });
+    },
+  });
+}
+
+export interface PaymentRow {
+  id: string;
+  provider: string;
+  amount: string;
+  currency: string;
+  status: string;
+  instructions: string | null;
+  failureReason: string | null;
+  expiresAt: string;
+  settledAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * What this deployment can take money through.
+ *
+ * Asked of the server rather than written down here. A client that offered a
+ * provider the server does not have would produce a form that fails on submit,
+ * and a deployment with only the manual bank transfer should say so plainly
+ * rather than showing card logos nothing behind them can charge.
+ */
+export function usePaymentProviders() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: queryKeys.paymentProviders,
+    queryFn: () => api.get<{ providers: string[] }>('/payments/providers'),
+    enabled: accessToken !== null,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function usePayments() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: queryKeys.payments,
+    queryFn: () => api.get<{ payments: PaymentRow[] }>('/payments'),
+    enabled: accessToken !== null,
+  });
+}
+
+/**
+ * Starts a deposit.
+ *
+ * Deliberately does **not** invalidate the wallet. Starting a payment moves no
+ * money — the balance changes when the provider says it has the funds, or when
+ * somebody here matches a bank transfer — and refetching the wallet on submit
+ * would suggest a screen where a number was about to go up.
+ */
+export function useStartPayment() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { provider: string; amount: string; currency: string }) =>
+      api.post<PaymentRow>('/payments', input, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.payments });
     },
   });
 }

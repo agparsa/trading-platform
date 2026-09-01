@@ -91,6 +91,8 @@ model Tenant {
   rolePermissions         RolePermission[]
   wallets                 Wallet[]
   walletTransactions      WalletTransaction[]
+  paymentIntents          PaymentIntent[]
+  paymentEvents           PaymentEvent[]
 
   @@map("tenants")
 }
@@ -163,8 +165,9 @@ model User {
   notificationPreferences NotificationPreference[]
   notificationSettings    NotificationSetting[]
 
-  wallets Wallet[]
-  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  paymentIntents PaymentIntent[]
+  wallets        Wallet[]
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   /// One address per tenant, not per platform: the same person may hold an account with two firms.
   @@unique([tenantId, email])
@@ -1734,4 +1737,105 @@ enum WalletTransactionType {
   /// A correction, always compensating an earlier row.
   ADJUSTMENT
   FEE
+}
+
+/// One attempt to put money into the platform.
+///
+/// Provider-agnostic on purpose. Every provider has its own vocabulary for what
+/// a payment is doing, and an adapter's job is to translate it into
+/// `PaymentStatus` — the platform must not learn a new set of words each time a
+/// different contract is signed. See `@tp/payments-core`.
+///
+/// The wallet is credited on exactly one transition, into SUCCEEDED, with an
+/// idempotency key derived from this row's id. A provider that delivers its
+/// success webhook three times therefore credits once, and a payment that fails
+/// after being credited raises an alarm rather than silently reversing — a real
+/// reversal is a chargeback, which is its own movement with its own record.
+model PaymentIntent {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+
+  /// Which adapter owns this payment. Also how a webhook is routed.
+  provider          String
+  /// The provider's own identifier, once it has told us one.
+  providerReference String? @map("provider_reference")
+
+  amount   Decimal @db.Decimal(28, 10)
+  currency String  @db.VarChar(3)
+
+  status PaymentStatus @default(REQUIRES_ACTION)
+
+  /// What the payer was told to do. Bank details, a reference to quote, a URL.
+  instructions String?
+
+  /// The wallet movement this payment produced, once it succeeded.
+  walletTransactionId String? @map("wallet_transaction_id") @db.Uuid
+
+  /// Why it ended the way it did, in words an operator can act on.
+  failureReason String? @map("failure_reason")
+
+  /// After this, an unpaid intent is expired by the maintenance job. A payment
+  /// that stays open forever is a queue nobody can ever finish reading.
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  settledAt DateTime? @map("settled_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  events PaymentEvent[]
+
+  @@unique([provider, providerReference])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status])
+  @@index([tenantId])
+  @@map("payment_intents")
+}
+
+enum PaymentStatus {
+  REQUIRES_ACTION
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+/// One webhook delivery, kept whether or not it changed anything.
+///
+/// `(provider, providerEventId)` is unique, and that constraint is the whole
+/// safety mechanism: a provider *will* deliver the same event twice — after a
+/// timeout, after a retry, after its own outage — and the second insert fails
+/// rather than the second credit succeeding.
+///
+/// Deliveries that changed nothing are stored too. An operator asking "did they
+/// tell us?" needs the answer to be the record rather than a log line that has
+/// rotated away.
+model PaymentEvent {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  intentId String @map("intent_id") @db.Uuid
+
+  provider        String
+  providerEventId String        @map("provider_event_id")
+  /// What the provider called it, verbatim.
+  providerStatus  String        @map("provider_status")
+  /// What that maps to here.
+  status          PaymentStatus
+
+  /// apply | ignore | alarm — what the state machine did with it.
+  outcome String
+  /// Why, when it was not applied.
+  note    String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  intent PaymentIntent @relation(fields: [intentId], references: [id], onDelete: Restrict)
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerEventId])
+  @@index([intentId, createdAt(sort: Desc)])
+  @@index([tenantId])
+  @@map("payment_events")
 }

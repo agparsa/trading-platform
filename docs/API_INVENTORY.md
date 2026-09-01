@@ -165,6 +165,29 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/operations/halt`          | `halt`         | SYSTEM_KILL_SWITCH |
 | `POST` | `/operations/resume`        | `resume`       | SYSTEM_KILL_SWITCH |
 
+### `payments/admin-payments.controller.ts` — base `/admin/payments`
+
+| Verb   | Path                         | Handler  | Requires          |
+| ------ | ---------------------------- | -------- | ----------------- |
+| `GET`  | `/admin/payments`            | `list`   | PAYMENTS_READ_ANY |
+| `GET`  | `/admin/payments/:id/events` | `events` | PAYMENTS_READ_ANY |
+| `POST` | `/admin/payments/:id/settle` | `settle` | PAYMENTS_CONFIRM  |
+
+### `payments/payments.controller.ts` — base `/payments`
+
+| Verb   | Path                  | Handler     | Requires        |
+| ------ | --------------------- | ----------- | --------------- |
+| `GET`  | `/payments/providers` | `available` | PAYMENTS_READ   |
+| `GET`  | `/payments`           | `mine`      | PAYMENTS_READ   |
+| `GET`  | `/payments/:id`       | `one`       | PAYMENTS_READ   |
+| `POST` | `/payments`           | `start`     | PAYMENTS_CREATE |
+
+### `payments/webhooks.controller.ts` — base `/webhooks/payments`
+
+| Verb   | Path                           | Handler   | Requires |
+| ------ | ------------------------------ | --------- | -------- |
+| `POST` | `/webhooks/payments/:provider` | `receive` | PUBLIC   |
+
 ### `permissions/permissions.controller.ts` — base `/permissions`
 
 | Verb   | Path                            | Handler          | Requires             |
@@ -234,7 +257,7 @@ handler is responsible for scoping the result to that user — which for
 | `GET`  | `/wallet/:id/transactions` | `transactions` | WALLET_READ     |
 | `POST` | `/wallet/transfer`         | `transfer`     | WALLET_TRANSFER |
 
-**106 routes:** 53 `GET`, 43 `POST`, 5 `PATCH`, 4 `DELETE`, 1 `PUT`.
+**114 routes:** 58 `GET`, 46 `POST`, 5 `PATCH`, 4 `DELETE`, 1 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

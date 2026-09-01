@@ -29,6 +29,7 @@ Every screen has an address now. The terminal did not change.
 | `/admin/accounts/:id`   | one account, with its owner one click away                |
 | `/admin/instruments`    | what the platform trades, and on what terms               |
 | `/admin/risk`           | accounts at risk, exposure, risk events                   |
+| `/admin/payments`       | deposits waiting for a person, and every one before them  |
 | `/admin/reconciliation` | runs and findings                                         |
 | `/admin/roles`          | what each role may do                                     |
 | `/admin/audit`          | the audit trail                                           |
@@ -36,9 +37,21 @@ Every screen has an address now. The terminal did not change.
 `/wallet` arrived with phase 4 and not before. Until there was a wallet the link
 was deliberately absent — §50 says not to build UI for functionality that does
 not exist, and a page reading "Balance: —" is a promise the platform cannot keep.
-It still has no deposit button, for the same reason: there is no payment
-provider, and money arrives today by an operator recording a bank transfer, which
-is an administrative action with its own screen.
+
+It gained a deposit form in phase 5, and the same rule shaped it. The form offers
+whatever `GET /payments/providers` returns, which on this build is a bank
+transfer and nothing else: no card logos, because a button for a provider nobody
+has a contract with is a button that fails on submit. A deployment with no
+provider configured gets a sentence saying so rather than a disabled form.
+
+Nothing on that page moves a balance. Starting a deposit is an instruction to the
+payer; the money appears when it actually arrives. The instructions and the
+reference stay visible in the payment list rather than being shown once, because
+the reference is the only thing tying a line on a bank statement to a person and
+somebody who closed the tab has to be able to find it again.
+
+`/admin/payments` is the other half — the queue an operator works, opening on
+"awaiting confirmation" because that is the only part of it that is _work_.
 
 ## Why the terminal is not inside the shell
 

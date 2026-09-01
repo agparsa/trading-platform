@@ -13,6 +13,7 @@ const SECTIONS = [
   { href: '/admin/accounts', label: 'Accounts' },
   { href: '/admin/instruments', label: 'Instruments' },
   { href: '/admin/risk', label: 'Risk' },
+  { href: '/admin/payments', label: 'Payments' },
   { href: '/admin/reconciliation', label: 'Reconciliation' },
   { href: '/admin/roles', label: 'Roles' },
   { href: '/admin/audit', label: 'Audit' },

@@ -1,8 +1,8 @@
 {
-  "name": "@tp/tenancy",
+  "name": "@tp/payments-core",
   "version": "0.1.0",
   "private": true,
-  "description": "Tenant scope and the Prisma extension that enforces it. Shared by every process that touches the database.",
+  "description": "Payment intents, their state machine, and the port a provider implements. Pure domain logic.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -21,8 +21,8 @@
     "clean": "rimraf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@prisma/client": "catalog:",
-    "@tp/shared-types": "workspace:*"
+    "@tp/shared-types": "workspace:*",
+    "@tp/financial-core": "workspace:*"
   },
   "devDependencies": {
     "rimraf": "catalog:",

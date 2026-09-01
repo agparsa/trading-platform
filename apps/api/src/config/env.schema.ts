@@ -47,6 +47,21 @@ export const envSchema = z
      */
     DATABASE_TENANT_POOLS: z.coerce.number().int().min(1).default(32),
 
+    /**
+     * What a payer is shown when they choose a bank transfer.
+     *
+     * Configuration rather than a constant, because a hard-coded IBAN in a
+     * repository is somebody else's bank account by the second deployment. Left
+     * unset, the instructions say so plainly instead of showing a blank.
+     */
+    PAYMENT_BANK_DETAILS: z.string().max(2000).optional(),
+    /** Currencies this deployment will take money in. */
+    PAYMENT_CURRENCIES: z.string().default('USD'),
+    /** How long an unpaid payment stays open before the maintenance job expires it. */
+    PAYMENT_INTENT_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(72),
+    /** The largest single deposit this deployment will start. */
+    PAYMENT_MAX_AMOUNT: z.string().default('100000'),
+
     REDIS_URL: z.string().startsWith('redis://'),
 
     // Long enough that a brute-force is hopeless; refuse to boot on a short one.

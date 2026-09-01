@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import type { PrismaClient } from '@prisma/client';
 import {
   ALL_PERMISSIONS,
   DomainError,
@@ -11,7 +12,7 @@ import {
   permissionsFor as codePermissionsFor,
   seedRoles,
 } from '@tp/shared-types';
-import { requireTenantId } from '@tp/tenancy';
+import { requireTenantId, seedTenantRoles, withTenant, withoutTenantScope } from '@tp/tenancy';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AuditService } from '../common/audit/audit.service';
@@ -94,6 +95,82 @@ export class RolesService implements OnModuleInit {
         this.logger.warn('Ignored an unreadable role-invalidation message');
       }
     });
+
+    await this.reconcileWithBuild();
+  }
+
+  /**
+   * Brings every tenant's untouched built-in roles in line with this build.
+   *
+   * ## Why this has to happen at boot
+   *
+   * Grants became rows so a firm could change what a role carries without a
+   * deployment. That made the reverse case a problem nobody had before: a
+   * release that adds a capability writes it into a constant, and the constant
+   * is not what the guard reads. `seedTenantRoles` knows how to close that gap
+   * and, until now, only the database seed ever called it — so a deployed
+   * platform that upgraded through `prisma migrate deploy` got the new
+   * endpoints and none of the permission to reach them. Every one of them
+   * answered 403, in production, having passed every test.
+   *
+   * That is not hypothetical either. It is exactly what the payments phase's own
+   * smoke check hit: `GET /payments/providers` refused a freshly registered
+   * trader, because `payments.read` existed in the constant and in no row.
+   *
+   * ## Why it is safe to run on every replica, every boot
+   *
+   * It is idempotent — a role already matching the build is skipped without a
+   * write — and it will not touch a role anybody has edited, which is what
+   * `grantsEditedAt` is for. Two replicas booting together can race on creating
+   * a role for a brand-new tenant; that surfaces as a unique violation on one of
+   * them, which is logged and not fatal. An API that cannot reconcile roles must
+   * still start and still enforce the roles it can read.
+   */
+  private async reconcileWithBuild(): Promise<void> {
+    let tenants;
+    try {
+      tenants = await withoutTenantScope(
+        'a release adds capabilities to every tenant, not to one',
+        () => this.prisma.tenant.findMany({ select: { id: true, slug: true } }),
+      );
+    } catch (error) {
+      this.logger.error(
+        'Could not read the tenant list to reconcile roles. Roles are whatever the database holds.',
+        error instanceof Error ? error.stack : String(error),
+      );
+      return;
+    }
+
+    let created = 0;
+    let refreshed = 0;
+    for (const tenant of tenants) {
+      try {
+        const result = await withTenant({ tenantId: tenant.id, slug: tenant.slug }, () =>
+          seedTenantRoles(this.prisma as unknown as PrismaClient, tenant.id),
+        );
+        created += result.created;
+        refreshed += result.refreshed;
+        if (result.created > 0 || result.refreshed > 0) this.markDirty(tenant.id);
+      } catch (error) {
+        this.logger.warn(
+          `Could not reconcile roles for ${tenant.slug}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    if (created > 0 || refreshed > 0) {
+      /**
+       * Said out loud, because it is a change to what people may do.
+       *
+       * An operator reading a log after an upgrade should be able to see that a
+       * role gained a capability, rather than discovering it from a screen
+       * somebody could suddenly reach.
+       */
+      this.logger.log(
+        `Roles reconciled with this build: ${created} created, ${refreshed} brought up to date ` +
+          `across ${tenants.length} tenant(s). Roles that had been edited were left alone.`,
+      );
+    }
   }
 
   /** The capabilities a role carries in the tenant currently in scope. */

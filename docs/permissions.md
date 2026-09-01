@@ -124,6 +124,23 @@ yields is a note about that argument rather than the argument.
 `orders.cancel` and `positions.close` are deliberately not on the list. Stopping
 something is not starting it — the same distinction that lets `ADMIN` keep them.
 
+`wallet.adjust` is the same power aimed at a different pot, and it is on the list
+for the same reason: money invented in a wallet reaches a position through one
+transfer the holder is entitled to make on their own wallet.
+
+`payments.confirm` is narrower than either — it can settle only a payment
+somebody started, only for the amount they started it for, and it leaves an
+intent and an event behind — and it is still a way to make money appear, so it
+does not sit beside opening a position either.
+
+The sharpest pair on the list is `payments.confirm` with `payments.create`: start
+a deposit for any amount, then confirm it as the operator who saw it on a
+statement. Both halves leave a record and both look ordinary alone. Only holding
+them together turns them into a credit with no counterparty — and unlike every
+other pair, it needs no market to launder through. It is also why starting a
+deposit is its own capability rather than part of `payments.read`: a power that
+cannot be named cannot be held apart from another.
+
 The escape is the one separation of duties always has: two roles, two logins, or
 a master-account link that names the account and leaves a record.
 
@@ -136,7 +153,7 @@ roles were seeded earlier. The feature then works in every test and answers 403
 in production. That is not hypothetical; it is how the wallet phase's own pentest
 probe failed.
 
-So the seed, which runs on every deploy, treats two kinds of role differently:
+So a reconciliation runs, and it treats four kinds of role differently:
 
 | The role                            | What the deploy does                        |
 | ----------------------------------- | ------------------------------------------- |
@@ -152,6 +169,21 @@ role also hands it back to the build.
 The asymmetry is deliberate. A deploy that silently re-widened a role somebody
 had deliberately narrowed would be the worst kind of regression, because nothing
 about it would look wrong.
+
+**Where it runs, and why that had to change.** For one phase this lived only in
+the database seed — and the seed is not what a deployment runs. `prisma migrate
+deploy` applies migrations; nothing called the reconciliation. So the gap the
+mechanism was built to close stayed open on exactly the platforms that mattered:
+the payments phase shipped three capabilities, and a freshly registered trader on
+an upgraded deployment was refused `GET /payments/providers` because
+`payments.read` existed in a constant and in no row. It was the phase's own smoke
+check that caught it.
+
+`RolesService` now reconciles at boot, for every tenant. It is idempotent — a
+role already matching the build is skipped without a write — so every replica
+doing it on every start is harmless, and a replica that cannot do it logs and
+serves anyway rather than refusing to start. An API that cannot reconcile roles
+must still enforce the roles it can read.
 
 ### Putting a role back
 

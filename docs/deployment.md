@@ -296,6 +296,37 @@ PostgreSQL is the only stateful component that matters. Point-in-time recovery,
 plus periodic restore drills. Redis holds no financial truth — losing it costs a
 cache warm-up and a round of client re-snapshots.
 
+## Taking money
+
+The only payment provider in this build is the manual bank transfer, confirmed by
+an operator at `/admin/payments`. Set `PAYMENT_BANK_DETAILS` in
+`.env.production` to whatever a payer should be shown; unset, the instructions
+say plainly that details have not been configured rather than showing a blank.
+
+| Variable                   | Default   |
+| -------------------------- | --------- |
+| `PAYMENT_CURRENCIES`       | `USD`     |
+| `PAYMENT_MAX_AMOUNT`       | `100000`  |
+| `PAYMENT_INTENT_TTL_HOURS` | `72`      |
+| `PAYMENT_BANK_DETAILS`     | _(unset)_ |
+
+Adding a third-party processor means implementing `PaymentProvider` and
+registering it; nothing else should have to change. See
+[payments.md](./payments.md) for why no such adapter ships here.
+
+### Roles reconcile themselves at boot
+
+A release that adds a capability writes it into a constant, and the constant is
+not what the permission guard reads — grants are rows, per tenant. `RolesService`
+reconciles untouched built-in roles with the build when the API starts, so an
+upgrade delivers the permissions its new endpoints need. Roles anybody has edited
+are left exactly as they were left.
+
+Nothing operational is required. It is worth knowing about only because the log
+line after an upgrade — `Roles reconciled with this build: … brought up to date`
+— is a change to what people may do, and an operator should be able to see it
+there rather than infer it from a screen somebody could suddenly reach.
+
 ## Before the first deploy
 
 Two things in this repository have never run outside CI, and both should be

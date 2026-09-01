@@ -27,6 +27,7 @@
     "@tp/financial-core": "workspace:*",
     "@tp/integrity-core": "workspace:*",
     "@tp/market-core": "workspace:*",
+    "@tp/payments-core": "workspace:*",
     "@tp/push-core": "workspace:*",
     "@tp/risk-core": "workspace:*",
     "@tp/shared-types": "workspace:*",

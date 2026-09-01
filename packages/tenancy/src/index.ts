@@ -28,3 +28,4 @@ export {
   type Disconnectable,
   type TenantClientRegistryOptions,
 } from './registry';
+export { seedTenantRoles, type SeedRolesResult } from './roles';

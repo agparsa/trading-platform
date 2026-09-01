@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Prisma, WalletTransactionType } from '@prisma/client';
+import { Prisma, type WalletTransactionType } from '@prisma/client';
 import { Money } from '@tp/financial-core';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { requireTenantId } from '@tp/tenancy';
@@ -81,10 +81,35 @@ export class WalletService {
     const existing = await this.prisma.wallet.findFirst({ where: { userId, currency } });
     if (existing !== null) return view(existing);
 
-    const created = await this.prisma.wallet.create({
-      data: { tenantId: requireTenantId(), userId, currency },
-    });
-    return view(created);
+    /**
+     * Read-then-write is a race, and `(user_id, currency)` is unique.
+     *
+     * Two things can ask for the same wallet at the same instant — a webhook
+     * crediting a deposit while the person has the wallet page open is enough —
+     * and the loser of that race used to get a constraint violation thrown at
+     * it. In the payment path that surfaced as a *payment* that failed, which
+     * is the worst possible reading of "someone else created your wallet first".
+     *
+     * The insert stays optimistic rather than becoming an upsert: the common
+     * case is that the wallet already exists, and this way it costs one read.
+     */
+    try {
+      const created = await this.prisma.wallet.create({
+        data: { tenantId: requireTenantId(), userId, currency },
+      });
+      return view(created);
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+        throw error;
+      }
+      const raced = await this.prisma.wallet.findFirst({ where: { userId, currency } });
+      if (raced === null) {
+        // The unique index fired but the row is not visible: that is not a race,
+        // it is something wrong, and it must not be reported as a wallet.
+        throw error;
+      }
+      return view(raced);
+    }
   }
 
   async list(userId: string): Promise<readonly WalletView[]> {
@@ -115,18 +140,20 @@ export class WalletService {
    * apply what was rounded.
    */
   async post(tx: Prisma.TransactionClient, movement: WalletMovement): Promise<MovementResult> {
-    if (movement.idempotencyKey !== undefined) {
-      const existing = await tx.walletTransaction.findUnique({
-        where: { idempotencyKey: movement.idempotencyKey },
-      });
-      if (existing !== null) {
-        return {
-          transactionId: existing.id,
-          balanceAfter: Money.of(existing.balanceAfter.toString(), existing.currency),
-        };
-      }
-    }
-
+    /**
+     * The lock comes before the idempotency check, and the order is the point.
+     *
+     * Checking first and locking after is a read-then-write: two deliveries of
+     * the same webhook both find no movement, both try to write one, and the
+     * loser hits the unique index on `idempotency_key`. No money is created —
+     * its transaction rolls back — but the caller gets a constraint violation
+     * where it asked a question with a correct answer, and a payment provider
+     * reading that as a failure will re-deliver the event for hours.
+     *
+     * Taking the row lock first makes the second caller wait for the first to
+     * commit, so it *sees* the movement and returns it. It costs nothing: this
+     * lock is taken a few lines later in every case anyway.
+     */
     const locked = await tx.$queryRaw<
       Array<{ id: string; balance: string; currency: string; status: string }>
     >`
@@ -140,6 +167,22 @@ export class WalletService {
       throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'Wallet not found', {
         walletId: movement.walletId,
       });
+    }
+
+    if (movement.idempotencyKey !== undefined) {
+      const existing = await tx.walletTransaction.findUnique({
+        where: { idempotencyKey: movement.idempotencyKey },
+      });
+      if (existing !== null) {
+        /**
+         * A replay, answered with what the original did. Not re-posted, and not
+         * refused either: the caller asked for one movement and there is one.
+         */
+        return {
+          transactionId: existing.id,
+          balanceAfter: Money.of(existing.balanceAfter.toString(), existing.currency),
+        };
+      }
     }
     if (wallet.status === 'FROZEN') {
       throw new DomainError(

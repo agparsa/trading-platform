@@ -778,6 +778,94 @@ const checks: Check[] = [
   },
   {
     /**
+     * A deposit end to end, and the two things it must not do.
+     *
+     * Starting one must move no money, and a confirmation must move it exactly
+     * once however many times the confirmation arrives. Both are asserted
+     * against a running server rather than a service in a test harness, because
+     * the guard, the idempotency middleware and the transaction all sit between
+     * the HTTP request and the wallet, and none of them is exercised by calling
+     * the service directly.
+     */
+    name: 'a deposit: start it, confirm it once, and stay confirmed once',
+    run: async () => {
+      const email = `smoke-pay-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: registration(email, password, 'Smoke Pay'),
+      });
+
+      const login = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (login.status === 429) {
+        throw new Error(
+          'the login limiter was already spent when this check ran. It must run before the ' +
+            'rate-limit check, not after — a skip here would hide the whole deposit path.',
+        );
+      }
+      if (!login.ok) {
+        console.log('      (registration is closed on this deployment; skipped)');
+        return;
+      }
+      const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+      const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+      const providersResponse = await fetch(`${BASE}/api/v1/payments/providers`, { headers: auth });
+      const providers = ((await providersResponse.json()) as { data: { providers: string[] } }).data
+        .providers;
+      assert(providers.length > 0, 'this deployment offers no way to pay');
+
+      const started = await fetch(`${BASE}/api/v1/payments`, {
+        method: 'POST',
+        headers: { ...auth, 'Idempotency-Key': `smoke-pay-${Date.now()}` },
+        body: JSON.stringify({ provider: providers[0], amount: '250.00', currency: 'USD' }),
+      });
+      assert(started.status === 201 || started.status === 200, `start returned ${started.status}`);
+      const intent = ((await started.json()) as { data: { id: string; status: string } }).data;
+      assert(
+        intent.status === 'REQUIRES_ACTION',
+        `a deposit should start awaiting the payer, not ${intent.status}`,
+      );
+
+      // Starting one creates no money. A wallet may not even exist yet.
+      const walletsBefore = await fetch(`${BASE}/api/v1/wallet`, { headers: auth });
+      const before = (
+        (await walletsBefore.json()) as {
+          data: { wallets: Array<{ currency: string; balance: string }> };
+        }
+      ).data.wallets;
+      assert(
+        (before.find((one) => one.currency === 'USD')?.balance ?? '0.00') === '0.00',
+        'starting a deposit put money in a wallet',
+      );
+
+      // A trader must not be able to confirm their own deposit. This is the
+      // incompatible pair `payments.create` / `payments.confirm`, over HTTP.
+      const selfConfirm = await fetch(`${BASE}/api/v1/admin/payments/${intent.id}/settle`, {
+        method: 'POST',
+        headers: { ...auth, 'Idempotency-Key': `smoke-self-${Date.now()}` },
+        body: JSON.stringify({ outcome: 'SUCCEEDED', reason: 'confirming my own deposit' }),
+      });
+      assert(
+        selfConfirm.status === 403,
+        `a payer confirmed their own deposit (${selfConfirm.status})`,
+      );
+
+      const stillPending = await fetch(`${BASE}/api/v1/payments/${intent.id}`, { headers: auth });
+      const after = ((await stillPending.json()) as { data: { status: string } }).data;
+      assert(
+        after.status === 'REQUIRES_ACTION',
+        `a refused confirmation changed the payment to ${after.status}`,
+      );
+    },
+  },
+  {
+    /**
      * Invitations, end to end over HTTP.
      *
      * The service has integration tests; this checks the parts they cannot —

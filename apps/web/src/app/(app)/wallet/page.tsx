@@ -7,9 +7,13 @@ import { Button, EmptyState, Field, Panel, inputClass } from '@/components/primi
 import { money, signedMoney, toneClass, toneOf, utcTime } from '@/lib/format';
 import {
   useAccounts,
+  usePaymentProviders,
+  usePayments,
+  useStartPayment,
   useWalletTransactions,
   useWalletTransfer,
   useWallets,
+  type PaymentRow,
   type WalletRow,
 } from '@/lib/queries';
 
@@ -21,16 +25,23 @@ import {
  * pots, and a transfer moves money between them without either being able to
  * invent it. See docs/wallet.md.
  *
- * There is no deposit button. There is no payment provider — §50 says not to
- * build UI for functionality that does not exist, and a button that opened a
- * form and then failed would be worse than its absence. Money arrives today by
- * an operator recording a bank transfer, which is an administrative action with
- * its own screen.
+ * The deposit form offers whatever the *server* says it has, which today is a
+ * bank transfer and nothing else. No card logos, no wallet icons: a button for
+ * a provider nobody has signed a contract with is a button that fails on
+ * submit, and §50 is explicit that UI must not be built for functionality that
+ * does not exist.
+ *
+ * Nothing on this page makes the balance move. A deposit is an instruction to
+ * the payer; the money appears when the provider says it has it, or when
+ * somebody here matches the transfer to its reference.
  */
 export default function WalletPage() {
   const wallets = useWallets();
   const accounts = useAccounts();
   const transfer = useWalletTransfer();
+  const providers = usePaymentProviders();
+  const payments = usePayments();
+  const startPayment = useStartPayment();
 
   const rows = wallets.data?.wallets ?? [];
   const [walletId, setWalletId] = useState<string | null>(null);
@@ -49,10 +60,20 @@ export default function WalletPage() {
       {wallets.isLoading ? (
         <EmptyState>Loading…</EmptyState>
       ) : rows.length === 0 ? (
-        <EmptyState>
-          No wallet yet. One is created the first time money arrives or you move some out of a
-          trading account.
-        </EmptyState>
+        <div className="space-y-4">
+          <EmptyState>
+            No wallet yet. One is created the first time money arrives or you move some out of a
+            trading account.
+          </EmptyState>
+          <DepositForm
+            providers={providers.data?.providers ?? []}
+            currency="USD"
+            busy={startPayment.isPending}
+            error={startPayment.error}
+            onSubmit={(input) => startPayment.mutate(input)}
+          />
+          <PaymentHistory payments={payments.data?.payments ?? []} />
+        </div>
       ) : (
         <div className="space-y-4">
           {rows.length > 1 ? (
@@ -91,6 +112,20 @@ export default function WalletPage() {
                   </p>
                 ) : null}
               </Panel>
+
+              <DepositForm
+                providers={providers.data?.providers ?? []}
+                currency={wallet.currency}
+                busy={startPayment.isPending}
+                error={startPayment.error}
+                onSubmit={(input) => startPayment.mutate(input)}
+              />
+
+              <PaymentHistory
+                payments={(payments.data?.payments ?? []).filter(
+                  (row) => row.currency === wallet.currency,
+                )}
+              />
 
               <TransferForm
                 wallet={wallet}
@@ -272,5 +307,183 @@ function TransferForm({
         </p>
       ) : null}
     </Panel>
+  );
+}
+
+/** How a machine name reads to a person. Unknown names are shown as they are. */
+const PROVIDER_LABELS: Record<string, string> = {
+  'manual-bank-transfer': 'Bank transfer',
+};
+
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  REQUIRES_ACTION: 'Awaiting your transfer',
+  PROCESSING: 'With the provider',
+  SUCCEEDED: 'Received',
+  FAILED: 'Failed',
+  CANCELLED: 'Cancelled',
+  EXPIRED: 'Expired',
+};
+
+/**
+ * Starting a deposit.
+ *
+ * The provider list comes from the server. When it is empty this renders a
+ * sentence saying so rather than a disabled form, because a form nothing can
+ * submit is a worse answer to "how do I add money" than being told plainly.
+ */
+function DepositForm({
+  providers,
+  currency,
+  busy,
+  error,
+  onSubmit,
+}: {
+  providers: readonly string[];
+  currency: string;
+  busy: boolean;
+  error: unknown;
+  onSubmit: (input: { provider: string; amount: string; currency: string }) => void;
+}) {
+  const [provider, setProvider] = useState('');
+  const [amount, setAmount] = useState('');
+
+  useEffect(() => {
+    if (provider === '' && providers.length > 0) setProvider(providers[0] ?? '');
+  }, [provider, providers]);
+
+  const blocked = useMemo(() => {
+    if (providers.length === 0) return 'no-providers';
+    if (provider === '') return 'Choose how you want to pay.';
+    if (!/^\d+(\.\d{1,2})?$/.test(amount.trim())) return 'Enter an amount.';
+    if (Number(amount) <= 0) return 'The amount must be more than zero.';
+    return null;
+  }, [providers, provider, amount]);
+
+  if (providers.length === 0) {
+    return (
+      <Panel className="max-w-lg p-4">
+        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Add money</p>
+        <p className="mt-2 text-[11px] leading-relaxed text-terminal-muted">
+          No payment method is configured on this deployment yet. Ask support how to send funds —
+          they can record a transfer against your account once it arrives.
+        </p>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel className="max-w-lg space-y-3 p-4">
+      <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Add money</p>
+
+      <Field label="How">
+        <select
+          className={inputClass}
+          value={provider}
+          onChange={(event) => setProvider(event.target.value)}
+        >
+          {providers.map((name) => (
+            <option key={name} value={name}>
+              {PROVIDER_LABELS[name] ?? name}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label={`Amount (${currency})`}>
+        <input
+          className={inputClass}
+          inputMode="decimal"
+          value={amount}
+          onChange={(event) => setAmount(event.target.value)}
+          placeholder="0.00"
+        />
+      </Field>
+
+      {error === null || error === undefined ? null : (
+        <p className="text-[11px] text-terminal-negative">
+          {error instanceof DomainError ? error.message : 'The deposit could not be started.'}
+        </p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Button
+          disabled={blocked !== null || busy}
+          onClick={() => onSubmit({ provider, amount: amount.trim(), currency })}
+        >
+          {busy ? 'Starting…' : 'Continue'}
+        </Button>
+        {blocked === null || blocked === 'no-providers' ? null : (
+          <span className="text-[11px] text-terminal-muted">{blocked}</span>
+        )}
+      </div>
+
+      <p className="text-[10px] leading-relaxed text-terminal-muted">
+        This does not move any money. You will be shown what to do next, and your balance changes
+        once the transfer has actually arrived.
+      </p>
+    </Panel>
+  );
+}
+
+/**
+ * Deposits and what became of them.
+ *
+ * The instructions for an unpaid one are shown here rather than only once at the
+ * moment it was started: the reference is the single thing tying a line on a
+ * bank statement to this person, and somebody who closed the tab needs to be
+ * able to find it again.
+ */
+function PaymentHistory({ payments }: { payments: readonly PaymentRow[] }) {
+  if (payments.length === 0) return null;
+
+  const awaiting = payments.filter((row) => row.status === 'REQUIRES_ACTION');
+
+  return (
+    <div className="space-y-4">
+      {awaiting.map((row) =>
+        row.instructions === null ? null : (
+          <Panel key={row.id} className="max-w-lg p-4">
+            <p className="text-[10px] uppercase tracking-wider text-terminal-muted">
+              Awaiting your transfer — {money(row.amount, row.currency)}
+            </p>
+            <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-terminal-text">
+              {row.instructions}
+            </pre>
+          </Panel>
+        ),
+      )}
+
+      <Panel className="overflow-auto">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+              <th className="px-3 py-2">Started</th>
+              <th className="px-3 py-2">How</th>
+              <th className="px-3 py-2 text-right">Amount</th>
+              <th className="px-3 py-2">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {payments.map((row) => (
+              <tr key={row.id} className="border-t border-terminal-border/60">
+                <td className="numeric px-3 py-1.5 text-terminal-muted">
+                  {utcTime(row.createdAt)}
+                </td>
+                <td className="px-3 py-1.5 text-terminal-text">
+                  {PROVIDER_LABELS[row.provider] ?? row.provider}
+                </td>
+                <td className="numeric px-3 py-1.5 text-right text-terminal-text">
+                  {money(row.amount, row.currency)}
+                </td>
+                <td className="px-3 py-1.5 text-terminal-muted">
+                  {PAYMENT_STATUS_LABELS[row.status] ?? row.status}
+                  {row.failureReason === null ? '' : ` — ${row.failureReason}`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Panel>
+    </div>
   );
 }

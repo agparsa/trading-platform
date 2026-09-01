@@ -150,6 +150,8 @@ const adminKeys = {
   instruments: ['admin', 'instruments'] as const,
   roles: ['admin', 'roles'] as const,
   catalogue: ['admin', 'permission-catalogue'] as const,
+  payments: (status: string) => ['admin', 'payments', status] as const,
+  paymentEvents: (id: string) => ['admin', 'payment-events', id] as const,
 };
 
 export interface AdminInstrumentRow {
@@ -625,6 +627,93 @@ export function useSetRolePermissions() {
       void client.invalidateQueries({ queryKey: adminKeys.roles });
       // The signed-in operator's own capabilities may have just changed.
       void client.invalidateQueries({ queryKey: ['permissions', 'me'] });
+    },
+  });
+}
+
+export interface AdminPaymentRow {
+  id: string;
+  userId: string;
+  email: string;
+  provider: string;
+  amount: string;
+  currency: string;
+  status: string;
+  failureReason: string | null;
+  createdAt: string;
+  settledAt: string | null;
+}
+
+export interface AdminPaymentEventRow {
+  id: string;
+  provider: string;
+  providerEventId: string;
+  providerStatus: string;
+  status: string;
+  outcome: string;
+  note: string | null;
+  createdAt: string;
+}
+
+export function useAdminPayments(status: string) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.payments(status),
+    queryFn: () =>
+      api.get<{ payments: AdminPaymentRow[] }>(
+        status === 'all' ? '/admin/payments' : `/admin/payments?status=${status}`,
+      ),
+  });
+}
+
+/**
+ * Everything a provider has said about one payment.
+ *
+ * Including what the platform refused to act on. An operator looking at a
+ * deposit a payer says they made needs to see the delivery that was ignored, or
+ * the one whose amount did not match — a screen that showed only what was
+ * applied would show nothing at all in exactly the cases someone is asking
+ * about.
+ */
+export function useAdminPaymentEvents(id: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.paymentEvents(id ?? 'none'),
+    queryFn: () =>
+      api.get<{ events: AdminPaymentEventRow[] }>(`/admin/payments/${id ?? ''}/events`),
+    enabled: id !== null,
+  });
+}
+
+/**
+ * Settling a payment by hand.
+ *
+ * No amount: it is the amount on the intent, which is what the payer was told to
+ * send. An operator who could type a different number could credit any amount
+ * against any payment, which is `wallet.adjust` wearing a narrower name.
+ */
+export function useSettlePayment() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      outcome,
+      reason,
+    }: {
+      id: string;
+      outcome: 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+      reason: string;
+    }) =>
+      api.post<AdminPaymentRow>(
+        `/admin/payments/${id}/settle`,
+        { outcome, reason },
+        { idempotencyKey: crypto.randomUUID() },
+      ),
+    onSuccess: (_result, input) => {
+      void client.invalidateQueries({ queryKey: ['admin', 'payments'] });
+      void client.invalidateQueries({ queryKey: adminKeys.paymentEvents(input.id) });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
     },
   });
 }

@@ -14,7 +14,22 @@ import { ApiResponseInterceptor } from './common/api-response.interceptor';
 import { DomainExceptionFilter } from './common/domain-exception.filter';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  /**
+   * `rawBody` keeps the bytes as they arrived, alongside the parsed body.
+   *
+   * A webhook signature is computed over bytes. `JSON.parse` followed by
+   * `JSON.stringify` produces different bytes for the same document — key order,
+   * whitespace, how a number was written — so a signature checked against a
+   * re-serialised body fails for every authentic delivery and, worse, would
+   * tempt someone into "fixing" it by not checking at all.
+   *
+   * Nothing in this repository verifies a signature yet, because the only
+   * payment provider here is the manual bank transfer, which sends no webhooks.
+   * This is on so that the first adapter that does has the bytes to verify
+   * against, rather than discovering on its first live payment that they were
+   * thrown away at startup.
+   */
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
   const config = app.get(ConfigService<Env, true>);
   const logger = app.get(Logger);
   app.useLogger(logger);

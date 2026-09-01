@@ -56,4 +56,38 @@ export class MaintenanceService {
     }
     return result.count;
   }
+
+  /**
+   * Closes payments nobody ever paid.
+   *
+   * A bank transfer intent sits in `REQUIRES_ACTION` from the moment it is
+   * started, and most of them are never paid — someone changed their mind, or
+   * opened the page twice. Left alone they accumulate forever and every
+   * operator screen showing "awaiting payment" fills with noise, which is how a
+   * real awaiting-payment gets missed.
+   *
+   * Two things this deliberately does not do. It does not touch a payment in a
+   * terminal state, so money that arrived is never un-arrived by a clock. And
+   * it does not touch `PROCESSING`: the provider has the money in hand and is
+   * still working, and expiring that would tell a payer their payment failed
+   * while it was in fact about to succeed. Only the states where nothing has
+   * moved can be closed by a timer.
+   */
+  async expireStalePayments(now: Date = new Date()): Promise<number> {
+    const result = await withoutTenantScope(
+      'a payment expires on its own clock whichever firm started it',
+      () =>
+        this.prisma.paymentIntent.updateMany({
+          where: {
+            status: { in: ['REQUIRES_ACTION'] },
+            expiresAt: { lt: now },
+          },
+          data: { status: 'EXPIRED', failureReason: 'Not paid before the payment window closed' },
+        }),
+    );
+    if (result.count > 0) {
+      this.logger.log(`Expired ${result.count} unpaid payment(s)`);
+    }
+    return result.count;
+  }
 }

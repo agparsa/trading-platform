@@ -112,6 +112,32 @@ export const Permission = {
   /** Freeze and unfreeze a wallet. Holding money is not taking it. */
   WALLET_MANAGE: 'wallet.manage',
 
+  // --- payments ---
+  /** See your own payments. */
+  PAYMENTS_READ: 'payments.read',
+  /**
+   * Start a deposit.
+   *
+   * Separate from `payments.read` for the reason stated on `accounts.read`:
+   * seeing a thing and starting one are different powers, and a capability that
+   * quietly means both cannot be granted to someone who should only look. It
+   * also gives the pair below something to name — starting a payment and
+   * confirming one, held together, is money out of nothing.
+   */
+  PAYMENTS_CREATE: 'payments.create',
+  /** See anyone's payments. */
+  PAYMENTS_READ_ANY: 'payments.read_any',
+  /**
+   * Confirm or reject a payment that a person has to settle — a bank transfer
+   * an operator can see on a statement.
+   *
+   * Distinct from `wallet.adjust`, and the distinction is the point: this can
+   * only settle a payment somebody started, for the amount they started it for,
+   * and it leaves an intent and an event behind. `wallet.adjust` can credit any
+   * wallet any amount. Both create money; only one of them has a counterparty.
+   */
+  PAYMENTS_CONFIRM: 'payments.confirm',
+
   // --- roles ---
   /** See which roles exist and what each one carries. */
   ROLES_READ: 'roles.read',
@@ -147,6 +173,8 @@ const TRADER: readonly Permission[] = [
   Permission.ACCOUNTS_READ,
   Permission.WALLET_READ,
   Permission.WALLET_TRANSFER,
+  Permission.PAYMENTS_READ,
+  Permission.PAYMENTS_CREATE,
   Permission.ORDERS_READ,
   Permission.ORDERS_CREATE,
   Permission.ORDERS_CANCEL,
@@ -186,6 +214,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
   [UserRole.SUPPORT]: [
     Permission.ACCOUNTS_READ_ANY,
     Permission.WALLET_READ_ANY,
+    Permission.PAYMENTS_READ_ANY,
     Permission.USERS_READ_ANY,
     Permission.ORDERS_READ,
     Permission.POSITIONS_READ,
@@ -196,6 +225,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.ACCOUNTS_READ_ANY,
     Permission.ACCOUNTS_MANAGE,
     Permission.WALLET_READ_ANY,
+    Permission.PAYMENTS_READ_ANY,
     Permission.USERS_READ_ANY,
     Permission.ORDERS_READ,
     Permission.ORDERS_CANCEL,
@@ -215,6 +245,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.ACCOUNTS_MANAGE,
     Permission.WALLET_READ_ANY,
     Permission.WALLET_MANAGE,
+    Permission.PAYMENTS_READ_ANY,
     Permission.USERS_READ_ANY,
     Permission.USERS_MANAGE,
     Permission.ORDERS_READ,
@@ -244,6 +275,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.WALLET_READ_ANY,
     Permission.WALLET_ADJUST,
     Permission.WALLET_MANAGE,
+    Permission.PAYMENTS_READ_ANY,
+    Permission.PAYMENTS_CONFIRM,
     Permission.USERS_READ_ANY,
     Permission.USERS_MANAGE,
     Permission.INVITES_MANAGE,
@@ -315,6 +348,21 @@ export const INCOMPATIBLE_PERMISSIONS: readonly (readonly [Permission, Permissio
   [Permission.WALLET_ADJUST, Permission.ORDERS_CREATE],
   [Permission.WALLET_ADJUST, Permission.ORDERS_MODIFY],
   [Permission.WALLET_ADJUST, Permission.POSITIONS_MODIFY],
+  // Confirming a payment credits a wallet. It is narrower than `wallet.adjust` —
+  // one payment, its own amount, with an intent behind it — and it is still a
+  // way to make money appear, so it does not sit beside opening a position.
+  [Permission.PAYMENTS_CONFIRM, Permission.ORDERS_CREATE],
+  [Permission.PAYMENTS_CONFIRM, Permission.ORDERS_MODIFY],
+  [Permission.PAYMENTS_CONFIRM, Permission.POSITIONS_MODIFY],
+  /**
+   * The shortest path to money out of nothing on this platform.
+   *
+   * Start a deposit for any amount, then confirm it by hand as an operator who
+   * saw it on a statement. Both halves leave a record and both look ordinary on
+   * their own; only holding them together turns them into a credit with no
+   * counterparty. Every other pair here needs a market to launder through.
+   */
+  [Permission.PAYMENTS_CONFIRM, Permission.PAYMENTS_CREATE],
 ];
 
 /** Every incompatible pair present in this set. Empty means the set is allowed. */

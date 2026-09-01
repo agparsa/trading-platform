@@ -47,6 +47,7 @@
     "@eslint/js": "catalog:",
     "@tp/crypto-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
+    "@tp/tenancy": "workspace:*",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",

@@ -38,40 +38,41 @@ figures are gone; the generated one is the only one left.
 Complete in the sense the prompt defines — UI → API → business logic → database
 → authorization → security → audit → tests.
 
-| §        | Area                       | Evidence                                                                                                                                                                           |
-| -------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2        | Repository audit           | 8 documents in `/docs`, every figure produced by a command                                                                                                                         |
-| 4        | Multi-tenancy              | `Tenant` model, `tenantId` on 32 models, `AsyncLocalStorage` scope, Prisma client extension, **row-level security enforced against the application**, cross-tenant pentest probe   |
-| 5        | Database                   | PostgreSQL 16, Prisma 6, `NUMERIC(28,10)`, **zero float columns**, enforced in CI                                                                                                  |
-| 7        | Authentication             | password hashing, refresh rotation in httpOnly cookies, TOTP 2FA with recovery codes, sessions, device and IP visibility, rate limiting                                            |
-| 11       | Trading engine             | market / limit / stop, SL/TP trigger engine, modify, cancel, partial close, PnL, equity, margin, leverage, commission, spread, swap accrual                                        |
-| 12       | Risk engine                | deterministic, `risk-core` framework-free and unit-tested                                                                                                                          |
-| 13       | WebSocket                  | authenticated, heartbeat, reconnect, subscriptions, tenant isolation, shared market-data infrastructure                                                                            |
-| 14       | **Mobile application**     | `apps/mobile` — Expo SDK 57, 14 screens, auth with 2FA, push, sounds, chart. **Never built for a device** — see below                                                              |
-| 15,21,22 | **Push notifications**     | FCM HTTP v1 for Android and web, APNs over HTTP/2 for iOS, delivery records, retry/drop classification, a client that registers and deduplicates                                   |
-| 16,17    | Trade open / close notices | raised from domain events published **after** the transaction commits — no path from a rejected order to a notification                                                            |
-| 18,19,25 | **Trade sounds**           | eight generated, distinguishable assets; a shared category→sound contract; an Android channel per sound; silence in the background so nothing doubles                              |
-| 23,24    | Notification centre        | in-app delivery, per-category preferences, quiet hours, unmutable security and risk categories                                                                                     |
-| 26       | Duplicate-event protection | `dedupeKey` at the database, `eventId` on every frame and push, a bounded `SeenEvents` on the client                                                                               |
-| 27       | Trading event model        | implemented as specified                                                                                                                                                           |
-| 28       | Device / push tokens       | `Device` model, AES-256-GCM sealed tokens bound to their row, registration, revocation, provider-rejection handling                                                                |
-| 8        | RBAC                       | granular `resource.verb` capabilities in code, **grants as rows per tenant**, an editor cannot grant what they do not hold, and no role may credit an account and trade the credit |
-| 43       | Web application            | 20 routes, every one opened in a real browser by `pnpm smoke:web` — which found a sign-in race, a refusal that looked like a hang, and an orphaned permission decorator            |
-| 35       | **Wallets**                | money held for a person, transfers bounded by free margin rather than balance, append-only movements, manual deposits and corrections, freeze that holds rather than takes         |
-| 33       | Audit log                  | append-only enforced by a **database trigger** raising `42501` — an admin cannot edit it                                                                                           |
-| 37       | Observability              | Prometheus metrics, `/health`, `/ready`, request-id correlation, structured logging                                                                                                |
-| 39       | Security                   | 33-probe pentest script, AES-256-GCM at rest, no secrets in git history                                                                                                            |
-| 40       | Testing                    | 1562 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, and row-level security proved by breaking it                             |
-| 41       | Security testing           | cross-tenant access, privilege escalation, token replay, rate limiting, audit tampering, invitation minting                                                                        |
-| 44       | CI/CD                      | install → prisma → build → lint → format → typecheck → migrate → test → schema check → seed → build → smoke API → smoke WebSocket                                                  |
+| §        | Area                       | Evidence                                                                                                                                                                                  |
+| -------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2        | Repository audit           | 8 documents in `/docs`, every figure produced by a command                                                                                                                                |
+| 4        | Multi-tenancy              | `Tenant` model, `tenantId` on 32 models, `AsyncLocalStorage` scope, Prisma client extension, **row-level security enforced against the application**, cross-tenant pentest probe          |
+| 5        | Database                   | PostgreSQL 16, Prisma 6, `NUMERIC(28,10)`, **zero float columns**, enforced in CI                                                                                                         |
+| 7        | Authentication             | password hashing, refresh rotation in httpOnly cookies, TOTP 2FA with recovery codes, sessions, device and IP visibility, rate limiting                                                   |
+| 11       | Trading engine             | market / limit / stop, SL/TP trigger engine, modify, cancel, partial close, PnL, equity, margin, leverage, commission, spread, swap accrual                                               |
+| 12       | Risk engine                | deterministic, `risk-core` framework-free and unit-tested                                                                                                                                 |
+| 13       | WebSocket                  | authenticated, heartbeat, reconnect, subscriptions, tenant isolation, shared market-data infrastructure                                                                                   |
+| 14       | **Mobile application**     | `apps/mobile` — Expo SDK 57, 14 screens, auth with 2FA, push, sounds, chart. **Never built for a device** — see below                                                                     |
+| 15,21,22 | **Push notifications**     | FCM HTTP v1 for Android and web, APNs over HTTP/2 for iOS, delivery records, retry/drop classification, a client that registers and deduplicates                                          |
+| 16,17    | Trade open / close notices | raised from domain events published **after** the transaction commits — no path from a rejected order to a notification                                                                   |
+| 18,19,25 | **Trade sounds**           | eight generated, distinguishable assets; a shared category→sound contract; an Android channel per sound; silence in the background so nothing doubles                                     |
+| 23,24    | Notification centre        | in-app delivery, per-category preferences, quiet hours, unmutable security and risk categories                                                                                            |
+| 26       | Duplicate-event protection | `dedupeKey` at the database, `eventId` on every frame and push, a bounded `SeenEvents` on the client                                                                                      |
+| 27       | Trading event model        | implemented as specified                                                                                                                                                                  |
+| 28       | Device / push tokens       | `Device` model, AES-256-GCM sealed tokens bound to their row, registration, revocation, provider-rejection handling                                                                       |
+| 8        | RBAC                       | granular `resource.verb` capabilities in code, **grants as rows per tenant**, an editor cannot grant what they do not hold, and no role may credit an account and trade the credit        |
+| 43       | Web application            | 20 routes, every one opened in a real browser by `pnpm smoke:web` — which found a sign-in race, a refusal that looked like a hang, and an orphaned permission decorator                   |
+| 35       | **Wallets**                | money held for a person, transfers bounded by free margin rather than balance, append-only movements, manual deposits and corrections, freeze that holds rather than takes                |
+| 36       | **Payments**               | a provider port, the state machine every provider's vocabulary maps onto, a real manual bank transfer, webhook plumbing that cannot credit twice, and **no invented third-party adapter** |
+| 33       | Audit log                  | append-only enforced by a **database trigger** raising `42501` — an admin cannot edit it                                                                                                  |
+| 37       | Observability              | Prometheus metrics, `/health`, `/ready`, request-id correlation, structured logging                                                                                                       |
+| 39       | Security                   | 36-probe pentest script, AES-256-GCM at rest, no secrets in git history                                                                                                                   |
+| 40       | Testing                    | 1607 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, payment idempotency, and row-level security proved by breaking it               |
+| 41       | Security testing           | cross-tenant access, privilege escalation, token replay, rate limiting, audit tampering, invitation minting                                                                               |
+| 44       | CI/CD                      | install → prisma → build → lint → format → typecheck → migrate → test → schema check → seed → build → smoke API → smoke WebSocket                                                         |
 
 ## Partial
 
-| §   | Area               | What exists                                                                                                                            | What is missing                                                                                     |
-| --- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 29  | Admin panel        | 10 sections at their own addresses — overview, people (+ detail), accounts (+ detail), instruments, risk, reconciliation, roles, audit | ~17 sections asked for. No tenants, KYC, finance, wallets, tokens, API management, security centre. |
-| 35  | Finance            | wallets, transfers bounded by free margin, manual deposits and corrections, freeze, full audit                                         | no payment provider, no automated deposit or withdrawal — phases 5 and 7                            |
-| 36  | Notification admin | `push_deliveries` records every attempt with its outcome                                                                               | no admin view over them                                                                             |
+| §   | Area               | What exists                                                                                                                                      | What is missing                                                                             |
+| --- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| 29  | Admin panel        | 11 sections at their own addresses — overview, people (+ detail), accounts (+ detail), instruments, risk, payments, reconciliation, roles, audit | ~17 sections asked for. No tenants, KYC, tokens, API management, security centre.           |
+| 35  | Finance            | wallets, transfers bounded by free margin, manual deposits and corrections, freeze, full audit, deposits through a provider port                 | no third-party payment provider (a commercial decision, see below), no withdrawal — phase 7 |
+| 36  | Notification admin | `push_deliveries` records every attempt with its outcome                                                                                         | no admin view over them                                                                     |
 
 ## Does not exist — zero code
 
@@ -131,9 +132,10 @@ describe do not exist, and §45 says do not document features that do not exist.
 | 0 — close what is open            | done                                       |
 | 1 — multi-tenancy                 | done                                       |
 | 2 — roles and permissions as data | done; grants are rows, per tenant          |
-| 3 — web restructure               | done; 19 routes, all opened in a browser   |
+| 3 — web restructure               | done; 20 routes, all opened in a browser   |
 | 4 — wallet and finance            | done; two ledgers, neither able to invent  |
-| 5–7 — payments, KYC, withdrawals  | not started                                |
+| 5 — payments                      | done to the edge of a commercial decision  |
+| 6–7 — KYC, withdrawals            | not started                                |
 | 8 — notification platform         | done; admin statistics view remains        |
 | 9 — API and token management      | not started                                |
 | 10 — outbound webhooks            | not started                                |
@@ -143,7 +145,49 @@ describe do not exist, and §45 says do not document features that do not exist.
 | 14 — AI context layer             | not started                                |
 | 15 — real market data             | not started, plus a commercial dependency  |
 
-**8 of 16.**
+**9 of 16.**
+
+## The payment provider is a decision, not a task
+
+Phase 5 is done up to the point where engineering stops and a contract starts.
+
+What exists: the `PaymentProvider` port, the state machine every provider's
+vocabulary is mapped onto, the webhook endpoint with raw-body signatures
+available to whoever implements one, the event log, two independent idempotency
+mechanisms, the wallet credit, the operator queue, and a **real** manual bank
+transfer — which is how most firms take their first deposits and many take their
+largest.
+
+What does not exist, deliberately: an adapter for a third-party processor.
+Choosing one is a commercial decision — pricing, settlement, which countries,
+who signs — and an adapter written against public documentation for a contract
+nobody has signed would be an integration that has never taken a payment,
+sitting in the repository looking finished. §45 and the plan both say not to
+build UI for functionality that does not exist; the same applies to the
+integration behind it.
+
+Adding one means implementing that interface and registering it. See
+`docs/payments.md`.
+
+### Two things this phase found in code that already passed its tests
+
+**A capability added to a constant never reached a running platform.** Grants
+became rows in Phase 2 so a firm could change them without a deployment; the
+reverse case had no owner. `seedTenantRoles` knew how to close the gap and only
+the database seed ever called it, so a deployment upgraded through
+`prisma migrate deploy` got the new endpoints and none of the permission to
+reach them — 403 for everybody, having passed every test. The API now reconciles
+untouched built-in roles with the build at boot. Roles anybody has edited are
+left exactly as they were left.
+
+**`WalletService.ensure` and the idempotency check inside `post` were both
+read-then-write.** Two things asking for the same wallet at the same moment —
+a webhook crediting a deposit while the person has the wallet page open is
+enough — and the loser got a unique-constraint violation thrown at it. In the
+payment path that surfaced as a _payment_ that failed. Both are fixed, and the
+fix for the second is an ordering: take the wallet's row lock **before** reading
+the idempotency key, so a concurrent caller waits and then sees the movement
+rather than colliding with it.
 
 ## Tenant isolation now bites — once one line is set in production
 

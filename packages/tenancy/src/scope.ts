@@ -80,6 +80,8 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'RolePermission',
   'Wallet',
   'WalletTransaction',
+  'PaymentIntent',
+  'PaymentEvent',
 ]);
 
 /**

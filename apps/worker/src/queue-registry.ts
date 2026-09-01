@@ -69,6 +69,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     this.attach(QueueName.IDEMPOTENCY_SWEEP, async () => ({
       expired: await this.maintenance.sweepIdempotencyKeys(),
       abandoned: await this.maintenance.releaseAbandonedClaims(),
+      payments: await this.maintenance.expireStalePayments(),
     }));
     this.attach(QueueName.NOTIFICATIONS, async (job) => this.notifications.deliver(job.data));
 

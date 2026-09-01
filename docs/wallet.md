@@ -121,3 +121,14 @@ was broken six ways to check they notice:
 | A wallet is allowed to go negative                    | 2 tests   |
 | The idempotency key is ignored                        | 1 test    |
 | A frozen wallet still moves money                     | 1 test    |
+
+## Where money comes in
+
+A wallet is credited by a deposit, and deposits are their own subject:
+[payments.md](./payments.md). The one thing worth repeating here is the boundary
+between them. `PaymentsService` decides _whether_ a payment became money;
+`WalletService.post` is the only thing that moves any, it takes the wallet's row
+lock before it does anything else, and it will refuse to take a wallet negative.
+A payment that credits carries `payment:<intent id>` as its idempotency key, so
+a provider that delivers the same event twice — or invents a new id for a
+repeat — credits once.
