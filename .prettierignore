@@ -4,3 +4,9 @@ dist
 coverage
 pnpm-lock.yaml
 prisma/migrations
+
+# Generated native projects. `expo prebuild` writes them and a build fills them
+# with CMake reply files; formatting build output is noise at best, and running
+# `--write` over it rewrites artefacts nobody owns.
+apps/mobile/android/
+apps/mobile/ios/

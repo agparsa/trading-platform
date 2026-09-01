@@ -4,19 +4,87 @@
 
 ## What has and has not happened
 
-**It has never been built, and it has never run on a device or a simulator.**
+**Android builds.** `pnpm --filter @tp/mobile build:android` produces a signed,
+installable 19.7 MiB APK with the JavaScript bundle embedded, so it runs without
+a Metro server. It targets SDK 36, ships arm64 only by default, and points at
+whatever `expo.extra.apiBaseUrl` says.
 
-This session had no macOS, no Xcode, no Android SDK and no device. What is
-verified is what can be verified without one: it typechecks under the same
-strict configuration as the rest of the repository, it lints, and the logic that
-does not need a device is unit-tested — 45 tests covering event deduplication,
-the sound decisions, the token store and the number formatting.
+**iOS has not been built.** It needs macOS and Xcode. Nothing else here can
+produce one — not this repository, not a Linux machine, not EAS without an
+Apple developer account.
 
-What that leaves unverified is everything a screen does: layout, navigation,
-whether a push actually arrives, whether the sounds play. Those need
-`npx expo run:ios` / `run:android` on a machine with the toolchains, or an EAS
-build. Recorded here rather than implied, because §46.22 says never to mark a
-UI-only implementation as complete and this is exactly that half.
+**No screen has been opened on a device.** Compiling and running are different
+claims. What is verified is that it typechecks under the same strict
+configuration as the rest of the repository, that it lints, that 7 test files
+cover the logic that does not need a device, and that the package Android
+produces is complete and correctly signed. Layout, navigation, whether a push
+actually arrives, whether the sounds are audible — none of that is verified, and
+§46.22 says not to call it complete.
+
+## What building it found
+
+Three things no amount of typechecking would have caught.
+
+**Resource shrinking silently deleted two notification sounds.** R8's shrinker
+removes resources it cannot see referenced from code, and a notification
+channel's sound is referenced by _name at runtime_ — never from Java or Kotlin.
+A build shipped six of its eight sounds; `take_profit` and `risk_warning` were
+gone. A channel naming a resource that is not there is delivered **silently** on
+Android 8 and later, so the failure would have been a take-profit that fired
+without a sound and nobody able to say why. Shrinking is now off, and the build
+script fails if any of the sixteen sound resources is missing.
+
+Code minification stays on: 48 MB of dex becomes 17 MB, and it carries no such
+risk because the RN and Expo consumer proguard rules exist for exactly it.
+
+**The sounds are bundled twice, and both are needed.** `res/raw/trade_opened`
+comes from the `expo-notifications` config plugin and is what a notification
+channel resolves; `res/raw/assets_sounds_trade_opened` comes from Metro's asset
+pipeline and is what the in-app player's `require()` resolves. Neither can serve
+the other's caller.
+
+**Native libraries were stored uncompressed.** That is the Expo default —
+faster installs, much larger downloads — and 19.5 MB of `.so` files was most of
+a 31 MiB package. `useLegacyPackaging: true` compresses them and the APK became
+19.7 MiB.
+
+## Building it
+
+```bash
+pnpm --filter @tp/mobile build:android          # arm64, for a phone
+ABIS=arm64-v8a,x86_64 pnpm --filter @tp/mobile build:android   # plus an emulator
+```
+
+The script needs an Android SDK at `ANDROID_HOME` (platform 36, build-tools 36,
+cmake); the NDK installs itself on first build because Gradle names the version
+it wants. It then generates `android/`, tunes Gradle for the machine it is on,
+builds, and verifies the result.
+
+The tuning is in the script rather than in `android/gradle.properties` because
+that directory is generated and git-ignored — anything written there by hand is
+lost on the next prebuild, which is how build knowledge normally evaporates.
+Product decisions live in `app.json` under `expo-build-properties`, where
+prebuild picks them up.
+
+Gradle's heap is a third of the machine, capped. The first hand-run of this
+build gave the JVM 4 GB on a 7 GB box with parallel execution on; the daemon was
+OOM-killed mid-C++-compile, and the error Gradle reports for that — "daemon
+disappeared unexpectedly" — says nothing about memory.
+
+The APK is signed with the React Native template's **debug keystore**, which is
+public. It installs and runs; it is not a store build. A release to Play needs
+an upload key that only its owner should ever hold.
+
+### iOS
+
+```bash
+cd apps/mobile
+npx expo prebuild --platform ios
+npx expo run:ios          # needs macOS and Xcode
+```
+
+Push on iOS additionally needs a `.p8` key from an Apple developer account — see
+[notifications.md](notifications.md) for what the server does with it.
 
 ## Getting it onto a device
 

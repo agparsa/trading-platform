@@ -12,12 +12,13 @@
       "bundleIdentifier": "ir.devopss.trading",
       "infoPlist": {
         "UIBackgroundModes": ["remote-notification"]
-      }
+      },
+      "buildNumber": "1"
     },
     "android": {
       "package": "ir.devopss.trading",
-      "edgeToEdgeEnabled": true,
-      "permissions": ["POST_NOTIFICATIONS", "VIBRATE"]
+      "permissions": ["POST_NOTIFICATIONS", "VIBRATE"],
+      "versionCode": 1
     },
     "plugins": [
       "expo-router",
@@ -37,10 +38,24 @@
             "./assets/sounds/risk_warning.wav"
           ]
         }
+      ],
+      "expo-build-properties",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": false,
+            "useLegacyPackaging": true
+          }
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "apiBaseUrl": "https://devopss.ir"
     }
   }
 }
