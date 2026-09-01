@@ -193,10 +193,40 @@ renderer and the same datafeed boundary as the web terminal. See
 [charting.md](charting.md) for why, and for what `scriptSafeJson` is protecting
 against.
 
+## Three states, two boxes
+
+`protective-levels.ts` is a whole tested module for what looks like form
+plumbing, because the API distinguishes three states a text input cannot:
+`null` clears a level, omitting the field leaves it unchanged, a value sets it.
+
+Collapse that wrongly and a trader is either protected when they believe they
+are not, or unprotected when they believe they are — and neither is visible on
+the screen afterwards.
+
+A resting order needs _both_ rules at once. Price and volume are not nullable —
+an order without a price is not an order — so an empty box there means "leave it
+alone", and sending nothing for it lets the trader's other changes land instead
+of the whole patch being refused over one blank field. Stop loss and take profit
+keep the clearing semantics. Two different rules on one form is exactly what
+gets written by hand twice and then quietly diverges.
+
+## What the profile screen deliberately does not show
+
+KYC. §17 wants verification states there, and there is no KYC anywhere in this
+platform — no model, no endpoint, no provider. A "Verification: pending" row
+would be a screen inventing a status for a process that does not exist, which is
+worse than the gap it hides.
+
+Two-factor _enrolment_ is also absent, for a different reason: it displays a
+shared secret once and never again, and a screen that can show a secret is a
+screen that can be shoulder-surfed. It belongs on the web terminal, where it can
+be printed. The screen shows the status, warns when an enrolment was started and
+never finished, and warns when no recovery codes remain.
+
 ## What is not built yet
 
-Resting-order _modification_ (cancelling works), KYC and profile, and support.
-Phase 13 of `IMPLEMENTATION_PLAN.md` is otherwise done: account, market, the
-chart, positions with closing and SL/TP editing, the order ticket, resting
-orders, trade history, the notification centre and settings all exist and read
-real endpoints.
+KYC (which needs Phase 6 on the server first) and support. Phase 13 of
+`IMPLEMENTATION_PLAN.md` is otherwise done: account, market, the chart,
+positions with closing and SL/TP editing, the order ticket, resting orders with
+modification and cancellation, trade history, profile with sessions and devices,
+the notification centre and settings all exist and read real endpoints.

@@ -100,3 +100,65 @@ export function describePatch(patch: ProtectivePatch): string {
   }
   return parts.join(' and ');
 }
+
+/**
+ * The same three-state problem, for a resting order.
+ *
+ * Price and volume are *not* nullable — an order without a price is not an
+ * order — so an empty box there means "leave it alone", not "clear it". Stop
+ * loss and take profit keep the clearing semantics. Two different rules on one
+ * form is exactly the sort of thing that gets written once by hand and then
+ * quietly diverges, so both live here with the tests.
+ */
+export interface PendingOrderForm {
+  readonly price: string;
+  readonly volume: string;
+  readonly stopLoss: string;
+  readonly takeProfit: string;
+}
+
+export interface PendingOrderState {
+  readonly price: string;
+  readonly volume: string;
+  readonly stopLoss: string | null;
+  readonly takeProfit: string | null;
+}
+
+export interface PendingOrderPatch {
+  price?: string;
+  volume?: string;
+  stopLoss?: string | null;
+  takeProfit?: string | null;
+}
+
+export function pendingOrderPatch(
+  form: PendingOrderForm,
+  original: PendingOrderState,
+): PendingOrderPatch | null {
+  const patch: PendingOrderPatch = {};
+
+  const required = (raw: string, current: string): string | undefined => {
+    const trimmed = raw.trim();
+    // An empty required field is a half-finished edit, not an instruction.
+    // Sending nothing is the safe reading; the server would reject '' anyway,
+    // and rejecting it here means the trader is not told their whole edit
+    // failed because of one blank box.
+    if (trimmed.length === 0) return undefined;
+    return sameLevel(trimmed, current) ? undefined : trimmed;
+  };
+
+  const price = required(form.price, original.price);
+  const volume = required(form.volume, original.volume);
+  if (price !== undefined) patch.price = price;
+  if (volume !== undefined) patch.volume = volume;
+
+  const levels = protectivePatch(
+    { stopLoss: form.stopLoss, takeProfit: form.takeProfit },
+    { stopLoss: original.stopLoss, takeProfit: original.takeProfit },
+  );
+  if (levels !== null) Object.assign(patch, levels);
+
+  // The endpoint refuses an empty patch, and sending one surfaces as a
+  // validation error for a button pressed having changed nothing.
+  return Object.keys(patch).length === 0 ? null : patch;
+}

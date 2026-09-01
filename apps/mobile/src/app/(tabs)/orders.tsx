@@ -1,8 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { DomainError } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
 import { Button, Empty, ErrorNote, Screen } from '../../components/ui';
+import { pendingOrderPatch } from '../../lib/protective-levels';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
 import { theme } from '../../lib/theme';
 
@@ -38,6 +47,8 @@ export default function Orders(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [form, setForm] = useState({ price: '', volume: '', stopLoss: '', takeProfit: '' });
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -72,6 +83,41 @@ export default function Orders(): React.ReactElement {
       await load();
     } catch (caught) {
       setError(caught instanceof DomainError ? caught.message : 'The order was not cancelled.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Moves a resting order.
+   *
+   * The patch is built by `pendingOrderPatch`, which holds the two different
+   * rules this form needs: an empty price means "leave it alone" because an
+   * order without a price is not an order, while an empty stop loss means
+   * "remove it".
+   */
+  const save = async (order: PendingOrder) => {
+    const patch = pendingOrderPatch(form, {
+      price: order.price,
+      volume: order.volume,
+      stopLoss: order.stopLoss,
+      takeProfit: order.takeProfit,
+    });
+    if (patch === null) {
+      setEditing(null);
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      await api.patch(`/orders/${order.orderId}`, patch, {
+        idempotencyKey: `modify:${order.orderId}:${JSON.stringify(patch)}`,
+      });
+      setEditing(null);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof DomainError ? caught.message : 'The order was not changed.');
     } finally {
       setBusy(false);
     }
@@ -135,20 +181,104 @@ export default function Orders(): React.ReactElement {
                 />
                 <Button label="Leave it" variant="quiet" onPress={() => setCancelling(null)} />
               </View>
+            ) : editing === item.orderId ? (
+              <View style={styles.confirm}>
+                <Field
+                  label="Price"
+                  value={form.price}
+                  onChange={(value) => setForm((c) => ({ ...c, price: value }))}
+                />
+                <Field
+                  label="Volume"
+                  value={form.volume}
+                  onChange={(value) => setForm((c) => ({ ...c, volume: value }))}
+                />
+                <Field
+                  label="Stop loss"
+                  value={form.stopLoss}
+                  placeholder="empty to remove"
+                  onChange={(value) => setForm((c) => ({ ...c, stopLoss: value }))}
+                />
+                <Field
+                  label="Take profit"
+                  value={form.takeProfit}
+                  placeholder="empty to remove"
+                  onChange={(value) => setForm((c) => ({ ...c, takeProfit: value }))}
+                />
+                <Button
+                  label="Save changes"
+                  busy={busy}
+                  disabled={
+                    pendingOrderPatch(form, {
+                      price: item.price,
+                      volume: item.volume,
+                      stopLoss: item.stopLoss,
+                      takeProfit: item.takeProfit,
+                    }) === null
+                  }
+                  onPress={() => void save(item)}
+                />
+                <Button label="Cancel" variant="quiet" onPress={() => setEditing(null)} />
+              </View>
             ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Cancel ${item.symbol} ${item.type} order`}
-                onPress={() => setCancelling(item.orderId)}
-                style={styles.affordance}
-              >
-                <Text style={styles.affordanceLabel}>Cancel</Text>
-              </Pressable>
+              <View style={styles.actions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change ${item.symbol} ${item.type} order`}
+                  onPress={() => {
+                    setForm({
+                      price: item.price,
+                      volume: item.volume,
+                      stopLoss: item.stopLoss ?? '',
+                      takeProfit: item.takeProfit ?? '',
+                    });
+                    setEditing(item.orderId);
+                  }}
+                  style={styles.affordance}
+                >
+                  <Text style={styles.affordanceLabel}>Change</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cancel ${item.symbol} ${item.type} order`}
+                  onPress={() => setCancelling(item.orderId)}
+                  style={styles.affordance}
+                >
+                  <Text style={styles.affordanceLabel}>Cancel</Text>
+                </Pressable>
+              </View>
             )}
           </View>
         )}
       />
     </Screen>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}): React.ReactElement {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        style={styles.fieldInput}
+        value={value}
+        onChangeText={onChange}
+        keyboardType="decimal-pad"
+        accessibilityLabel={label}
+        placeholder={placeholder ?? ''}
+        placeholderTextColor={theme.colors.textMuted}
+      />
+    </View>
   );
 }
 
@@ -188,4 +318,16 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing(1),
   },
   confirmText: { color: theme.colors.text, fontSize: 14 },
+  actions: { flexDirection: 'row', gap: theme.spacing(1) },
+  field: { marginBottom: theme.spacing(1) },
+  fieldLabel: { color: theme.colors.textMuted, fontSize: 12 },
+  fieldInput: {
+    backgroundColor: theme.colors.surfaceRaised,
+    borderRadius: theme.radius.sm,
+    color: theme.colors.text,
+    fontFamily: theme.font.mono,
+    fontSize: 15,
+    minHeight: 44,
+    paddingHorizontal: theme.spacing(1),
+  },
 });

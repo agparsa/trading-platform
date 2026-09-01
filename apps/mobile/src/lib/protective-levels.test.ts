@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describePatch, protectivePatch, sameLevel } from './protective-levels';
+import { describePatch, pendingOrderPatch, protectivePatch, sameLevel } from './protective-levels';
 
 const original = { stopLoss: '4500.00', takeProfit: '4700.00' };
 
@@ -106,5 +106,69 @@ describe('describing the change', () => {
     const text = describePatch({ stopLoss: '4400', takeProfit: null });
     expect(text).toContain('stop loss');
     expect(text).toContain('take profit');
+  });
+});
+
+describe('building a resting-order patch', () => {
+  const original = {
+    price: '4500.00',
+    volume: '0.10',
+    stopLoss: '4400.00',
+    takeProfit: '4700.00',
+  };
+  const unchanged = {
+    price: '4500.00',
+    volume: '0.10',
+    stopLoss: '4400.00',
+    takeProfit: '4700.00',
+  };
+
+  it('sends nothing when nothing changed', () => {
+    expect(pendingOrderPatch(unchanged, original)).toBeNull();
+  });
+
+  it('sends a moved price', () => {
+    expect(pendingOrderPatch({ ...unchanged, price: '4450.00' }, original)).toEqual({
+      price: '4450.00',
+    });
+  });
+
+  it('sends a resized volume', () => {
+    expect(pendingOrderPatch({ ...unchanged, volume: '0.20' }, original)).toEqual({
+      volume: '0.20',
+    });
+  });
+
+  it('clears a stop loss with null, as the levels rule requires', () => {
+    expect(pendingOrderPatch({ ...unchanged, stopLoss: '' }, original)).toEqual({
+      stopLoss: null,
+    });
+  });
+
+  it('treats an empty price as "leave it alone", not "clear it"', () => {
+    /**
+     * The rule that differs between the two halves of this form.
+     *
+     * An order without a price is not an order, so the API does not accept null
+     * there. An empty box is a half-finished edit; sending nothing for it means
+     * the trader's other changes still land instead of the whole patch being
+     * rejected over one blank field.
+     */
+    expect(pendingOrderPatch({ ...unchanged, price: '', volume: '0.20' }, original)).toEqual({
+      volume: '0.20',
+    });
+  });
+
+  it('changes several fields at once', () => {
+    expect(
+      pendingOrderPatch(
+        { price: '4450.00', volume: '0.20', stopLoss: '', takeProfit: '4800.00' },
+        original,
+      ),
+    ).toEqual({ price: '4450.00', volume: '0.20', stopLoss: null, takeProfit: '4800.00' });
+  });
+
+  it('ignores a reformatted but identical price', () => {
+    expect(pendingOrderPatch({ ...unchanged, price: '4500.0000' }, original)).toBeNull();
   });
 });
