@@ -4,7 +4,7 @@ import {
   resolutionMs,
   type ChartBar,
   type ChartDatafeed,
-} from './datafeed';
+} from '@tp/chart-core';
 import type { SymbolRow, TradingSession } from './queries';
 
 /**

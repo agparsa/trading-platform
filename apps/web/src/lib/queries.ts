@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { ApiClient } from '@tp/api-client';
-import { barWindow, RESOLUTION_MINUTES } from './datafeed';
+import { barWindow, RESOLUTION_MINUTES } from '@tp/chart-core';
 import { useSession } from './session';
 
 /**

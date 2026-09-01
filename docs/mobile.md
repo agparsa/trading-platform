@@ -186,10 +186,17 @@ arithmetic in floating point on three platforms.
 A missing mark is `null` and renders as an em-dash, never `0`. A trader cannot
 tell a genuine flat from a missing price, and one of those is a reason to act.
 
+## The chart
+
+`lightweight-charts` in a WebView, fed through `@tp/chart-core` — the same
+renderer and the same datafeed boundary as the web terminal. See
+[charting.md](charting.md) for why, and for what `scriptSafeJson` is protecting
+against.
+
 ## What is not built yet
 
-The chart, resting-order _modification_ (cancelling works), KYC and profile, and
-support. Phase 13 of `IMPLEMENTATION_PLAN.md` is otherwise done: account,
-market, positions with closing and SL/TP editing, the order ticket, resting
+Resting-order _modification_ (cancelling works), KYC and profile, and support.
+Phase 13 of `IMPLEMENTATION_PLAN.md` is otherwise done: account, market, the
+chart, positions with closing and SL/TP editing, the order ticket, resting
 orders, trade history, the notification centre and settings all exist and read
 real endpoints.

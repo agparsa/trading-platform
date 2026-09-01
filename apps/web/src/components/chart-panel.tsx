@@ -15,7 +15,7 @@ import {
 import { cn } from '@tp/ui';
 import { currencySymbol, markClasses, markFor } from '@/lib/instrument-marks';
 import { price as formatPrice, signedMoney } from '@/lib/format';
-import { RESOLUTIONS, RESOLUTION_LABEL, mergeBars, type ChartBar } from '@/lib/datafeed';
+import { RESOLUTIONS, RESOLUTION_LABEL, mergeBars, type ChartBar } from '@tp/chart-core';
 import {
   LevelKind,
   levelIdentity,
@@ -40,7 +40,7 @@ import { EmptyState } from './primitives';
  * line.
  *
  * Rendered with `lightweight-charts` (Apache-2.0), behind the datafeed boundary
- * in `lib/datafeed.ts`. TradingView Advanced Charts — indicators, drawing tools,
+ * in `@tp/chart-core`. TradingView Advanced Charts — indicators, drawing tools,
  * order-from-chart — is licensed and not in this repository; its adapter is
  * written and tested in `lib/tradingview-datafeed.ts` and drops in without an
  * engine, API or WebSocket change. See docs/charting.md.

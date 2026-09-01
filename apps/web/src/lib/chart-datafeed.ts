@@ -1,7 +1,7 @@
 'use client';
 
 import type { ApiClient } from '@tp/api-client';
-import { createPlatformDatafeed, type ChartBar } from './datafeed';
+import { createPlatformDatafeed, type ChartBar } from '@tp/chart-core';
 import { useRealtime, barKey } from './realtime-store';
 import {
   createTradingViewDatafeed,

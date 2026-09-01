@@ -19,7 +19,9 @@ Consequences for this codebase:
 
 ## The datafeed boundary
 
-`apps/web/src/lib/datafeed.ts` is the seam. Everything a chart needs from this
+`@tp/chart-core` is the seam. It used to live in `apps/web/src/lib/datafeed.ts`;
+it moved to a package when the mobile app needed the same bars, which is the
+boundary doing exactly what it was built for. Everything a chart needs from this
 platform passes through it — bar history over `GET /market/candles`, live bars
 over the `candles` WebSocket channel — and charting libraries plug in on the far
 side. That is what makes the renderer swappable without an engine, API or
@@ -45,6 +47,30 @@ Two behaviours are deliberate:
 
 What it does not have: indicators, drawing tools, and order-from-chart. Those are
 the reason for the licensed library.
+
+## On the phone
+
+The same renderer, in a WebView, fed through the same `@tp/chart-core`. A second
+candlestick implementation for mobile would be two things to keep looking alike,
+and a trader who saw a different chart on each device would be right to distrust
+both. The cost is a WebView bridge and a JavaScript context per chart; it is
+paid deliberately.
+
+The library is loaded from a CDN at a **pinned** version. An unpinned chart
+library is a rendering change nobody reviewed, shipped to a phone at whatever
+moment upstream publishes. When it cannot load — an offline phone, a blocked
+network — the page says so rather than leaving a blank rectangle, because a
+blank rectangle reads as "no data", which is a different and much more alarming
+thing than "you are offline".
+
+Bars are injected from the native side rather than fetched inside the WebView.
+The access token lives in the keychain, and handing it to a browser context so
+it can make its own authenticated requests would put a credential somewhere it
+does not need to be.
+
+`scriptSafeJson` escapes `<`, `>` and the two JavaScript line terminators before
+anything is interpolated into the page. `JSON.stringify` does not do this — a
+test written on the assumption that it did is what found the gap.
 
 ## Datafeed adapter for Advanced Charts
 

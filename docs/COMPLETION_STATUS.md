@@ -19,7 +19,7 @@ myself.
 pnpm build:packages   ok
 pnpm typecheck        ok
 pnpm lint             ok
-pnpm test             113 files, 1391 tests, 0 failures
+pnpm test             114 files, 1400 tests, 0 failures
 ```
 
 37 Prisma models. Roughly 62,000 lines of TypeScript in `apps/`, `packages/`, `prisma/`
@@ -125,7 +125,7 @@ permissions ⚠️ tokens ❌ API management ❌ notification management ❌ aud
 security center ❌
 
 Mobile: Android builds ❌ iOS builds ❌ (neither attempted — no toolchain here)
-authentication ✅ dashboard ✅ market data ✅ charts ❌ order placement ✅
+authentication ✅ dashboard ✅ market data ✅ charts ✅ order placement ✅
 position management ✅ history ✅ notifications ✅ push ✅ sounds ✅
 notification settings ✅ — **all of these verified by compiler and unit test
 only, never on a device.**

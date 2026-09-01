@@ -9,7 +9,7 @@ import {
   toSessionString,
   type PeriodParams,
 } from './tradingview-datafeed';
-import type { ChartBar } from './datafeed';
+import type { ChartBar } from '@tp/chart-core';
 import type { SymbolRow, TradingSession } from './queries';
 
 /**

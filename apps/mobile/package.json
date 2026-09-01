@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@tp/api-client": "workspace:*",
+    "@tp/chart-core": "workspace:*",
     "@tp/push-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
     "expo": "~57.0.0",
@@ -30,6 +31,7 @@
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.2",
+    "react-native-webview": "13.16.1",
     "socket.io-client": "catalog:"
   },
   "devDependencies": {

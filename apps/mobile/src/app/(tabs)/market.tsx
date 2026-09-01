@@ -110,8 +110,8 @@ export default function Market(): React.ReactElement {
           return (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Trade ${item.code}`}
-              onPress={() => router.push(`/trade/${item.code}`)}
+              accessibilityLabel={`Chart for ${item.code}`}
+              onPress={() => router.push(`/chart/${item.code}`)}
               style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
             >
               <View style={{ flex: 1 }}>

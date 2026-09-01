@@ -12,6 +12,7 @@
   "dependencies": {
     "@tanstack/react-query": "catalog:",
     "@tp/api-client": "workspace:*",
+    "@tp/chart-core": "workspace:*",
     "@tp/financial-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
     "@tp/trading-core": "workspace:*",

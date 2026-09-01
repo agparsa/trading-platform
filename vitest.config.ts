@@ -20,6 +20,7 @@ export default defineConfig({
       '@tp/integrity-core': pkg('integrity-core'),
       '@tp/api-client': pkg('api-client'),
       '@tp/push-core': pkg('push-core'),
+      '@tp/chart-core': pkg('chart-core'),
       '@tp/ui': pkg('ui'),
       // The web app's own path alias, so its pure modules can be tested without
       // a Next.js build. Only non-React modules are included below.
