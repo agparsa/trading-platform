@@ -257,6 +257,33 @@ fi
 say "8/9  Starting the new version"
 # ---------------------------------------------------------------------------
 "${COMPOSE[@]}" up -d
+
+# Nginx reads its configuration from a bind-mounted *file*, and a file bind
+# mount is a mount of an inode. `git merge` writes a new file rather than
+# editing the old one in place, so after a pull the running container is still
+# reading the configuration it started with — every line of it — until it is
+# recreated. `up -d` does not recreate it: nothing about the container changed
+# from Compose's point of view.
+#
+# Found the hard way: a body-size limit raised for the document upload route
+# was committed, deployed, and not in effect, because the container that was
+# "Up 34 hours" had never seen the new file. A 3 MB upload was refused at the
+# edge with every test green.
+#
+# So: if any file the nginx container mounts differs from what it started with,
+# recreate it. The cost is the connections open at that instant, which is why
+# it is done only when something actually changed.
+if [ "$BEFORE" != "$AFTER" ] && \
+   git diff --quiet "$BEFORE" "$AFTER" -- docker/nginx/ docker-compose.prod.yml docker-compose.cpanel.yml; then
+  echo "    nginx configuration unchanged; the running container keeps its connections"
+else
+  if [ "$BEFORE" != "$AFTER" ]; then
+    echo "    nginx configuration changed in $BEFORE..$AFTER; recreating the container so it reads the new file"
+  else
+    echo "    recreating nginx so a bind-mounted configuration edited by hand is picked up"
+  fi
+  "${COMPOSE[@]}" up -d --force-recreate nginx
+fi
 "${COMPOSE[@]}" ps
 
 # ---------------------------------------------------------------------------

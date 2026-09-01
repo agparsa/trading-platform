@@ -804,6 +804,22 @@ describe('scripts/upgrade-server.sh', () => {
     expect(script).toMatch(/gzip -dc "\$OUT" \| head -c 200 \| wc -c/);
   });
 
+  /**
+   * A bind-mounted file is a mount of an inode. `git merge` writes a new file,
+   * so a running nginx keeps reading the configuration it started with until
+   * the container is recreated — and `up -d` does not recreate it. A raised
+   * body limit was committed, deployed, and refused 3 MB at the edge with every
+   * test green, because the container was still on the old file.
+   */
+  it('recreates nginx when its configuration changed, and only then', () => {
+    const start = script.indexOf('8/9  Starting the new version');
+    const recreate = script.indexOf('up -d --force-recreate nginx');
+    expect(recreate).toBeGreaterThan(start);
+    // Conditional on a diff of the mounted files, not unconditional: recreating
+    // nginx drops the connections open at that instant.
+    expect(script).toMatch(/git diff --quiet "\$BEFORE" "\$AFTER" -- docker\/nginx\//);
+  });
+
   describe('the role row-level security applies to', () => {
     it('creates it after the migration, so the grants cover the new tables', () => {
       const migrate = script.indexOf('run --rm migrate');

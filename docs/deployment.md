@@ -334,6 +334,19 @@ Nginx accepts 11 MB on `/api/v1/kyc/documents` and 2 MB everywhere else. A
 deployment behind another proxy — cPanel's Apache, a CDN — needs that proxy's
 body limit raised for the same path, or uploads fail before reaching Nginx.
 
+### Nginx reads a bind-mounted file, and a file mount is a mount of an inode
+
+`docker/nginx/nginx.conf` is bind-mounted into the container. `git merge`
+writes a new file rather than editing the old one, so after a pull the running
+container is still reading the configuration it started with — all of it —
+until the container is recreated, and `up -d` does not recreate it because
+nothing about the container changed from Compose's point of view.
+
+The upgrade script now diffs the mounted files between the old and new commits
+and recreates nginx only when they differ, since recreating it drops whatever
+connections are open at that instant. A configuration edited by hand on the
+host still needs `docker compose … up -d --force-recreate nginx`.
+
 ### Roles reconcile themselves at boot
 
 A release that adds a capability writes it into a constant, and the constant is

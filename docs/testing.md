@@ -229,6 +229,14 @@ a stale binary is the worst failure mode there is.
   the real reconciliation engine over the copy. A backup nobody has restored is a
   hypothesis. See [backup-restore.md](./backup-restore.md).
 
+`scripts/declared-dependencies.test.ts` reads every bare import in `apps/api`
+and `apps/worker` and requires each to be in that application's own
+`package.json`. The workspace hoists, so an import of a transitive dependency
+resolves on a developer's machine; pnpm's strict layout in the production image
+does not, and the phase 6 API crash-looped on `Cannot find module 'express'`
+with every test green. Verified by removing `express` from the manifest and
+watching it name the three files that import it.
+
 `background-scope.test.ts` is the equivalent pass over a different blind spot:
 anything that runs because _time passed_ rather than because somebody asked. Every
 test in this suite drives a service from inside a tenant scope the harness has
