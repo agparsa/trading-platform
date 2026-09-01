@@ -173,7 +173,9 @@ position management ✅ history ✅ notifications ✅ push ✅ sounds ✅ notifi
 settings ✅ — **all verified by compiler and unit test only, never on a device.**
 
 **Security**: no critical vulnerabilities ✅ no secrets committed ✅ no
-cross-tenant access ✅ (application layer; database layer present but not armed)
+cross-tenant access ✅ (both layers: the application scope, and row-level
+security enforced against the application itself — once `DATABASE_URL_TENANT` is
+set, which it is not yet on devopss.ir)
 no frontend-only authorization ✅ sensitive actions audited ✅ tokens protected ✅
 
 Every link of the chain the prompt draws exists in code: user → app → API → auth
