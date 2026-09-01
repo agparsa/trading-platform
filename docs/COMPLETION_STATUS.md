@@ -129,7 +129,7 @@ describe do not exist, and §45 says do not document features that do not exist.
 | 9 — API and token management             | not started                                |
 | 10 — outbound webhooks                   | not started                                |
 | 11 — Security Centre                     | not started                                |
-| 12 — mobile foundation                   | done, never run on a device                |
+| 12 — mobile foundation                   | done; Android builds, iOS not attempted    |
 | 13 — mobile trading                      | done except KYC, which needs Phase 6 first |
 | 14 — AI context layer                    | not started                                |
 | 15 — real market data                    | not started, plus a commercial dependency  |
@@ -144,8 +144,7 @@ trading ✅ risk ✅ WebSocket ✅ notifications ✅ audit ✅
 **Admin**: dashboard ✅ users ✅ accounts ✅ trading ✅ risk ✅ permissions ⚠️
 tokens ❌ API management ❌ notification management ❌ audit ✅ security centre ❌
 
-**Mobile**: Android builds ❌ iOS builds ❌ (neither attempted — no toolchain
-here) authentication ✅ dashboard ✅ market data ✅ charts ✅ order placement ✅
+**Mobile**: Android builds ✅ (signed APK, verified) iOS builds ❌ (needs macOS) authentication ✅ dashboard ✅ market data ✅ charts ✅ order placement ✅
 position management ✅ history ✅ notifications ✅ push ✅ sounds ✅ notification
 settings ✅ — **all verified by compiler and unit test only, never on a device.**
 
