@@ -155,6 +155,15 @@ services:
         NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:?set PUBLIC_API_URL, e.g. https://trade.example.com/api/v1}
         NEXT_PUBLIC_WS_URL: ${PUBLIC_WS_URL:?set PUBLIC_WS_URL, e.g. https://trade.example.com}
     restart: unless-stopped
+    environment:
+      # Next's standalone server binds whatever `HOSTNAME` says, and Docker sets
+      # that variable to the container id. So it bound to the container's own
+      # address, its Dockerfile healthcheck fetched 127.0.0.1 and was refused,
+      # and the container sat "unhealthy" forever while serving every request
+      # perfectly. A healthcheck that can never pass is worse than none: it is a
+      # signal people learn to ignore, and it was ignored here for a day.
+      HOSTNAME: '0.0.0.0'
+      PORT: '3000'
     depends_on:
       - api
 

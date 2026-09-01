@@ -194,6 +194,25 @@ describe('docker-compose.prod.yml', () => {
 
 // ─── The one container that decides whether anybody can reach the platform ───
 
+describe('the web container binds an address its healthcheck can reach', () => {
+  /**
+   * Next's standalone server binds whatever `HOSTNAME` says, and Docker sets
+   * that variable to the container id — so without an override it binds the
+   * container's own address, the Dockerfile's `fetch('http://127.0.0.1:3000/')`
+   * is refused, and the container reports unhealthy while serving every request
+   * correctly. It ran that way in production for a day.
+   */
+  it('sets HOSTNAME to 0.0.0.0 for the web service', () => {
+    const compose = read('docker-compose.prod.yml');
+    const web = compose.slice(compose.indexOf('\n  web:'), compose.indexOf('\n  nginx:'));
+    expect(web).toMatch(/HOSTNAME: '0\.0\.0\.0'/);
+  });
+
+  it('still healthchecks over loopback, which is the point of the override', () => {
+    expect(read('docker/web.Dockerfile')).toContain('http://127.0.0.1:3000/');
+  });
+});
+
 describe('nginx', () => {
   const conf = read('docker/nginx/nginx.conf');
 
