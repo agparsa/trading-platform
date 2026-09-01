@@ -52,7 +52,7 @@ die()  { printf '\n\033[31m%s\033[0m\n' "$1" >&2; exit 1; }
 [ -f "$ENV_FILE" ] || die "$ENV_FILE is missing. This script upgrades a host that is already running; use first-deploy.sh for a new one."
 
 # ---------------------------------------------------------------------------
-say "1/8  What is about to change"
+say "1/9  What is about to change"
 # ---------------------------------------------------------------------------
 BEFORE=$(git rev-parse --short HEAD)
 git fetch --all --prune
@@ -65,7 +65,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-say "2/8  Environment variables this build requires"
+say "2/9  Environment variables this build requires"
 # ---------------------------------------------------------------------------
 #
 # Added only when absent. An operator's existing value is never overwritten:
@@ -93,7 +93,7 @@ add_if_missing TENANT_HOST_STRICT false \
   "Turn on the moment a second tenant exists; see docs/multi-tenancy.md."
 
 # ---------------------------------------------------------------------------
-say "3/8  Database backup"
+say "3/9  Database backup"
 # ---------------------------------------------------------------------------
 if [ "$SKIP_BACKUP" = true ]; then
   warn "Skipped at your request. The migration below is not reversible without one."
@@ -110,13 +110,13 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-say "4/8  Fetching the new code"
+say "4/9  Fetching the new code"
 # ---------------------------------------------------------------------------
 git merge --ff-only "@{u}" || die "The checkout has local changes or has diverged. Resolve by hand; a deploy is the wrong time to guess."
 echo "    now at $(git rev-parse --short HEAD)"
 
 # ---------------------------------------------------------------------------
-say "5/8  Building images, one at a time"
+say "5/9  Building images, one at a time"
 # ---------------------------------------------------------------------------
 if [ "$BUILD" = true ]; then
   # `migrate` and `api-ingest` are built from the same Dockerfile and target as
@@ -132,7 +132,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-say "6/8  Migrating — the downtime starts here"
+say "6/9  Migrating — the downtime starts here"
 # ---------------------------------------------------------------------------
 # `api-ingest` too, and it is the one most easily forgotten: it is a separate
 # service running the same code, and leaving it up would have the old build
@@ -166,13 +166,101 @@ fi
 echo "    $TENANTS active tenant(s)"
 
 # ---------------------------------------------------------------------------
-say "7/8  Starting the new version"
+say "7/9  The role row-level security applies to"
+# ---------------------------------------------------------------------------
+#
+# PostgreSQL exempts a table's owner from that table's policies, and
+# DATABASE_URL is the owner — migrations need it to be. So the policies installed
+# by the tenancy migrations constrain a reporting user and an analyst's psql
+# session, and not the application, until a second role exists that owns nothing.
+# See docs/multi-tenancy.md.
+#
+# Everything here is idempotent and everything here is a warning rather than a
+# stop. The platform runs correctly without it — with the second isolation layer
+# disarmed for the application, which is the state every deployment was in before
+# this step existed. An upgrade is the wrong moment to refuse over it.
+#
+# The order matters and is the whole reason this is a script rather than a
+# paragraph in a runbook:
+#
+#   * after the migration, so `GRANT ON ALL TABLES` covers the tables it created;
+#   * verified *before* DATABASE_URL_TENANT is written, because the API refuses
+#     to boot when that variable is set and the role turns out not to be
+#     constrained — correct behaviour, and an outage if this script wrote the
+#     line first and checked afterwards;
+#   * before the new containers start, so they come up already using it.
+#
+# The password is generated on this host and written straight into the two places
+# that need it. It is never printed: a secret that appears in a terminal is a
+# secret in somebody's scrollback and in their shell history.
+TENANT_ROLE=trading_app
+psql_owner() {
+  "${COMPOSE[@]}" exec -T postgres psql -U "${POSTGRES_USER:-trading}" \
+    -d "${POSTGRES_DB:-trading_platform}" -tAc "$1" 2>/dev/null | tr -d '[:space:]'
+}
+
+if grep -qE '^DATABASE_URL_TENANT=' "$ENV_FILE"; then
+  echo "    DATABASE_URL_TENANT already set"
+elif [ "$(psql_owner "SELECT 1 FROM pg_roles WHERE rolname = '$TENANT_ROLE'")" = "1" ]; then
+  # The role exists but nothing points at it. Left alone deliberately: its
+  # password is not recoverable from here, and resetting somebody else's
+  # database role during an upgrade is not this script's business.
+  warn "The $TENANT_ROLE role exists but DATABASE_URL_TENANT is not set. Set it by hand; see docs/multi-tenancy.md."
+else
+  TENANT_PASSWORD=$(openssl rand -base64 24 | tr -d '\n/+=' | head -c 32)
+  if [ -z "$TENANT_PASSWORD" ]; then
+    warn "Could not generate a password for $TENANT_ROLE; skipping."
+  else
+    say_ok=true
+    "${COMPOSE[@]}" exec -T postgres psql -U "${POSTGRES_USER:-trading}" \
+      -d "${POSTGRES_DB:-trading_platform}" >/dev/null 2>&1 <<SQL || say_ok=false
+CREATE ROLE $TENANT_ROLE LOGIN PASSWORD '$TENANT_PASSWORD' NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
+GRANT USAGE ON SCHEMA public TO $TENANT_ROLE;
+REVOKE CREATE ON SCHEMA public FROM $TENANT_ROLE;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO $TENANT_ROLE;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO $TENANT_ROLE;
+ALTER DEFAULT PRIVILEGES FOR ROLE ${POSTGRES_USER:-trading} IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $TENANT_ROLE;
+ALTER DEFAULT PRIVILEGES FOR ROLE ${POSTGRES_USER:-trading} IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO $TENANT_ROLE;
+SQL
+
+    if [ "$say_ok" != true ]; then
+      warn "Creating $TENANT_ROLE failed. Row-level security still does not constrain the application."
+    else
+      # The check that decides. With no tenant bound, `current_tenant_id()` is
+      # NULL and NULL matches no row, so the correct answer is zero. Any other
+      # answer means the role is exempt after all — and an empty users table
+      # would make zero prove nothing, so the owner's count is checked too.
+      VISIBLE=$("${COMPOSE[@]}" exec -T -e PGPASSWORD="$TENANT_PASSWORD" postgres \
+        psql -U "$TENANT_ROLE" -d "${POSTGRES_DB:-trading_platform}" \
+        -tAc "SELECT count(*) FROM users" 2>/dev/null | tr -d '[:space:]')
+      TOTAL=$(psql_owner "SELECT count(*) FROM users")
+
+      if [ -z "$VISIBLE" ]; then
+        warn "$TENANT_ROLE could not read the database at all. Grants are wrong; DATABASE_URL_TENANT not set."
+      elif [ "${TOTAL:-0}" -lt 1 ]; then
+        warn "The users table is empty, so reading $VISIBLE rows proves nothing. DATABASE_URL_TENANT not set."
+      elif [ "$VISIBLE" != "0" ]; then
+        warn "$TENANT_ROLE reads $VISIBLE of $TOTAL users with no tenant set, so the policies do not apply to it. DATABASE_URL_TENANT not set."
+      else
+        printf '\n# The connection tenant traffic uses. Row-level security exempts a table owner\n# from its own policies, so this second role is what makes them enforcement.\n# See docs/multi-tenancy.md.\nDATABASE_URL_TENANT=postgresql://%s:%s@postgres:5432/%s?schema=public\n' \
+          "$TENANT_ROLE" "$TENANT_PASSWORD" "${POSTGRES_DB:-trading_platform}" >> "$ENV_FILE"
+        echo "    $TENANT_ROLE reads 0 of $TOTAL users with no tenant set; DATABASE_URL_TENANT written"
+      fi
+    fi
+    unset TENANT_PASSWORD
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+say "8/9  Starting the new version"
 # ---------------------------------------------------------------------------
 "${COMPOSE[@]}" up -d
 "${COMPOSE[@]}" ps
 
 # ---------------------------------------------------------------------------
-say "8/8  Verifying"
+say "9/9  Verifying"
 # ---------------------------------------------------------------------------
 #
 # Readiness rather than liveness: liveness answers while the database is

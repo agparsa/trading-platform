@@ -18,7 +18,16 @@ pnpm verify
 Fill in `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` before starting the API; it
 refuses to boot on anything shorter than 32 characters.
 
-`pnpm db:roles` creates the second database role — the one that owns no tables,
+On a host that is already running, `scripts/upgrade-server.sh` does this for you
+— it creates the role after the migration, verifies the policies actually
+constrain it, and only then writes `DATABASE_URL_TENANT`. That order is the point:
+the API refuses to boot when the variable is set and the role turns out to be
+exempt, so checking afterwards would turn a misconfiguration into an outage. A
+failure there is a warning rather than a stop, because the platform runs
+correctly without it — with the second isolation layer disarmed, which is the
+state every deployment was in before the step existed.
+
+For a fresh checkout, `pnpm db:roles` creates the second database role — the one that owns no tables,
 and therefore the one PostgreSQL's row-level-security policies actually apply to.
 It prints a `DATABASE_URL_TENANT` line for `.env`. Set it: with it, tenant
 isolation is enforced by the database as well as by the application, and the API

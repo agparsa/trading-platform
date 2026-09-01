@@ -785,6 +785,72 @@ describe('scripts/upgrade-server.sh', () => {
     expect(script).toMatch(/gzip -dc "\$OUT" \| head -c 200 \| wc -c/);
   });
 
+  describe('the role row-level security applies to', () => {
+    it('creates it after the migration, so the grants cover the new tables', () => {
+      const migrate = script.indexOf('run --rm migrate');
+      const role = script.indexOf('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES');
+      expect(role).toBeGreaterThan(migrate);
+    });
+
+    /**
+     * The ordering that keeps a failed check from becoming an outage. The API
+     * refuses to boot when `DATABASE_URL_TENANT` is set and the role turns out
+     * not to be constrained — correct behaviour, and a dead site if the script
+     * wrote the line and checked afterwards.
+     */
+    it('verifies the role is constrained before writing the variable', () => {
+      /**
+       * Anchored on the assignment that makes the decision, not on the query
+       * text. `SELECT count(*) FROM users` appears twice — the owner's count is
+       * one of them — so matching the string found the wrong occurrence and let
+       * a version that wrote the variable first pass.
+       */
+      const check = script.indexOf('VISIBLE=$(');
+      const write = script.indexOf('DATABASE_URL_TENANT=postgresql://%s');
+      expect(check).toBeGreaterThan(0);
+      expect(write).toBeGreaterThan(check);
+    });
+
+    it('starts the new containers after writing it, so they come up using it', () => {
+      const write = script.indexOf('DATABASE_URL_TENANT=postgresql://%s');
+      const start = script.indexOf('Starting the new version');
+      expect(start).toBeGreaterThan(write);
+    });
+
+    it('treats an empty users table as proving nothing', () => {
+      // Zero rows is only good news if there were rows to miss, and a check
+      // that reads "fine" on an empty database reads "fine" on a fresh one.
+      expect(script).toMatch(/proves nothing/);
+    });
+
+    it('never prints the password it generates', () => {
+      // A secret in a terminal is a secret in somebody's scrollback.
+      expect(script).not.toMatch(/echo[^\n]*TENANT_PASSWORD/);
+      expect(script).not.toMatch(/warn[^\n]*\$TENANT_PASSWORD/);
+      expect(script).toContain('unset TENANT_PASSWORD');
+    });
+
+    it('is a warning rather than a stop', () => {
+      /**
+       * The platform runs correctly without it, with the second isolation layer
+       * disarmed for the application — which is the state every deployment was
+       * in before this step existed. An upgrade is the wrong moment to refuse.
+       */
+      const step = script.slice(
+        script.indexOf('The role row-level security applies to'),
+        script.indexOf('Starting the new version'),
+      );
+      expect(step).toMatch(/warn "/);
+      expect(step).not.toMatch(/\bdie "/);
+    });
+
+    it('leaves an existing role alone rather than resetting its password', () => {
+      // Its password is not recoverable from here, and resetting somebody
+      // else's database role mid-upgrade is not this script's business.
+      expect(script).toMatch(/role exists but DATABASE_URL_TENANT is not set/);
+    });
+  });
+
   it('does not use pnpm inside the production image', () => {
     /**
      * The production image carries node_modules, prisma/ and the built app but
