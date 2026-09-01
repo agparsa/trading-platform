@@ -149,6 +149,29 @@ describe do not exist, and §45 says do not document features that do not exist.
 
 **10 of 16.**
 
+## Phase 6 — and the ten minutes the API was down
+
+Identity verification is done to the same edge as payments: the manual path
+is real, the provider port exists, the adapter is a commercial decision. See
+`docs/kyc.md`.
+
+Deploying it took production down for about ten minutes — 21:37 to 21:47 UTC
+on 1 September — and the cause is worth recording because nothing in 1,664
+tests could have seen it. `kyc.module.ts` imports `raw` from `express` for the
+document route. On a developer's machine that resolves through hoisting; in the
+image, pnpm's strict layout gives `apps/api` only what its own `package.json`
+declares, and `express` was a transitive dependency of `@nestjs/platform-express`.
+The API crash-looped on `Cannot find module 'express'` with the web container
+healthy and the migration applied.
+
+Two guards came out of it. `scripts/declared-dependencies.test.ts` requires every
+bare import in an application to be declared by that application — verified by
+removing `express` and watching it name the three files. And the upgrade script
+now recreates nginx when its bind-mounted configuration changed between the two
+commits, because a file bind mount is a mount of an inode: the container that
+was "Up 34 hours" had never seen the raised body limit, and refused a 3 MB
+upload at the edge with every test green.
+
 ## The payment provider is a decision, not a task
 
 Phase 5 is done up to the point where engineering stops and a contract starts.
