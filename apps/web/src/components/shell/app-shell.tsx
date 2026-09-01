@@ -10,6 +10,7 @@ import { Nav } from './nav';
 const SECTIONS = [
   { href: '/terminal', label: 'Terminal' },
   { href: '/account', label: 'Account' },
+  { href: '/wallet', label: 'Wallet' },
   { href: '/history', label: 'History' },
   { href: '/security', label: 'Security' },
   { href: '/settings', label: 'Settings' },
@@ -24,9 +25,9 @@ const SECTIONS = [
  * space on the one screen that cannot spare it. The link back to it is here
  * instead.
  *
- * There is no wallet link. There is no wallet — §50 of the specification says
- * not to build UI for functionality that does not exist, and a page that said
- * "Balance: —" would be a promise the platform cannot keep.
+ * The wallet link arrived with the wallet. It was deliberately absent until
+ * there was one — §50 says not to build UI for functionality that does not
+ * exist, and a page reading "Balance: —" is a promise the platform cannot keep.
  */
 export function AppShell({
   title,

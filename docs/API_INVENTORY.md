@@ -217,7 +217,24 @@ handler is responsible for scoping the result to that user — which for
 | `GET`   | `/users/me` | `me`     | _authenticated only_ |
 | `PATCH` | `/users/me` | `update` | SELF-SERVICE         |
 
-**99 routes:** 49 `GET`, 40 `POST`, 5 `PATCH`, 4 `DELETE`, 1 `PUT`.
+### `wallet/admin-wallet.controller.ts` — base `/admin/wallets`
+
+| Verb   | Path                              | Handler        | Requires        |
+| ------ | --------------------------------- | -------------- | --------------- |
+| `GET`  | `/admin/wallets`                  | `forUser`      | WALLET_READ_ANY |
+| `GET`  | `/admin/wallets/:id/transactions` | `transactions` | WALLET_READ_ANY |
+| `POST` | `/admin/wallets/:id/adjustments`  | `adjust`       | WALLET_ADJUST   |
+| `POST` | `/admin/wallets/:id/status`       | `setStatus`    | WALLET_MANAGE   |
+
+### `wallet/wallet.controller.ts` — base `/wallet`
+
+| Verb   | Path                       | Handler        | Requires        |
+| ------ | -------------------------- | -------------- | --------------- |
+| `GET`  | `/wallet`                  | `mine`         | WALLET_READ     |
+| `GET`  | `/wallet/:id/transactions` | `transactions` | WALLET_READ     |
+| `POST` | `/wallet/transfer`         | `transfer`     | WALLET_TRANSFER |
+
+**106 routes:** 53 `GET`, 43 `POST`, 5 `PATCH`, 4 `DELETE`, 1 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

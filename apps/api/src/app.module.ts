@@ -19,6 +19,7 @@ import { AuthModule } from './auth/auth.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { UsersModule } from './users/users.module';
 import { PermissionsModule } from './permissions/permissions.module';
+import { WalletModule } from './wallet/wallet.module';
 import { MasterModule } from './master/master.module';
 import { IntegrityModule } from './integrity/integrity.module';
 import { OperationsModule } from './operations/operations.module';
@@ -93,6 +94,7 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
     AccountsModule,
     UsersModule,
     PermissionsModule,
+    WalletModule,
     MasterModule,
     IntegrityModule,
     OperationsModule,

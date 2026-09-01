@@ -1,0 +1,16 @@
+-- When somebody last changed what a role carries.
+--
+-- Grants became rows so a firm could change them without a deployment. That
+-- made the reverse case a problem nobody had yet: a release which *adds* a
+-- capability — `wallet.read`, say — cannot reach a tenant's existing roles,
+-- because re-seeding them would undo any narrowing an operator had made. The
+-- new feature then works in the tests and returns 403 in production, which is
+-- how this column came to exist: the wallet phase's own pentest probe reported
+-- "reading your own wallets answered 403".
+--
+-- With this, the seed can tell the two apart. A built-in role nobody has edited
+-- tracks the build. One somebody has edited is theirs.
+--
+-- Existing rows get NULL, which is the truthful answer: this platform could not
+-- record an edit before now, so it does not know of any.
+ALTER TABLE "roles" ADD COLUMN "grants_edited_at" TIMESTAMPTZ(6);

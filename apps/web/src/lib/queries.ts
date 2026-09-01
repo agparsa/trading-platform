@@ -192,6 +192,8 @@ export const queryKeys = {
   orders: (accountId: string) => ['orders', accountId] as const,
   pending: (accountId: string) => ['pending-orders', accountId] as const,
   permissions: ['permissions', 'me'] as const,
+  wallets: ['wallets'] as const,
+  walletTransactions: (walletId: string) => ['wallet-transactions', walletId] as const,
 };
 
 /** Everything a trading event can invalidate, in one place. */
@@ -655,5 +657,72 @@ export function useMarkAllRead() {
     mutationFn: () =>
       api.post('/notifications/read-all', {}, { idempotencyKey: crypto.randomUUID() }),
     onSuccess: () => void client.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+export interface WalletRow {
+  id: string;
+  currency: string;
+  balance: string;
+  status: string;
+}
+
+export interface WalletTransactionRow {
+  id: string;
+  type: string;
+  amount: string;
+  balanceAfter: string;
+  currency: string;
+  accountId: string | null;
+  description: string | null;
+  createdAt: string;
+}
+
+export function useWallets() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: queryKeys.wallets,
+    queryFn: () => api.get<{ wallets: WalletRow[] }>('/wallet'),
+    enabled: accessToken !== null,
+  });
+}
+
+export function useWalletTransactions(walletId: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: queryKeys.walletTransactions(walletId ?? 'none'),
+    queryFn: () =>
+      api.get<{ transactions: WalletTransactionRow[] }>(`/wallet/${walletId ?? ''}/transactions`),
+    enabled: walletId !== null,
+  });
+}
+
+/**
+ * Moves money between a wallet and a trading account.
+ *
+ * No currency in the request. The amount is in the account's currency, because
+ * both pots are — see the endpoint. Every snapshot that could have changed is
+ * invalidated: the wallet, its movements, the account list and that account's
+ * state, because a transfer changes the balance and therefore the free margin
+ * the ticket is about to size an order against.
+ */
+export function useWalletTransfer() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      accountId: string;
+      direction: 'to-account' | 'to-wallet';
+      amount: string;
+    }) =>
+      api.post<{ wallet: WalletRow; accountBalance: string }>('/wallet/transfer', input, {
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    onSuccess: (_result, input) => {
+      void client.invalidateQueries({ queryKey: queryKeys.wallets });
+      void client.invalidateQueries({ queryKey: ['wallet-transactions'] });
+      void client.invalidateQueries({ queryKey: queryKeys.accounts });
+      void client.invalidateQueries({ queryKey: queryKeys.accountState(input.accountId) });
+    },
   });
 }

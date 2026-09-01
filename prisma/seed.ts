@@ -255,11 +255,12 @@ async function main(): Promise<void> {
    * needs a permission — correct behaviour, and not one to leave a fresh
    * deployment sitting in.
    */
-  const createdRoles = await seedTenantRoles(prisma, tenant.id);
+  const roles = await seedTenantRoles(prisma, tenant.id);
   console.log(
-    createdRoles === 0
-      ? `roles for '${tenant.slug}' already present`
-      : `seeded ${createdRoles} roles for '${tenant.slug}'`,
+    roles.created === 0 && roles.refreshed === 0
+      ? `roles for '${tenant.slug}' already match this build`
+      : `roles for '${tenant.slug}': ${roles.created} created, ${roles.refreshed} brought in line ` +
+          'with this build (edited roles left alone)',
   );
 
   for (const instrument of INSTRUMENTS) {

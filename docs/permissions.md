@@ -127,6 +127,32 @@ something is not starting it — the same distinction that lets `ADMIN` keep the
 The escape is the one separation of duties always has: two roles, two logins, or
 a master-account link that names the account and leaves a record.
 
+### What a release does to roles that already exist
+
+Grants became rows so a firm could change them without a deployment. That made
+the reverse case a problem nobody had before: a release that _adds_ a
+capability — `wallet.read` on the trader role, say — cannot reach a tenant whose
+roles were seeded earlier. The feature then works in every test and answers 403
+in production. That is not hypothetical; it is how the wallet phase's own pentest
+probe failed.
+
+So the seed, which runs on every deploy, treats two kinds of role differently:
+
+| The role                            | What the deploy does                        |
+| ----------------------------------- | ------------------------------------------- |
+| Missing entirely                    | created from the shipped set                |
+| Built-in, **never edited**          | set to the shipped set — additions included |
+| Built-in, **edited by an operator** | left exactly as they left it                |
+| Created by the firm, not shipped    | left alone                                  |
+
+`roles.grants_edited_at` is what tells the second from the third. It is stamped
+by `PUT /permissions/roles/:key` and cleared by the reset below, so restoring a
+role also hands it back to the build.
+
+The asymmetry is deliberate. A deploy that silently re-widened a role somebody
+had deliberately narrowed would be the worst kind of regression, because nothing
+about it would look wrong.
+
 ### Putting a role back
 
 `POST /permissions/roles/:key/reset` restores a built-in role to the set this

@@ -92,6 +92,26 @@ export const Permission = {
   MASTER_READ: 'master.read',
   MASTER_MANAGE: 'master.manage',
 
+  // --- wallets ---
+  /** Read **your own** wallet and its movements. */
+  WALLET_READ: 'wallet.read',
+  /** Read anyone's wallet. Separate for the same reason `accounts.read_any` is. */
+  WALLET_READ_ANY: 'wallet.read_any',
+  /** Move your own money between your wallet and your trading accounts. */
+  WALLET_TRANSFER: 'wallet.transfer',
+  /**
+   * Credit or debit a wallet directly — recording that money arrived by bank
+   * transfer, or correcting a mistake.
+   *
+   * The same power as `accounts.adjust` pointed at a different pot: it changes
+   * what somebody's money *is*, not what it may do. Nobody gets it by being able
+   * to freeze a wallet, and no role may hold it alongside a capability that
+   * opens a position. See INCOMPATIBLE_PERMISSIONS.
+   */
+  WALLET_ADJUST: 'wallet.adjust',
+  /** Freeze and unfreeze a wallet. Holding money is not taking it. */
+  WALLET_MANAGE: 'wallet.manage',
+
   // --- roles ---
   /** See which roles exist and what each one carries. */
   ROLES_READ: 'roles.read',
@@ -125,6 +145,8 @@ export const ALL_PERMISSIONS: readonly Permission[] = Object.values(Permission);
  */
 const TRADER: readonly Permission[] = [
   Permission.ACCOUNTS_READ,
+  Permission.WALLET_READ,
+  Permission.WALLET_TRANSFER,
   Permission.ORDERS_READ,
   Permission.ORDERS_CREATE,
   Permission.ORDERS_CANCEL,
@@ -163,6 +185,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
 
   [UserRole.SUPPORT]: [
     Permission.ACCOUNTS_READ_ANY,
+    Permission.WALLET_READ_ANY,
     Permission.USERS_READ_ANY,
     Permission.ORDERS_READ,
     Permission.POSITIONS_READ,
@@ -172,6 +195,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
   [UserRole.OPERATOR]: [
     Permission.ACCOUNTS_READ_ANY,
     Permission.ACCOUNTS_MANAGE,
+    Permission.WALLET_READ_ANY,
     Permission.USERS_READ_ANY,
     Permission.ORDERS_READ,
     Permission.ORDERS_CANCEL,
@@ -189,6 +213,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
   [UserRole.RISK_MANAGER]: [
     Permission.ACCOUNTS_READ_ANY,
     Permission.ACCOUNTS_MANAGE,
+    Permission.WALLET_READ_ANY,
+    Permission.WALLET_MANAGE,
     Permission.USERS_READ_ANY,
     Permission.USERS_MANAGE,
     Permission.ORDERS_READ,
@@ -215,6 +241,9 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.ACCOUNTS_READ_ANY,
     Permission.ACCOUNTS_MANAGE,
     Permission.ACCOUNTS_ADJUST,
+    Permission.WALLET_READ_ANY,
+    Permission.WALLET_ADJUST,
+    Permission.WALLET_MANAGE,
     Permission.USERS_READ_ANY,
     Permission.USERS_MANAGE,
     Permission.INVITES_MANAGE,
@@ -280,6 +309,12 @@ export const INCOMPATIBLE_PERMISSIONS: readonly (readonly [Permission, Permissio
   [Permission.ACCOUNTS_ADJUST, Permission.ORDERS_CREATE],
   [Permission.ACCOUNTS_ADJUST, Permission.ORDERS_MODIFY],
   [Permission.ACCOUNTS_ADJUST, Permission.POSITIONS_MODIFY],
+  // `wallet.adjust` is the same power aimed at a different pot. Money invented
+  // in a wallet reaches a position through one transfer, which the holder is
+  // entitled to make on their own wallet.
+  [Permission.WALLET_ADJUST, Permission.ORDERS_CREATE],
+  [Permission.WALLET_ADJUST, Permission.ORDERS_MODIFY],
+  [Permission.WALLET_ADJUST, Permission.POSITIONS_MODIFY],
 ];
 
 /** Every incompatible pair present in this set. Empty means the set is allowed. */

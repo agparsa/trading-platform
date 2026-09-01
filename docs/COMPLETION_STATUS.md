@@ -21,12 +21,12 @@ pnpm lint             ok
 pnpm format:check     ok
 pnpm typecheck        ok
 pnpm inventory --check ok
-pnpm test             119 files, 1516 tests, 0 failures
+pnpm test             120 files, 1562 tests, 0 failures
 pnpm build            ok
 ```
 
-4 applications (`api`, `web`, `worker`, `mobile`), 13 workspace packages, 39
-Prisma models, 99 API routes, ~75,800 lines of TypeScript. Live at
+4 applications (`api`, `web`, `worker`, `mobile`), 13 workspace packages, 41
+Prisma models, 106 API routes, ~78,000 lines of TypeScript. Live at
 https://devopss.ir.
 
 The route count was 95 here and 84 in `docs/API_INVENTORY.md`'s hand-written
@@ -56,11 +56,12 @@ Complete in the sense the prompt defines — UI → API → business logic → d
 | 27       | Trading event model        | implemented as specified                                                                                                                                                           |
 | 28       | Device / push tokens       | `Device` model, AES-256-GCM sealed tokens bound to their row, registration, revocation, provider-rejection handling                                                                |
 | 8        | RBAC                       | granular `resource.verb` capabilities in code, **grants as rows per tenant**, an editor cannot grant what they do not hold, and no role may credit an account and trade the credit |
-| 43       | Web application            | 19 routes, every one opened in a real browser by `pnpm smoke:web` — which found a sign-in race, a refusal that looked like a hang, and an orphaned permission decorator            |
+| 43       | Web application            | 20 routes, every one opened in a real browser by `pnpm smoke:web` — which found a sign-in race, a refusal that looked like a hang, and an orphaned permission decorator            |
+| 35       | **Wallets**                | money held for a person, transfers bounded by free margin rather than balance, append-only movements, manual deposits and corrections, freeze that holds rather than takes         |
 | 33       | Audit log                  | append-only enforced by a **database trigger** raising `42501` — an admin cannot edit it                                                                                           |
 | 37       | Observability              | Prometheus metrics, `/health`, `/ready`, request-id correlation, structured logging                                                                                                |
-| 39       | Security                   | 31-probe pentest script, AES-256-GCM at rest, no secrets in git history                                                                                                            |
-| 40       | Testing                    | 1516 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, and row-level security proved by breaking it                             |
+| 39       | Security                   | 33-probe pentest script, AES-256-GCM at rest, no secrets in git history                                                                                                            |
+| 40       | Testing                    | 1562 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, and row-level security proved by breaking it                             |
 | 41       | Security testing           | cross-tenant access, privilege escalation, token replay, rate limiting, audit tampering, invitation minting                                                                        |
 | 44       | CI/CD                      | install → prisma → build → lint → format → typecheck → migrate → test → schema check → seed → build → smoke API → smoke WebSocket                                                  |
 
@@ -69,7 +70,7 @@ Complete in the sense the prompt defines — UI → API → business logic → d
 | §   | Area               | What exists                                                                                                                            | What is missing                                                                                     |
 | --- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | 29  | Admin panel        | 10 sections at their own addresses — overview, people (+ detail), accounts (+ detail), instruments, risk, reconciliation, roles, audit | ~17 sections asked for. No tenants, KYC, finance, wallets, tokens, API management, security centre. |
-| 35  | Finance            | balance ledger, admin adjustments, database transactions, decimal arithmetic                                                           | no wallet, no real deposit, no withdrawal, no payment provider                                      |
+| 35  | Finance            | wallets, transfers bounded by free margin, manual deposits and corrections, freeze, full audit                                         | no payment provider, no automated deposit or withdrawal — phases 5 and 7                            |
 | 36  | Notification admin | `push_deliveries` records every attempt with its outcome                                                                               | no admin view over them                                                                             |
 
 ## Does not exist — zero code
@@ -116,31 +117,33 @@ Present: architecture, api, database, security, deployment, testing, websocket,
 notifications, sounds, mobile, charting, risk, trading-engine, permissions
 (RBAC), sessions and two-factor (auth), plus the 8 audit documents.
 
-Added this phase: `web-routes.md`, the address of every screen and why the
-terminal is not inside the shell around the others.
+Added recently: `web-routes.md`, the address of every screen and why the
+terminal is not inside the shell around the others; `wallet.md`, the two ledgers
+and the invariant between them.
 
 Missing: `TOKEN_MANAGEMENT` and `AI_CONTEXT` — because the features they would
 describe do not exist, and §45 says do not document features that do not exist.
 
 ## Where this sits in the plan
 
-| Phase                                    | Status                                     |
-| ---------------------------------------- | ------------------------------------------ |
-| 0 — close what is open                   | done                                       |
-| 1 — multi-tenancy                        | done                                       |
-| 2 — roles and permissions as data        | done; grants are rows, per tenant          |
-| 3 — web restructure                      | done; 19 routes, all opened in a browser   |
-| 4–7 — wallet, payments, KYC, withdrawals | not started                                |
-| 8 — notification platform                | done; admin statistics view remains        |
-| 9 — API and token management             | not started                                |
-| 10 — outbound webhooks                   | not started                                |
-| 11 — Security Centre                     | not started                                |
-| 12 — mobile foundation                   | done; Android builds, iOS not attempted    |
-| 13 — mobile trading                      | done except KYC, which needs Phase 6 first |
-| 14 — AI context layer                    | not started                                |
-| 15 — real market data                    | not started, plus a commercial dependency  |
+| Phase                             | Status                                     |
+| --------------------------------- | ------------------------------------------ |
+| 0 — close what is open            | done                                       |
+| 1 — multi-tenancy                 | done                                       |
+| 2 — roles and permissions as data | done; grants are rows, per tenant          |
+| 3 — web restructure               | done; 19 routes, all opened in a browser   |
+| 4 — wallet and finance            | done; two ledgers, neither able to invent  |
+| 5–7 — payments, KYC, withdrawals  | not started                                |
+| 8 — notification platform         | done; admin statistics view remains        |
+| 9 — API and token management      | not started                                |
+| 10 — outbound webhooks            | not started                                |
+| 11 — Security Centre              | not started                                |
+| 12 — mobile foundation            | done; Android builds, iOS not attempted    |
+| 13 — mobile trading               | done except KYC, which needs Phase 6 first |
+| 14 — AI context layer             | not started                                |
+| 15 — real market data             | not started, plus a commercial dependency  |
 
-**7 of 16.**
+**8 of 16.**
 
 ## Tenant isolation now bites — once one line is set in production
 

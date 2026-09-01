@@ -201,7 +201,18 @@ export class RolesService implements OnModuleInit {
       await tx.rolePermission.createMany({
         data: permissions.map((permission) => ({ tenantId, roleId: role.id, permission })),
       });
-      await tx.role.update({ where: { id: role.id }, data: { updatedAt: new Date() } });
+      /**
+       * Stamped so the seed can tell an edited role from an untouched one.
+       *
+       * A release that adds a capability brings the untouched ones in line with
+       * the build and leaves this one exactly as the operator left it. A deploy
+       * that silently re-widened a role somebody had narrowed would be the worst
+       * kind of regression, because nothing about it would look wrong.
+       */
+      await tx.role.update({
+        where: { id: role.id },
+        data: { updatedAt: new Date(), grantsEditedAt: new Date() },
+      });
       /**
        * Inside the transaction, so a change that is not recorded is not a
        * change. Every other audit call in this codebase is fire-and-forget for
@@ -303,7 +314,12 @@ export class RolesService implements OnModuleInit {
       await tx.rolePermission.createMany({
         data: permissions.map((permission) => ({ tenantId, roleId: role.id, permission })),
       });
-      await tx.role.update({ where: { id: role.id }, data: { updatedAt: new Date() } });
+      // Cleared: the role is the build's again, so a future release that adds a
+      // capability may top it up. See `prisma/roles.ts`.
+      await tx.role.update({
+        where: { id: role.id },
+        data: { updatedAt: new Date(), grantsEditedAt: null },
+      });
       await this.audit.record(
         {
           actorId: editor.id,
@@ -326,34 +342,6 @@ export class RolesService implements OnModuleInit {
       isSystem: role.isSystem,
       permissions,
     };
-  }
-
-  /**
-   * Seeds a tenant's roles from the code constants.
-   *
-   * Called when a tenant is created, and idempotent so that calling it on an
-   * existing tenant repairs a missing role rather than failing or duplicating.
-   * It does **not** restore a capability somebody removed: only roles that are
-   * absent entirely are written.
-   */
-  async seed(tenantId: string): Promise<void> {
-    for (const role of seedRoles()) {
-      const existing = await this.prisma.role.findFirst({ where: { key: role.key } });
-      if (existing !== null) continue;
-      await this.prisma.role.create({
-        data: {
-          tenantId,
-          key: role.key,
-          name: role.name,
-          description: role.description,
-          isSystem: true,
-          permissions: {
-            create: role.permissions.map((permission) => ({ tenantId, permission })),
-          },
-        },
-      });
-    }
-    await this.invalidate(tenantId);
   }
 
   /** Drops this tenant's cached grants here and on every other instance. */

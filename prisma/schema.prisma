@@ -89,6 +89,8 @@ model Tenant {
   pushDeliveries          PushDelivery[]
   roles                   Role[]
   rolePermissions         RolePermission[]
+  wallets                 Wallet[]
+  walletTransactions      WalletTransaction[]
 
   @@map("tenants")
 }
@@ -161,7 +163,8 @@ model User {
   notificationPreferences NotificationPreference[]
   notificationSettings    NotificationSetting[]
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  wallets Wallet[]
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   /// One address per tenant, not per platform: the same person may hold an account with two firms.
   @@unique([tenantId, email])
@@ -1566,6 +1569,18 @@ model Role {
   name        String
   description String?
 
+  /// When somebody last changed what this role carries, or null if nobody has.
+  ///
+  /// It exists so a release that *adds* a capability can reach the roles nobody
+  /// has opinions about. A built-in role that has never been edited tracks the
+  /// build: the seed sets it to the shipped set on every deploy. One that has
+  /// been edited is the operator's, and is left exactly as they left it — a
+  /// deploy that silently re-widened a role somebody deliberately narrowed would
+  /// be the worst kind of regression, because nothing would look wrong.
+  ///
+  /// `resetToDefaults` clears it back to null: the role is the build's again.
+  grantsEditedAt DateTime? @map("grants_edited_at") @db.Timestamptz(6)
+
   /// Seeded rather than created by a person.
   ///
   /// A system role's `key` cannot change and the role cannot be deleted, because
@@ -1608,4 +1623,115 @@ model RolePermission {
   @@unique([roleId, permission])
   @@index([tenantId])
   @@map("role_permissions")
+}
+
+/// Money that belongs to a person rather than to a trading account.
+///
+/// ## Why this is not a second balance for the same money
+///
+/// The platform now has two ledgers, and the plan for this phase said in one
+/// line why that is dangerous: two ledgers that both believe they are
+/// authoritative is the classic way to lose money. They are not authoritative
+/// for the same thing.
+///
+///   * `balance_ledger` is authoritative for what is *inside a trading account*,
+///     and `accounts.balance` is its cached head.
+///   * `wallet_transactions` is authoritative for what is *held for the person
+///     and not in any trading account*, and `wallets.balance` is its cached head.
+///
+/// A transfer moves money between the two pots in one transaction, writing one
+/// row on each side, and the two amounts must sum to zero. That invariant is
+/// what `WalletService.transfer` exists to keep and what the integration tests
+/// check by adding the pots up before and after.
+///
+/// One wallet per person per currency. A person trading a USD account and a EUR
+/// account has two, because a wallet holding two currencies would need a rate to
+/// state its balance, and a balance that changes when nobody moved any money is
+/// not a balance.
+model Wallet {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+  currency String @db.VarChar(3)
+
+  /// Cached head of `wallet_transactions`. The transactions are the truth.
+  balance Decimal      @default(0) @db.Decimal(28, 10)
+  status  WalletStatus @default(ACTIVE)
+
+  /// Bumped on every write, so a stale read cannot silently overwrite a newer one.
+  version Int @default(0)
+
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  transactions WalletTransaction[]
+
+  @@unique([userId, currency])
+  @@index([tenantId])
+  @@map("wallets")
+}
+
+enum WalletStatus {
+  ACTIVE
+  /// No movement in or out. Set during a fraud review; the money is not taken,
+  /// it is held — which is a different thing and the audit trail says which.
+  FROZEN
+}
+
+/// One movement on a wallet. Append-only, exactly like the balance ledger.
+model WalletTransaction {
+  id       String                @id @default(uuid()) @db.Uuid
+  tenantId String                @map("tenant_id") @db.Uuid
+  walletId String                @map("wallet_id") @db.Uuid
+  type     WalletTransactionType
+  /// Signed: positive credits the wallet, negative debits it.
+  amount   Decimal               @db.Decimal(28, 10)
+
+  balanceAfter Decimal @map("balance_after") @db.Decimal(28, 10)
+  currency     String  @db.VarChar(3)
+
+  /// The trading account a transfer moved money to or from.
+  accountId     String? @map("account_id") @db.Uuid
+  /// The `balance_ledger` row written by the same transaction.
+  ///
+  /// Not a foreign key on purpose: it points at the *other* ledger, and a
+  /// constraint between two append-only tables would make deleting either
+  /// impossible in a way that hides which one is authoritative. It is a
+  /// reference for an auditor reading one side and looking for the other, and
+  /// `wallet.test.ts` checks that every transfer row has one.
+  ledgerEntryId String? @map("ledger_entry_id") @db.Uuid
+
+  referenceType String? @map("reference_type")
+  referenceId   String? @map("reference_id") @db.Uuid
+  /// Set on an ADJUSTMENT that reverses an earlier movement.
+  compensatesId String? @map("compensates_id") @db.Uuid
+
+  /// Deduplication. A retried transfer or webhook cannot double-credit.
+  idempotencyKey String? @unique @map("idempotency_key")
+
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([walletId, createdAt(sort: Desc)])
+  @@index([accountId])
+  @@index([tenantId])
+  @@map("wallet_transactions")
+}
+
+enum WalletTransactionType {
+  /// Money arrived from outside the platform.
+  DEPOSIT
+  /// Money left the platform.
+  WITHDRAWAL
+  /// From a trading account into the wallet.
+  TRANSFER_IN
+  /// From the wallet into a trading account.
+  TRANSFER_OUT
+  /// A correction, always compensating an earlier row.
+  ADJUSTMENT
+  FEE
 }

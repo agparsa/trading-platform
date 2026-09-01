@@ -329,6 +329,80 @@ describe('combinations no single role may hold', () => {
   });
 });
 
+describe('the wallet capabilities', () => {
+  /**
+   * `wallet.adjust` is `accounts.adjust` aimed at a different pot. Money
+   * invented in a wallet reaches a position through one transfer, and the holder
+   * is entitled to make that transfer on their own wallet.
+   */
+  it.each([Permission.ORDERS_CREATE, Permission.ORDERS_MODIFY, Permission.POSITIONS_MODIFY])(
+    'cannot sit in one role with %s',
+    (trading) => {
+      expect(conflictsIn([Permission.WALLET_ADJUST, trading])).toHaveLength(1);
+    },
+  );
+
+  it('may sit beside freezing a wallet, which holds money rather than making it', () => {
+    expect(conflictsIn([Permission.WALLET_ADJUST, Permission.WALLET_MANAGE])).toEqual([]);
+  });
+
+  /**
+   * A trader moves their own money and reads their own wallet, and does neither
+   * to anybody else's — the same split as `accounts.read` and
+   * `accounts.read_any`, and for the same reason.
+   */
+  it('gives a trader their own wallet and not everyone eles\u2019s', () => {
+    const trader = permissionsFor(UserRole.USER);
+    expect(trader).toContain(Permission.WALLET_READ);
+    expect(trader).toContain(Permission.WALLET_TRANSFER);
+    expect(trader).not.toContain(Permission.WALLET_READ_ANY);
+    expect(trader).not.toContain(Permission.WALLET_ADJUST);
+  });
+
+  it('lets support read wallets and change nothing', () => {
+    const support = permissionsFor(UserRole.SUPPORT);
+    expect(support).toContain(Permission.WALLET_READ_ANY);
+    expect(support).not.toContain(Permission.WALLET_ADJUST);
+    expect(support).not.toContain(Permission.WALLET_MANAGE);
+    expect(support).not.toContain(Permission.WALLET_TRANSFER);
+  });
+
+  /**
+   * A risk manager freezes a wallet during a review and cannot change what is in
+   * it. Holding money and taking it are different powers and the audit trail
+   * should be able to say which happened.
+   */
+  it('lets a risk manager freeze a wallet without being able to adjust it', () => {
+    const risk = permissionsFor(UserRole.RISK_MANAGER);
+    expect(risk).toContain(Permission.WALLET_MANAGE);
+    expect(risk).not.toContain(Permission.WALLET_ADJUST);
+  });
+
+  it('does not let an administrator move somebody else\u2019s money into a position', () => {
+    const admin = permissionsFor(UserRole.ADMIN);
+    expect(admin).toContain(Permission.WALLET_ADJUST);
+    expect(admin).not.toContain(Permission.WALLET_TRANSFER);
+    expect(admin).not.toContain(Permission.ORDERS_CREATE);
+  });
+
+  /**
+   * A master-account link is authority over one trading account. A wallet is not
+   * a trading account, and nothing about "act on this account" should reach the
+   * money that has not been put into it.
+   */
+  it('is never delegable through a master-account link', () => {
+    for (const capability of [
+      Permission.WALLET_READ,
+      Permission.WALLET_READ_ANY,
+      Permission.WALLET_TRANSFER,
+      Permission.WALLET_ADJUST,
+      Permission.WALLET_MANAGE,
+    ]) {
+      expect(isLinkableCapability(capability)).toBe(false);
+    }
+  });
+});
+
 describe('what an editor may grant', () => {
   it('reports what the grant contains that the editor does not hold', () => {
     expect(

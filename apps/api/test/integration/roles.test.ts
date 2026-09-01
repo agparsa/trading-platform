@@ -11,6 +11,7 @@ import { RolesService } from '../../src/permissions/roles.service';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { DEFAULT_TENANT_ID, createTestClient, hasTestDatabase, resetDatabase } from './harness';
+import { seedTenantRoles } from '../../../../prisma/roles';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 
@@ -242,18 +243,113 @@ suite('roles and grants as data', () => {
     );
   });
 
-  it('seeds a tenant that is missing roles without touching one that was narrowed', async () => {
-    const tenantId = (await prisma.tenant.findFirst())?.id ?? '';
-    await roles.setPermissions(UserRole.SUPPORT, [], ADMIN);
-    const operator = await prisma.role.findFirst({ where: { key: UserRole.OPERATOR } });
-    await prisma.role.delete({ where: { id: operator?.id ?? '' } });
-    await roles.invalidate(tenantId);
+  /**
+   * The seed runs on every deploy, and has to answer two questions at once:
+   * did a release add a capability the roles nobody has edited should get, and
+   * did an operator narrow a role that must be left exactly as they left it?
+   */
+  describe('what a deploy does to existing roles', () => {
+    it('creates a role that is missing entirely', async () => {
+      const tenantId = (await prisma.tenant.findFirst())?.id ?? '';
+      const operator = await prisma.role.findFirst({ where: { key: UserRole.OPERATOR } });
+      await prisma.role.delete({ where: { id: operator?.id ?? '' } });
 
-    await roles.seed(tenantId);
+      const result = await seedTenantRoles(prisma, tenantId);
 
-    expect(await roles.permissionsFor(UserRole.OPERATOR)).toContain(Permission.SYSTEM_OPERATIONS);
-    // The narrowing survives a reseed; otherwise every deploy would undo it.
-    expect(await roles.permissionsFor(UserRole.SUPPORT)).toEqual(new Set());
+      expect(result.created).toBe(1);
+      await roles.invalidate(tenantId);
+      expect(await roles.permissionsFor(UserRole.OPERATOR)).toContain(Permission.SYSTEM_OPERATIONS);
+    });
+
+    /**
+     * The case that made this exist. A release that adds `wallet.read` to the
+     * trader role could not previously reach a tenant, so the feature worked in
+     * the tests and answered 403 in production — which is exactly how the wallet
+     * phase's pentest probe failed.
+     */
+    it('brings an untouched built-in role in line with this build', async () => {
+      const tenantId = (await prisma.tenant.findFirst())?.id ?? '';
+      const user = await prisma.role.findFirstOrThrow({ where: { key: UserRole.USER } });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: user.id, permission: Permission.WALLET_READ },
+      });
+      await roles.invalidate(tenantId);
+      expect(await roles.permissionsFor(UserRole.USER)).not.toContain(Permission.WALLET_READ);
+
+      const result = await seedTenantRoles(prisma, tenantId);
+
+      expect(result.refreshed).toBe(1);
+      await roles.invalidate(tenantId);
+      expect(await roles.permissionsFor(UserRole.USER)).toContain(Permission.WALLET_READ);
+    });
+
+    /**
+     * And the asymmetry. A deploy that silently re-widened a role somebody had
+     * narrowed would be the worst kind of regression: nothing about it would
+     * look wrong.
+     */
+    /**
+     * A release that *swaps* a capability — one removed, one added — leaves the
+     * count unchanged. Comparing sizes alone passed every other test here and
+     * would have missed it, which is why this one exists.
+     */
+    it('notices a swap that leaves the count the same', async () => {
+      const tenantId = (await prisma.tenant.findFirst())?.id ?? '';
+      const user = await prisma.role.findFirstOrThrow({ where: { key: UserRole.USER } });
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: user.id, permission: Permission.WALLET_READ },
+      });
+      await prisma.rolePermission.create({
+        data: { tenantId, roleId: user.id, permission: Permission.AUDIT_READ },
+      });
+      await roles.invalidate(tenantId);
+
+      const result = await seedTenantRoles(prisma, tenantId);
+
+      expect(result.refreshed).toBe(1);
+      await roles.invalidate(tenantId);
+      const held = await roles.permissionsFor(UserRole.USER);
+      expect(held).toContain(Permission.WALLET_READ);
+      expect(held).not.toContain(Permission.AUDIT_READ);
+    });
+
+    it('leaves a role somebody edited exactly as they left it', async () => {
+      const tenantId = (await prisma.tenant.findFirst())?.id ?? '';
+      await roles.setPermissions(UserRole.SUPPORT, [], ADMIN);
+
+      const result = await seedTenantRoles(prisma, tenantId);
+
+      expect(result.refreshed).toBe(0);
+      await roles.invalidate(tenantId);
+      expect(await roles.permissionsFor(UserRole.SUPPORT)).toEqual(new Set());
+    });
+
+    it('records that it was edited, and forgets again when it is restored', async () => {
+      const tenantId = (await prisma.tenant.findFirst())?.id ?? '';
+      await roles.setPermissions(UserRole.SUPPORT, [], ADMIN);
+      expect(
+        (await prisma.role.findFirstOrThrow({ where: { key: UserRole.SUPPORT } })).grantsEditedAt,
+      ).not.toBeNull();
+
+      await roles.resetToDefaults(UserRole.SUPPORT, ADMIN);
+      expect(
+        (await prisma.role.findFirstOrThrow({ where: { key: UserRole.SUPPORT } })).grantsEditedAt,
+      ).toBeNull();
+
+      // And it tracks the build again from here.
+      await prisma.rolePermission.deleteMany({
+        where: {
+          role: { key: UserRole.SUPPORT, tenantId },
+          permission: Permission.WALLET_READ_ANY,
+        },
+      });
+      expect((await seedTenantRoles(prisma, tenantId)).refreshed).toBe(1);
+    });
+
+    it('does nothing at all when everything already matches', async () => {
+      const tenantId = (await prisma.tenant.findFirst())?.id ?? '';
+      expect(await seedTenantRoles(prisma, tenantId)).toEqual({ created: 0, refreshed: 0 });
+    });
   });
 
   describe('restoring a built-in role', () => {

@@ -15,6 +15,7 @@ Every screen has an address now. The terminal did not change.
 | `/`                     | redirects to `/terminal`                                  |
 | `/terminal`             | the trading terminal, full height                         |
 | `/account`              | balances, margin, the terms an account trades on          |
+| `/wallet`               | money held for you, and moving it to and from an account  |
 | `/history`              | trades, closed positions, orders — including refused ones |
 | `/security`             | two-factor, recovery codes, active sessions               |
 | `/settings`             | one-click trading, confirmations, default size            |
@@ -32,10 +33,12 @@ Every screen has an address now. The terminal did not change.
 | `/admin/roles`          | what each role may do                                     |
 | `/admin/audit`          | the audit trail                                           |
 
-There is deliberately **no `/wallet`**. There is no wallet — §50 of the
-specification says not to build UI for functionality that does not exist, and a
-page reading "Balance: —" is a promise the platform cannot keep. It arrives with
-phase 4.
+`/wallet` arrived with phase 4 and not before. Until there was a wallet the link
+was deliberately absent — §50 says not to build UI for functionality that does
+not exist, and a page reading "Balance: —" is a promise the platform cannot keep.
+It still has no deposit button, for the same reason: there is no payment
+provider, and money arrives today by an operator recording a bank transfer, which
+is an administrative action with its own screen.
 
 ## Why the terminal is not inside the shell
 

@@ -347,6 +347,7 @@ async function main(): Promise<void> {
     await visit(page, '/', { url: '/terminal' });
     await visit(page, '/terminal', { url: '/terminal' });
     await visit(page, '/account', { url: '/account', text: /Account/i });
+    await visit(page, '/wallet', { url: '/wallet', text: /Wallet/i });
     await visit(page, '/history', { url: '/history', text: /Trades/i });
     await visit(page, '/security', { url: '/security', text: /Two-factor/i });
     await visit(page, '/settings', { url: '/settings', text: /One-click/i });
