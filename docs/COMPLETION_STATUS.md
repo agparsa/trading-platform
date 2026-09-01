@@ -158,10 +158,20 @@ things the Prisma extension explicitly cannot close: a raw cross-tenant read and
 a nested `connect`. Each was verified by breaking row-level security four
 different ways and confirming the tests failed.
 
-**What is not done: `DATABASE_URL_TENANT` is not yet set on https://devopss.ir.**
-Until it is, that deployment still runs as the owner and gets one warning line
-at boot saying so. The code is complete; the deployment step is one run of
-`pnpm db:roles` and one line in the environment, and it has not been run there.
+**Live on https://devopss.ir since 2026-09-01.** `scripts/upgrade-server.sh`
+creates the role, verifies it, and writes `DATABASE_URL_TENANT` — in that order,
+because the API refuses to boot if the variable is set and the role turns out to
+be exempt. The deployment's own log now reads:
+
+```
+trading_app reads 0 of 25 users with no tenant set; DATABASE_URL_TENANT written
+PrismaService: Database connection established; tenant isolation enforced at the database
+```
+
+Note what made the second role necessary rather than optional: on that host the
+application's role is a _superuser_, and a superuser bypasses row-level security
+whether or not the policies are FORCE'd. Ownership was not the only exemption in
+play.
 
 ## What the Definition of Done still needs
 
@@ -177,8 +187,7 @@ settings ✅ — **all verified by compiler and unit test only, never on a devic
 
 **Security**: no critical vulnerabilities ✅ no secrets committed ✅ no
 cross-tenant access ✅ (both layers: the application scope, and row-level
-security enforced against the application itself — once `DATABASE_URL_TENANT` is
-set, which it is not yet on devopss.ir)
+security enforced against the application itself, live on devopss.ir)
 no frontend-only authorization ✅ sensitive actions audited ✅ tokens protected ✅
 
 Every link of the chain the prompt draws exists in code: user → app → API → auth
