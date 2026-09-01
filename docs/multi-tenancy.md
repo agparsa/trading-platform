@@ -193,34 +193,121 @@ This exists because layer one is code, and code has bugs. Three it cannot cover:
 
 #### What is true today, stated exactly
 
-The policies exist and RLS is enabled. It is **not** `FORCE`d, and that is a
-decision rather than an omission.
+The policies exist, RLS is enabled, and **it constrains the application** — but
+only when the deployment gives the application a second database role. That is
+one line of configuration, and without it the second layer is decoration.
 
-Postgres exempts a table's owner from its own policies unless FORCE is used, and
-here the application role owns its tables. So today the policies constrain every
-role _except_ the application: a reporting user, an analyst's psql session, a
-service granted SELECT. That was verified rather than assumed — a role with
-SELECT and no `app.tenant_id` set reads **zero** rows from `users`; set the
-variable and it reads exactly that tenant's.
+PostgreSQL exempts a table's owner from its own policies. `DATABASE_URL` is the
+owner — migrations need it to be. So a deployment where the application connects
+as the owner has policies that constrain a reporting user, an analyst's psql
+session and a service granted SELECT, and constrain the application not at all.
 
-Forcing it needs something the migration cannot provide. The application must
-set `app.tenant_id` on the connection for every statement, and Prisma runs most
-reads outside an explicit transaction on a pooled connection, where a
-transaction-local setting has nowhere to live. Making that work means either
-routing every query through a transaction — three round trips where there was
-one, on the order path — or moving to a driver adapter that can set the variable
-when a connection is checked out.
+`DATABASE_URL_TENANT` is what changes that. It points at a login role created by
+`pnpm db:roles` that owns nothing, holds SELECT/INSERT/UPDATE/DELETE and no
+CREATE, and is `NOBYPASSRLS`. Tenant traffic runs on it. Policies apply.
 
-Turning FORCE on before that plumbing exists would not tighten anything. It
-would make every query return zero rows: an outage wearing a security badge.
+#### How the tenant reaches a pooled connection
 
-**So layer two is armed and covers every role but one.** Finishing it is a named
-item in the implementation plan, and the deployment change that makes it bite
-immediately — running the application as a role that does not own its tables —
-is the same one `security.md` recommends for the audit log.
+This is the part that used to look impossible, and the note in the
+`tenant_row_level_security` migration says so at length. It was wrong, and it is
+left in place because rewriting an applied migration is worse than a note that
+records what was believed at the time.
+
+The two obvious mechanisms are both bad:
+
+- `set_config(..., true)` is transaction-local, so every read would need a
+  transaction wrapped round it;
+- `SET` outside a transaction is session-level, and the next request gets
+  whichever pooled connection is free — a tenant would leak into someone else's
+  queries, which is worse than no second layer at all.
+
+The third is a connection that is _born_ knowing its tenant. PostgreSQL accepts
+`options` in the startup packet and Prisma passes the parameter through:
+
+```
+postgresql://…/trading?schema=public&options=-c%20app.tenant_id=<uuid>
+```
+
+Measured, same read, local socket:
+
+| Mechanism                         |    p50 |    p95 |
+| --------------------------------- | -----: | -----: |
+| No policies at all (the floor)    | 0.72ms | 1.21ms |
+| Tenant bound to the connection    | 0.54ms | 0.86ms |
+| `set_config` inside a transaction | 1.85ms | 2.87ms |
+
+The cost is that a connection belongs to one tenant for its life, so there is a
+pool per tenant. `TenantClientRegistry` keeps them, capped by
+`DATABASE_TENANT_POOLS`, evicting the least recently used — and an evicted pool
+is removed from the map immediately but closed only after a drain delay, because
+`$disconnect()` does not wait for work in flight. A query running when it is
+called fails, with an empty error message. That was measured too.
+
+`PrismaService` is a proxy over the registry, so `this.prisma.order.findMany()`
+reads exactly as it did; what changed is which connection answers it.
+
+#### Three connections, and why the default is the deaf one
+
+| Scope                        | Role         | Sees                     |
+| ---------------------------- | ------------ | ------------------------ |
+| `withTenant(ctx)`            | unprivileged | that tenant's rows       |
+| no scope                     | unprivileged | **nothing**              |
+| `withoutTenantScope(reason)` | owner        | everything, deliberately |
+
+The middle row is the one that matters. Work with no scope gets a connection with
+no `app.tenant_id`, `current_tenant_id()` is NULL, and NULL matches no row — so
+forgetting to open a scope reads nothing rather than everything. If a missing
+scope fell through to the owner instead, forgetting would silently disable both
+layers at once and nothing would look wrong.
+
+#### Why not FORCE
+
+`FORCE ROW LEVEL SECURITY` would subject the owner to the policies as well. The
+owner's exemption is not an oversight; it is the escape hatch. The sign-in lookup
+has to find a user before it knows their tenant, and the reconciliation sweep has
+to list which tenants exist. Both run through `withoutTenantScope`, on the owner
+connection, precisely because it can see across.
+
+Forcing the policies would remove that mechanism rather than tighten one. The
+alternative — granting `BYPASSRLS` to the owner — is the same exemption spelled
+with more moving parts and a superuser.
+
+#### The one thing that cannot be checked by reading code
+
+Whether the role actually connected as is a role the policies apply to.
+Ownership, superuser and a missing policy all produce the same symptom:
+everything works, and the second layer quietly is not there.
+
+So it is measured. At boot, the API and the worker each ask their unprivileged
+connection to count rows in `users` with no tenant bound. The correct answer is
+zero. Any other answer means the connection is exempt.
+
+- `DATABASE_URL_TENANT` set and the probe fails → **the process refuses to
+  start**. A connection string that claims isolation and does not have it is the
+  one people stop checking.
+- `DATABASE_URL_TENANT` unset → one warning at boot naming what is not protected.
+- `users` empty → reported as unknown, not as success. A check that reads "fine"
+  on an empty database reads "fine" on a fresh deployment, which is exactly when
+  somebody would believe it.
+
+The worker probes separately from the API on purpose: they read the same database
+but are configured, deployed and restarted independently, so "the API said it was
+fine" is not evidence about the worker.
 
 Neither layer is sufficient alone and that is the point. A single mechanism that
 is "obviously correct" is a mechanism nobody checks.
+
+### Deploying it
+
+```bash
+pnpm db:roles            # creates trading_app, prints DATABASE_URL_TENANT
+# put that line in .env, with the password
+pnpm db:roles            # again after any migration that adds a table
+```
+
+The second run is belt and braces: `ALTER DEFAULT PRIVILEGES` already covers
+tables a later migration creates, but running the script is the version that also
+verifies rather than assuming.
 
 ### A trap worth writing down: Prisma's lazy thenables
 
@@ -252,8 +339,11 @@ tenant, resolved by fallback, with the same data in it.
 
 ## 8. What "isolation" is tested to mean
 
-Eighteen integration tests across two files, and one adversarial probe in
-`pnpm pentest` that creates a second tenant with its own hostname, registers a
+Eighteen integration tests across two files prove layer one, eight more in
+`rls-enforcement.test.ts` prove layer two from a role the policies apply to —
+including the two things layer one explicitly cannot close, a raw cross-tenant
+read and a nested `connect` — and one adversarial probe in
+`pnpm pentest` creates a second tenant with its own hostname, registers a
 user into it, and then tries every way of reaching the first tenant's data.
 
 **Where an id is involved the answer must be not-found, not forbidden.** A

@@ -5,6 +5,19 @@ export const workerEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   DATABASE_URL: z.string().startsWith('postgresql://'),
+
+  /**
+   * The connection tenant work uses, if it differs from `DATABASE_URL`.
+   *
+   * The worker needs this more than the API does, not less. It has no request
+   * and no middleware, so nothing external puts a tenant in scope; a job that
+   * queried without one would read every firm's rows and look entirely normal
+   * doing it. Row-level security refuses that, but only for a role that does not
+   * own the tables — which is what this points at. See `docs/multi-tenancy.md`.
+   */
+  DATABASE_URL_TENANT: z.string().startsWith('postgresql://').optional(),
+  DATABASE_TENANT_POOLS: z.coerce.number().int().min(1).default(16),
+
   REDIS_URL: z.string().startsWith('redis://'),
   TRADING_SERVER_TIMEZONE: z.string().default('UTC'),
 

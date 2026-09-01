@@ -21,3 +21,10 @@ export {
   requireTenantId,
 } from './context';
 export { tenantScopeExtension, TENANT_SCOPED_MODELS, DELIBERATELY_UNSCOPED_MODELS } from './scope';
+export { tenantConnectionUrl, TENANT_SETTING } from './connection';
+export { probeTenantIsolation, type IsolationState, type RawQueryable } from './probe';
+export {
+  TenantClientRegistry,
+  type Disconnectable,
+  type TenantClientRegistryOptions,
+} from './registry';

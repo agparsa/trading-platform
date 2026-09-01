@@ -21,6 +21,32 @@ export const envSchema = z
     CORS_ORIGINS: z.string().default('http://localhost:3000'),
 
     DATABASE_URL: z.string().startsWith('postgresql://'),
+
+    /**
+     * The connection tenant traffic uses, if it differs from `DATABASE_URL`.
+     *
+     * Row-level security constrains every role *except* a table's owner, and
+     * `DATABASE_URL` is the owner — it has to be, because migrations run
+     * through it. So pointing this at a second, unprivileged role is what turns
+     * the policies from documentation into enforcement. `pnpm db:roles` creates
+     * that role; `docs/multi-tenancy.md` has the deployment step.
+     *
+     * Unset, everything runs as the owner and the API says so at boot, loudly
+     * and once. Set, the API *verifies* at boot that the role really is
+     * constrained and refuses to start if it is not — a connection string that
+     * claims isolation and does not have it is worse than none, because it is
+     * the one people stop checking.
+     */
+    DATABASE_URL_TENANT: z.string().startsWith('postgresql://').optional(),
+
+    /**
+     * How many per-tenant connection pools may be open at once. Each tenant
+     * gets its own, because `app.tenant_id` is bound when the connection opens.
+     * Total connections are this times `connection_limit`, so it is a budget,
+     * not a limit on how many tenants may exist.
+     */
+    DATABASE_TENANT_POOLS: z.coerce.number().int().min(1).default(32),
+
     REDIS_URL: z.string().startsWith('redis://'),
 
     // Long enough that a brute-force is hopeless; refuse to boot on a short one.

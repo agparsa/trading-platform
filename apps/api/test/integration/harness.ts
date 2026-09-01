@@ -16,6 +16,31 @@ export const hasTestDatabase =
   typeof TEST_DATABASE_URL === 'string' && TEST_DATABASE_URL.length > 0;
 
 /**
+ * The database this suite is allowed to empty.
+ *
+ * `resetDatabase` truncates every table. The file header has always said this
+ * must never point at a database anyone cares about — and said it to a reader,
+ * which is not the same as enforcing it. One typo in `.env`, or a shell that
+ * still has a production `TEST_DATABASE_URL` exported from an earlier session,
+ * and the suite would empty a real database and pass while doing it.
+ *
+ * So the name must end in `_test`. That is a convention the tooling already
+ * follows — `prepare-test-db.ts` derives the name by appending it — which makes
+ * this a guard rather than a new rule to remember.
+ */
+export function assertDisposable(url: string): string {
+  const name = new URL(url).pathname.replace(/^\//, '').split('?')[0] ?? '';
+  if (!name.endsWith('_test')) {
+    throw new Error(
+      `Refusing to run the integration suite against database ${JSON.stringify(name)}: ` +
+        'these tests TRUNCATE every table, so the name must end in `_test`. ' +
+        'Run `pnpm db:test:prepare`, which creates one and prints the line for .env.',
+    );
+  }
+  return url;
+}
+
+/**
  * The test client carries the tenant-scope extension, exactly as the
  * application's does.
  *
@@ -27,7 +52,7 @@ export const hasTestDatabase =
 export function createTestClient(): PrismaClient {
   if (!hasTestDatabase) throw new Error('TEST_DATABASE_URL is not set');
   return new PrismaClient({
-    datasources: { db: { url: TEST_DATABASE_URL } },
+    datasources: { db: { url: assertDisposable(TEST_DATABASE_URL as string) } },
   }).$extends(tenantScopeExtension()) as unknown as PrismaClient;
 }
 

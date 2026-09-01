@@ -10,9 +10,13 @@ build when this file and the controllers disagree — a document that says it is
 generated and then drifts is worse than one that never said so, because a reader
 who trusts the claim stops checking.
 
-**Totals:** 15 controllers, 84 HTTP routes — 43 `GET`, 35 `POST`, 3 `PATCH`,
-3 `DELETE`. Plus one WebSocket namespace with 3 inbound message types and 24
-outbound domain events.
+The route total is at the **end** of the generated section, deliberately. It
+used to be here, above the markers, where nothing checked it — and it drifted to
+"84 routes" while the generated table below listed 94. A hand-written summary of
+a generated document is the one line a reader trusts and nobody verifies.
+
+Plus one WebSocket namespace, whose inbound message types and outbound domain
+events are listed further down.
 
 All routes are prefixed `/api/v1` except those marked version-neutral
 (`/health`, `/ready`, `/metrics`).

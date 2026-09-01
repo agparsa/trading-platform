@@ -10,6 +10,7 @@ cp .env.example .env
 docker compose up -d postgres redis
 pnpm install
 pnpm db:migrate
+pnpm db:roles
 pnpm db:seed
 pnpm verify
 ```
@@ -17,8 +18,17 @@ pnpm verify
 Fill in `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` before starting the API; it
 refuses to boot on anything shorter than 32 characters.
 
+`pnpm db:roles` creates the second database role — the one that owns no tables,
+and therefore the one PostgreSQL's row-level-security policies actually apply to.
+It prints a `DATABASE_URL_TENANT` line for `.env`. Set it: with it, tenant
+isolation is enforced by the database as well as by the application, and the API
+refuses to start if that stops being true. Without it, both processes start and
+say once that isolation is not enforced. Run it again after any migration that
+adds a table. See [multi-tenancy.md](./multi-tenancy.md).
+
 Integration tests need their own database — `pnpm db:test:prepare` creates and
-migrates it, and prints the `TEST_DATABASE_URL` line to uncomment.
+migrates it, provisions the same role against it, and prints the
+`TEST_DATABASE_URL` and `TEST_DATABASE_URL_TENANT` lines to uncomment.
 
 - Web: http://localhost:3000
 - API: http://localhost:4000/api/v1

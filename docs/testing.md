@@ -5,7 +5,8 @@ the formulas were written against them.
 
 ```
 pnpm test              # 761 tests (integration ones opt-in)
-pnpm db:test:prepare   # create + migrate the integration test database
+pnpm db:test:prepare   # create + migrate the integration test database, and its roles
+pnpm db:roles          # create the unprivileged role row-level security constrains
 pnpm test:coverage     # thresholds enforced
 pnpm verify            # lint → typecheck → test → build
 pnpm check:schema      # no floating-point columns exist
@@ -23,6 +24,13 @@ offline. Enable them with `pnpm db:test:prepare`, which creates and migrates a
 separate database and prints the line to uncomment in `.env`. They use a real database on purpose: row locks, unique
 constraints and transaction boundaries are exactly what they check, and a mocked
 `FOR UPDATE` proves nothing.
+
+`rls-enforcement.test.ts` needs one thing more: `TEST_DATABASE_URL_TENANT`, a
+connection as the unprivileged role, because PostgreSQL exempts a table's owner
+from its own policies and a test run as the owner would prove nothing while
+passing. `pnpm db:test:prepare` creates that role and prints the line. Without
+it the file skips — and a skipped proof of tenant isolation reads exactly like a
+passing one in the summary.
 
 ## What is covered today
 
