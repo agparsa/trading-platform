@@ -38,10 +38,25 @@ interface Undeclared {
   route: string;
 }
 
+/** Where a method's own body starts: the signature line under its decorators. */
+const SIGNATURE = /^\s*(?:public |private |protected )?(?:async )?[A-Za-z_$][\w$]*\s*\(/;
+
 /**
- * Decorators stack above the method, so the check walks backwards from the HTTP
- * decorator through the contiguous block of decorators and comments that belong
- * to it, stopping at the previous method's closing brace.
+ * Reads the whole decorator block a route belongs to, and only that block.
+ *
+ * Both directions, because decorator order does not matter to Nest and a check
+ * that only looked upward enforced an ordering nobody had written down. It
+ * reported `@Put('roles/:key')` as undeclared while `@RequirePermissions` sat on
+ * the very next line, enforcing perfectly at runtime. A build check that is
+ * wrong about working code is a check people learn to argue with.
+ *
+ * Widening it exposed the more serious bug, in the direction that was already
+ * there. The upward scan used to stop only at a bare `}`, so a member whose body
+ * closes on its own signature line — `first(): void {}` — did not stop it, and
+ * the next route inherited the previous one's `@RequirePermissions`. An
+ * undeclared route reported as declared is the failure this whole file exists to
+ * prevent, and it was reachable. Both scans now stop at a member's signature as
+ * well as at a closing brace.
  */
 function undeclaredMutations(source: string, file: string): Undeclared[] {
   const lines = source.split('\n');
@@ -51,14 +66,17 @@ function undeclaredMutations(source: string, file: string): Undeclared[] {
     if (!MUTATION.test(lines[i]!)) continue;
 
     let declared = false;
-    for (let j = i; j >= 0; j -= 1) {
+    for (let j = i; j >= 0 && !declared; j -= 1) {
       const line = lines[j]!;
-      if (EXEMPT.test(line)) {
-        declared = true;
-        break;
-      }
-      // The end of the previous member: nothing above this belongs to us.
-      if (j < i && /^\s*[}]\s*$/.test(line)) break;
+      if (EXEMPT.test(line)) declared = true;
+      // The previous member: nothing above this belongs to us.
+      else if (j < i && (SIGNATURE.test(line) || /^\s*[}]/.test(line))) break;
+    }
+    for (let j = i + 1; j < lines.length && !declared; j += 1) {
+      const line = lines[j]!;
+      if (EXEMPT.test(line)) declared = true;
+      // The method's own signature: past here is its body, not its decorators.
+      else if (SIGNATURE.test(line)) break;
     }
 
     if (!declared) {
@@ -87,6 +105,66 @@ describe('permission coverage', () => {
     const moduleSource = readFileSync(join(CONTROLLER_ROOT, 'app.module.ts'), 'utf8');
     expect(moduleSource).toMatch(/useClass:\s*PermissionsGuard/);
     expect(moduleSource).toMatch(/provide:\s*APP_GUARD/);
+  });
+
+  /**
+   * The scanner is the thing being trusted here, so it is tested on sources it
+   * can see whole rather than only on the repository. A scanner that returned
+   * nothing would pass the repository check forever.
+   */
+  describe('the scanner itself', () => {
+    const bodied = (decorators: string): string =>
+      `class C {\n${decorators}\n  handle(): void {}\n}\n`;
+
+    it('accepts a declaration above the route', () => {
+      expect(undeclaredMutations(bodied("  @RequirePermissions(X)\n  @Post('a')"), 'f')).toEqual(
+        [],
+      );
+    });
+
+    it('accepts a declaration below the route, which Nest treats identically', () => {
+      expect(undeclaredMutations(bodied("  @Post('a')\n  @RequirePermissions(X)"), 'f')).toEqual(
+        [],
+      );
+    });
+
+    it('still catches a route with no declaration at all', () => {
+      expect(undeclaredMutations(bodied("  @Post('a')"), 'f')).toHaveLength(1);
+    });
+
+    /**
+     * The reason the downward scan stops at the signature: a `@RequirePermissions`
+     * belonging to the *next* method must not cover this one.
+     */
+    it('does not borrow the next method\u2019s declaration', () => {
+      const source = [
+        'class C {',
+        "  @Post('a')",
+        '  first(): void {}',
+        '',
+        '  @RequirePermissions(X)',
+        "  @Post('b')",
+        '  second(): void {}',
+        '}',
+      ].join('\n');
+      const undeclared = undeclaredMutations(source, 'f');
+      expect(undeclared).toHaveLength(1);
+      expect(undeclared[0]?.route).toBe("@Post('a')");
+    });
+
+    it('does not borrow a declaration from inside the previous method body', () => {
+      const source = [
+        'class C {',
+        '  @RequirePermissions(X)',
+        "  @Post('a')",
+        '  first(): void {}',
+        '',
+        "  @Post('b')",
+        '  second(): void {}',
+        '}',
+      ].join('\n');
+      expect(undeclaredMutations(source, 'f').map((u) => u.route)).toEqual(["@Post('b')"]);
+    });
   });
 
   it('declares a permission on every mutating route', () => {

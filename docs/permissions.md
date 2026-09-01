@@ -15,6 +15,14 @@ Permissions are `resource.verb` capabilities, defined once in
 [`packages/shared-types/src/permissions.ts`](../packages/shared-types/src/permissions.ts)
 so the API and the terminal cannot drift apart on what a name means.
 
+**Capabilities are code; grants are data.** The catalogue below is a
+compile-time constant, because code is what checks a capability and one that
+exists only as a database row is one no route could require. Which role carries
+which capability is a row — `roles` and `role_permissions`, per tenant — because
+that is the part a firm needs to change without a deployment, and the part that
+differs between firms. The table each tenant starts with is seeded from the
+constant, so a fresh deployment behaves exactly as the catalogue below says.
+
 Roles are **sets of capabilities, not a ladder**. There is no rank at which one
 role automatically contains another, because the useful distinctions here are
 not hierarchical: a risk manager may halt trading and a support agent may not,
@@ -35,6 +43,8 @@ should be able to place an order on it.
 | `master.read` / `.manage`                         | Master-account links                      |
 | `system.operations`                               | The operations dashboard                  |
 | `system.kill_switch`                              | Halt trading                              |
+| `roles.read`                                      | See what each role carries                |
+| `roles.manage`                                    | Change what a role carries                |
 
 `accounts.read` and `accounts.read_any` are deliberately separate. Collapsing
 them would mean that granting a support agent the ability to look up a customer
@@ -43,13 +53,17 @@ both would be spelled the same way.
 
 ## Roles
 
-| Role           | Carries                                                                                          |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| `USER`         | Their own accounts, and the full order and position lifecycle on them                            |
-| `SUPPORT`      | Read-only across accounts, orders, positions and master links                                    |
-| `OPERATOR`     | Support's reads, plus cancel/close/modify, account management, ops dashboard                     |
-| `RISK_MANAGER` | Operator's set, plus `risk.manage`, `audit.read`, reconciliation manage and run, kill switch     |
-| `ADMIN`        | Everything administrative — but **not** `orders.create`, `positions.close` or `positions.modify` |
+These are the sets a tenant is **seeded** with. They are rows from then on, so
+what a given deployment's roles actually carry is `GET /permissions/roles`, and
+this table is what it started as.
+
+| Role           | Carries                                                                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `USER`         | Their own accounts, and the full order and position lifecycle on them                                                              |
+| `SUPPORT`      | Read-only across accounts, orders, positions and master links                                                                      |
+| `OPERATOR`     | Support's reads, plus cancel/close/modify, account management, ops dashboard                                                       |
+| `RISK_MANAGER` | Operator's set, plus `risk.manage`, `audit.read`, reconciliation manage and run, kill switch                                       |
+| `ADMIN`        | Everything administrative, plus `roles.read`/`roles.manage` — but **not** `orders.create`, `positions.close` or `positions.modify` |
 
 ### Why ADMIN cannot trade
 
@@ -78,6 +92,73 @@ uses are audited, and — per the specification's §21 — a halt must never rem
 the ability to _close_ a position. Trapping traders in open risk is not a safe
 state.
 
+## Editing a role, and the two things that cannot be edited into one
+
+`roles.manage` is the meta-permission: a holder could otherwise grant themselves
+everything else on the list. Only `ADMIN` carries it, which is a statement about
+whose job this is rather than a safety mechanism — the safety is two refusals,
+both server-side, both inside the transaction that records the change.
+
+### You cannot grant what you do not hold
+
+The oldest bound there is. `escalationsIn` compares the requested set against
+what the editor's own role carries, and refuses the difference. Note it applies
+to the _result_, not the diff: an editor removing a capability they lack is
+narrowing a role, and needs no permission beyond `roles.manage`.
+
+The practical consequence is the useful one. An administrator cannot grant any
+role `orders.create`, because `ADMIN` does not hold it — the same rule that keeps
+administrators out of the order book keeps them from writing themselves in.
+
+### No role may credit an account and trade the credit
+
+`accounts.adjust` may not sit in the same role as `orders.create`,
+`orders.modify` or `positions.modify`. This is a **refusal**, not a warning, and
+the choice was deliberate: the plan for this phase left it open, and a warning
+that can be clicked past is a warning that will be clicked past on a Tuesday
+afternoon, leaving an audit record that describes a platform already
+misconfigured. The whole argument for `ADMIN` not holding `orders.create` is that
+inventing money and using it must not be one person's capability; a rule that
+yields is a note about that argument rather than the argument.
+
+`orders.cancel` and `positions.close` are deliberately not on the list. Stopping
+something is not starting it — the same distinction that lets `ADMIN` keep them.
+
+The escape is the one separation of duties always has: two roles, two logins, or
+a master-account link that names the account and leaves a record.
+
+### What is recorded
+
+Every change writes an audit row **inside the same transaction** as the grant,
+with the before and after sets and the difference in both directions. Every other
+audit call in this codebase is fire-and-forget, for a good reason — losing the
+record of a fill beats losing the fill — but a silent alteration of what a role
+may do is indistinguishable from an intruder's, and there is no version of that
+operation worth keeping without its record. `AuditService.record` takes an
+optional transaction for exactly this case, and throws rather than logging when
+it is given one.
+
+### When the database will not answer
+
+The guard used to be a pure function, so it could not fail. Now it reads rows,
+and a permission check that throws is every route returning 500. Three
+behaviours, in order:
+
+| Situation                                   | What happens                               |
+| ------------------------------------------- | ------------------------------------------ |
+| Reload fails, this tenant was loaded before | the last known grants, logged at error     |
+| Reload fails, never loaded                  | the compile-time grants, logged at error   |
+| The tenant has **no roles at all**          | the compile-time grants, logged at error   |
+| The tenant has roles but not **this** one   | **nothing** — a deleted role holds nothing |
+
+The last two rows look alike and are not. A tenant with no roles never got
+seeded, which is infrastructure, and denying everything would take a firm offline
+over it. A tenant missing one role had it deleted, which was a decision, and
+restoring its default would make deletion do nothing.
+
+Grants are cached per tenant and dropped on every instance over Redis when one
+changes, so an edit takes effect immediately rather than at the next expiry.
+
 ## Enforcement
 
 Three layers, each with its own failure mode covered:
@@ -103,12 +184,17 @@ reader sees a decision rather than an omission.
 
 Every layer was checked by breaking it and confirming something failed:
 
-| Break                                           | Caught by                   |
-| ----------------------------------------------- | --------------------------- |
-| Guard never refuses                             | 5 of 8 guard tests          |
-| Decorator writes metadata under a different key | 6 of 8 guard tests          |
-| `and` semantics become `or`                     | catalogue test + guard test |
-| Guard is never registered as an `APP_GUARD`     | coverage test               |
+| Break                                           | Caught by                    |
+| ----------------------------------------------- | ---------------------------- |
+| Guard never refuses                             | 5 of 8 guard tests           |
+| Decorator writes metadata under a different key | 6 of 8 guard tests           |
+| `and` semantics become `or`                     | catalogue test + guard test  |
+| Guard is never registered as an `APP_GUARD`     | coverage test                |
+| Guard reads the constant instead of the rows    | 7 of 21 role tests           |
+| Incompatible combinations allowed               | role test + pentest probe    |
+| Editor may grant what they do not hold          | 2 role tests + pentest probe |
+| A deleted role falls back to its default        | role test                    |
+| The audit row moves outside the transaction     | role test                    |
 
 The last one is the reason the registration is asserted as text in a test:
 deleting that one line in `app.module.ts` left the entire unit suite green. A

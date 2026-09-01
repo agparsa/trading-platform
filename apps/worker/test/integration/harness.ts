@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { enterTenantScope, tenantScopeExtension } from '@tp/tenancy';
+import { seedTenantRoles } from '../../../../prisma/roles';
 
 /**
  * Integration-test harness for the worker.
@@ -62,6 +63,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
         accounts,
         system_settings, tenants,
         invite_redemptions, invite_codes,
+        role_permissions, roles,
         totp_recovery_codes, refresh_tokens, users, idempotency_keys
       RESTART IDENTITY CASCADE
     `);
@@ -75,6 +77,8 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
   // `enterWith` rather than `withTenant`, because a `beforeEach` cannot wrap the
   // test body. See the API harness for the full note.
   enterTenantScope({ tenantId: tenant.id, slug: tenant.slug });
+  // After the scope: `Role` is tenant-scoped and seeding it without one is refused.
+  await seedTenantRoles(prisma, tenant.id);
   return tenant.id;
 }
 
@@ -113,6 +117,7 @@ export async function seedSymbols(prisma: PrismaClient): Promise<void> {
 /** A second tenant, for tests that need the boundary rather than the default. */
 export async function createTenant(prisma: PrismaClient, slug: string): Promise<string> {
   const tenant = await prisma.tenant.create({ data: { slug, name: slug } });
+  await seedTenantRoles(prisma, tenant.id);
   return tenant.id;
 }
 

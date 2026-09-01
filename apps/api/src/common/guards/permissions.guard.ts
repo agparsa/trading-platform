@@ -1,14 +1,9 @@
-import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
+import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import {
-  DomainError,
-  type Permission,
-  roleHasPermissions,
-  TradingErrorCode,
-  type UserRole,
-} from '@tp/shared-types';
+import { DomainError, type Permission, TradingErrorCode } from '@tp/shared-types';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import type { RequestWithContext } from '../request-context';
+import { RolesService } from '../../permissions/roles.service';
 
 /**
  * Permission enforcement, in the backend, where it counts.
@@ -21,12 +16,24 @@ import type { RequestWithContext } from '../request-context';
  * do something needs to know *which* capability they lack in order to ask for
  * it, and the permission name leaks nothing an authenticated user could not
  * already infer from the route they just called.
+ *
+ * ## Why this is asynchronous now
+ *
+ * Grants are rows rather than constants, so the answer comes from
+ * `RolesService` — which serves it from a per-tenant cache and reloads only when
+ * a grant changes. The route this runs on is every authenticated route, so a
+ * database read per request would not be acceptable and does not happen; see
+ * that service for the cache and for what it does when the database will not
+ * answer.
  */
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(
+    private readonly reflector: Reflector,
+    @Inject(RolesService) private readonly roles: RolesService,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const required = this.reflector.getAllAndOverride<Permission[] | undefined>(PERMISSIONS_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -39,9 +46,9 @@ export class PermissionsGuard implements CanActivate {
       throw new DomainError(TradingErrorCode.UNAUTHENTICATED, 'Authentication required');
     }
 
-    if (!roleHasPermissions(user.role as UserRole, required)) {
-      const held = new Set(required.filter((p) => roleHasPermissions(user.role as UserRole, [p])));
-      const missing = required.filter((p) => !held.has(p));
+    const held = await this.roles.permissionsFor(user.role);
+    const missing = required.filter((permission) => !held.has(permission));
+    if (missing.length > 0) {
       throw new DomainError(
         TradingErrorCode.FORBIDDEN,
         `This operation needs ${missing.join(', ')}, which your role does not carry`,

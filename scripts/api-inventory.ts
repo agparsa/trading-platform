@@ -44,11 +44,17 @@ function basePath(argument: string): string {
 }
 
 /**
- * Decorators sit above the method they belong to, and a route's authorization
- * decorators sit above its HTTP decorator. So the parser accumulates decorators
+ * Decorators sit above the method they belong to, so the parser accumulates them
  * as it walks, attaches them to the next HTTP decorator it meets, and discards
  * them at any line that is neither a decorator nor a comment — which is the end
  * of the block.
+ *
+ * It also reads the decorators *below* the HTTP decorator, down to the handler's
+ * signature. Nest does not care about the order, so a real route whose
+ * `@RequirePermissions` sat under its `@Put` was documented here as
+ * "authenticated only" while being fully enforced. A generated document that is
+ * wrong about working code is worse than no document, because the reader has no
+ * reason to doubt it.
  */
 function routesIn(file: string): { controller: string; base: string; routes: Route[] } {
   const source = readFileSync(file, 'utf8');
@@ -72,9 +78,13 @@ function routesIn(file: string): { controller: string; base: string; routes: Rou
     if (http !== null) {
       const [, verb, routePath] = http as unknown as [string, string, string];
       let handler = '?';
+      const trailing: string[] = [];
       for (let j = i + 1; j < Math.min(i + 10, lines.length); j += 1) {
         const candidate = lines[j]!;
-        if (candidate.trim().startsWith('@')) continue;
+        if (candidate.trim().startsWith('@')) {
+          trailing.push(candidate.trim());
+          continue;
+        }
         const named = /^\s*(?:async\s+)?([A-Za-z_][\w]*)\s*\(/.exec(candidate);
         if (named !== null) {
           handler = named[1]!;
@@ -84,7 +94,7 @@ function routesIn(file: string): { controller: string; base: string; routes: Rou
 
       const guards: string[] = [];
       if (classLevelPublic) guards.push('PUBLIC (class)');
-      for (const decorator of pending) {
+      for (const decorator of [...pending, ...trailing]) {
         if (decorator.startsWith('@RequirePermissions')) {
           guards.push(
             (/\((.*)\)/.exec(decorator)?.[1] ?? '')

@@ -7,6 +7,9 @@ import {
   ROLE_PERMISSIONS,
   roleHasPermissions,
   isLinkableCapability,
+  conflictsIn,
+  escalationsIn,
+  isPermission,
 } from './permissions';
 
 /**
@@ -276,5 +279,112 @@ describe('an administrator is not a trader', () => {
   it('allows trading to be delegated per account through a link', () => {
     expect(isLinkableCapability(Permission.ORDERS_CREATE)).toBe(true);
     expect(isLinkableCapability(Permission.POSITIONS_CLOSE)).toBe(true);
+  });
+});
+
+describe('combinations no single role may hold', () => {
+  it('finds the pair that lets someone invent money and then trade it', () => {
+    expect(conflictsIn([Permission.ACCOUNTS_ADJUST, Permission.ORDERS_CREATE])).toEqual([
+      [Permission.ACCOUNTS_ADJUST, Permission.ORDERS_CREATE],
+    ]);
+  });
+
+  it('finds every conflicting pair, not the first', () => {
+    expect(
+      conflictsIn([
+        Permission.ACCOUNTS_ADJUST,
+        Permission.ORDERS_CREATE,
+        Permission.ORDERS_MODIFY,
+        Permission.POSITIONS_MODIFY,
+      ]),
+    ).toHaveLength(3);
+  });
+
+  it('allows either half on its own', () => {
+    expect(conflictsIn([Permission.ACCOUNTS_ADJUST])).toEqual([]);
+    expect(conflictsIn([Permission.ORDERS_CREATE, Permission.ORDERS_MODIFY])).toEqual([]);
+  });
+
+  /**
+   * Stopping something is not starting it — the same distinction that lets
+   * ADMIN keep `orders.cancel` while not holding `orders.create`.
+   */
+  it('allows adjusting alongside cancelling and closing', () => {
+    expect(
+      conflictsIn([
+        Permission.ACCOUNTS_ADJUST,
+        Permission.ORDERS_CANCEL,
+        Permission.POSITIONS_CLOSE,
+      ]),
+    ).toEqual([]);
+  });
+
+  /**
+   * The seeded roles are the thing this rule was written about. If one of them
+   * violated it, the platform could not seed itself — so this is the test that
+   * fails first when somebody widens ADMIN.
+   */
+  it.each(Object.values(UserRole))('is satisfied by the built-in role %s', (role) => {
+    expect(conflictsIn(permissionsFor(role))).toEqual([]);
+  });
+});
+
+describe('what an editor may grant', () => {
+  it('reports what the grant contains that the editor does not hold', () => {
+    expect(
+      escalationsIn(
+        [Permission.ACCOUNTS_ADJUST, Permission.ORDERS_READ],
+        [Permission.ORDERS_READ, Permission.POSITIONS_READ],
+      ),
+    ).toEqual([Permission.ACCOUNTS_ADJUST]);
+  });
+
+  it('allows granting a subset of what the editor holds', () => {
+    expect(escalationsIn([Permission.ORDERS_READ], permissionsFor(UserRole.ADMIN))).toEqual([]);
+  });
+
+  /**
+   * The rule is about the result, not the diff. An editor removing something
+   * they themselves lack is narrowing a role, which nobody needs permission to
+   * do beyond `roles.manage` itself.
+   */
+  it('says nothing about capabilities being removed', () => {
+    expect(escalationsIn([], [Permission.ORDERS_READ])).toEqual([]);
+  });
+
+  it('does not report the same escalation twice', () => {
+    expect(escalationsIn([Permission.RISK_MANAGE, Permission.RISK_MANAGE], [])).toEqual([
+      Permission.RISK_MANAGE,
+    ]);
+  });
+
+  /**
+   * An ADMIN cannot grant a role `orders.create`, because ADMIN does not hold
+   * it — so the two rules overlap here, and that is deliberate. The conflict
+   * rule catches an editor who *does* hold both; this one catches the ordinary
+   * administrator who does not.
+   */
+  it('stops an administrator granting the one capability their own role lacks', () => {
+    expect(escalationsIn([Permission.ORDERS_CREATE], permissionsFor(UserRole.ADMIN))).toEqual([
+      Permission.ORDERS_CREATE,
+    ]);
+  });
+});
+
+describe('isPermission', () => {
+  it('accepts every capability this build defines', () => {
+    expect(ALL_PERMISSIONS.every((permission) => isPermission(permission))).toBe(true);
+  });
+
+  it.each([
+    'orders.creat',
+    'orders.*',
+    '',
+    'ORDERS_CREATE',
+    'accounts.read; drop table users',
+    '__proto__',
+    'constructor',
+  ])('refuses %j', (value) => {
+    expect(isPermission(value)).toBe(false);
   });
 });

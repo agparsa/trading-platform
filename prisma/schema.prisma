@@ -87,6 +87,8 @@ model Tenant {
   notificationPreferences NotificationPreference[]
   notificationSettings    NotificationSetting[]
   pushDeliveries          PushDelivery[]
+  roles                   Role[]
+  rolePermissions         RolePermission[]
 
   @@map("tenants")
 }
@@ -1542,4 +1544,68 @@ enum PushDeliveryStatus {
   /// The user's preferences said not to send. Recorded so the admin view can
   /// distinguish "we chose not to" from "we tried and failed".
   SKIPPED
+}
+
+/// A named set of capabilities, per tenant.
+///
+/// Capabilities themselves stay in code — `ALL_PERMISSIONS` in
+/// `@tp/shared-types` — because code is what checks them, and a capability that
+/// exists only as a row is a capability no route can require. What lives here is
+/// the *grant*: which role carries which capability, which is the part a firm
+/// needs to change without a deployment.
+///
+/// Seeded from `ROLE_PERMISSIONS` so that the first day after this migration
+/// behaves exactly like the last day before it.
+model Role {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  /// Stable machine name. For the built-in roles this equals a `UserRole`
+  /// value, which is how a user's `role` column finds its grants.
+  key         String
+  name        String
+  description String?
+
+  /// Seeded rather than created by a person.
+  ///
+  /// A system role's `key` cannot change and the role cannot be deleted, because
+  /// users point at it by key and a dangling pointer here is an account that can
+  /// do nothing or — far worse, if the key were reused — everything. Its
+  /// *grants* are editable like any other's; that is the entire point of the
+  /// change.
+  isSystem Boolean @default(false) @map("is_system")
+
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  permissions RolePermission[]
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+/// One capability held by one role.
+///
+/// A row per capability rather than an array column, so that granting and
+/// revoking are inserts and deletes with a unique constraint behind them — two
+/// administrators pressing save at once cannot produce a duplicate, and the
+/// audit record of what changed is the row itself.
+model RolePermission {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  roleId   String @map("role_id") @db.Uuid
+
+  /// A `Permission` value. Validated against `ALL_PERMISSIONS` on write, because
+  /// a row naming a capability this build does not know is a grant that silently
+  /// does nothing.
+  permission String
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permission])
+  @@index([tenantId])
+  @@map("role_permissions")
 }

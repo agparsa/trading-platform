@@ -92,6 +92,20 @@ export const Permission = {
   MASTER_READ: 'master.read',
   MASTER_MANAGE: 'master.manage',
 
+  // --- roles ---
+  /** See which roles exist and what each one carries. */
+  ROLES_READ: 'roles.read',
+  /**
+   * Change what a role carries.
+   *
+   * The meta-permission, and the most dangerous one on this list, because a
+   * holder could otherwise grant themselves everything else. Two rules bound it
+   * and both are enforced server-side: nobody may grant a capability they do not
+   * themselves hold (`escalationsIn`), and no role may hold a combination this
+   * file calls incompatible (`conflictsIn`).
+   */
+  ROLES_MANAGE: 'roles.manage',
+
   // --- system ---
   SYSTEM_KILL_SWITCH: 'system.kill_switch',
   SYSTEM_OPERATIONS: 'system.operations',
@@ -191,6 +205,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.RECONCILIATION_READ,
     Permission.RECONCILIATION_MANAGE,
     Permission.RECONCILIATION_RUN,
+    Permission.ROLES_READ,
     Permission.SYSTEM_OPERATIONS,
     Permission.SYSTEM_KILL_SWITCH,
   ],
@@ -218,10 +233,85 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.RECONCILIATION_READ,
     Permission.RECONCILIATION_MANAGE,
     Permission.RECONCILIATION_RUN,
+    /**
+     * Only ADMIN edits roles. `escalationsIn` already bounds what any editor can
+     * grant, so this is not the safety mechanism — it is the smaller statement
+     * that changing what a role means is an administrative act, not an
+     * operational one, and a risk manager halting trading at 3am should not be
+     * one keystroke from rewriting their own capabilities.
+     */
+    Permission.ROLES_READ,
+    Permission.ROLES_MANAGE,
     Permission.SYSTEM_OPERATIONS,
     Permission.SYSTEM_KILL_SWITCH,
   ],
 };
+
+/**
+ * Combinations no single role may hold, whatever an administrator asks for.
+ *
+ * ## Why this is a refusal rather than a warning
+ *
+ * The plan for this phase left the choice open: forbid the combination outright,
+ * or allow it with a loud warning and an audit record. Forbidding it, for one
+ * reason — a warning that can be clicked past is a warning that will be clicked
+ * past, and the audit record it leaves describes a platform that is already
+ * misconfigured. The whole argument for `ADMIN` not holding `orders.create` is
+ * that crediting an account and trading the credit must not be one person's
+ * capability. A rule that yields on a Tuesday afternoon is not that argument; it
+ * is a note about it.
+ *
+ * The escape is the same one separation of duties always has: two roles, two
+ * logins, or a master-account link that names the account and leaves a record.
+ *
+ * ## Why these pairs
+ *
+ * `accounts.adjust` writes to a ledger. Every capability paired with it here
+ * turns a ledger entry into a market position — invent the money, then trade it,
+ * and the second act is what makes the first hard to see. `positions.modify` is
+ * on the list because moving a stop moves money on close just as surely as
+ * opening the position did.
+ *
+ * `orders.cancel` and `positions.close` are deliberately **not** here. Stopping
+ * something is not starting it, which is the same distinction that lets `ADMIN`
+ * keep them.
+ */
+export const INCOMPATIBLE_PERMISSIONS: readonly (readonly [Permission, Permission])[] = [
+  [Permission.ACCOUNTS_ADJUST, Permission.ORDERS_CREATE],
+  [Permission.ACCOUNTS_ADJUST, Permission.ORDERS_MODIFY],
+  [Permission.ACCOUNTS_ADJUST, Permission.POSITIONS_MODIFY],
+];
+
+/** Every incompatible pair present in this set. Empty means the set is allowed. */
+export function conflictsIn(
+  permissions: Iterable<Permission>,
+): readonly (readonly [Permission, Permission])[] {
+  const held = new Set(permissions);
+  return INCOMPATIBLE_PERMISSIONS.filter(([a, b]) => held.has(a) && held.has(b));
+}
+
+/**
+ * What `granted` contains that `heldByEditor` does not.
+ *
+ * Editing a role is how someone with `roles.manage` would escalate, and the
+ * bound is the oldest one there is: you cannot give away what you do not have.
+ * Note that it applies to the *result*, not to the diff — an editor removing a
+ * capability they lack is fine, and this returns nothing for it.
+ */
+export function escalationsIn(
+  granted: Iterable<Permission>,
+  heldByEditor: Iterable<Permission>,
+): readonly Permission[] {
+  const held = new Set(heldByEditor);
+  return [...new Set(granted)].filter((permission) => !held.has(permission));
+}
+
+const KNOWN = new Set<string>(ALL_PERMISSIONS);
+
+/** Is this string one of the capabilities this build knows about? */
+export function isPermission(value: string): value is Permission {
+  return KNOWN.has(value);
+}
 
 export function permissionsFor(role: UserRole): readonly Permission[] {
   return ROLE_PERMISSIONS[role] ?? [];

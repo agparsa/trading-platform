@@ -191,6 +191,7 @@ export const queryKeys = {
   trades: (accountId: string) => ['trades', accountId] as const,
   orders: (accountId: string) => ['orders', accountId] as const,
   pending: (accountId: string) => ['pending-orders', accountId] as const,
+  permissions: ['permissions', 'me'] as const,
 };
 
 /** Everything a trading event can invalidate, in one place. */
@@ -201,6 +202,30 @@ export function invalidateTradingState(client: QueryClient, accountId: string): 
   void client.invalidateQueries({ queryKey: queryKeys.pending(accountId) });
   void client.invalidateQueries({ queryKey: queryKeys.accountState(accountId) });
   void client.invalidateQueries({ queryKey: queryKeys.accounts });
+}
+
+/**
+ * What this login may do, according to the server.
+ *
+ * Asked rather than computed. It used to be computed — `roleHasPermissions`
+ * against the compile-time table, with a comment explaining that this was the
+ * same table the server enforced with. That stopped being true the moment
+ * grants became rows a tenant can edit, and the failure would have been silent
+ * in the worse direction: a capability an administrator had *removed* would
+ * still have had its button on screen, and the trader would have found out from
+ * a refusal.
+ *
+ * Still only about what is offered. The server decides, on every call.
+ */
+export function usePermissions() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: queryKeys.permissions,
+    queryFn: () => api.get<{ role: string; permissions: string[] }>('/permissions/me'),
+    // Grants change rarely and a stale answer only mis-offers a control the
+    // server will still refuse, so this is worth caching for a while.
+    staleTime: 5 * 60 * 1000,
+  });
 }
 
 export function useSymbols() {

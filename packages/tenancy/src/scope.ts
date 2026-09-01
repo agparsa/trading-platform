@@ -76,6 +76,8 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'NotificationPreference',
   'NotificationSetting',
   'PushDelivery',
+  'Role',
+  'RolePermission',
 ]);
 
 /**

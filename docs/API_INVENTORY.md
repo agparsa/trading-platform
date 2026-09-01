@@ -166,9 +166,12 @@ handler is responsible for scoping the result to that user — which for
 
 ### `permissions/permissions.controller.ts` — base `/permissions`
 
-| Verb  | Path              | Handler | Requires             |
-| ----- | ----------------- | ------- | -------------------- |
-| `GET` | `/permissions/me` | `me`    | _authenticated only_ |
+| Verb  | Path                      | Handler          | Requires             |
+| ----- | ------------------------- | ---------------- | -------------------- |
+| `GET` | `/permissions/me`         | `me`             | _authenticated only_ |
+| `GET` | `/permissions/catalogue`  | `catalogue`      | ROLES_READ           |
+| `GET` | `/permissions/roles`      | `list`           | ROLES_READ           |
+| `PUT` | `/permissions/roles/:key` | `setPermissions` | ROLES_MANAGE         |
 
 ### `reconciliation/reconciliation.controller.ts` — base `/reconciliation`
 
@@ -212,7 +215,7 @@ handler is responsible for scoping the result to that user — which for
 | `GET`   | `/users/me` | `me`     | _authenticated only_ |
 | `PATCH` | `/users/me` | `update` | SELF-SERVICE         |
 
-**94 routes:** 46 `GET`, 39 `POST`, 5 `PATCH`, 4 `DELETE`.
+**97 routes:** 48 `GET`, 39 `POST`, 5 `PATCH`, 4 `DELETE`, 1 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

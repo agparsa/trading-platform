@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@tp/ui';
-import { DomainError, Permission, roleHasPermissions, type UserRole } from '@tp/shared-types';
+import { DomainError, Permission } from '@tp/shared-types';
 import { price as formatPrice, signedMoney, toneClass, toneOf } from '@/lib/format';
 import {
   estimateCosts,
@@ -20,12 +20,12 @@ import {
 } from '@/lib/order-commands';
 import {
   useOpenPosition,
+  usePermissions,
   usePlacePending,
   type AccountSummary,
   type SymbolRow,
 } from '@/lib/queries';
 import { useRealtime } from '@/lib/realtime-store';
-import { useSession } from '@/lib/session';
 import { ShortcutAction } from '@/lib/shortcuts';
 import { needsConfirmation } from '@/lib/shortcuts';
 import type { TradingPreferences } from '@/lib/trading-preferences';
@@ -145,18 +145,23 @@ export function OrderTicket({
   const busy = open.isPending || place.isPending;
 
   /**
-   * What this login may do, read from the role the session already carries.
+   * What this login may do, asked of the server.
    *
-   * No API call: `permissionsFor` is the same table the server enforces with,
-   * so the ticket and the guard cannot disagree about what is allowed. The
-   * server still decides — this only stops the ticket from offering something
-   * it knows will be refused.
+   * This used to be computed locally from the role, with a comment saying the
+   * compile-time table was the same one the server enforced with. That was true
+   * until grants became rows a tenant can edit, and the failure afterwards would
+   * have been silent in the worse direction: a capability an administrator had
+   * *removed* would still have had its button here, and the trader would have
+   * learnt about it from a refusal after committing to a price.
+   *
+   * While the answer is still loading the ticket assumes it may trade, because
+   * the server refuses anyway and greying the button out on every page load
+   * would be a worse lie than the one this replaces.
    */
-  const { user } = useSession();
-  const role = user?.role ?? 'USER';
+  const { data: permissions } = usePermissions();
   const mayTrade = useMemo(
-    () => roleHasPermissions(role as UserRole, [Permission.ORDERS_CREATE]),
-    [role],
+    () => permissions === undefined || permissions.permissions.includes(Permission.ORDERS_CREATE),
+    [permissions],
   );
 
   /**
@@ -181,7 +186,7 @@ export function OrderTicket({
      * fault rather than a rule.
      */
     if (!mayTrade) {
-      return `Signed in as ${role}, which cannot place orders. Trading needs a trader login.`;
+      return `Signed in as ${permissions?.role ?? 'this role'}, which cannot place orders. Trading needs a trader login.`;
     }
     if (accountId === null) return 'No account selected.';
     if (symbol === undefined) return 'Select an instrument.';
@@ -190,7 +195,7 @@ export function OrderTicket({
     if (priceError !== null) return priceError;
     if (executable === null) return 'No price yet for this instrument.';
     return null;
-  }, [mayTrade, role, accountId, symbol, validation.error, priceError, executable]);
+  }, [mayTrade, permissions, accountId, symbol, validation.error, priceError, executable]);
 
   /**
    * Sends one order. The only path that does.

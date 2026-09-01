@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { enterTenantScope, tenantScopeExtension } from '@tp/tenancy';
+import { seedTenantRoles } from '../../../../prisma/roles';
 
 /**
  * Integration-test harness.
@@ -89,6 +90,13 @@ export async function createTenant(
       ...(primaryHost === undefined ? {} : { primaryHost }),
     },
   });
+  /**
+   * Roles too, because every permission check reads them now. A tenant created
+   * without them falls back to the compile-time grants and logs an error on
+   * every request — behaviour that is right in production and would make these
+   * tests prove something other than what they claim.
+   */
+  await seedTenantRoles(prisma, tenant.id);
   return tenant.id;
 }
 
@@ -125,6 +133,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
         accounts,
         system_settings,
         invite_redemptions, invite_codes,
+        role_permissions, roles,
         totp_recovery_codes, refresh_tokens, users, idempotency_keys
       RESTART IDENTITY CASCADE
     `);
@@ -150,6 +159,14 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
     data: { id: DEFAULT_TENANT_ID, slug: DEFAULT_TENANT_SLUG, name: 'Test Tenant' },
   });
   enterTenantScope({ tenantId: tenant.id, slug: tenant.slug });
+  /**
+   * Roles are rows now, and the truncation above took them with the tenant.
+   *
+   * After `enterTenantScope`, not before: `Role` is a tenant-scoped model, so
+   * seeding it without a scope is refused by the Prisma extension — which is the
+   * extension doing its job, and cost twenty-one failing tests to remember.
+   */
+  await seedTenantRoles(prisma, tenant.id);
   return tenant.id;
 }
 

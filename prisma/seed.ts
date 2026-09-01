@@ -10,6 +10,7 @@
  * numbers in the test suite.
  */
 import { PrismaClient } from '@prisma/client';
+import { seedTenantRoles } from './roles';
 
 const prisma = new PrismaClient();
 
@@ -247,6 +248,19 @@ async function main(): Promise<void> {
     update: {},
   });
   console.log(`tenant '${tenant.slug}' ready`);
+
+  /**
+   * Roles, from the same constants the API falls back to. A tenant with no roles
+   * runs on those fallbacks and says so at error level on every request that
+   * needs a permission — correct behaviour, and not one to leave a fresh
+   * deployment sitting in.
+   */
+  const createdRoles = await seedTenantRoles(prisma, tenant.id);
+  console.log(
+    createdRoles === 0
+      ? `roles for '${tenant.slug}' already present`
+      : `seeded ${createdRoles} roles for '${tenant.slug}'`,
+  );
 
   for (const instrument of INSTRUMENTS) {
     const symbol = await prisma.symbol.upsert({

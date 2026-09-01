@@ -71,33 +71,48 @@ export class AuditService {
   /**
    * Writes an audit row.
    *
-   * Never throws. An audit failure must not roll back the operation it was
-   * describing — the write already happened, and losing the record of it is
-   * strictly better than losing the operation. The failure is logged loudly.
+   * Never throws **when it writes on its own**. An audit failure must not roll
+   * back the operation it was describing — the write already happened, and
+   * losing the record of it is strictly better than losing the operation. The
+   * failure is logged loudly.
+   *
+   * Pass `tx` and both halves of that reasoning invert. Inside a caller's
+   * transaction the operation has *not* happened yet, so a failed audit rolls it
+   * back, and the error propagates rather than being logged and dropped. That is
+   * the right shape for a change whose whole meaning is the record — altering
+   * what a role may do, say, where an unaudited change is indistinguishable from
+   * an intruder's.
    */
-  async record(entry: AuditRecord): Promise<void> {
+  async record(entry: AuditRecord, tx?: Prisma.TransactionClient): Promise<void> {
+    if (tx !== undefined) {
+      await writeAudit(tx, entry);
+      return;
+    }
     try {
-      await this.prisma.auditLog.create({
-        data: {
-          tenantId: requireTenantId(),
-          actorId: entry.actorId ?? null,
-          actorType: entry.actorType,
-          action: entry.action,
-          resourceType: entry.resourceType,
-          resourceId: entry.resourceId ?? null,
-          before:
-            entry.before === undefined
-              ? undefined
-              : (redact(entry.before) as Prisma.InputJsonValue),
-          after:
-            entry.after === undefined ? undefined : (redact(entry.after) as Prisma.InputJsonValue),
-          requestId: entry.requestId ?? null,
-          ipAddress: entry.ipAddress ?? null,
-          userAgent: entry.userAgent ?? null,
-        },
-      });
+      await writeAudit(this.prisma, entry);
     } catch (error) {
       this.logger.error({ err: error, action: entry.action }, 'Failed to write audit record');
     }
   }
+}
+
+type AuditWriter = Pick<Prisma.TransactionClient, 'auditLog'>;
+
+async function writeAudit(client: AuditWriter, entry: AuditRecord): Promise<void> {
+  await client.auditLog.create({
+    data: {
+      tenantId: requireTenantId(),
+      actorId: entry.actorId ?? null,
+      actorType: entry.actorType,
+      action: entry.action,
+      resourceType: entry.resourceType,
+      resourceId: entry.resourceId ?? null,
+      before:
+        entry.before === undefined ? undefined : (redact(entry.before) as Prisma.InputJsonValue),
+      after: entry.after === undefined ? undefined : (redact(entry.after) as Prisma.InputJsonValue),
+      requestId: entry.requestId ?? null,
+      ipAddress: entry.ipAddress ?? null,
+      userAgent: entry.userAgent ?? null,
+    },
+  });
 }

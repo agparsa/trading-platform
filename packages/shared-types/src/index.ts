@@ -7,4 +7,5 @@ export * from './enums/order';
 export * from './enums/position';
 export * from './enums/account';
 export * from './permissions';
+export * from './role-seed';
 export * from './notifications';

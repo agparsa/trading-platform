@@ -183,6 +183,9 @@ importers:
       '@tp/crypto-core':
         specifier: workspace:*
         version: link:packages/crypto-core
+      '@tp/shared-types':
+        specifier: workspace:*
+        version: link:packages/shared-types
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.1

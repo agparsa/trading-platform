@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { Reflector } from '@nestjs/core';
 import type { ExecutionContext } from '@nestjs/common';
 import { DomainError, Permission, TradingErrorCode, UserRole } from '@tp/shared-types';
+import { permissionsFor } from '@tp/shared-types';
 import { PermissionsGuard } from './permissions.guard';
 import { RequirePermissions } from '../decorators/permissions.decorator';
+import type { RolesService } from '../../permissions/roles.service';
 
 /**
  * The guard is the only thing standing between a declaration and an actual
@@ -45,24 +47,70 @@ function contextFor(method: keyof Routes, user?: { role: string }): ExecutionCon
   } as unknown as ExecutionContext;
 }
 
-function guard(): PermissionsGuard {
-  return new PermissionsGuard(new Reflector());
+/**
+ * Grants now come from `RolesService`, which reads rows. This stands in for it
+ * with the compile-time defaults, which is exactly what a freshly seeded tenant
+ * holds — so every expectation below still describes the shipped configuration,
+ * and what is being tested is the guard rather than the database.
+ *
+ * `asked` records what the guard looked up. A guard that stopped consulting the
+ * service at all would otherwise pass every one of these by returning true.
+ */
+function rolesStub(): RolesService & { asked: string[] } {
+  const asked: string[] = [];
+  const service = {
+    asked,
+    permissionsFor: (roleKey: string): Promise<ReadonlySet<Permission>> => {
+      asked.push(roleKey);
+      return Promise.resolve(new Set(permissionsFor(roleKey as UserRole)));
+    },
+  };
+  return service as unknown as RolesService & { asked: string[] };
+}
+
+function guard(roles: RolesService = rolesStub()): PermissionsGuard {
+  return new PermissionsGuard(new Reflector(), roles);
 }
 
 describe('PermissionsGuard', () => {
-  it('refuses a role that does not carry the declared permission', () => {
-    let thrown: unknown;
-    try {
-      guard().canActivate(contextFor('close', { role: UserRole.SUPPORT }));
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(DomainError);
-    expect((thrown as DomainError).code).toBe(TradingErrorCode.FORBIDDEN);
+  it('refuses a role that does not carry the declared permission', async () => {
+    await expect(
+      guard().canActivate(contextFor('close', { role: UserRole.SUPPORT })),
+    ).rejects.toBeInstanceOf(DomainError);
   });
 
-  it('allows a role that carries it', () => {
-    expect(guard().canActivate(contextFor('close', { role: UserRole.USER }))).toBe(true);
+  it('allows a role that carries it', async () => {
+    await expect(guard().canActivate(contextFor('close', { role: UserRole.USER }))).resolves.toBe(
+      true,
+    );
+  });
+
+  /**
+   * The point of the phase: the answer comes from the grant service, not from a
+   * constant the guard could read itself. A guard that stopped asking would
+   * still pass every other test here, because the stub returns the same sets the
+   * constants do.
+   */
+  it('asks the grant service which capabilities the role carries', async () => {
+    const roles = rolesStub();
+    await guard(roles).canActivate(contextFor('close', { role: UserRole.USER }));
+    expect(roles.asked).toEqual([UserRole.USER]);
+  });
+
+  it('follows the grant service rather than the compile-time defaults', async () => {
+    const narrowed = {
+      permissionsFor: () => Promise.resolve(new Set<Permission>()),
+    } as unknown as RolesService;
+    await expect(
+      guard(narrowed).canActivate(contextFor('close', { role: UserRole.USER })),
+    ).rejects.toBeInstanceOf(DomainError);
+
+    const widened = {
+      permissionsFor: () => Promise.resolve(new Set([Permission.POSITIONS_CLOSE])),
+    } as unknown as RolesService;
+    await expect(
+      guard(widened).canActivate(contextFor('close', { role: UserRole.ADMIN })),
+    ).resolves.toBe(true);
   });
 
   /**
@@ -71,10 +119,10 @@ describe('PermissionsGuard', () => {
    * another person's account is operator work granted per master-account link,
    * not something an administrator inherits by being an administrator.
    */
-  it('refuses ADMIN a trading capability ADMIN does not hold', () => {
-    expect(() => guard().canActivate(contextFor('close', { role: UserRole.ADMIN }))).toThrow(
-      DomainError,
-    );
+  it('refuses ADMIN a trading capability ADMIN does not hold', async () => {
+    await expect(
+      guard().canActivate(contextFor('close', { role: UserRole.ADMIN })),
+    ).rejects.toBeInstanceOf(DomainError);
   });
 
   /**
@@ -82,34 +130,40 @@ describe('PermissionsGuard', () => {
    * not `positions.close`, so a route needing both must refuse it — holding
    * half of what a route requires is not a partial permit to run it.
    */
-  it('requires every declared permission, not just one of them', () => {
-    expect(guard().canActivate(contextFor('readAndClose', { role: UserRole.OPERATOR }))).toBe(true);
-    expect(() =>
+  it('requires every declared permission, not just one of them', async () => {
+    await expect(
+      guard().canActivate(contextFor('readAndClose', { role: UserRole.OPERATOR })),
+    ).resolves.toBe(true);
+    await expect(
       guard().canActivate(contextFor('readAndClose', { role: UserRole.SUPPORT })),
-    ).toThrow(DomainError);
+    ).rejects.toBeInstanceOf(DomainError);
   });
 
-  it('names only the permissions that are actually missing', () => {
-    let thrown: DomainError | undefined;
-    try {
-      guard().canActivate(contextFor('close', { role: UserRole.SUPPORT }));
-    } catch (error) {
-      thrown = error as DomainError;
-    }
+  it('names only the permissions that are actually missing', async () => {
+    const thrown = await guard()
+      .canActivate(contextFor('readAndClose', { role: UserRole.SUPPORT }))
+      .then(
+        () => undefined,
+        (error: unknown) => error as DomainError,
+      );
+    expect(thrown?.code).toBe(TradingErrorCode.FORBIDDEN);
     expect(thrown?.message).toContain(Permission.POSITIONS_CLOSE);
     // SUPPORT does hold positions.read; a refusal that listed it would send an
     // operator to ask for a capability they already have.
     expect(thrown?.message).not.toContain(Permission.POSITIONS_READ);
   });
 
-  it('refuses an unauthenticated request before consulting the role', () => {
-    let thrown: DomainError | undefined;
-    try {
-      guard().canActivate(contextFor('close', undefined));
-    } catch (error) {
-      thrown = error as DomainError;
-    }
+  it('refuses an unauthenticated request before consulting the role', async () => {
+    const roles = rolesStub();
+    const thrown = await guard(roles)
+      .canActivate(contextFor('close', undefined))
+      .then(
+        () => undefined,
+        (error: unknown) => error as DomainError,
+      );
     expect(thrown?.code).toBe(TradingErrorCode.UNAUTHENTICATED);
+    // And it did not reach the database to find that out.
+    expect(roles.asked).toEqual([]);
   });
 
   /**
@@ -117,14 +171,21 @@ describe('PermissionsGuard', () => {
    * without a catalogue entry — a stale JWT after a role is renamed, say — is a
    * bug, and the safe reading of a bug is "holds nothing".
    */
-  it('refuses a role that is not in the catalogue at all', () => {
-    expect(() => guard().canActivate(contextFor('close', { role: 'GOD_MODE' }))).toThrow(
-      DomainError,
-    );
+  it('refuses a role that is not in the catalogue at all', async () => {
+    await expect(
+      guard().canActivate(contextFor('close', { role: 'GOD_MODE' })),
+    ).rejects.toBeInstanceOf(DomainError);
   });
 
-  it('lets a route through when it declares nothing', () => {
-    expect(guard().canActivate(contextFor('undeclared', { role: UserRole.USER }))).toBe(true);
-    expect(guard().canActivate(contextFor('declaredEmpty', { role: UserRole.USER }))).toBe(true);
+  it('lets a route through when it declares nothing', async () => {
+    const roles = rolesStub();
+    await expect(
+      guard(roles).canActivate(contextFor('undeclared', { role: UserRole.USER })),
+    ).resolves.toBe(true);
+    await expect(
+      guard(roles).canActivate(contextFor('declaredEmpty', { role: UserRole.USER })),
+    ).resolves.toBe(true);
+    // A route that declares nothing must not cost a lookup on every request.
+    expect(roles.asked).toEqual([]);
   });
 });

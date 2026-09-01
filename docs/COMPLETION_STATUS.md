@@ -21,12 +21,12 @@ pnpm lint             ok
 pnpm format:check     ok
 pnpm typecheck        ok
 pnpm inventory --check ok
-pnpm test             118 files, 1454 tests, 0 failures
+pnpm test             119 files, 1504 tests, 0 failures
 pnpm build            ok
 ```
 
-4 applications (`api`, `web`, `worker`, `mobile`), 13 workspace packages, 37
-Prisma models, 94 API routes, ~71,100 lines of TypeScript. Live at
+4 applications (`api`, `web`, `worker`, `mobile`), 13 workspace packages, 39
+Prisma models, 97 API routes, ~72,500 lines of TypeScript. Live at
 https://devopss.ir.
 
 The route count was 95 here and 84 in `docs/API_INVENTORY.md`'s hand-written
@@ -38,39 +38,39 @@ figures are gone; the generated one is the only one left.
 Complete in the sense the prompt defines — UI → API → business logic → database
 → authorization → security → audit → tests.
 
-| §        | Area                       | Evidence                                                                                                                                                                         |
-| -------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2        | Repository audit           | 8 documents in `/docs`, every figure produced by a command                                                                                                                       |
-| 4        | Multi-tenancy              | `Tenant` model, `tenantId` on 32 models, `AsyncLocalStorage` scope, Prisma client extension, **row-level security enforced against the application**, cross-tenant pentest probe |
-| 5        | Database                   | PostgreSQL 16, Prisma 6, `NUMERIC(28,10)`, **zero float columns**, enforced in CI                                                                                                |
-| 7        | Authentication             | password hashing, refresh rotation in httpOnly cookies, TOTP 2FA with recovery codes, sessions, device and IP visibility, rate limiting                                          |
-| 11       | Trading engine             | market / limit / stop, SL/TP trigger engine, modify, cancel, partial close, PnL, equity, margin, leverage, commission, spread, swap accrual                                      |
-| 12       | Risk engine                | deterministic, `risk-core` framework-free and unit-tested                                                                                                                        |
-| 13       | WebSocket                  | authenticated, heartbeat, reconnect, subscriptions, tenant isolation, shared market-data infrastructure                                                                          |
-| 14       | **Mobile application**     | `apps/mobile` — Expo SDK 57, 14 screens, auth with 2FA, push, sounds, chart. **Never built for a device** — see below                                                            |
-| 15,21,22 | **Push notifications**     | FCM HTTP v1 for Android and web, APNs over HTTP/2 for iOS, delivery records, retry/drop classification, a client that registers and deduplicates                                 |
-| 16,17    | Trade open / close notices | raised from domain events published **after** the transaction commits — no path from a rejected order to a notification                                                          |
-| 18,19,25 | **Trade sounds**           | eight generated, distinguishable assets; a shared category→sound contract; an Android channel per sound; silence in the background so nothing doubles                            |
-| 23,24    | Notification centre        | in-app delivery, per-category preferences, quiet hours, unmutable security and risk categories                                                                                   |
-| 26       | Duplicate-event protection | `dedupeKey` at the database, `eventId` on every frame and push, a bounded `SeenEvents` on the client                                                                             |
-| 27       | Trading event model        | implemented as specified                                                                                                                                                         |
-| 28       | Device / push tokens       | `Device` model, AES-256-GCM sealed tokens bound to their row, registration, revocation, provider-rejection handling                                                              |
-| 33       | Audit log                  | append-only enforced by a **database trigger** raising `42501` — an admin cannot edit it                                                                                         |
-| 37       | Observability              | Prometheus metrics, `/health`, `/ready`, request-id correlation, structured logging                                                                                              |
-| 39       | Security                   | 29-probe pentest script, AES-256-GCM at rest, no secrets in git history                                                                                                          |
-| 40       | Testing                    | 1454 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, and row-level security proved by breaking it                           |
-| 41       | Security testing           | cross-tenant access, privilege escalation, token replay, rate limiting, audit tampering, invitation minting                                                                      |
-| 44       | CI/CD                      | install → prisma → build → lint → format → typecheck → migrate → test → schema check → seed → build → smoke API → smoke WebSocket                                                |
+| §        | Area                       | Evidence                                                                                                                                                                           |
+| -------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2        | Repository audit           | 8 documents in `/docs`, every figure produced by a command                                                                                                                         |
+| 4        | Multi-tenancy              | `Tenant` model, `tenantId` on 32 models, `AsyncLocalStorage` scope, Prisma client extension, **row-level security enforced against the application**, cross-tenant pentest probe   |
+| 5        | Database                   | PostgreSQL 16, Prisma 6, `NUMERIC(28,10)`, **zero float columns**, enforced in CI                                                                                                  |
+| 7        | Authentication             | password hashing, refresh rotation in httpOnly cookies, TOTP 2FA with recovery codes, sessions, device and IP visibility, rate limiting                                            |
+| 11       | Trading engine             | market / limit / stop, SL/TP trigger engine, modify, cancel, partial close, PnL, equity, margin, leverage, commission, spread, swap accrual                                        |
+| 12       | Risk engine                | deterministic, `risk-core` framework-free and unit-tested                                                                                                                          |
+| 13       | WebSocket                  | authenticated, heartbeat, reconnect, subscriptions, tenant isolation, shared market-data infrastructure                                                                            |
+| 14       | **Mobile application**     | `apps/mobile` — Expo SDK 57, 14 screens, auth with 2FA, push, sounds, chart. **Never built for a device** — see below                                                              |
+| 15,21,22 | **Push notifications**     | FCM HTTP v1 for Android and web, APNs over HTTP/2 for iOS, delivery records, retry/drop classification, a client that registers and deduplicates                                   |
+| 16,17    | Trade open / close notices | raised from domain events published **after** the transaction commits — no path from a rejected order to a notification                                                            |
+| 18,19,25 | **Trade sounds**           | eight generated, distinguishable assets; a shared category→sound contract; an Android channel per sound; silence in the background so nothing doubles                              |
+| 23,24    | Notification centre        | in-app delivery, per-category preferences, quiet hours, unmutable security and risk categories                                                                                     |
+| 26       | Duplicate-event protection | `dedupeKey` at the database, `eventId` on every frame and push, a bounded `SeenEvents` on the client                                                                               |
+| 27       | Trading event model        | implemented as specified                                                                                                                                                           |
+| 28       | Device / push tokens       | `Device` model, AES-256-GCM sealed tokens bound to their row, registration, revocation, provider-rejection handling                                                                |
+| 8        | RBAC                       | granular `resource.verb` capabilities in code, **grants as rows per tenant**, an editor cannot grant what they do not hold, and no role may credit an account and trade the credit |
+| 33       | Audit log                  | append-only enforced by a **database trigger** raising `42501` — an admin cannot edit it                                                                                           |
+| 37       | Observability              | Prometheus metrics, `/health`, `/ready`, request-id correlation, structured logging                                                                                                |
+| 39       | Security                   | 31-probe pentest script, AES-256-GCM at rest, no secrets in git history                                                                                                            |
+| 40       | Testing                    | 1504 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, and row-level security proved by breaking it                             |
+| 41       | Security testing           | cross-tenant access, privilege escalation, token replay, rate limiting, audit tampering, invitation minting                                                                        |
+| 44       | CI/CD                      | install → prisma → build → lint → format → typecheck → migrate → test → schema check → seed → build → smoke API → smoke WebSocket                                                  |
 
 ## Partial
 
-| §   | Area               | What exists                                                                                    | What is missing                                                                                               |
-| --- | ------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 8   | RBAC               | granular `resource.verb` permissions, enforced server-side on every route                      | roles are **code constants**, not database rows. The prompt asks for 12 roles administered as data — Phase 2. |
-| 29  | Admin panel        | 9 panels — overview, people, accounts, risk, instruments, reconciliation, audit and two others | ~17 sections asked for. No tenants, KYC, finance, wallets, roles, tokens, API management, security centre.    |
-| 35  | Finance            | balance ledger, admin adjustments, database transactions, decimal arithmetic                   | no wallet, no real deposit, no withdrawal, no payment provider                                                |
-| 36  | Notification admin | `push_deliveries` records every attempt with its outcome                                       | no admin view over them                                                                                       |
-| 43  | Web UI             | 4 pages: terminal, login, admin, status                                                        | Phase 3 restructures it                                                                                       |
+| §   | Area               | What exists                                                                                    | What is missing                                                                                            |
+| --- | ------------------ | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 29  | Admin panel        | 9 panels — overview, people, accounts, risk, instruments, reconciliation, audit and two others | ~17 sections asked for. No tenants, KYC, finance, wallets, roles, tokens, API management, security centre. |
+| 35  | Finance            | balance ledger, admin adjustments, database transactions, decimal arithmetic                   | no wallet, no real deposit, no withdrawal, no payment provider                                             |
+| 36  | Notification admin | `push_deliveries` records every attempt with its outcome                                       | no admin view over them                                                                                    |
+| 43  | Web UI             | 4 pages: terminal, login, admin, status                                                        | Phase 3 restructures it                                                                                    |
 
 ## Does not exist — zero code
 
@@ -125,7 +125,7 @@ describe do not exist, and §45 says do not document features that do not exist.
 | ---------------------------------------- | ------------------------------------------ |
 | 0 — close what is open                   | done                                       |
 | 1 — multi-tenancy                        | done                                       |
-| 2 — roles and permissions as data        | not started                                |
+| 2 — roles and permissions as data        | done; grants are rows, per tenant          |
 | 3 — web restructure                      | not started                                |
 | 4–7 — wallet, payments, KYC, withdrawals | not started                                |
 | 8 — notification platform                | done; admin statistics view remains        |
@@ -137,7 +137,7 @@ describe do not exist, and §45 says do not document features that do not exist.
 | 14 — AI context layer                    | not started                                |
 | 15 — real market data                    | not started, plus a commercial dependency  |
 
-**5 of 16.**
+**6 of 16.**
 
 ## Tenant isolation now bites — once one line is set in production
 
@@ -165,7 +165,7 @@ at boot saying so. The code is complete; the deployment step is one run of
 **Backend**: builds ✅ tests ✅ APIs ✅ auth ✅ RBAC ✅ tenant isolation ✅
 trading ✅ risk ✅ WebSocket ✅ notifications ✅ audit ✅
 
-**Admin**: dashboard ✅ users ✅ accounts ✅ trading ✅ risk ✅ permissions ⚠️
+**Admin**: dashboard ✅ users ✅ accounts ✅ trading ✅ risk ✅ permissions ✅
 tokens ❌ API management ❌ notification management ❌ audit ✅ security centre ❌
 
 **Mobile**: Android builds ✅ (signed APK, verified) iOS builds ❌ (needs macOS) authentication ✅ dashboard ✅ market data ✅ charts ✅ order placement ✅
