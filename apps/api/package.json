@@ -36,6 +36,7 @@
     "@tp/trading-core": "workspace:*",
     "bullmq": "catalog:",
     "cookie": "catalog:",
+    "express": "catalog:",
     "helmet": "catalog:",
     "ioredis": "catalog:",
     "nestjs-pino": "catalog:",
