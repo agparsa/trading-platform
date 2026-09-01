@@ -4,10 +4,15 @@ import { SeenEvents } from './seen-events';
 import { apiBaseUrl } from './api';
 import { useSession } from './session';
 
+/**
+ * A `quote.update` frame, which carries the same `QuoteDto` the REST endpoint
+ * returns — `spread` included, so no client recomputes it.
+ */
 export interface LiveQuote {
   symbol: string;
   bid: string;
   ask: string;
+  spread: string;
   timestamp: number;
 }
 

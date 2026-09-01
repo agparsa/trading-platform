@@ -11,14 +11,18 @@ interface Quote {
   symbol: string;
   bid: string;
   ask: string;
+  /** Served by the API so no client recomputes it. */
+  spread: string;
   timestamp: number;
 }
 
+/** `/symbols` returns the contract spec plus whether its session is open. */
 interface Instrument {
   code: string;
-  displayName: string;
+  description: string;
   quoteCurrency: string;
   enabled: boolean;
+  sessionOpen: boolean;
 }
 
 export default function Market(): React.ReactElement {
@@ -112,7 +116,10 @@ export default function Market(): React.ReactElement {
             >
               <View style={{ flex: 1 }}>
                 <Text style={styles.code}>{item.code}</Text>
-                <Text style={styles.name}>{item.displayName}</Text>
+                <Text style={styles.name}>
+                  {item.description}
+                  {item.sessionOpen ? '' : ' · market closed'}
+                </Text>
               </View>
               <View style={styles.prices}>
                 <Text

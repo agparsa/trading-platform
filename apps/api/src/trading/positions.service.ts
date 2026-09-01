@@ -28,6 +28,7 @@ import { KillSwitchService } from '../operations/kill-switch.service';
 import { LedgerService } from '../accounts/ledger.service';
 import { AuditService } from '../common/audit/audit.service';
 import { EventsService } from '../realtime/events.service';
+import { AccountStateService } from './account-state.service';
 import { OrdersService } from './orders.service';
 import type { CloseResult, ModifyPositionRequest, OrderResult } from './trading.types';
 import { requireTenantId } from '@tp/tenancy';
@@ -72,6 +73,7 @@ export class PositionsService {
     private readonly audit: AuditService,
     private readonly orders: OrdersService,
     private readonly events: EventsService,
+    private readonly accountState: AccountStateService,
   ) {}
 
   /**
@@ -601,6 +603,24 @@ export class PositionsService {
     return { closed, opened };
   }
 
+  /**
+   * A trader's positions, each marked to market.
+   *
+   * ## Why the floating P&L is here and not left to the caller
+   *
+   * A positions list without it is not a positions list — it is a list of
+   * things that were once bought, with no indication of whether holding them
+   * was a good idea. Every client needs the number, and the only alternative to
+   * serving it is each client computing it from `entryPrice`, `currentPrice`
+   * and the contract size: money arithmetic in floating point, reimplemented on
+   * web, Android and iOS, drifting from `AccountStateService` and from each
+   * other. The web terminal happens to get it from the WebSocket; a phone
+   * opening the app cold has no socket frame yet.
+   *
+   * `valuate()` is the single place this is computed, and it is already the
+   * source for the risk engine, the account screen and the stop-out check. This
+   * reads from it rather than adding a second calculation.
+   */
   async list(userId: string, accountId: string, includeClosed: boolean, limit: number) {
     await this.access.resolve(userId, accountId, Permission.POSITIONS_READ);
     const positions = await this.prisma.position.findMany({
@@ -612,6 +632,25 @@ export class PositionsService {
       orderBy: { openedAt: 'desc' },
       take: limit,
     });
+
+    /**
+     * Valued once for the whole list, not once per row.
+     *
+     * A closed position has no floating P&L by definition, so when the caller
+     * asked only for closed ones there is nothing to value and the extra query
+     * is skipped.
+     */
+    const valuations = positions.some(
+      (position) => position.status === 'OPEN' || position.status === 'CLOSING',
+    )
+      ? new Map(
+          (await this.accountState.valuate(accountId)).positions.map((valuation) => [
+            valuation.positionId,
+            valuation,
+          ]),
+        )
+      : new Map();
+
     return positions.map((position) => ({
       id: position.id,
       symbol: position.symbol.code,
@@ -629,6 +668,23 @@ export class PositionsService {
       commission: position.commission.toString(),
       swap: position.swap.toString(),
       realizedPnl: position.realizedPnl.toString(),
+      /**
+       * Price P&L at the current mark, before costs. `null` for a closed
+       * position, and for an open one whose instrument has no fresh quote —
+       * never `'0'`, because a trader cannot tell a genuine flat from a missing
+       * price, and one of those is a reason to act.
+       */
+      floatingPnl: valuations.get(position.id)?.floatingPnl?.toString() ?? null,
+      /** True when no fresh price existed, so the mark above is not current. */
+      stale: valuations.get(position.id)?.stale ?? null,
+      /**
+       * Floating P&L less the costs already charged against this position.
+       *
+       * Deliberately not an estimate of the round trip — the exit commission
+       * has not been charged, and inventing it would put a number on screen no
+       * ledger entry will ever match.
+       */
+      netFloatingPnl: valuations.get(position.id)?.netPnl?.toString() ?? null,
       closeReason: position.closeReason,
       openedAt: position.openedAt.toISOString(),
       closedAt: position.closedAt?.toISOString() ?? null,

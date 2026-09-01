@@ -135,6 +135,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     audit,
     orders,
     events,
+    accountState,
   );
 
   const triggers = new TriggerEngineService(

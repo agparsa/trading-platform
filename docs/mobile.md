@@ -161,9 +161,35 @@ dangerous thing in the app. The confirmation shows the **snapped** volume and
 the crossed price, because those are what will actually happen and they are not
 always what was typed.
 
+## Guessing an API shape is how a screen lies
+
+Half the screens were written against field names I assumed. Checking them
+against the services found five that did not exist:
+
+| Screen assumed                    | Server actually returns                     |
+| --------------------------------- | ------------------------------------------- |
+| `position.unrealisedPnl`          | nothing — the list had no mark at all       |
+| `trade.openedAt` / `closedAt`     | `entryTime` / `exitTime`                    |
+| `instrument.displayName`          | `description`                               |
+| `account.equity`, `freeMargin`, … | a different endpoint, `/accounts/:id/state` |
+
+None would have failed to compile — they would have rendered `undefined`,
+`NaN`, or `Invalid Date` on a screen that has never been opened. On a positions
+list that is a trader looking at a blank where their profit should be.
+
+The first one was not a client mistake. `GET /positions` genuinely had no
+floating P&L, so the server was changed rather than the screen: the mark now
+comes from `AccountStateService.valuate`, the same source the risk engine and
+the account screen already use. Computing it on the device would have been money
+arithmetic in floating point on three platforms.
+
+A missing mark is `null` and renders as an em-dash, never `0`. A trader cannot
+tell a genuine flat from a missing price, and one of those is a reason to act.
+
 ## What is not built yet
 
-The chart, order modification, resting-order management, trade history, KYC and
-profile, and support. Phase 13 of `IMPLEMENTATION_PLAN.md` is partly done:
-account, market, positions with closing, the order ticket, the notification
-centre and settings all exist and read real endpoints.
+The chart, resting-order _modification_ (cancelling works), KYC and profile, and
+support. Phase 13 of `IMPLEMENTATION_PLAN.md` is otherwise done: account,
+market, positions with closing and SL/TP editing, the order ticket, resting
+orders, trade history, the notification centre and settings all exist and read
+real endpoints.

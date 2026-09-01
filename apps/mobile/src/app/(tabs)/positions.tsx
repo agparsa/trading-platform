@@ -1,8 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { DomainError } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
 import { Button, Empty, ErrorNote, Screen } from '../../components/ui';
+import { describePatch, protectivePatch } from '../../lib/protective-levels';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
 import { formatSigned, signColor, theme } from '../../lib/theme';
 
@@ -15,7 +24,10 @@ interface Position {
   currentPrice: string | null;
   stopLoss: string | null;
   takeProfit: string | null;
-  unrealisedPnl: string;
+  /** Marked by the server. Null when no fresh price exists — never '0'. */
+  floatingPnl: string | null;
+  netFloatingPnl: string | null;
+  stale: boolean | null;
   openedAt: string;
 }
 
@@ -26,6 +38,8 @@ export default function Positions(): React.ReactElement {
   const [refreshing, setRefreshing] = useState(false);
   /** The position awaiting a second press. §43: closing is irreversible. */
   const [closing, setClosing] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [form, setForm] = useState({ stopLoss: '', takeProfit: '' });
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -68,6 +82,39 @@ export default function Positions(): React.ReactElement {
     }
   };
 
+  /**
+   * Changes a position's protective levels.
+   *
+   * The patch is built by `protectivePatch`, which is the only place that knows
+   * the difference between "clear this level" and "leave it alone" — a
+   * distinction a text box cannot express and one that decides whether a trader
+   * ends up protected when they think they are not.
+   */
+  const saveLevels = async (position: Position) => {
+    const patch = protectivePatch(form, {
+      stopLoss: position.stopLoss,
+      takeProfit: position.takeProfit,
+    });
+    if (patch === null) {
+      setEditing(null);
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      await api.patch(`/positions/${position.id}`, patch, {
+        idempotencyKey: `levels:${position.id}:${JSON.stringify(patch)}`,
+      });
+      setEditing(null);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof DomainError ? caught.message : 'The levels were not changed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Screen>
       {error === null ? null : <ErrorNote message={error} />}
@@ -105,15 +152,26 @@ export default function Positions(): React.ReactElement {
               <Text style={styles.detail}>
                 {item.entryPrice} → {item.currentPrice ?? '—'}
               </Text>
+              {/* An em-dash, not a zero. A trader cannot tell a genuine flat
+                  from a missing price, and one of those is a reason to act. */}
               <Text
                 style={[
                   styles.pnl,
-                  { color: signColor(item.unrealisedPnl), writingDirection: NUMERIC_DIRECTION },
+                  {
+                    color:
+                      item.floatingPnl === null
+                        ? theme.colors.textMuted
+                        : signColor(item.floatingPnl),
+                    writingDirection: NUMERIC_DIRECTION,
+                  },
                 ]}
               >
-                {formatSigned(item.unrealisedPnl)}
+                {item.floatingPnl === null ? '—' : formatSigned(item.floatingPnl)}
               </Text>
             </View>
+            {item.stale === true ? (
+              <Text style={styles.staleNote}>No fresh price — this mark may be out of date.</Text>
+            ) : null}
             {item.stopLoss === null && item.takeProfit === null ? null : (
               <Text style={styles.protection}>
                 {item.stopLoss === null ? 'no SL' : `SL ${item.stopLoss}`} ·{' '}
@@ -124,7 +182,11 @@ export default function Positions(): React.ReactElement {
             {closing === item.id ? (
               <View style={styles.confirm}>
                 <Text style={styles.confirmText}>
-                  Close {item.volume} {item.symbol} and realise {formatSigned(item.unrealisedPnl)}?
+                  Close {item.volume} {item.symbol} and realise{' '}
+                  {item.netFloatingPnl === null
+                    ? 'an unknown amount'
+                    : formatSigned(item.netFloatingPnl)}
+                  ?
                 </Text>
                 <Button
                   label="Close position"
@@ -134,20 +196,99 @@ export default function Positions(): React.ReactElement {
                 />
                 <Button label="Keep it open" variant="quiet" onPress={() => setClosing(null)} />
               </View>
+            ) : editing === item.id ? (
+              <View style={styles.confirm}>
+                <LevelField
+                  label="Stop loss"
+                  value={form.stopLoss}
+                  onChange={(value) => setForm((current) => ({ ...current, stopLoss: value }))}
+                />
+                <LevelField
+                  label="Take profit"
+                  value={form.takeProfit}
+                  onChange={(value) => setForm((current) => ({ ...current, takeProfit: value }))}
+                />
+                {/* Says what will happen, in words. "Are you sure?" confirms
+                    nothing, and removing a stop deserves a sentence that names
+                    the consequence. */}
+                <Text style={styles.confirmText}>
+                  {describeChange(form, item) ?? 'Nothing has changed.'}
+                </Text>
+                <Button
+                  label="Save levels"
+                  busy={busy}
+                  disabled={describeChange(form, item) === null}
+                  onPress={() => void saveLevels(item)}
+                />
+                <Button label="Cancel" variant="quiet" onPress={() => setEditing(null)} />
+              </View>
             ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Close ${item.symbol} position`}
-                onPress={() => setClosing(item.id)}
-                style={styles.closeAffordance}
-              >
-                <Text style={styles.closeLabel}>Close</Text>
-              </Pressable>
+              <View style={styles.actions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change stop loss and take profit for ${item.symbol}`}
+                  onPress={() => {
+                    setForm({
+                      stopLoss: item.stopLoss ?? '',
+                      takeProfit: item.takeProfit ?? '',
+                    });
+                    setEditing(item.id);
+                  }}
+                  style={styles.closeAffordance}
+                >
+                  <Text style={styles.closeLabel}>SL / TP</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Close ${item.symbol} position`}
+                  onPress={() => setClosing(item.id)}
+                  style={styles.closeAffordance}
+                >
+                  <Text style={styles.closeLabel}>Close</Text>
+                </Pressable>
+              </View>
             )}
           </View>
         )}
       />
     </Screen>
+  );
+}
+
+/** The sentence shown before saving, or null when nothing changed. */
+function describeChange(
+  form: { stopLoss: string; takeProfit: string },
+  position: Position,
+): string | null {
+  const patch = protectivePatch(form, {
+    stopLoss: position.stopLoss,
+    takeProfit: position.takeProfit,
+  });
+  return patch === null ? null : `This will ${describePatch(patch)}.`;
+}
+
+function LevelField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}): React.ReactElement {
+  return (
+    <View style={styles.levelField}>
+      <Text style={styles.levelLabel}>{label}</Text>
+      <TextInput
+        style={styles.levelInput}
+        value={value}
+        onChangeText={onChange}
+        keyboardType="decimal-pad"
+        accessibilityLabel={label}
+        placeholder="empty to remove"
+        placeholderTextColor={theme.colors.textMuted}
+      />
+    </View>
   );
 }
 
@@ -190,4 +331,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeLabel: { color: theme.colors.textMuted, fontSize: 13 },
+  actions: { flexDirection: 'row', gap: theme.spacing(1) },
+  staleNote: { color: theme.colors.warning, fontSize: 11, marginTop: theme.spacing(0.5) },
+  levelField: { marginBottom: theme.spacing(1) },
+  levelLabel: { color: theme.colors.textMuted, fontSize: 12 },
+  levelInput: {
+    backgroundColor: theme.colors.surfaceRaised,
+    borderRadius: theme.radius.sm,
+    color: theme.colors.text,
+    fontFamily: theme.font.mono,
+    fontSize: 15,
+    minHeight: 44,
+    paddingHorizontal: theme.spacing(1),
+  },
 });

@@ -227,3 +227,108 @@ suite('Order preview (integration)', () => {
     expect(Number(preview.requiredMargin)).toBeGreaterThan(0);
   });
 });
+
+/**
+ * A positions list is only useful if it says what each position is worth.
+ *
+ * Without the mark, the list is a record of things that were once bought with
+ * no indication of whether holding them was a good idea — and the only
+ * alternative to serving the number is each client computing it from the entry
+ * price and the contract size, which is money arithmetic in floating point on
+ * three platforms.
+ */
+suite('Positions are marked to market (integration)', () => {
+  let prisma: PrismaClient;
+  let stack: TradingStack;
+
+  beforeAll(async () => {
+    prisma = createTestClient();
+    await prisma.$connect();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  beforeEach(async () => {
+    await resetDatabase(prisma);
+    await prisma.marketSession.deleteMany();
+    await prisma.symbolSpec.deleteMany();
+    await prisma.symbol.deleteMany();
+    await seedTradingSymbols(prisma);
+    stack = await buildTradingStack(prisma);
+    await stack.publishQuote('XAUUSD', BID, ASK);
+  });
+
+  it("reports a profit when the price has moved the trader's way", async () => {
+    const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
+    await stack.orders.openPosition(userId, {
+      accountId,
+      symbol: 'XAUUSD',
+      side: 'BUY',
+      volume: '1.00',
+    });
+
+    // Ten dollars an ounce higher.
+    await stack.publishQuote('XAUUSD', '4593.58', '4593.72');
+
+    const [position] = await stack.positions.list(userId, accountId, false, 10);
+    expect(position?.floatingPnl).not.toBeNull();
+    expect(Number(position?.floatingPnl)).toBeGreaterThan(0);
+
+    /**
+     * The relationship, not a hard-coded difference.
+     *
+     * An earlier version asserted that net was strictly smaller than gross,
+     * which failed because this test instrument is seeded with zero commission
+     * — the assertion was wrong, not the code. Checking the identity holds
+     * whatever the instrument charges, and still catches the mistake it was
+     * written for: net that silently equals gross on a symbol that does charge.
+     */
+    expect(Number(position?.netFloatingPnl)).toBeCloseTo(
+      Number(position?.floatingPnl) - Number(position?.commission) + Number(position?.swap),
+      6,
+    );
+  });
+
+  it('reports a loss when it has not', async () => {
+    const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
+    await stack.orders.openPosition(userId, {
+      accountId,
+      symbol: 'XAUUSD',
+      side: 'BUY',
+      volume: '1.00',
+    });
+
+    await stack.publishQuote('XAUUSD', '4573.58', '4573.72');
+
+    const [position] = await stack.positions.list(userId, accountId, false, 10);
+    expect(Number(position?.floatingPnl)).toBeLessThan(0);
+  });
+
+  it('marks a sell in the opposite direction', async () => {
+    const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
+    await stack.orders.openPosition(userId, {
+      accountId,
+      symbol: 'XAUUSD',
+      side: 'SELL',
+      volume: '1.00',
+    });
+
+    await stack.publishQuote('XAUUSD', '4573.58', '4573.72');
+
+    // A falling price is a profit for a short. Getting the sign the wrong way
+    // round is the single most consequential display bug a positions list can
+    // have.
+    const [position] = await stack.positions.list(userId, accountId, false, 10);
+    expect(Number(position?.floatingPnl)).toBeGreaterThan(0);
+  });
+
+  it('leaves the mark null rather than showing zero when there is nothing to mark', async () => {
+    const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
+
+    const positions = await stack.positions.list(userId, accountId, false, 10);
+    // No open positions: the extra valuation query is skipped entirely.
+    expect(positions).toEqual([]);
+  });
+});

@@ -20,6 +20,8 @@ export default function TabsLayout(): React.ReactElement {
       <Tabs.Screen name="index" options={{ title: 'Account' }} />
       <Tabs.Screen name="market" options={{ title: 'Market' }} />
       <Tabs.Screen name="positions" options={{ title: 'Positions' }} />
+      <Tabs.Screen name="orders" options={{ title: 'Orders' }} />
+      <Tabs.Screen name="history" options={{ title: 'History' }} />
       <Tabs.Screen name="notifications" options={{ title: 'Alerts' }} />
       <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
     </Tabs>
