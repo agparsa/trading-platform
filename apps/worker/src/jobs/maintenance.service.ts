@@ -90,4 +90,90 @@ export class MaintenanceService {
     }
     return result.count;
   }
+
+  /**
+   * Writes EXPIRED on verifications whose validity has run out.
+   *
+   * The gate does not wait for this — `KycService.isVerified` judges from the
+   * policy to the minute — so this is housekeeping that makes the column agree
+   * with the policy, and that lets the person see "expired" on their screen
+   * rather than "verified" beside a withdrawal that refuses.
+   */
+  async expireVerifications(now: Date = new Date()): Promise<number> {
+    const result = await withoutTenantScope(
+      'a verification lapses on its own clock whichever firm granted it',
+      () =>
+        this.prisma.kycRecord.updateMany({
+          where: { status: 'VERIFIED', expiresAt: { not: null, lt: now } },
+          data: {
+            status: 'EXPIRED',
+            reason:
+              'Your verification has lapsed under the platform’s validity period. Please verify again.',
+          },
+        }),
+    );
+    if (result.count > 0) {
+      this.logger.log(`Expired ${result.count} identity verification(s)`);
+    }
+    return result.count;
+  }
+
+  /**
+   * Clears the bytes of identity documents past their retention period.
+   *
+   * ## What "past" means
+   *
+   * The record must be *decided* — verified, rejected or expired — and the
+   * decision must be older than the retention period. A record still waiting
+   * for a reviewer keeps its documents however old it is: purging them would
+   * make the review impossible, and the delay is the platform's, not the
+   * person's.
+   *
+   * Only documents from the decided attempt go: one uploaded after the last
+   * decision belongs to a new submission and stays.
+   *
+   * ## What stays
+   *
+   * The row. Kind, hash, size, upload time and now `purgedAt`. That a document
+   * of this kind was seen on this date is a fact the record may have to stand
+   * on for years after the bytes are gone; the trigger on the table makes sure
+   * nothing but the bytes can change.
+   */
+  async purgeIdentityDocuments(retentionDays: number, now: Date = new Date()): Promise<number> {
+    const cutoff = new Date(now.getTime() - retentionDays * 86_400_000);
+    const due = await withoutTenantScope(
+      'retention runs on every firm’s documents on the same clock',
+      () =>
+        this.prisma.kycDocument.findMany({
+          where: {
+            content: { not: null },
+            record: {
+              status: { in: ['VERIFIED', 'REJECTED', 'EXPIRED'] },
+              decidedAt: { not: null, lt: cutoff },
+            },
+          },
+          select: { id: true, record: { select: { decidedAt: true } }, uploadedAt: true },
+        }),
+    );
+
+    const ids = due
+      .filter((one) => one.record.decidedAt !== null && one.uploadedAt <= one.record.decidedAt)
+      .map((one) => one.id);
+    if (ids.length === 0) return 0;
+
+    const result = await withoutTenantScope(
+      'retention runs on every firm’s documents on the same clock',
+      () =>
+        this.prisma.kycDocument.updateMany({
+          where: { id: { in: ids } },
+          data: { content: null, purgedAt: now },
+        }),
+    );
+    if (result.count > 0) {
+      this.logger.log(
+        `Purged the bytes of ${result.count} identity document(s) past ${retentionDays} days`,
+      );
+    }
+    return result.count;
+  }
 }

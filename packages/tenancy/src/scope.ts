@@ -82,6 +82,8 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'WalletTransaction',
   'PaymentIntent',
   'PaymentEvent',
+  'KycRecord',
+  'KycDocument',
 ]);
 
 /**

@@ -14,6 +14,7 @@ const SECTIONS = [
   { href: '/admin/instruments', label: 'Instruments' },
   { href: '/admin/risk', label: 'Risk' },
   { href: '/admin/payments', label: 'Payments' },
+  { href: '/admin/kyc', label: 'Verification' },
   { href: '/admin/reconciliation', label: 'Reconciliation' },
   { href: '/admin/roles', label: 'Roles' },
   { href: '/admin/audit', label: 'Audit' },

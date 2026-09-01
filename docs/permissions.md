@@ -141,6 +141,10 @@ other pair, it needs no market to launder through. It is also why starting a
 deposit is its own capability rather than part of `payments.read`: a power that
 cannot be named cannot be held apart from another.
 
+`kyc.review` with `kyc.submit` is the same shape one step removed: verifying
+your own identity is what clears a withdrawal gate, so a role that can both
+submit and decide can clear its own path out.
+
 The escape is the one separation of duties always has: two roles, two logins, or
 a master-account link that names the account and leaves a record.
 

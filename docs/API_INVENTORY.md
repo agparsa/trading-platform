@@ -120,6 +120,26 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/integrity/signals/:id/status` | `setStatus` | INTEGRITY_MANAGE |
 | `POST` | `/integrity/scan/:accountId`    | `scan`      | INTEGRITY_MANAGE |
 
+### `kyc/admin-kyc.controller.ts` — base `/admin/kyc`
+
+| Verb   | Path                                   | Handler    | Requires           |
+| ------ | -------------------------------------- | ---------- | ------------------ |
+| `GET`  | `/admin/kyc`                           | `queue`    | KYC_READ_ANY       |
+| `GET`  | `/admin/kyc/:id`                       | `one`      | KYC_READ_ANY       |
+| `GET`  | `/admin/kyc/:id/documents/:documentId` | `document` | KYC_DOCUMENTS_READ |
+| `POST` | `/admin/kyc/:id/claim`                 | `claim`    | KYC_REVIEW         |
+| `POST` | `/admin/kyc/:id/release`               | `release`  | KYC_REVIEW         |
+| `POST` | `/admin/kyc/:id/decide`                | `decide`   | KYC_REVIEW         |
+| `POST` | `/admin/kyc/:id/revoke`                | `revoke`   | KYC_REVIEW         |
+
+### `kyc/kyc.controller.ts` — base `/kyc`
+
+| Verb   | Path                   | Handler  | Requires   |
+| ------ | ---------------------- | -------- | ---------- |
+| `GET`  | `/kyc`                 | `mine`   | KYC_READ   |
+| `PUT`  | `/kyc/documents/:kind` | `upload` | KYC_SUBMIT |
+| `POST` | `/kyc/submit`          | `submit` | KYC_SUBMIT |
+
 ### `market/market.controller.ts` — base `/market`
 
 | Verb  | Path              | Handler      | Requires             |
@@ -257,7 +277,7 @@ handler is responsible for scoping the result to that user — which for
 | `GET`  | `/wallet/:id/transactions` | `transactions` | WALLET_READ     |
 | `POST` | `/wallet/transfer`         | `transfer`     | WALLET_TRANSFER |
 
-**114 routes:** 58 `GET`, 46 `POST`, 5 `PATCH`, 4 `DELETE`, 1 `PUT`.
+**124 routes:** 62 `GET`, 51 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

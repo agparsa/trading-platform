@@ -86,6 +86,8 @@ const CODE_BY_STATUS: Readonly<Partial<Record<number, TradingErrorCode>>> = {
   [HttpStatus.METHOD_NOT_ALLOWED]: TradingErrorCode.METHOD_NOT_ALLOWED,
   [HttpStatus.CONFLICT]: TradingErrorCode.CONCURRENT_MODIFICATION,
   [HttpStatus.UNPROCESSABLE_ENTITY]: TradingErrorCode.VALIDATION_FAILED,
+  [HttpStatus.PAYLOAD_TOO_LARGE]: TradingErrorCode.VALIDATION_FAILED,
+  [HttpStatus.UNSUPPORTED_MEDIA_TYPE]: TradingErrorCode.VALIDATION_FAILED,
   [HttpStatus.TOO_MANY_REQUESTS]: TradingErrorCode.RATE_LIMITED,
   [HttpStatus.SERVICE_UNAVAILABLE]: TradingErrorCode.SERVICE_UNAVAILABLE,
   [HttpStatus.NOT_IMPLEMENTED]: TradingErrorCode.NOT_IMPLEMENTED,
@@ -167,6 +169,44 @@ export class DomainExceptionFilter implements ExceptionFilter {
         body: {
           ok: false,
           error: { code: codeForStatus(status), message: exception.message, requestId },
+        },
+      };
+    }
+
+    /**
+     * Errors raised below Nest, by Express's own body parsers.
+     *
+     * A body over the raw parser's limit, or one it could not decode, arrives
+     * here as an `http-errors` object — not an `HttpException` — carrying a
+     * numeric `status` in the 4xx range and an `expose` flag saying its message
+     * is safe to show. Before this branch every one of them was a 500, so a
+     * person who uploaded an eleven-megabyte photograph was told the server had
+     * failed rather than that the file was too large. Only 4xx is honoured: a
+     * 5xx from a parser is still the server's fault and is reported as such.
+     */
+    const parserError =
+      typeof exception === 'object' && exception !== null
+        ? (exception as { status?: unknown; expose?: unknown; message?: unknown })
+        : {};
+    if (
+      typeof parserError.status === 'number' &&
+      parserError.status >= 400 &&
+      parserError.status < 500 &&
+      parserError.expose === true &&
+      typeof parserError.message === 'string'
+    ) {
+      return {
+        status: parserError.status,
+        body: {
+          ok: false,
+          error: {
+            code: codeForStatus(parserError.status),
+            message:
+              parserError.status === HttpStatus.PAYLOAD_TOO_LARGE
+                ? 'The request body is larger than this route accepts.'
+                : parserError.message,
+            requestId,
+          },
         },
       };
     }

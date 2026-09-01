@@ -70,6 +70,10 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
       expired: await this.maintenance.sweepIdempotencyKeys(),
       abandoned: await this.maintenance.releaseAbandonedClaims(),
       payments: await this.maintenance.expireStalePayments(),
+      verifications: await this.maintenance.expireVerifications(),
+      documents: await this.maintenance.purgeIdentityDocuments(
+        this.config.getOrThrow('KYC_DOCUMENT_RETENTION_DAYS', { infer: true }),
+      ),
     }));
     this.attach(QueueName.NOTIFICATIONS, async (job) => this.notifications.deliver(job.data));
 

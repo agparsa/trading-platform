@@ -152,6 +152,8 @@ const adminKeys = {
   catalogue: ['admin', 'permission-catalogue'] as const,
   payments: (status: string) => ['admin', 'payments', status] as const,
   paymentEvents: (id: string) => ['admin', 'payment-events', id] as const,
+  kycQueue: (status: string) => ['admin', 'kyc', status] as const,
+  kycRecord: (id: string) => ['admin', 'kyc-record', id] as const,
 };
 
 export interface AdminInstrumentRow {
@@ -716,4 +718,122 @@ export function useSettlePayment() {
       void client.invalidateQueries({ queryKey: adminKeys.audit('') });
     },
   });
+}
+
+export interface AdminKycRow {
+  id: string;
+  userId: string;
+  email: string;
+  status: string;
+  submittedAt: string | null;
+  reviewerId: string | null;
+  decidedAt: string | null;
+  verifiedAt: string | null;
+  expiresAt: string | null;
+  reason: string | null;
+  documentKinds: string[];
+}
+
+export interface AdminKycDocument {
+  id: string;
+  kind: string;
+  contentType: string;
+  sizeBytes: number;
+  filename: string | null;
+  uploadedAt: string;
+  purged: boolean;
+  current: boolean;
+}
+
+export interface AdminKycDetail extends AdminKycRow {
+  provider: string;
+  documents: AdminKycDocument[];
+}
+
+export function useKycQueue(status: string) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.kycQueue(status),
+    queryFn: () =>
+      api.get<{ records: AdminKycRow[] }>(
+        status === 'queue' ? '/admin/kyc' : `/admin/kyc?status=${status}`,
+      ),
+  });
+}
+
+export function useKycRecord(id: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.kycRecord(id ?? 'none'),
+    queryFn: () => api.get<AdminKycDetail>(`/admin/kyc/${id ?? ''}`),
+    enabled: id !== null,
+  });
+}
+
+/**
+ * Opens one document.
+ *
+ * Not a query: it is not cached, not refetched, and not kept. Every call is an
+ * audited act on the server, and a cache that replayed the bytes without a
+ * second audit row would make the trail lie about how often they were seen.
+ * The page holds the object URL only while the document is on screen.
+ */
+export function useOpenKycDocument() {
+  const { api } = useSession();
+  return useMutation({
+    mutationFn: ({ recordId, documentId }: { recordId: string; documentId: string }) =>
+      api.getBytes(`/admin/kyc/${recordId}/documents/${documentId}`),
+  });
+}
+
+function useKycAction<TInput extends { id: string }>(
+  run: (api: ReturnType<typeof useSession>['api'], input: TInput) => Promise<AdminKycDetail>,
+) {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TInput) => run(api, input),
+    onSuccess: (_result, input) => {
+      void client.invalidateQueries({ queryKey: ['admin', 'kyc'] });
+      void client.invalidateQueries({ queryKey: adminKeys.kycRecord(input.id) });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+    },
+  });
+}
+
+export function useClaimKyc() {
+  return useKycAction<{ id: string }>((api, { id }) =>
+    api.post<AdminKycDetail>(`/admin/kyc/${id}/claim`, {}, { idempotencyKey: crypto.randomUUID() }),
+  );
+}
+
+export function useReleaseKyc() {
+  return useKycAction<{ id: string }>((api, { id }) =>
+    api.post<AdminKycDetail>(
+      `/admin/kyc/${id}/release`,
+      {},
+      { idempotencyKey: crypto.randomUUID() },
+    ),
+  );
+}
+
+export function useDecideKyc() {
+  return useKycAction<{ id: string; outcome: 'VERIFIED' | 'REJECTED'; reason: string }>(
+    (api, { id, outcome, reason }) =>
+      api.post<AdminKycDetail>(
+        `/admin/kyc/${id}/decide`,
+        { outcome, reason },
+        { idempotencyKey: crypto.randomUUID() },
+      ),
+  );
+}
+
+export function useRevokeKyc() {
+  return useKycAction<{ id: string; reason: string }>((api, { id, reason }) =>
+    api.post<AdminKycDetail>(
+      `/admin/kyc/${id}/revoke`,
+      { reason },
+      { idempotencyKey: crypto.randomUUID() },
+    ),
+  );
 }

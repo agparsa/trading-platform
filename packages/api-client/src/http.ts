@@ -64,6 +64,9 @@ export interface RequestOptions {
  * server's error code — so calling code branches on `TradingErrorCode`, never on
  * an HTTP status or a message string.
  */
+/** Whatever this runtime's fetch accepts as a body. Named without assuming a DOM lib. */
+type FetchBody = NonNullable<NonNullable<Parameters<typeof fetch>[1]>['body']>;
+
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
@@ -118,10 +121,78 @@ export class ApiClient {
     return this.request<T>('DELETE', path, undefined, options);
   }
 
+  /**
+   * Sends bytes as the body, and expects JSON back.
+   *
+   * For the one thing on the platform that is a file: an identity document.
+   * The bytes go up as themselves under their own content type — no multipart,
+   * no base64 — because the server decides what they are from the bytes and a
+   * wrapper would only be something to unwrap.
+   */
+  async putBytes<T>(
+    path: string,
+    bytes: Blob | ArrayBuffer | Uint8Array,
+    options: { contentType: string; filename?: string } & RequestOptions,
+  ): Promise<T> {
+    const headers = this.buildHeaders(false, options.idempotencyKey);
+    headers['Content-Type'] = options.contentType;
+    if (options.filename !== undefined && options.filename.length > 0) {
+      // Header values are Latin-1; a filename is shown back as text and can
+      // afford to lose characters, so anything outside that range is dropped.
+      headers['X-Filename'] = options.filename.replace(/[^\x20-\x7e]/g, '').slice(0, 120);
+    }
+    return this.send<T>('PUT', path, bytes as FetchBody, headers, options);
+  }
+
+  /**
+   * Fetches bytes rather than JSON, with the same session handling.
+   *
+   * The reviewer's document view. Returned as a Blob with the content type the
+   * server sent, for the page to show; nothing here caches it.
+   */
+  async getBytes(path: string, options: RequestOptions = {}): Promise<Blob> {
+    const url = this.buildUrl(path, options.query);
+    const response = await this.fetchImpl(url, {
+      method: 'GET',
+      headers: this.buildHeaders(false),
+      ...(this.options.credentials === undefined ? {} : { credentials: this.options.credentials }),
+    });
+    if (response.ok) return response.blob();
+
+    const payload = (await response.json().catch(() => null)) as ApiResponse<never> | null;
+    if (payload !== null && !payload.ok) {
+      if (payload.error.code === TradingErrorCode.TOKEN_EXPIRED && this.options.onTokenExpired) {
+        const refreshed = await this.options.onTokenExpired();
+        if (refreshed !== null) return this.getBytes(path, options);
+      }
+      throw new DomainError(payload.error.code, payload.error.message, payload.error.details);
+    }
+    throw new DomainError(
+      TradingErrorCode.INTERNAL_ERROR,
+      `The server returned an unreadable response (HTTP ${response.status})`,
+    );
+  }
+
   private async request<T>(
     method: string,
     path: string,
     body: unknown,
+    options: RequestOptions = {},
+  ): Promise<T> {
+    return this.send<T>(
+      method,
+      path,
+      body === undefined ? undefined : JSON.stringify(body),
+      this.buildHeaders(body !== undefined, options.idempotencyKey),
+      options,
+    );
+  }
+
+  private async send<T>(
+    method: string,
+    path: string,
+    body: FetchBody | undefined,
+    headers: Record<string, string>,
     options: RequestOptions = {},
   ): Promise<T> {
     const url = this.buildUrl(path, options.query);
@@ -137,8 +208,8 @@ export class ApiClient {
     try {
       const response = await this.fetchImpl(url, {
         method,
-        headers: this.buildHeaders(body !== undefined, options.idempotencyKey),
-        body: body === undefined ? undefined : JSON.stringify(body),
+        headers,
+        body,
         signal: controller.signal,
         ...(this.options.credentials === undefined
           ? {}
@@ -170,7 +241,13 @@ export class ApiClient {
 
       if (payload.error.code === TradingErrorCode.TOKEN_EXPIRED && this.options.onTokenExpired) {
         const refreshed = await this.options.onTokenExpired();
-        if (refreshed !== null) return this.request<T>(method, path, body, options);
+        if (refreshed !== null) {
+          // Re-sent with fresh headers: the old ones carry the expired token.
+          const again = { ...headers, ...this.buildHeaders(false, options.idempotencyKey) };
+          if (headers['Content-Type'] !== undefined)
+            again['Content-Type'] = headers['Content-Type'];
+          return this.send<T>(method, path, body, again, options);
+        }
       }
 
       throw new DomainError(payload.error.code, payload.error.message, payload.error.details);

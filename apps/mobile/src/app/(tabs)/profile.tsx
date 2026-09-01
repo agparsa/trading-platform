@@ -15,6 +15,14 @@ interface Profile {
   lastLoginAt: string | null;
 }
 
+interface KycSummary {
+  status: string;
+  reason: string | null;
+  verified: boolean;
+  expiresAt: string | null;
+  missing: string[];
+}
+
 interface TotpStatus {
   enabled: boolean;
   enabledAt: string | null;
@@ -55,17 +63,33 @@ interface DeviceSummary {
  * registration are different records. Both are revocable from here, and
  * revoking either is immediate.
  *
- * ## What is deliberately absent
+ * ## Verification
  *
- * KYC. §17 of the specification wants verification states on this screen, and
- * there is no KYC anywhere in this platform — no model, no endpoint, no
- * provider. A "Verification: pending" row would be a screen inventing a status
- * for a process that does not exist, which is worse than the gap it hides.
+ * §17 of the specification wants verification states on this screen. Until
+ * phase 6 there was no KYC anywhere in the platform and this screen said so
+ * rather than invent a status. There is one now — a record, a review queue, a
+ * decision with a name against it — and the status shown here is that record's.
+ *
+ * What this screen does *not* do is take documents. Uploading a photograph of
+ * a passport needs the camera and the file picker, which are native modules
+ * this build does not carry, and a button that opened nothing would be worse
+ * than the sentence that sends people to the web. When the modules are added
+ * the endpoint is the same one: `PUT /kyc/documents/:kind`, bytes as the body.
  */
+const KYC_LABELS: Record<string, string> = {
+  NOT_STARTED: 'Not started',
+  PENDING: 'Submitted, waiting for review',
+  UNDER_REVIEW: 'Being reviewed',
+  VERIFIED: 'Verified',
+  REJECTED: 'Not accepted',
+  EXPIRED: 'Expired',
+};
+
 export default function ProfileScreen(): React.ReactElement {
   const { api, signOut } = useSession();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [totp, setTotp] = useState<TotpStatus | null>(null);
+  const [kyc, setKyc] = useState<KycSummary | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -74,14 +98,18 @@ export default function ProfileScreen(): React.ReactElement {
 
   const load = useCallback(async () => {
     try {
-      const [me, twoFactor, sessionList, deviceList] = await Promise.all([
+      const [me, twoFactor, sessionList, deviceList, verification] = await Promise.all([
         api.get<Profile>('/users/me'),
         api.get<TotpStatus>('/auth/2fa'),
         api.get<SessionSummary[]>('/auth/sessions'),
         api.get<DeviceSummary[]>('/devices'),
+        // Its own catch: a role without `kyc.read` must not lose the whole
+        // profile over one refused row.
+        api.get<KycSummary>('/kyc').catch(() => null),
       ]);
       setProfile(me);
       setTotp(twoFactor);
+      setKyc(verification);
       setSessions(sessionList);
       setDevices(deviceList);
       setError(null);
@@ -158,6 +186,22 @@ export default function ProfileScreen(): React.ReactElement {
             }
           />
         </Card>
+
+        {kyc === null ? null : (
+          <Card title="Identity verification">
+            <Figure label="Status" value={KYC_LABELS[kyc.status] ?? kyc.status} />
+            {kyc.reason === null ? null : <Text style={styles.warning}>{kyc.reason}</Text>}
+            {kyc.expiresAt === null ? null : (
+              <Figure label="Valid until" value={new Date(kyc.expiresAt).toLocaleDateString()} />
+            )}
+            {kyc.missing.length > 0 ? (
+              <Text style={styles.note}>
+                To verify, sign in on the web and add {kyc.missing.join(' and ')}. Uploading from
+                this app is not available yet.
+              </Text>
+            ) : null}
+          </Card>
+        )}
 
         <Card title="Two-factor authentication">
           <Figure label="Status" value={totp?.enabled === true ? 'On' : 'Off'} />

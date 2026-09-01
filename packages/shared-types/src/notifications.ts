@@ -116,6 +116,12 @@ export const CATEGORY_FOR_KIND: Readonly<Record<string, NotificationCategory>> =
   'security.new_device': NotificationCategory.SECURITY_ALERT,
   'security.password_changed': NotificationCategory.SECURITY_ALERT,
   'security.login_from_new_ip': NotificationCategory.SECURITY_ALERT,
+  // Verification decisions are about the person, not a trade, and not a
+  // threat: SYSTEM is right. Listed so a reader sees they were considered.
+  'kyc.verified': NotificationCategory.SYSTEM,
+  'kyc.rejected': NotificationCategory.SYSTEM,
+  'kyc.revoked': NotificationCategory.SYSTEM,
+  'kyc.expired': NotificationCategory.SYSTEM,
 };
 
 export function categoryForKind(kind: string): NotificationCategory {

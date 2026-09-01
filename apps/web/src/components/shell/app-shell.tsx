@@ -11,6 +11,7 @@ const SECTIONS = [
   { href: '/terminal', label: 'Terminal' },
   { href: '/account', label: 'Account' },
   { href: '/wallet', label: 'Wallet' },
+  { href: '/verification', label: 'Verification' },
   { href: '/history', label: 'History' },
   { href: '/security', label: 'Security' },
   { href: '/settings', label: 'Settings' },

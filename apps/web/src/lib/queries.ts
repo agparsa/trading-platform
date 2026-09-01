@@ -196,6 +196,7 @@ export const queryKeys = {
   walletTransactions: (walletId: string) => ['wallet-transactions', walletId] as const,
   payments: ['payments'] as const,
   paymentProviders: ['payment-providers'] as const,
+  kyc: ['kyc'] as const,
 };
 
 /** Everything a trading event can invalidate, in one place. */
@@ -785,6 +786,71 @@ export function useStartPayment() {
       api.post<PaymentRow>('/payments', input, { idempotencyKey: crypto.randomUUID() }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.payments });
+    },
+  });
+}
+
+export interface KycDocumentRow {
+  id: string;
+  kind: string;
+  contentType: string;
+  sizeBytes: number;
+  filename: string | null;
+  uploadedAt: string;
+  purged: boolean;
+  current: boolean;
+}
+
+export interface KycView {
+  status: string;
+  reason: string | null;
+  submittedAt: string | null;
+  verifiedAt: string | null;
+  expiresAt: string | null;
+  verified: boolean;
+  canSubmit: boolean;
+  missing: string[];
+  documents: KycDocumentRow[];
+}
+
+export function useKyc() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: queryKeys.kyc,
+    queryFn: () => api.get<KycView>('/kyc'),
+    enabled: accessToken !== null,
+  });
+}
+
+/**
+ * Uploads one document as bytes.
+ *
+ * The file goes up as itself, under its own type. What the server records is
+ * what the bytes turn out to be, not what the browser called them — so a file
+ * the server refuses is refused with a reason, not stored under a wrong label.
+ */
+export function useUploadKycDocument() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ kind, file }: { kind: string; file: File }) =>
+      api.putBytes<KycDocumentRow>(`/kyc/documents/${kind}`, file, {
+        contentType: file.type,
+        filename: file.name,
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.kyc });
+    },
+  });
+}
+
+export function useSubmitKyc() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<KycView>('/kyc/submit', {}, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.kyc });
     },
   });
 }

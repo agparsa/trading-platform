@@ -128,3 +128,71 @@ describe('SecretBox', () => {
     });
   });
 });
+
+describe('SecretBox with bytes', () => {
+  const document = randomBytes(3 * 1024 * 1024); // the shape of a phone photograph
+
+  it('returns exactly what was sealed, byte for byte', () => {
+    const box = boxWith(KEY_A);
+    const sealed = box.sealBytes(document, 'kyc:doc:1');
+    expect(box.openBytes(sealed, 'kyc:doc:1').equals(document)).toBe(true);
+  });
+
+  it('costs a fixed header and not a third more, which is why it exists', () => {
+    const box = boxWith(KEY_A);
+    const sealed = box.sealBytes(document, 'kyc:doc:1');
+    // format + length + key id + iv + tag, and nothing proportional to the payload.
+    expect(sealed.length - document.length).toBeLessThan(64);
+  });
+
+  it('does not contain the plaintext', () => {
+    const box = boxWith(KEY_A);
+    const marker = Buffer.from('THIS IS A PASSPORT NUMBER 123456789');
+    const sealed = box.sealBytes(marker, 'kyc:doc:1');
+    expect(sealed.includes(marker)).toBe(false);
+  });
+
+  it('refuses a document moved to another person’s row', () => {
+    const box = boxWith(KEY_A);
+    const sealed = box.sealBytes(document, 'kyc:doc:alice');
+    expect(() => box.openBytes(sealed, 'kyc:doc:mallory')).toThrow(SecretDecryptionError);
+  });
+
+  it('refuses a single flipped byte anywhere in the ciphertext', () => {
+    const box = boxWith(KEY_A);
+    const sealed = box.sealBytes(document, 'kyc:doc:1');
+    const tampered = Buffer.from(sealed);
+    const last = tampered.length - 1;
+    tampered[last] = (tampered[last] ?? 0) ^ 0x01;
+    expect(() => box.openBytes(tampered, 'kyc:doc:1')).toThrow(SecretDecryptionError);
+  });
+
+  it('refuses a value sealed under a key it does not have, naming the key', () => {
+    const sealed = boxWith(KEY_B).sealBytes(document, 'kyc:doc:1');
+    expect(() => boxWith(KEY_A).openBytes(sealed, 'kyc:doc:1')).toThrow(/no key with id/);
+  });
+
+  it('still opens under a retired key that is kept in the list', () => {
+    const sealed = boxWith(KEY_A).sealBytes(document, 'kyc:doc:1');
+    const rotated = boxWith(KEY_B, KEY_A);
+    expect(rotated.openBytes(sealed, 'kyc:doc:1').equals(document)).toBe(true);
+    expect(SecretBox.keyIdOfBytes(sealed)).toBe(parseEncryptionKeys(KEY_A)[0]?.id);
+  });
+
+  it('refuses garbage rather than guessing at it', () => {
+    const box = boxWith(KEY_A);
+    for (const junk of [
+      Buffer.alloc(0),
+      Buffer.from([0x01]),
+      Buffer.from([0x02, 0x02, 0x6b, 0x31]),
+      randomBytes(40),
+    ]) {
+      expect(() => box.openBytes(junk, 'kyc:doc:1')).toThrow(SecretDecryptionError);
+    }
+    expect(SecretBox.keyIdOfBytes(Buffer.alloc(0))).toBeNull();
+  });
+
+  it('refuses to seal without a context, like the text form', () => {
+    expect(() => boxWith(KEY_A).sealBytes(document, '')).toThrow(/bound to a context/);
+  });
+});

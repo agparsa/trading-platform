@@ -138,6 +138,26 @@ export const Permission = {
    */
   PAYMENTS_CONFIRM: 'payments.confirm',
 
+  // --- identity verification ---
+  /** See your own verification status and what it is waiting on. */
+  KYC_READ: 'kyc.read',
+  /** Submit documents for review. */
+  KYC_SUBMIT: 'kyc.submit',
+  /** See anyone's verification *status* and the review queue — never the documents. */
+  KYC_READ_ANY: 'kyc.read_any',
+  /**
+   * Open the documents themselves.
+   *
+   * Separate from `kyc.read_any` and the separation is the point. Knowing that
+   * a person is verified is what a support agent needs to answer "why can't I
+   * withdraw"; seeing their passport is not, and a capability that meant both
+   * would put every identity document on the platform one support ticket away.
+   * Every use of this one is audited with the reviewer's name against it.
+   */
+  KYC_DOCUMENTS_READ: 'kyc.documents.read',
+  /** Decide: verify, reject, or revoke a verification already granted. */
+  KYC_REVIEW: 'kyc.review',
+
   // --- roles ---
   /** See which roles exist and what each one carries. */
   ROLES_READ: 'roles.read',
@@ -175,6 +195,8 @@ const TRADER: readonly Permission[] = [
   Permission.WALLET_TRANSFER,
   Permission.PAYMENTS_READ,
   Permission.PAYMENTS_CREATE,
+  Permission.KYC_READ,
+  Permission.KYC_SUBMIT,
   Permission.ORDERS_READ,
   Permission.ORDERS_CREATE,
   Permission.ORDERS_CANCEL,
@@ -215,6 +237,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.ACCOUNTS_READ_ANY,
     Permission.WALLET_READ_ANY,
     Permission.PAYMENTS_READ_ANY,
+    Permission.KYC_READ_ANY,
     Permission.USERS_READ_ANY,
     Permission.ORDERS_READ,
     Permission.POSITIONS_READ,
@@ -226,6 +249,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.ACCOUNTS_MANAGE,
     Permission.WALLET_READ_ANY,
     Permission.PAYMENTS_READ_ANY,
+    Permission.KYC_READ_ANY,
     Permission.USERS_READ_ANY,
     Permission.ORDERS_READ,
     Permission.ORDERS_CANCEL,
@@ -246,6 +270,9 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.WALLET_READ_ANY,
     Permission.WALLET_MANAGE,
     Permission.PAYMENTS_READ_ANY,
+    Permission.KYC_READ_ANY,
+    Permission.KYC_DOCUMENTS_READ,
+    Permission.KYC_REVIEW,
     Permission.USERS_READ_ANY,
     Permission.USERS_MANAGE,
     Permission.ORDERS_READ,
@@ -277,6 +304,9 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.WALLET_MANAGE,
     Permission.PAYMENTS_READ_ANY,
     Permission.PAYMENTS_CONFIRM,
+    Permission.KYC_READ_ANY,
+    Permission.KYC_DOCUMENTS_READ,
+    Permission.KYC_REVIEW,
     Permission.USERS_READ_ANY,
     Permission.USERS_MANAGE,
     Permission.INVITES_MANAGE,
@@ -363,6 +393,13 @@ export const INCOMPATIBLE_PERMISSIONS: readonly (readonly [Permission, Permissio
    * counterparty. Every other pair here needs a market to launder through.
    */
   [Permission.PAYMENTS_CONFIRM, Permission.PAYMENTS_CREATE],
+  /**
+   * Verifying your own identity. The same shape as confirming your own
+   * deposit, one step further from the money: a verification is what a
+   * withdrawal gate asks for, so a role that can both submit and decide can
+   * clear its own path out.
+   */
+  [Permission.KYC_REVIEW, Permission.KYC_SUBMIT],
 ];
 
 /** Every incompatible pair present in this set. Empty means the set is allowed. */

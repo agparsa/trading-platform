@@ -10,29 +10,31 @@ Every screen has an address now. The terminal did not change.
 
 ## The map
 
-| Route                   | What it is                                                |
-| ----------------------- | --------------------------------------------------------- |
-| `/`                     | redirects to `/terminal`                                  |
-| `/terminal`             | the trading terminal, full height                         |
-| `/account`              | balances, margin, the terms an account trades on          |
-| `/wallet`               | money held for you, and moving it to and from an account  |
-| `/history`              | trades, closed positions, orders — including refused ones |
-| `/security`             | two-factor, recovery codes, active sessions               |
-| `/settings`             | one-click trading, confirmations, default size            |
-| `/login`                | sign in and register                                      |
-| `/status`               | build and deployment status                               |
-| `/admin`                | redirects to `/admin/overview`                            |
-| `/admin/overview`       | platform figures                                          |
-| `/admin/people`         | search people                                             |
-| `/admin/people/:id`     | one person, their accounts and sessions                   |
-| `/admin/accounts`       | search accounts                                           |
-| `/admin/accounts/:id`   | one account, with its owner one click away                |
-| `/admin/instruments`    | what the platform trades, and on what terms               |
-| `/admin/risk`           | accounts at risk, exposure, risk events                   |
-| `/admin/payments`       | deposits waiting for a person, and every one before them  |
-| `/admin/reconciliation` | runs and findings                                         |
-| `/admin/roles`          | what each role may do                                     |
-| `/admin/audit`          | the audit trail                                           |
+| Route                   | What it is                                                 |
+| ----------------------- | ---------------------------------------------------------- |
+| `/`                     | redirects to `/terminal`                                   |
+| `/terminal`             | the trading terminal, full height                          |
+| `/account`              | balances, margin, the terms an account trades on           |
+| `/wallet`               | money held for you, and moving it to and from an account   |
+| `/verification`         | prove who you are, once, so withdrawals can be paid to you |
+| `/history`              | trades, closed positions, orders — including refused ones  |
+| `/security`             | two-factor, recovery codes, active sessions                |
+| `/settings`             | one-click trading, confirmations, default size             |
+| `/login`                | sign in and register                                       |
+| `/status`               | build and deployment status                                |
+| `/admin`                | redirects to `/admin/overview`                             |
+| `/admin/overview`       | platform figures                                           |
+| `/admin/people`         | search people                                              |
+| `/admin/people/:id`     | one person, their accounts and sessions                    |
+| `/admin/accounts`       | search accounts                                            |
+| `/admin/accounts/:id`   | one account, with its owner one click away                 |
+| `/admin/instruments`    | what the platform trades, and on what terms                |
+| `/admin/risk`           | accounts at risk, exposure, risk events                    |
+| `/admin/payments`       | deposits waiting for a person, and every one before them   |
+| `/admin/kyc`            | verifications waiting for a reviewer                       |
+| `/admin/reconciliation` | runs and findings                                          |
+| `/admin/roles`          | what each role may do                                      |
+| `/admin/audit`          | the audit trail                                            |
 
 `/wallet` arrived with phase 4 and not before. Until there was a wallet the link
 was deliberately absent — §50 says not to build UI for functionality that does

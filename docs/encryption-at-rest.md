@@ -68,6 +68,21 @@ Dropping the old key at step 2 would lock every enrolled user out of their secon
 factor, and the failure would not surface until each of them next signed in. That
 is why the key id travels inside the ciphertext.
 
+## Identity documents
+
+Since phase 6 the sealing key also protects `kyc_documents.content` — a scan of
+somebody's passport — which is a larger and more consequential thing than a TOTP
+secret. `SecretBox.sealBytes` / `openBytes` are the binary form: a fixed header
+rather than base64, so a ten-megabyte document costs a few dozen bytes more
+rather than a third more. The row id is the AAD, so a document copied into
+another person's row will not open there. `kyc_documents.sealed_with_key_id`
+carries the key id outside the frame so a rotation job can find rows without
+opening each one.
+
+Dropping a key that wrote any document makes those documents unreadable to a
+reviewer, and the failure surfaces only when somebody opens one. The order
+above is not optional here either. See [kyc.md](./kyc.md).
+
 ## What is deliberately not encrypted
 
 Everything already hashed. Adding encryption on top of Argon2 would protect

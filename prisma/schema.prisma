@@ -93,6 +93,8 @@ model Tenant {
   walletTransactions      WalletTransaction[]
   paymentIntents          PaymentIntent[]
   paymentEvents           PaymentEvent[]
+  kycRecords              KycRecord[]
+  kycDocuments            KycDocument[]
 
   @@map("tenants")
 }
@@ -167,6 +169,7 @@ model User {
 
   paymentIntents PaymentIntent[]
   wallets        Wallet[]
+  kycRecord      KycRecord?
   tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   /// One address per tenant, not per platform: the same person may hold an account with two firms.
@@ -1838,4 +1841,122 @@ model PaymentEvent {
   @@index([intentId, createdAt(sort: Desc)])
   @@index([tenantId])
   @@map("payment_events")
+}
+
+/// One person's identity verification. At most one per user.
+///
+/// Kept apart from trading on purpose: a withdrawal may require this to be
+/// VERIFIED; opening a position never asks. The two must be able to change
+/// independently, and a column on `users` would make every trading query carry
+/// a verification status it has no business reading.
+///
+/// The documents are on `kyc_documents`, sealed. Nothing here is sensitive in
+/// itself — a status and some dates — which is why this table can be read by a
+/// support role that must never see the documents behind it.
+model KycRecord {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @unique @map("user_id") @db.Uuid
+
+  status KycStatus @default(NOT_STARTED)
+
+  /// Which path decided it: 'manual' for an operator, or a provider's name.
+  provider          String  @default("manual")
+  providerReference String? @map("provider_reference")
+
+  /// Why it was refused or revoked, in words the person is shown.
+  reason String?
+
+  /// Who is looking at it, once someone has opened it from the queue.
+  reviewerId  String?   @map("reviewer_id") @db.Uuid
+  /// Who decided, and when. Null until a decision.
+  decidedById String?   @map("decided_by_id") @db.Uuid
+  decidedAt   DateTime? @map("decided_at") @db.Timestamptz(6)
+
+  submittedAt DateTime? @map("submitted_at") @db.Timestamptz(6)
+  verifiedAt  DateTime? @map("verified_at") @db.Timestamptz(6)
+  /// When the verification lapses, if the deployment sets a validity. The
+  /// maintenance sweep writes EXPIRED at this instant; the gate checks it
+  /// itself in between, so a lapse does not wait for a schedule.
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  /// Bumped on every write, so a decision cannot overwrite a newer one.
+  version Int @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  documents KycDocument[]
+
+  @@index([status, submittedAt])
+  @@index([tenantId])
+  @@map("kyc_records")
+}
+
+enum KycStatus {
+  NOT_STARTED
+  PENDING
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+/// One identity document, sealed.
+///
+/// ## What is and is not in this row
+///
+/// `content` is AES-256-GCM under the platform's sealing key, bound to this
+/// row's id — a document copied into another person's row fails to open there.
+/// `sha256` is of the plaintext, so an operator can confirm a file is the one
+/// that was uploaded without decrypting it, and so the same file submitted twice
+/// is recognisable.
+///
+/// `content` is **null once purged**. The row stays: that a document of this
+/// kind was submitted on this date, its size and its hash, are facts the record
+/// may need to stand on for years — the bytes are not. The retention policy is
+/// `KYC_DOCUMENT_RETENTION_DAYS` after a record reaches a terminal state, and
+/// `purgedAt` says when it was applied.
+///
+/// Nothing from this table is ever written to an application log. The `kyc`
+/// module's logger is given ids and kinds, never names, numbers or bytes.
+model KycDocument {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  recordId String @map("record_id") @db.Uuid
+
+  kind        KycDocumentKind
+  contentType String          @map("content_type")
+  /// Of the plaintext. Not secret; not enough to reconstruct anything.
+  sha256      String          @db.VarChar(64)
+  sizeBytes   Int             @map("size_bytes")
+  /// The original filename, for the reviewer. Not trusted for anything.
+  filename    String?
+
+  /// Sealed bytes. Null after the retention sweep has run.
+  content Bytes? @map("content")
+
+  /// Which sealing key wrote `content`, copied out of the frame so a rotation job
+  /// can find rows to rewrite without opening each one.
+  sealedWithKeyId String? @map("sealed_with_key_id")
+
+  uploadedAt DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  purgedAt   DateTime? @map("purged_at") @db.Timestamptz(6)
+
+  record KycRecord @relation(fields: [recordId], references: [id], onDelete: Restrict)
+  tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([recordId])
+  @@index([tenantId])
+  @@map("kyc_documents")
+}
+
+enum KycDocumentKind {
+  PASSPORT
+  NATIONAL_ID
+  DRIVING_LICENCE
+  PROOF_OF_ADDRESS
+  SELFIE
 }

@@ -62,29 +62,29 @@ describe('statusForCode', () => {
  * `exception.stack` and every probe in `pnpm pentest` stayed green. Nothing in
  * the suite would have noticed a stack trace being served to clients.
  */
-describe('DomainExceptionFilter, on an exception nobody expected', () => {
-  function respond(exception: unknown): { status: number; body: ApiFailure } {
-    let status = 0;
-    let body = {} as ApiFailure;
-    const response = {
-      status(value: number) {
-        status = value;
-        return this;
-      },
-      json(value: ApiFailure) {
-        body = value;
-      },
-    };
-    const host = {
-      switchToHttp: () => ({
-        getRequest: () => ({ requestId: 'req-1', url: '/api/v1/orders' }),
-        getResponse: () => response,
-      }),
-    };
-    new DomainExceptionFilter().catch(exception, host as never);
-    return { status, body };
-  }
+function respond(exception: unknown): { status: number; body: ApiFailure } {
+  let status = 0;
+  let body = {} as ApiFailure;
+  const response = {
+    status(value: number) {
+      status = value;
+      return this;
+    },
+    json(value: ApiFailure) {
+      body = value;
+    },
+  };
+  const host = {
+    switchToHttp: () => ({
+      getRequest: () => ({ requestId: 'req-1', url: '/api/v1/orders' }),
+      getResponse: () => response,
+    }),
+  };
+  new DomainExceptionFilter().catch(exception, host as never);
+  return { status, body };
+}
 
+describe('DomainExceptionFilter, on an exception nobody expected', () => {
   it('answers with a code and a request id, and nothing about itself', () => {
     const exception = new Error('connect ECONNREFUSED 10.0.0.5:5432');
     const { status, body } = respond(exception);
@@ -110,5 +110,40 @@ describe('DomainExceptionFilter, on an exception nobody expected', () => {
       JSON.stringify(respond(thrown).body),
     );
     expect(new Set(bodies).size).toBe(1);
+  });
+});
+
+describe('errors raised by the body parsers, below Nest', () => {
+  /** What `http-errors` produces when a body exceeds a parser's limit. */
+  const tooLarge = () =>
+    Object.assign(new Error('request entity too large'), {
+      status: 413,
+      statusCode: 413,
+      expose: true,
+      type: 'entity.too.large',
+    });
+
+  it('turns a body over the limit into a 413 the client can act on', () => {
+    const { status, body } = respond(tooLarge());
+    expect(status).toBe(413);
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('VALIDATION_FAILED');
+    expect(body.error.message).toMatch(/larger than this route accepts/);
+  });
+
+  it('honours only what the parser marks as safe to show, and only 4xx', () => {
+    const internal = Object.assign(new Error('a parser crashed'), {
+      status: 500,
+      expose: false,
+    });
+    expect(respond(internal).status).toBe(500);
+    expect(JSON.stringify(respond(internal).body)).not.toContain('parser crashed');
+
+    const hidden = Object.assign(new Error('something with a path in it'), {
+      status: 400,
+      expose: false,
+    });
+    // Not marked exposable: treated as unknown, said nothing about.
+    expect(respond(hidden).status).toBe(500);
   });
 });

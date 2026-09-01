@@ -359,6 +359,18 @@ async function main(): Promise<void> {
       'the wallet page offers the deposit method this deployment actually has',
       walletBody.slice(0, 300),
     );
+    await visit(page, '/verification', { url: '/verification', text: /Not started/i });
+    /**
+     * The page must say what is still needed, in words, before anything is
+     * uploaded. A verification screen that showed only a status would leave a
+     * person guessing which of five document kinds to start with.
+     */
+    const verificationBody = await page.locator('body').innerText();
+    ok(
+      /Still needed/i.test(verificationBody) && /identity document/i.test(verificationBody),
+      'the verification page names what is missing',
+      verificationBody.slice(0, 300),
+    );
     await visit(page, '/history', { url: '/history', text: /Trades/i });
     await visit(page, '/security', { url: '/security', text: /Two-factor/i });
     await visit(page, '/settings', { url: '/settings', text: /One-click/i });
@@ -387,6 +399,7 @@ async function main(): Promise<void> {
       url: '/admin/payments',
       text: /Awaiting confirmation/i,
     });
+    await visit(adminPage, '/admin/kyc', { url: '/admin/kyc', text: /Awaiting review/i });
     await visit(adminPage, '/admin/audit', { url: '/admin/audit' });
     await visit(adminPage, '/admin/roles', { url: '/admin/roles', text: /Administrator/i });
 

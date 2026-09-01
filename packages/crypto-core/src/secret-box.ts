@@ -47,6 +47,8 @@ export interface EncryptionKey {
 }
 
 const FORMAT = 'v1';
+/** First byte of the binary form. Bumped if the framing ever changes. */
+const BYTES_FORMAT = 0x01;
 const ALGORITHM = 'aes-256-gcm';
 /** 96 bits. The size GCM is specified for; anything else weakens it. */
 const IV_BYTES = 12;
@@ -175,6 +177,93 @@ export class SecretBox {
       // matters here is that it fails loudly rather than returning something.
       throw new SecretDecryptionError('authentication failed');
     }
+  }
+
+  /**
+   * Seals bytes rather than text, for things that are not text.
+   *
+   * ## Why a second form
+   *
+   * The string form base64-encodes its ciphertext and joins the parts with dots,
+   * which is right for a column that holds a TOTP secret and wrong for one that
+   * holds a scan of a passport: a third more storage on every document, and a
+   * ten-megabyte string being split and re-encoded on every read. Bytes go into
+   * a `bytea` as bytes.
+   *
+   * ## The stored form
+   *
+   * ```
+   * [0x01][keyId length][keyId][iv 12][tag 16][ciphertext]
+   * ```
+   *
+   * Self-describing for the same reason the text form is: a row says which key
+   * wrote it, so rotation is not a flag day.
+   *
+   * The context is bound as additional authenticated data exactly as for text,
+   * and matters at least as much here. A document copied from one person's row
+   * into another's would open under the key — the encryption did its job — and
+   * the reviewer would be shown the wrong person's passport as if it were theirs.
+   * With the binding, the copied bytes fail to open in their new row.
+   */
+  sealBytes(plaintext: Buffer, context: string): Buffer {
+    if (context.length === 0) throw new Error('a sealed secret must be bound to a context');
+    const keyId = Buffer.from(this.active.id, 'utf8');
+    if (keyId.length === 0 || keyId.length > 255) {
+      throw new Error('a key id must be between 1 and 255 bytes to be framed');
+    }
+    const iv = randomBytes(IV_BYTES);
+    const cipher = createCipheriv(ALGORITHM, this.active.key, iv);
+    cipher.setAAD(Buffer.from(context, 'utf8'));
+    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return Buffer.concat([Buffer.from([BYTES_FORMAT, keyId.length]), keyId, iv, tag, ciphertext]);
+  }
+
+  openBytes(sealed: Buffer, context: string): Buffer {
+    if (sealed.length < 2) throw new SecretDecryptionError('the stored value is malformed');
+    const format = sealed[0];
+    const keyIdLength = sealed[1];
+    if (format !== BYTES_FORMAT) {
+      throw new SecretDecryptionError(`unknown format ${String(format)}`);
+    }
+    if (keyIdLength === undefined || keyIdLength === 0) {
+      throw new SecretDecryptionError('the stored value is malformed');
+    }
+    const headerLength = 2 + keyIdLength + IV_BYTES + TAG_BYTES;
+    if (sealed.length < headerLength) {
+      throw new SecretDecryptionError('the stored value is malformed');
+    }
+
+    let offset = 2;
+    const keyId = sealed.subarray(offset, offset + keyIdLength).toString('utf8');
+    offset += keyIdLength;
+    const iv = sealed.subarray(offset, offset + IV_BYTES);
+    offset += IV_BYTES;
+    const tag = sealed.subarray(offset, offset + TAG_BYTES);
+    offset += TAG_BYTES;
+    const ciphertext = sealed.subarray(offset);
+
+    const key = this.byId.get(keyId);
+    if (key === undefined) {
+      throw new SecretDecryptionError(`no key with id ${keyId} is configured`);
+    }
+
+    try {
+      const decipher = createDecipheriv(ALGORITHM, key, iv);
+      decipher.setAAD(Buffer.from(context, 'utf8'));
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+    } catch {
+      throw new SecretDecryptionError('authentication failed');
+    }
+  }
+
+  /** Which key a sealed byte string was written under, without opening it. */
+  static keyIdOfBytes(sealed: Buffer): string | null {
+    const keyIdLength = sealed[1];
+    if (sealed[0] !== BYTES_FORMAT || keyIdLength === undefined || keyIdLength === 0) return null;
+    if (sealed.length < 2 + keyIdLength) return null;
+    return sealed.subarray(2, 2 + keyIdLength).toString('utf8');
   }
 
   /**

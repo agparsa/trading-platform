@@ -314,6 +314,26 @@ Adding a third-party processor means implementing `PaymentProvider` and
 registering it; nothing else should have to change. See
 [payments.md](./payments.md) for why no such adapter ships here.
 
+## Identity documents
+
+Manual review only; see [kyc.md](./kyc.md) for why no provider ships. Two
+settings, both optional:
+
+| Variable                      | Default |
+| ----------------------------- | ------- |
+| `KYC_VALID_FOR_DAYS`          | unset   |
+| `KYC_DOCUMENT_RETENTION_DAYS` | `1826`  |
+
+The retention value must be the same in the API's and the worker's environment;
+`.env.production` is read by both. Documents are sealed under
+`SECRET_ENCRYPTION_KEYS`, so retiring a key that wrote any of them makes those
+documents unreadable — rotate rather than retire, per
+[encryption-at-rest.md](./encryption-at-rest.md).
+
+Nginx accepts 11 MB on `/api/v1/kyc/documents` and 2 MB everywhere else. A
+deployment behind another proxy — cPanel's Apache, a CDN — needs that proxy's
+body limit raised for the same path, or uploads fail before reaching Nginx.
+
 ### Roles reconcile themselves at boot
 
 A release that adds a capability writes it into a constant, and the constant is

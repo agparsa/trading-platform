@@ -33,6 +33,12 @@ export const workerEnvSchema = z.object({
   SWAP_ACCRUAL_CRON: z.string().default('0 0 * * *'),
   RECONCILIATION_CRON: z.string().default('15 * * * *'),
   MAINTENANCE_CRON: z.string().default('30 * * * *'),
+  /**
+   * How long identity documents are kept after a record is decided. Must agree
+   * with the API's value: the API states the policy to the person, the worker
+   * applies it. Five years is the common regulatory floor.
+   */
+  KYC_DOCUMENT_RETENTION_DAYS: z.coerce.number().int().min(1).max(7300).default(1826),
 
   /**
    * Whether this worker sends push notifications at all.

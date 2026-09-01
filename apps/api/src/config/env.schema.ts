@@ -62,6 +62,23 @@ export const envSchema = z
     /** The largest single deposit this deployment will start. */
     PAYMENT_MAX_AMOUNT: z.string().default('100000'),
 
+    /**
+     * How long a verification stays good, in days. Unset means it never lapses.
+     *
+     * A number here is a policy the deployment has chosen — many jurisdictions
+     * ask for periodic re-verification — and the gate honours it to the minute
+     * rather than waiting for the sweep that writes EXPIRED.
+     */
+    KYC_VALID_FOR_DAYS: z.coerce.number().int().min(1).max(3650).optional(),
+    /**
+     * How long identity documents are kept after a record reaches a terminal
+     * state — verified, rejected or expired. After this the bytes are purged
+     * and the row stays: kind, hash, size and date remain as the record of what
+     * was seen. The default is five years, which is the common regulatory floor
+     * for identity records; a deployment under a different regime sets its own.
+     */
+    KYC_DOCUMENT_RETENTION_DAYS: z.coerce.number().int().min(1).max(7300).default(1826),
+
     REDIS_URL: z.string().startsWith('redis://'),
 
     // Long enough that a brute-force is hopeless; refuse to boot on a short one.

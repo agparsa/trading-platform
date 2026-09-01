@@ -866,6 +866,141 @@ const checks: Check[] = [
   },
   {
     /**
+     * An identity document, uploaded as bytes over HTTP.
+     *
+     * The service tests prove sealing and sniffing; this proves the one thing
+     * they cannot: that the raw-body parser is wired to the route, sized right,
+     * and that a real JPEG arrives at the service as the bytes that were sent.
+     * A middleware registered against the wrong path pattern fails here and
+     * nowhere else.
+     */
+    name: 'an identity document: upload it as bytes, be refused a fake, submit',
+    run: async () => {
+      const email = `smoke-kyc-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: registration(email, password, 'Smoke Kyc'),
+      });
+      const login = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (login.status === 429) {
+        throw new Error(
+          'the login limiter was already spent; this check must run before the rate-limit check',
+        );
+      }
+      if (!login.ok) {
+        console.log('      (registration is closed on this deployment; skipped)');
+        return;
+      }
+      const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+      const auth = { Authorization: `Bearer ${token}` };
+
+      const before = await fetch(`${BASE}/api/v1/kyc`, { headers: auth });
+      assert(before.ok, `GET /kyc returned ${before.status}`);
+      const initial = ((await before.json()) as { data: { status: string; missing: string[] } })
+        .data;
+      assert(initial.status === 'NOT_STARTED', `a new person is ${initial.status}`);
+      assert(initial.missing.length === 2, 'a new person should be missing two things');
+
+      // A JPEG by its bytes, 64 KB of it.
+      const jpeg = Buffer.alloc(64 * 1024, 0x41);
+      jpeg.set([0xff, 0xd8, 0xff, 0xe0]);
+      const uploaded = await fetch(`${BASE}/api/v1/kyc/documents/passport`, {
+        method: 'PUT',
+        headers: { ...auth, 'Content-Type': 'image/jpeg', 'X-Filename': 'passport.jpg' },
+        body: jpeg,
+      });
+      assert(uploaded.ok, `uploading a document returned ${uploaded.status}`);
+      const document = (
+        (await uploaded.json()) as {
+          data: { contentType: string; sizeBytes: number; filename: string | null };
+        }
+      ).data;
+      assert(document.contentType === 'image/jpeg', `stored as ${document.contentType}`);
+      assert(
+        document.sizeBytes === jpeg.length,
+        `stored ${document.sizeBytes} of ${jpeg.length} bytes`,
+      );
+      assert(document.filename === 'passport.jpg', `filename came back as ${document.filename}`);
+
+      // HTML wearing a JPEG's content type must be refused by its bytes.
+      const fake = Buffer.from('<html><script>alert(1)</script></html>'.padEnd(256, ' '));
+      const refused = await fetch(`${BASE}/api/v1/kyc/documents/selfie`, {
+        method: 'PUT',
+        headers: { ...auth, 'Content-Type': 'image/jpeg' },
+        body: fake,
+      });
+      assert(refused.status === 400, `a fake document was answered ${refused.status}`);
+
+      // A JSON body to the upload route must not be swallowed as bytes.
+      const json = await fetch(`${BASE}/api/v1/kyc/documents/selfie`, {
+        method: 'PUT',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hello: 'world' }),
+      });
+      assert(json.status === 400, `a JSON body to the upload route was answered ${json.status}`);
+
+      // Over the ceiling: refused by the parser before the service sees it.
+      const huge = Buffer.alloc(10 * 1024 * 1024 + 16, 0x41);
+      huge.set([0xff, 0xd8, 0xff, 0xe0]);
+      const tooBig = await fetch(`${BASE}/api/v1/kyc/documents/selfie`, {
+        method: 'PUT',
+        headers: { ...auth, 'Content-Type': 'image/jpeg' },
+        body: huge,
+      });
+      assert(
+        tooBig.status === 413 || tooBig.status === 400,
+        `an oversized document was answered ${tooBig.status}`,
+      );
+
+      // Submitting without the selfie is refused, and says what is missing.
+      const early = await fetch(`${BASE}/api/v1/kyc/submit`, {
+        method: 'POST',
+        headers: {
+          ...auth,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `smoke-kyc-${Date.now()}`,
+        },
+        body: '{}',
+      });
+      assert(early.status === 400, `submitting an incomplete set was answered ${early.status}`);
+
+      const png = Buffer.alloc(32 * 1024, 0x42);
+      png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      const selfie = await fetch(`${BASE}/api/v1/kyc/documents/selfie`, {
+        method: 'PUT',
+        headers: { ...auth, 'Content-Type': 'image/png' },
+        body: png,
+      });
+      assert(selfie.ok, `uploading a selfie returned ${selfie.status}`);
+
+      const submitted = await fetch(`${BASE}/api/v1/kyc/submit`, {
+        method: 'POST',
+        headers: {
+          ...auth,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `smoke-kyc2-${Date.now()}`,
+        },
+        body: '{}',
+      });
+      assert(submitted.ok, `submitting returned ${submitted.status}`);
+      const after = ((await submitted.json()) as { data: { status: string; verified: boolean } })
+        .data;
+      assert(after.status === 'PENDING', `after submitting the record is ${after.status}`);
+      assert(after.verified === false, 'submitting must not verify anybody');
+
+      // The person cannot decide their own verification.
+      const mine = await fetch(`${BASE}/api/v1/admin/kyc`, { headers: auth });
+      assert(mine.status === 403, `a trader listed the review queue (${mine.status})`);
+    },
+  },
+  {
+    /**
      * Invitations, end to end over HTTP.
      *
      * The service has integration tests; this checks the parts they cannot —
