@@ -78,7 +78,7 @@ export function AccountsPanel() {
   );
 }
 
-function AccountRow({
+export function AccountRow({
   account,
   adjusting,
   onAdjustToggle,

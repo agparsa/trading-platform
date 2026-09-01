@@ -256,6 +256,64 @@ suite('roles and grants as data', () => {
     expect(await roles.permissionsFor(UserRole.SUPPORT)).toEqual(new Set());
   });
 
+  describe('restoring a built-in role', () => {
+    it('puts back exactly what this build ships', async () => {
+      await roles.setPermissions(UserRole.SUPPORT, [], ADMIN);
+      await roles.resetToDefaults(UserRole.SUPPORT, ADMIN);
+      expect([...(await roles.permissionsFor(UserRole.SUPPORT))].sort()).toEqual(
+        [...permissionsFor(UserRole.SUPPORT)].sort(),
+      );
+    });
+
+    /**
+     * The reason this is not a button inside the editor. `USER` carries
+     * `orders.create`; `ADMIN` deliberately does not, so the escalation rule
+     * would make the default `USER` role permanently unrestorable by anyone.
+     */
+    it('restores a capability no administrator could grant by hand', async () => {
+      await roles.setPermissions(UserRole.USER, [], ADMIN);
+      await expect(
+        roles.setPermissions(UserRole.USER, [Permission.ORDERS_CREATE], ADMIN),
+      ).rejects.toMatchObject({ code: TradingErrorCode.FORBIDDEN });
+
+      await roles.resetToDefaults(UserRole.USER, ADMIN);
+      expect(await roles.permissionsFor(UserRole.USER)).toContain(Permission.ORDERS_CREATE);
+    });
+
+    it('records the reset with both halves', async () => {
+      await roles.setPermissions(UserRole.SUPPORT, [], ADMIN);
+      await roles.resetToDefaults(UserRole.SUPPORT, ADMIN);
+      const entry = await prisma.auditLog.findFirst({
+        where: { action: 'role.permissions.reset' },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect((entry?.before as { permissions: string[] } | null)?.permissions).toEqual([]);
+      expect((entry?.after as { permissions: string[] } | null)?.permissions).toContain(
+        Permission.ACCOUNTS_READ_ANY,
+      );
+    });
+
+    it('refuses a role this build does not ship', async () => {
+      await expect(roles.resetToDefaults('WIZARD', ADMIN)).rejects.toMatchObject({
+        code: TradingErrorCode.VALIDATION_FAILED,
+      });
+    });
+
+    /**
+     * A role somebody created has no defaults. Emptying it and calling that
+     * "restored" would be a way to disable a role while appearing to fix one.
+     */
+    it('refuses a role that was created here rather than shipped', async () => {
+      const tenantId = (await prisma.tenant.findFirst())?.id ?? '';
+      await prisma.role.create({
+        data: { tenantId, key: 'DESK_HEAD', name: 'Desk head', isSystem: false },
+      });
+      await expect(roles.resetToDefaults('DESK_HEAD', ADMIN)).rejects.toMatchObject({
+        code: TradingErrorCode.VALIDATION_FAILED,
+      });
+    });
+  });
+
   it('lists every role with what it carries', async () => {
     const listed = await roles.list();
     expect(listed.map((role) => role.key).sort()).toEqual([...Object.values(UserRole)].sort());

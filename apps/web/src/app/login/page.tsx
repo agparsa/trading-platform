@@ -32,8 +32,21 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Navigation belongs in an effect: redirecting during render is a side effect
-  // React is allowed to run twice.
+  /**
+   * The only place this page navigates away.
+   *
+   * Navigation belongs in an effect for the obvious reason — redirecting during
+   * render is a side effect React is allowed to run twice — and it is the *only*
+   * one for a less obvious one. `submit` used to call `router.replace('/')` too,
+   * as soon as the sign-in promise resolved. That resolves when the profile has
+   * been fetched, not when React has committed the state, so the destination
+   * could mount while the session context still read `user: null` — and the
+   * session gate there would bounce straight back to this page. A trader who had
+   * just signed in successfully landed back on the login form.
+   *
+   * Waiting for `user` to actually be set removes the race rather than widening
+   * the window. It reproduced roughly one sign-in in six.
+   */
   useEffect(() => {
     if (ready && user !== null) router.replace('/');
   }, [ready, user, router]);
@@ -55,7 +68,7 @@ export default function LoginPage() {
       } else {
         await register(email.trim(), password, displayName.trim());
       }
-      router.replace('/');
+      // No navigation here — see the effect above.
     } catch (caught) {
       setError(
         caught instanceof DomainError

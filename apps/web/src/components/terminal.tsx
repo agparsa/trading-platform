@@ -197,6 +197,25 @@ export function Terminal() {
           <TradingSettings preferences={preferences} onChange={updatePreferences} />
           <SecuritySettings />
           {/*
+            The same two panels have pages of their own now, at /settings and
+            /security. They stay here because both answer questions a trader asks
+            *while* watching a position — arming one-click, or ending a session
+            they do not recognise — and navigating away from open risk to do
+            either is the wrong shape for the question.
+          */}
+          <Link
+            href="/account"
+            className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+          >
+            Account
+          </Link>
+          <Link
+            href="/history"
+            className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+          >
+            History
+          </Link>
+          {/*
             Shown to roles that have something to do there. It is a shortcut,
             not a gate — the server decides on every request, and a trader who
             types the URL sees a console that refuses each panel in turn.

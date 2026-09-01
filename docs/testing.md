@@ -12,6 +12,7 @@ pnpm verify            # lint → typecheck → test → build
 pnpm check:schema      # no floating-point columns exist
 pnpm smoke             # boots the built API and drives a full trade round trip
 pnpm smoke:ws          # boots it again and drives a real Socket.IO client
+pnpm smoke:web         # boots the API and the web app and opens every screen
 pnpm pentest           # boots it again and attacks it
 pnpm soak              # boots it again and leaves it running
 pnpm restore:rehearse  # dumps it, restores it elsewhere, compares the two

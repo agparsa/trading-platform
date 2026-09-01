@@ -240,6 +240,95 @@ export class RolesService implements OnModuleInit {
   }
 
   /**
+   * Puts a built-in role back to the set this build ships with.
+   *
+   * ## Why this is exempt from the escalation rule
+   *
+   * `setPermissions` refuses to grant a capability the editor does not hold, and
+   * that rule would make this operation impossible where it is most needed: the
+   * default `USER` role carries `orders.create`, which `ADMIN` deliberately does
+   * not, so no administrator could ever restore it. The rule exists because an
+   * editor chooses the set; here the set comes from the build. There is nothing
+   * to escalate *to* — the request names a role, not a capability.
+   *
+   * The incompatibility rule still applies, and a shipped set that violated it
+   * would fail here as loudly as anywhere else. `permissions.test.ts` asserts no
+   * built-in role does.
+   *
+   * Only built-in roles. A role somebody created has no defaults to go back to,
+   * and inventing an empty set and calling it "restored" would be a way to
+   * silently disable a role while appearing to fix one.
+   */
+  async resetToDefaults(
+    roleKey: string,
+    editor: { readonly id: string; readonly role: string },
+  ): Promise<RoleView> {
+    const shipped = seedRoles().find((role) => role.key === roleKey);
+    if (shipped === undefined) {
+      throw new DomainError(
+        TradingErrorCode.VALIDATION_FAILED,
+        `${roleKey} is not a built-in role, so it has no defaults to restore`,
+      );
+    }
+
+    const conflicts = conflictsIn(shipped.permissions);
+    if (conflicts.length > 0) {
+      // Unreachable while the unit test holds; loud rather than silent if it stops.
+      throw new DomainError(
+        TradingErrorCode.VALIDATION_FAILED,
+        `The built-in grants for ${roleKey} are themselves incompatible: ${conflicts
+          .map(([a, b]) => `${a}+${b}`)
+          .join(', ')}`,
+      );
+    }
+
+    const tenantId = requireTenantId();
+    const role = await this.prisma.role.findFirst({
+      where: { key: roleKey },
+      include: { permissions: { select: { permission: true } } },
+    });
+    if (role === null) throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'No such role');
+    if (!role.isSystem) {
+      throw new DomainError(
+        TradingErrorCode.VALIDATION_FAILED,
+        `${roleKey} was created here rather than shipped, so it has no defaults to restore`,
+      );
+    }
+
+    const before = role.permissions.map((grant) => grant.permission).sort();
+    const permissions = [...shipped.permissions].sort();
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.rolePermission.deleteMany({ where: { roleId: role.id } });
+      await tx.rolePermission.createMany({
+        data: permissions.map((permission) => ({ tenantId, roleId: role.id, permission })),
+      });
+      await tx.role.update({ where: { id: role.id }, data: { updatedAt: new Date() } });
+      await this.audit.record(
+        {
+          actorId: editor.id,
+          actorType: 'ADMIN',
+          action: 'role.permissions.reset',
+          resourceType: 'Role',
+          resourceId: role.id,
+          before: { key: roleKey, permissions: before },
+          after: { key: roleKey, permissions: [...permissions] },
+        },
+        tx,
+      );
+    });
+
+    await this.invalidate(tenantId);
+    return {
+      key: role.key,
+      name: role.name,
+      description: role.description,
+      isSystem: role.isSystem,
+      permissions,
+    };
+  }
+
+  /**
    * Seeds a tenant's roles from the code constants.
    *
    * Called when a tenant is created, and idempotent so that calling it on an

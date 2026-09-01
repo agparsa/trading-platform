@@ -21,12 +21,12 @@ pnpm lint             ok
 pnpm format:check     ok
 pnpm typecheck        ok
 pnpm inventory --check ok
-pnpm test             119 files, 1504 tests, 0 failures
+pnpm test             119 files, 1516 tests, 0 failures
 pnpm build            ok
 ```
 
 4 applications (`api`, `web`, `worker`, `mobile`), 13 workspace packages, 39
-Prisma models, 97 API routes, ~72,500 lines of TypeScript. Live at
+Prisma models, 99 API routes, ~75,800 lines of TypeScript. Live at
 https://devopss.ir.
 
 The route count was 95 here and 84 in `docs/API_INVENTORY.md`'s hand-written
@@ -56,21 +56,21 @@ Complete in the sense the prompt defines — UI → API → business logic → d
 | 27       | Trading event model        | implemented as specified                                                                                                                                                           |
 | 28       | Device / push tokens       | `Device` model, AES-256-GCM sealed tokens bound to their row, registration, revocation, provider-rejection handling                                                                |
 | 8        | RBAC                       | granular `resource.verb` capabilities in code, **grants as rows per tenant**, an editor cannot grant what they do not hold, and no role may credit an account and trade the credit |
+| 43       | Web application            | 19 routes, every one opened in a real browser by `pnpm smoke:web` — which found a sign-in race, a refusal that looked like a hang, and an orphaned permission decorator            |
 | 33       | Audit log                  | append-only enforced by a **database trigger** raising `42501` — an admin cannot edit it                                                                                           |
 | 37       | Observability              | Prometheus metrics, `/health`, `/ready`, request-id correlation, structured logging                                                                                                |
 | 39       | Security                   | 31-probe pentest script, AES-256-GCM at rest, no secrets in git history                                                                                                            |
-| 40       | Testing                    | 1504 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, and row-level security proved by breaking it                             |
+| 40       | Testing                    | 1516 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, and row-level security proved by breaking it                             |
 | 41       | Security testing           | cross-tenant access, privilege escalation, token replay, rate limiting, audit tampering, invitation minting                                                                        |
 | 44       | CI/CD                      | install → prisma → build → lint → format → typecheck → migrate → test → schema check → seed → build → smoke API → smoke WebSocket                                                  |
 
 ## Partial
 
-| §   | Area               | What exists                                                                                    | What is missing                                                                                            |
-| --- | ------------------ | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| 29  | Admin panel        | 9 panels — overview, people, accounts, risk, instruments, reconciliation, audit and two others | ~17 sections asked for. No tenants, KYC, finance, wallets, roles, tokens, API management, security centre. |
-| 35  | Finance            | balance ledger, admin adjustments, database transactions, decimal arithmetic                   | no wallet, no real deposit, no withdrawal, no payment provider                                             |
-| 36  | Notification admin | `push_deliveries` records every attempt with its outcome                                       | no admin view over them                                                                                    |
-| 43  | Web UI             | 4 pages: terminal, login, admin, status                                                        | Phase 3 restructures it                                                                                    |
+| §   | Area               | What exists                                                                                                                            | What is missing                                                                                     |
+| --- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 29  | Admin panel        | 10 sections at their own addresses — overview, people (+ detail), accounts (+ detail), instruments, risk, reconciliation, roles, audit | ~17 sections asked for. No tenants, KYC, finance, wallets, tokens, API management, security centre. |
+| 35  | Finance            | balance ledger, admin adjustments, database transactions, decimal arithmetic                                                           | no wallet, no real deposit, no withdrawal, no payment provider                                      |
+| 36  | Notification admin | `push_deliveries` records every attempt with its outcome                                                                               | no admin view over them                                                                             |
 
 ## Does not exist — zero code
 
@@ -116,6 +116,9 @@ Present: architecture, api, database, security, deployment, testing, websocket,
 notifications, sounds, mobile, charting, risk, trading-engine, permissions
 (RBAC), sessions and two-factor (auth), plus the 8 audit documents.
 
+Added this phase: `web-routes.md`, the address of every screen and why the
+terminal is not inside the shell around the others.
+
 Missing: `TOKEN_MANAGEMENT` and `AI_CONTEXT` — because the features they would
 describe do not exist, and §45 says do not document features that do not exist.
 
@@ -126,7 +129,7 @@ describe do not exist, and §45 says do not document features that do not exist.
 | 0 — close what is open                   | done                                       |
 | 1 — multi-tenancy                        | done                                       |
 | 2 — roles and permissions as data        | done; grants are rows, per tenant          |
-| 3 — web restructure                      | not started                                |
+| 3 — web restructure                      | done; 19 routes, all opened in a browser   |
 | 4–7 — wallet, payments, KYC, withdrawals | not started                                |
 | 8 — notification platform                | done; admin statistics view remains        |
 | 9 — API and token management             | not started                                |
@@ -137,7 +140,7 @@ describe do not exist, and §45 says do not document features that do not exist.
 | 14 — AI context layer                    | not started                                |
 | 15 — real market data                    | not started, plus a commercial dependency  |
 
-**6 of 16.**
+**7 of 16.**
 
 ## Tenant isolation now bites — once one line is set in production
 

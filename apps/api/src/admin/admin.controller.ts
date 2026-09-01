@@ -235,6 +235,13 @@ export class AdminController {
     });
   }
 
+  @RequirePermissions(Permission.ACCOUNTS_READ_ANY)
+  @Get('accounts/:id')
+  @ApiOperation({ summary: 'One account, by id' })
+  account(@Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.accountDetail(id);
+  }
+
   @RequirePermissions(Permission.ACCOUNTS_MANAGE)
   @Post('accounts/:id/status')
   @ApiOperation({ summary: 'Freeze, restrict, reinstate or close an account' })

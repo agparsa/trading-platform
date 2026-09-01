@@ -1,34 +1,16 @@
-'use client';
-
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Terminal } from '@/components/terminal';
-import { useSession } from '@/lib/session';
+import { redirect } from 'next/navigation';
 
 /**
- * The terminal, gated on a session.
+ * The root moved to `/terminal`.
  *
- * While the session is being restored the page shows nothing rather than an
- * empty terminal: a terminal with blank numbers is indistinguishable from one
- * whose feed has died, and that is not a distinction to blur.
+ * A redirect rather than a re-export, because the point of this phase is that
+ * every screen has an address an operator can be sent. Two URLs rendering the
+ * same terminal would leave "which one do I paste into the incident channel?"
+ * an open question, and the answer would drift.
+ *
+ * It stays because bookmarks, the installed PWA and every link written before
+ * today all point here.
  */
-export default function TerminalPage() {
-  const router = useRouter();
-  const { ready, user } = useSession();
-
-  useEffect(() => {
-    if (ready && user === null) router.replace('/login');
-  }, [ready, user, router]);
-
-  if (!ready || user === null) {
-    return (
-      <main className="flex min-h-screen items-center justify-center">
-        <p className="text-xs text-terminal-muted">
-          {ready ? 'Redirecting to sign in…' : 'Restoring session…'}
-        </p>
-      </main>
-    );
-  }
-
-  return <Terminal />;
+export default function Root() {
+  redirect('/terminal');
 }

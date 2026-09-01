@@ -273,6 +273,53 @@ export class AdminService {
   }
 
   /**
+   * One account, by id.
+   *
+   * The list is a search; this is a link. An operator working an incident is
+   * given an account number in a message and needs to arrive at that account,
+   * not at a search box they then have to retype it into — which is the whole
+   * argument for the route existing.
+   *
+   * `RESOURCE_NOT_FOUND` rather than a forbidden for an account in another
+   * tenant, and the tenant scope makes that automatic: the row simply is not
+   * there. A forbidden would confirm the account exists, which tells an
+   * attacker their guessed id was right.
+   */
+  async accountDetail(id: string): Promise<AccountSummaryRow> {
+    const account = await this.prisma.account.findFirst({
+      where: { id },
+      select: {
+        id: true,
+        number: true,
+        type: true,
+        status: true,
+        currency: true,
+        balance: true,
+        leverage: true,
+        createdAt: true,
+        user: { select: { id: true, email: true } },
+        _count: { select: { positions: true } },
+      },
+    });
+    if (account === null) {
+      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'No such account');
+    }
+    return {
+      id: account.id,
+      number: account.number,
+      type: account.type,
+      status: account.status,
+      currency: account.currency,
+      balance: account.balance.toString(),
+      leverage: account.leverage,
+      createdAt: account.createdAt.toISOString(),
+      userId: account.user.id,
+      email: account.user.email,
+      positions: account._count.positions,
+    };
+  }
+
+  /**
    * Change what an account may do.
    *
    * `CLOSE_ONLY` exists so that the answer to "this account is in trouble" is

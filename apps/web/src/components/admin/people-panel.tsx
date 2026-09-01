@@ -27,9 +27,24 @@ import { ErrorLine, Head, Loading, ReasonedAction, SearchBox, StatusPill, Table 
  *  - **unlock** — clear a lockout from failed attempts. What a forgotten
  *    password needs, and not a punishment to be lifted.
  */
-export function PeoplePanel() {
+export function PeoplePanel({
+  selectedId = null,
+  onSelect,
+}: {
+  /**
+   * Which person is open, when the URL is the one deciding.
+   *
+   * `/admin/people/:id` passes it and handles `onSelect` by navigating. Left
+   * undefined, the panel keeps its own state — which is what it did before this
+   * became a route, and what a future embedding of it would want.
+   */
+  selectedId?: string | null;
+  onSelect?: (userId: string | null) => void;
+} = {}) {
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<string | null>(null);
+  const [ownSelection, setOwnSelection] = useState<string | null>(null);
+  const selected = onSelect === undefined ? ownSelection : selectedId;
+  const select = onSelect ?? setOwnSelection;
   const users = useAdminUsers(search);
   const suspend = useSuspendUser();
   const signOut = useForceSignOut();
@@ -77,7 +92,7 @@ export function PeoplePanel() {
                   <button
                     type="button"
                     className="text-left hover:underline"
-                    onClick={() => setSelected(selected === user.id ? null : user.id)}
+                    onClick={() => select(selected === user.id ? null : user.id)}
                   >
                     {user.email}
                   </button>
@@ -147,7 +162,7 @@ export function PeoplePanel() {
 }
 
 /** One person's accounts and live sessions. */
-function UserDetail({ userId }: { userId: string }) {
+export function UserDetail({ userId }: { userId: string }) {
   const detail = useAdminUser(userId);
 
   if (detail.isLoading) return <Loading />;

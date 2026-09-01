@@ -7,6 +7,32 @@ import {
   TradingErrorCode,
 } from '@tp/shared-types';
 
+/**
+ * Is asking again likely to give a different answer?
+ *
+ * Every failure this client raises is a `DomainError` carrying a code, so the
+ * question is answered from the code rather than from an HTTP status — which is
+ * the same rule the rest of the codebase follows.
+ *
+ * Only two codes mean "the request never reached a decision": the transport
+ * failed, or the request timed out — both of which this client reports as
+ * `SERVICE_UNAVAILABLE` — and `INTERNAL_ERROR`, which is the server falling over
+ * rather than refusing. Everything else is the server having understood and
+ * answered, and a second identical question gets the same answer.
+ *
+ * This exists because it was got wrong: the terminal retried every failed read
+ * once, so a support user who opened an administrative page watched "Loading…"
+ * while the browser was refused a second time, and only then saw why. Found by
+ * opening the page — every unit test passed straight through it.
+ */
+export function isWorthRetrying(error: unknown): boolean {
+  if (!(error instanceof DomainError)) return true;
+  return (
+    error.code === TradingErrorCode.SERVICE_UNAVAILABLE ||
+    error.code === TradingErrorCode.INTERNAL_ERROR
+  );
+}
+
 export interface ApiClientOptions {
   readonly baseUrl: string;
   /** Returns the current access token, or null when signed out. */
@@ -76,6 +102,16 @@ export class ApiClient {
     options: RequestOptions & { idempotencyKey: string },
   ): Promise<T> {
     return this.request<T>('PATCH', path, body, options);
+  }
+
+  /**
+   * PUT replaces a whole resource, so it is idempotent by construction: sending
+   * the same set twice leaves the same set. It therefore takes no idempotency
+   * key, unlike POST and PATCH, where a retry could otherwise create or apply
+   * something twice.
+   */
+  put<T>(path: string, body: unknown, options?: RequestOptions): Promise<T> {
+    return this.request<T>('PUT', path, body, options);
   }
 
   delete<T>(path: string, options: RequestOptions & { idempotencyKey: string }): Promise<T> {

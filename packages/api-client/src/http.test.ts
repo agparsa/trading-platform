@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DomainError, IDEMPOTENCY_HEADER, TradingErrorCode } from '@tp/shared-types';
-import { ApiClient } from './http';
+import { ApiClient, isWorthRetrying } from './http';
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -128,5 +128,35 @@ describe('ApiClient', () => {
     expect(fetchImpl.mock.calls[0]?.[0]).toBe(
       'https://api.test/api/v1/trades?limit=50&symbol=XAUUSD',
     );
+  });
+});
+
+describe('isWorthRetrying', () => {
+  it('retries a transport failure, because the request never reached a decision', () => {
+    expect(
+      isWorthRetrying(
+        new DomainError(TradingErrorCode.SERVICE_UNAVAILABLE, 'Network request failed'),
+      ),
+    ).toBe(true);
+    expect(isWorthRetrying(new DomainError(TradingErrorCode.INTERNAL_ERROR, 'boom'))).toBe(true);
+  });
+
+  /**
+   * The case this was written for. A refusal retried is a refusal the user waits
+   * longer to be told about, and a second request the server has to refuse.
+   */
+  it.each([
+    TradingErrorCode.FORBIDDEN,
+    TradingErrorCode.UNAUTHENTICATED,
+    TradingErrorCode.RESOURCE_NOT_FOUND,
+    TradingErrorCode.VALIDATION_FAILED,
+    TradingErrorCode.INSUFFICIENT_MARGIN,
+  ])('does not retry %s', (code) => {
+    expect(isWorthRetrying(new DomainError(code, 'no'))).toBe(false);
+  });
+
+  it('retries something that is not a domain error at all', () => {
+    // Nothing in this client produces one, so it is a bug rather than an answer.
+    expect(isWorthRetrying(new Error('unexpected'))).toBe(true);
   });
 });

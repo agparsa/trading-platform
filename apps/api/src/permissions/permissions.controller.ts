@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Permission } from '@tp/shared-types';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -58,6 +58,25 @@ export class PermissionsController {
    * The refusals live in `RolesService` so no other caller can reach the write
    * without them.
    */
+  /**
+   * Puts a built-in role back to the set this build ships with.
+   *
+   * Separate from the editor rather than a checkbox inside it, because it is a
+   * different act: the editor chooses a set and is bounded by what the editor
+   * holds, while this names a role and restores a constant. See
+   * `RolesService.resetToDefaults` for why that distinction lets this restore
+   * `USER`'s `orders.create`, which no administrator could grant by hand.
+   */
+  @Post('roles/:key/reset')
+  @RequirePermissions(Permission.ROLES_MANAGE)
+  @ApiOperation({ summary: "Restore a built-in role's shipped capabilities" })
+  async reset(
+    @Param('key') key: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<RoleView> {
+    return this.roles.resetToDefaults(key, { id: user.id, role: user.role });
+  }
+
   @Put('roles/:key')
   @RequirePermissions(Permission.ROLES_MANAGE)
   @ApiOperation({ summary: 'Replace the capabilities a role carries' })

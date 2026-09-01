@@ -16,12 +16,112 @@ import { Button, inputClass } from './primitives';
 export function TradingSettings({
   preferences,
   onChange,
+  presentation = 'popover',
 }: {
   preferences: TradingPreferences;
   onChange: (patch: Partial<TradingPreferences>) => void;
+  /** `page` drops the trigger button and renders the panel inline. */
+  presentation?: 'popover' | 'page';
 }) {
   const [open, setOpen] = useState(false);
   const armed = preferences.oneClick && !preferences.confirm;
+
+  /**
+   * The panel without the popover around it, so `/settings` can render it as a
+   * page while the terminal keeps the armed badge in its header.
+   *
+   * The badge is why the popover form stays. A terminal that will send an order
+   * on a single click must say so on screen at all times, and a setting that
+   * lives only on another page is a setting the trader last saw yesterday.
+   */
+  const body = (
+    <>
+      <p className="mb-2 text-[10px] uppercase tracking-wider text-terminal-muted">
+        One-click trading
+      </p>
+
+      <Toggle
+        label="Send on one click"
+        checked={preferences.oneClick}
+        onChange={(value) => onChange({ oneClick: value })}
+      />
+      <Toggle
+        label="Ask before sending"
+        checked={preferences.confirm}
+        onChange={(value) => onChange({ confirm: value })}
+        hint="Closing every position always asks, whatever this says."
+      />
+
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <Field label="Volume">
+          <input
+            className={inputClass}
+            value={preferences.defaultVolume}
+            onChange={(event) => onChange({ defaultVolume: event.target.value })}
+            inputMode="decimal"
+          />
+        </Field>
+        <Field label="Default SL">
+          <input
+            className={inputClass}
+            value={preferences.defaultStopLoss}
+            onChange={(event) => onChange({ defaultStopLoss: event.target.value })}
+            inputMode="decimal"
+            placeholder="—"
+          />
+        </Field>
+        <Field label="Default TP">
+          <input
+            className={inputClass}
+            value={preferences.defaultTakeProfit}
+            onChange={(event) => onChange({ defaultTakeProfit: event.target.value })}
+            inputMode="decimal"
+            placeholder="—"
+          />
+        </Field>
+      </div>
+
+      <p className="mb-2 mt-4 text-[10px] uppercase tracking-wider text-terminal-muted">
+        Keyboard trading
+      </p>
+      <Toggle
+        label="Enable shortcuts"
+        checked={preferences.keyboard}
+        onChange={(value) => onChange({ keyboard: value })}
+        hint="Never fires while you are typing in a field."
+      />
+
+      <div className="mt-2 grid grid-cols-4 gap-2">
+        {(
+          [
+            ['buy', 'Buy'],
+            ['sell', 'Sell'],
+            ['close', 'Close'],
+            ['closeAll', 'Close all'],
+          ] as const
+        ).map(([key, label]) => (
+          <Field key={key} label={label}>
+            <input
+              className={cn(inputClass, 'text-center')}
+              value={preferences.keys[key]}
+              maxLength={1}
+              onChange={(event) =>
+                onChange({ keys: { ...preferences.keys, [key]: event.target.value } })
+              }
+            />
+          </Field>
+        ))}
+      </div>
+
+      <div className="mt-3 flex justify-end">
+        <Button variant="ghost" onClick={() => setOpen(false)}>
+          Done
+        </Button>
+      </div>
+    </>
+  );
+
+  if (presentation === 'page') return body;
 
   return (
     <div className="relative">
@@ -45,88 +145,7 @@ export function TradingSettings({
 
       {!open ? null : (
         <div className="absolute right-0 top-8 z-30 w-72 rounded border border-terminal-border bg-terminal-surface p-3 shadow-xl">
-          <p className="mb-2 text-[10px] uppercase tracking-wider text-terminal-muted">
-            One-click trading
-          </p>
-
-          <Toggle
-            label="Send on one click"
-            checked={preferences.oneClick}
-            onChange={(value) => onChange({ oneClick: value })}
-          />
-          <Toggle
-            label="Ask before sending"
-            checked={preferences.confirm}
-            onChange={(value) => onChange({ confirm: value })}
-            hint="Closing every position always asks, whatever this says."
-          />
-
-          <div className="mt-2 grid grid-cols-3 gap-2">
-            <Field label="Volume">
-              <input
-                className={inputClass}
-                value={preferences.defaultVolume}
-                onChange={(event) => onChange({ defaultVolume: event.target.value })}
-                inputMode="decimal"
-              />
-            </Field>
-            <Field label="Default SL">
-              <input
-                className={inputClass}
-                value={preferences.defaultStopLoss}
-                onChange={(event) => onChange({ defaultStopLoss: event.target.value })}
-                inputMode="decimal"
-                placeholder="—"
-              />
-            </Field>
-            <Field label="Default TP">
-              <input
-                className={inputClass}
-                value={preferences.defaultTakeProfit}
-                onChange={(event) => onChange({ defaultTakeProfit: event.target.value })}
-                inputMode="decimal"
-                placeholder="—"
-              />
-            </Field>
-          </div>
-
-          <p className="mb-2 mt-4 text-[10px] uppercase tracking-wider text-terminal-muted">
-            Keyboard trading
-          </p>
-          <Toggle
-            label="Enable shortcuts"
-            checked={preferences.keyboard}
-            onChange={(value) => onChange({ keyboard: value })}
-            hint="Never fires while you are typing in a field."
-          />
-
-          <div className="mt-2 grid grid-cols-4 gap-2">
-            {(
-              [
-                ['buy', 'Buy'],
-                ['sell', 'Sell'],
-                ['close', 'Close'],
-                ['closeAll', 'Close all'],
-              ] as const
-            ).map(([key, label]) => (
-              <Field key={key} label={label}>
-                <input
-                  className={cn(inputClass, 'text-center')}
-                  value={preferences.keys[key]}
-                  maxLength={1}
-                  onChange={(event) =>
-                    onChange({ keys: { ...preferences.keys, [key]: event.target.value } })
-                  }
-                />
-              </Field>
-            ))}
-          </div>
-
-          <div className="mt-3 flex justify-end">
-            <Button variant="ghost" onClick={() => setOpen(false)}>
-              Done
-            </Button>
-          </div>
+          {body}
         </div>
       )}
     </div>

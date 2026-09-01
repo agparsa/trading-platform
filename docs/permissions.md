@@ -127,6 +127,21 @@ something is not starting it — the same distinction that lets `ADMIN` keep the
 The escape is the one separation of duties always has: two roles, two logins, or
 a master-account link that names the account and leaves a record.
 
+### Putting a role back
+
+`POST /permissions/roles/:key/reset` restores a built-in role to the set this
+build ships with, and is deliberately **exempt from the escalation rule**.
+
+That looks like a hole and is the opposite. The rule exists because the editor
+chooses the set; here the request names a role and the set comes from the build,
+so there is nothing to escalate _to_. Without the exemption the default `USER`
+role would be permanently unrestorable by anyone, because it carries
+`orders.create` and no administrator holds that.
+
+Only roles this build ships. A role somebody created here has no defaults, and
+emptying it and calling that "restored" would be a way to disable a role while
+appearing to fix one. The incompatibility rule still applies.
+
 ### What is recorded
 
 Every change writes an audit row **inside the same transaction** as the grant,

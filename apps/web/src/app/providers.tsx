@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { isWorthRetrying } from '@tp/api-client';
 import { SessionProvider } from '@/lib/session';
 
 /**
@@ -24,7 +25,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
             refetchOnWindowFocus: true,
             refetchOnReconnect: true,
             staleTime: 10_000,
-            retry: 1,
+            /**
+             * A refusal is an answer. Retrying it is not.
+             *
+             * `retry: 1` retried everything, including a refusal — so a support
+             * user who opened an administrative page watched "Loading…" while
+             * the browser asked again and was refused again, and only then saw
+             * why. See `isWorthRetrying`, which draws the line, and which exists
+             * because opening the page is what found this.
+             */
+            retry: (failureCount, error) => failureCount < 1 && isWorthRetrying(error),
           },
           mutations: {
             // A failed order is a decision for the trader, not something to
