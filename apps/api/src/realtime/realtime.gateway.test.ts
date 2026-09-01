@@ -291,6 +291,8 @@ describe('RealtimeGateway authority refresh', () => {
 
     const socket = fakeSocket();
     socket.state.userId = 'user-1';
+    socket.state.tenantId = TENANT_ID;
+    socket.state.tenantSlug = 'test';
     socket.state.accountIds.add('account-1');
     socket.state.tokenExpiresAt = 10_000;
     (harness.gateway as unknown as { sockets: Set<TradingSocket> }).sockets.add(socket);
@@ -312,6 +314,8 @@ describe('RealtimeGateway authority refresh', () => {
 
     const socket = fakeSocket();
     socket.state.userId = 'user-1';
+    socket.state.tenantId = TENANT_ID;
+    socket.state.tenantSlug = 'test';
     socket.state.accountIds.add('account-1');
     socket.state.accountIds.add('revoked-link');
     socket.state.tokenExpiresAt = 10_000;
@@ -328,6 +332,8 @@ describe('RealtimeGateway authority refresh', () => {
 
     const socket = fakeSocket();
     socket.state.userId = 'user-1';
+    socket.state.tenantId = TENANT_ID;
+    socket.state.tenantSlug = 'test';
     socket.state.accountIds.add('account-1');
     socket.state.tokenExpiresAt = 10_000;
     (harness.gateway as unknown as { sockets: Set<TradingSocket> }).sockets.add(socket);
@@ -335,6 +341,31 @@ describe('RealtimeGateway authority refresh', () => {
     await harness.gateway.refreshSockets(2_000);
 
     expect([...socket.state.accountIds].sort()).toEqual(['account-1', 'account-2']);
+  });
+
+  /**
+   * A socket that is authenticated but carries no tenant cannot exist — the two
+   * are set together at connection. If one ever did, its authority could not be
+   * re-checked, and authority that cannot be checked is not kept.
+   */
+  it('drops an authenticated socket that somehow has no tenant', async () => {
+    const harness = buildGateway({ owned: ['account-1'] });
+    await harness.gateway.afterInit();
+
+    const socket = fakeSocket();
+    socket.state.userId = 'user-1';
+    socket.state.accountIds.add('account-1');
+    socket.state.tokenExpiresAt = 10_000;
+    (harness.gateway as unknown as { sockets: Set<TradingSocket> }).sockets.add(socket);
+
+    await harness.gateway.refreshSockets(2_000);
+
+    expect(socket.state.userId).toBeNull();
+    expect([...socket.state.accountIds]).toEqual([]);
+    // Downgraded, not disconnected: the socket may still take public data.
+    expect(
+      (harness.gateway as unknown as { sockets: Set<TradingSocket> }).sockets.has(socket),
+    ).toBe(true);
   });
 
   it('does nothing to an unauthenticated socket', async () => {

@@ -19,6 +19,8 @@ import { AuditService } from '../../src/common/audit/audit.service';
 import { MetricsService } from '../../src/metrics/metrics.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 import type { RedisService } from '../../src/redis/redis.service';
+import type { TenantResolver } from '../../src/tenancy/tenant-resolver.service';
+import { DEFAULT_TENANT_ID, DEFAULT_TENANT_SLUG } from './harness';
 
 /**
  * An in-memory stand-in for Redis.
@@ -138,6 +140,21 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     accountState,
   );
 
+  /**
+   * A stand-in resolver, because the engine now re-enters each row's tenant.
+   *
+   * The tests run in one tenant, so this answers with it. It is a real object
+   * rather than a mock returning `undefined`: an engine that silently skipped
+   * every row because the resolver said nothing would pass a test asserting a
+   * stop *did not* fire, which is the assertion these suites are full of.
+   */
+  const tenants = {
+    byId: (tenantId: string) =>
+      Promise.resolve(
+        tenantId === DEFAULT_TENANT_ID ? { tenantId, slug: DEFAULT_TENANT_SLUG } : null,
+      ),
+  } as unknown as TenantResolver;
+
   const triggers = new TriggerEngineService(
     config as never,
     prismaService,
@@ -147,6 +164,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     accountState,
     new TickBus(),
     metrics,
+    tenants,
   );
 
   /**
@@ -168,7 +186,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     await quotes.publish(tick);
   };
 
-  const snapshots = new SnapshotService(config as never, prismaService, accountState);
+  const snapshots = new SnapshotService(config as never, prismaService, accountState, tenants);
 
   return {
     redis: redis as unknown as { client: { del(key: string): Promise<number> } },

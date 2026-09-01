@@ -7,9 +7,10 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantResolver } from '../tenancy/tenant-resolver.service';
 import { AccountStateService } from './account-state.service';
 import type { Env } from '../config/env.schema';
-import { requireTenantId } from '@tp/tenancy';
+import { requireTenantId, withTenant, withoutTenantScope } from '@tp/tenancy';
 
 /**
  * Periodic account snapshots.
@@ -47,6 +48,7 @@ export class SnapshotService implements OnApplicationBootstrap, OnApplicationShu
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
     private readonly prisma: PrismaService,
     private readonly accountState: AccountStateService,
+    private readonly tenants: TenantResolver,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -91,35 +93,42 @@ export class SnapshotService implements OnApplicationBootstrap, OnApplicationShu
     let taken = 0;
     let skipped = 0;
 
-    for (const accountId of accounts) {
+    for (const { accountId, tenantId } of accounts) {
       try {
-        const valuation = await this.accountState.valuate(accountId);
-        const { state } = valuation;
-        await this.prisma.accountSnapshot.upsert({
-          // Idempotent on (accountId, takenAt): a retry after a partial pass
-          // corrects the row rather than creating a second one for the instant.
-          where: { accountId_takenAt: { accountId, takenAt: at } },
-          create: {
-            tenantId: requireTenantId(),
-            accountId,
-            takenAt: at,
-            balance: state.balance.toString(),
-            equity: state.equity.toString(),
-            usedMargin: state.usedMargin.toString(),
-            freeMargin: state.freeMargin.toString(),
-            marginLevel: state.marginLevel === null ? null : state.marginLevel.toString(),
-            floatingPnl: state.floatingPnl.toString(),
-            openPositions: valuation.openPositionCount,
-          },
-          update: {
-            balance: state.balance.toString(),
-            equity: state.equity.toString(),
-            usedMargin: state.usedMargin.toString(),
-            freeMargin: state.freeMargin.toString(),
-            marginLevel: state.marginLevel === null ? null : state.marginLevel.toString(),
-            floatingPnl: state.floatingPnl.toString(),
-            openPositions: valuation.openPositionCount,
-          },
+        const tenant = await this.tenants.byId(tenantId);
+        // A suspended tenant is not snapshotted. Its accounts are not trading,
+        // so there is nothing to record, and its history is not this pass's to
+        // extend while it is held.
+        if (tenant === null) continue;
+        await withTenant(tenant, async () => {
+          const valuation = await this.accountState.valuate(accountId);
+          const { state } = valuation;
+          await this.prisma.accountSnapshot.upsert({
+            // Idempotent on (accountId, takenAt): a retry after a partial pass
+            // corrects the row rather than creating a second one for the instant.
+            where: { accountId_takenAt: { accountId, takenAt: at } },
+            create: {
+              tenantId: requireTenantId(),
+              accountId,
+              takenAt: at,
+              balance: state.balance.toString(),
+              equity: state.equity.toString(),
+              usedMargin: state.usedMargin.toString(),
+              freeMargin: state.freeMargin.toString(),
+              marginLevel: state.marginLevel === null ? null : state.marginLevel.toString(),
+              floatingPnl: state.floatingPnl.toString(),
+              openPositions: valuation.openPositionCount,
+            },
+            update: {
+              balance: state.balance.toString(),
+              equity: state.equity.toString(),
+              usedMargin: state.usedMargin.toString(),
+              freeMargin: state.freeMargin.toString(),
+              marginLevel: state.marginLevel === null ? null : state.marginLevel.toString(),
+              floatingPnl: state.floatingPnl.toString(),
+              openPositions: valuation.openPositionCount,
+            },
+          });
         });
         taken += 1;
       } catch (error) {
@@ -141,27 +150,40 @@ export class SnapshotService implements OnApplicationBootstrap, OnApplicationShu
    * so. Re-recording it every interval would fill the table with rows that carry
    * no information and make the history harder to read, not easier.
    */
-  private async candidates(): Promise<string[]> {
-    const [withPositions, recentlyMoved] = await Promise.all([
-      this.prisma.position.findMany({
-        where: { status: { in: ['OPEN', 'CLOSING'] } },
-        select: { accountId: true },
-        distinct: ['accountId'],
-      }),
-      this.prisma.$queryRaw<Array<{ account_id: string }>>`
-        SELECT DISTINCT l.account_id
-        FROM balance_ledger l
-        LEFT JOIN LATERAL (
-          SELECT taken_at FROM account_snapshots s
-          WHERE s.account_id = l.account_id
-          ORDER BY s.taken_at DESC LIMIT 1
-        ) last ON TRUE
-        WHERE last.taken_at IS NULL OR l.created_at > last.taken_at
-      `,
-    ]);
+  private async candidates(): Promise<Array<{ accountId: string; tenantId: string }>> {
+    /**
+     * Finding who to snapshot spans tenants; snapshotting one does not.
+     *
+     * This pass runs on a timer, so there is no tenant in scope to begin with —
+     * and the accounts it must cover belong to every firm on the instance. The
+     * crossing is named here, and each account's own valuation and write happen
+     * back inside its tenant, in `run` above.
+     */
+    const [withPositions, recentlyMoved] = await withoutTenantScope(
+      'a snapshot pass covers every account on the instance, whichever firm owns it',
+      () =>
+        Promise.all([
+          this.prisma.position.findMany({
+            where: { status: { in: ['OPEN', 'CLOSING'] } },
+            select: { accountId: true, tenantId: true },
+            distinct: ['accountId'],
+          }),
+          this.prisma.$queryRaw<Array<{ account_id: string; tenant_id: string }>>`
+            SELECT DISTINCT l.account_id, l.tenant_id
+            FROM balance_ledger l
+            LEFT JOIN LATERAL (
+              SELECT taken_at FROM account_snapshots s
+              WHERE s.account_id = l.account_id
+              ORDER BY s.taken_at DESC LIMIT 1
+            ) last ON TRUE
+            WHERE last.taken_at IS NULL OR l.created_at > last.taken_at
+          `,
+        ]),
+    );
 
-    const ids = new Set(withPositions.map((row) => row.accountId));
-    for (const row of recentlyMoved) ids.add(row.account_id);
-    return [...ids];
+    const byAccount = new Map<string, string>();
+    for (const row of withPositions) byAccount.set(row.accountId, row.tenantId);
+    for (const row of recentlyMoved) byAccount.set(row.account_id, row.tenant_id);
+    return [...byAccount].map(([accountId, tenantId]) => ({ accountId, tenantId }));
   }
 }

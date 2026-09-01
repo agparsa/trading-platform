@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Env } from '../config/env.schema';
-import type { TenantContext } from '@tp/tenancy';
+import { withoutTenantScope, type TenantContext } from '@tp/tenancy';
 
 /**
  * Which tenant a request belongs to, when nothing has authenticated yet.
@@ -31,6 +31,8 @@ export class TenantResolver {
    * lookup is not on the hot path.
    */
   private readonly cache = new Map<string, { context: TenantContext; until: number }>();
+  /** Separate from the host cache: the same tenant, asked for a different way. */
+  private readonly byIdCache = new Map<string, { context: TenantContext; until: number }>();
   private static readonly TTL_MS = 60_000;
 
   constructor(
@@ -77,6 +79,42 @@ export class TenantResolver {
 
     const context: TenantContext = { tenantId: tenant.id, slug: tenant.slug };
     this.cache.set(host, { context, until: Date.now() + TenantResolver.TTL_MS });
+    return context;
+  }
+
+  /**
+   * The tenant a row belongs to, by id.
+   *
+   * For background work: a timer or a tick handler has no request and therefore
+   * no tenant in scope, but the rows it finds each name one. Given that id this
+   * returns the context to open, so the work runs inside a tenant exactly as a
+   * request would rather than bypassing tenancy altogether.
+   *
+   * The lookup itself must cross the boundary — it is asking *which* tenant, so
+   * it cannot already be inside one — and it reads the tenant's own row and
+   * nothing belonging to it.
+   *
+   * A suspended tenant returns null rather than throwing. `forHost` throws
+   * because a request must be refused; background work has nobody to refuse, and
+   * the right behaviour is to skip that tenant's rows and carry on with the
+   * others.
+   */
+  async byId(tenantId: string): Promise<TenantContext | null> {
+    const cached = this.byIdCache.get(tenantId);
+    if (cached !== undefined && cached.until > Date.now()) return cached.context;
+
+    const tenant = await withoutTenantScope(
+      'asking which tenant a row belongs to cannot itself be scoped to one',
+      () =>
+        this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { id: true, slug: true, status: true },
+        }),
+    );
+    if (tenant === null || tenant.status !== 'ACTIVE') return null;
+
+    const context: TenantContext = { tenantId: tenant.id, slug: tenant.slug };
+    this.byIdCache.set(tenantId, { context, until: Date.now() + TenantResolver.TTL_MS });
     return context;
   }
 

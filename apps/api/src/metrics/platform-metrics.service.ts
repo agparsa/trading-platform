@@ -4,6 +4,7 @@ import {
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from '@nestjs/common';
+import { withoutTenantScope } from '@tp/tenancy';
 import { PrismaService } from '../prisma/prisma.service';
 import { QuoteService } from '../market/quote.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -69,20 +70,38 @@ export class PlatformMetricsService implements OnApplicationBootstrap, OnApplica
 
   /** Exposed so a test can drive one pass without waiting for the schedule. */
   async refresh(): Promise<void> {
-    const [accounts, openPositions, findings, signals] = await Promise.all([
-      this.prisma.account.groupBy({ by: ['status'], _count: { _all: true } }),
-      this.prisma.position.count({ where: { status: { in: ['OPEN', 'CLOSING'] } } }),
-      this.prisma.reconciliationFinding.groupBy({
-        by: ['severity'],
-        where: { status: { in: ['OPEN', 'ACKNOWLEDGED', 'INVESTIGATING'] } },
-        _count: { _all: true },
-      }),
-      this.prisma.integritySignal.groupBy({
-        by: ['severity'],
-        where: { status: { in: ['OPEN', 'ACKNOWLEDGED', 'INVESTIGATING'] } },
-        _count: { _all: true },
-      }),
-    ]);
+    /**
+     * Counted across every tenant, deliberately, and named as such.
+     *
+     * These gauges are for whoever operates the *platform* — how many accounts
+     * exist, how many positions are open, how many findings are unresolved. A
+     * figure scoped to one tenant would answer a question nobody asked of
+     * `/metrics`, which is restricted to private ranges precisely because it
+     * describes the whole deployment.
+     *
+     * They are counts and never rows, so nothing crosses from one firm to
+     * another; and the bypass carries its reason, so a reviewer grepping for
+     * every crossing of the boundary finds this one with its argument attached.
+     * It runs on a timer, where there is no tenant to be in scope at all.
+     */
+    const [accounts, openPositions, findings, signals] = await withoutTenantScope(
+      'platform-wide gauges count every tenant; they are counts, never rows',
+      () =>
+        Promise.all([
+          this.prisma.account.groupBy({ by: ['status'], _count: { _all: true } }),
+          this.prisma.position.count({ where: { status: { in: ['OPEN', 'CLOSING'] } } }),
+          this.prisma.reconciliationFinding.groupBy({
+            by: ['severity'],
+            where: { status: { in: ['OPEN', 'ACKNOWLEDGED', 'INVESTIGATING'] } },
+            _count: { _all: true },
+          }),
+          this.prisma.integritySignal.groupBy({
+            by: ['severity'],
+            where: { status: { in: ['OPEN', 'ACKNOWLEDGED', 'INVESTIGATING'] } },
+            _count: { _all: true },
+          }),
+        ]),
+    );
 
     /**
      * Reset before setting.

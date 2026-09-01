@@ -23,11 +23,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SymbolsService } from '../symbols/symbols.service';
 import { TickBus } from '../market/tick-bus';
 import { MetricsService } from '../metrics/metrics.service';
+import { TenantResolver } from '../tenancy/tenant-resolver.service';
 import { AccountStateService } from './account-state.service';
 import { PositionsService } from './positions.service';
 import { OrdersService } from './orders.service';
 import type { Env } from '../config/env.schema';
-import { requireTenantId } from '@tp/tenancy';
+import { requireTenantId, withTenant, withoutTenantScope, type TenantContext } from '@tp/tenancy';
 
 /**
  * Closes positions from price movement.
@@ -99,6 +100,7 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
     private readonly accountState: AccountStateService,
     private readonly ticks: TickBus,
     private readonly metrics: MetricsService,
+    private readonly tenants: TenantResolver,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -169,6 +171,44 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
    * happens against a price that is current rather than one the sweep itself
    * made stale.
    */
+  /**
+   * A price move is not a tenant's event, and the work it implies is.
+   *
+   * The engine runs once per instance and a tick is a fact about the market:
+   * every firm holding that instrument is affected, so *finding* the affected
+   * rows must cross the boundary. Acting on one must not — closing a position
+   * writes to a ledger, sends a notification and moves money, and all of that
+   * belongs to exactly one tenant.
+   *
+   * So every sweep in this file has the same shape: one cross-tenant discovery
+   * that says so and carries its reason, then the work re-entered inside each
+   * row's own tenant. The alternative — running the whole sweep unscoped —
+   * would have made the tick path the one place on the platform where writes
+   * routinely happen with no tenant, which is precisely the property the guard
+   * exists to prevent.
+   */
+  private async findAcrossTenants<T>(
+    what: string,
+    find: () => Promise<T[]>,
+  ): Promise<Array<{ row: T; tenant: TenantContext }>> {
+    const rows = await withoutTenantScope(
+      `a price moves for every tenant holding the instrument (${what})`,
+      find,
+    );
+
+    const grouped: Array<{ row: T; tenant: TenantContext }> = [];
+    for (const row of rows) {
+      const tenantId = (row as { tenantId?: unknown }).tenantId;
+      if (typeof tenantId !== 'string') continue;
+      const tenant = await this.tenants.byId(tenantId);
+      // A suspended or deleted tenant's rows are skipped, not failed on. Its
+      // positions are not this engine's to close while it is not trading.
+      if (tenant === null) continue;
+      grouped.push({ row, tenant });
+    }
+    return grouped;
+  }
+
   private async runPass(coalesced: CoalescedTick): Promise<void> {
     await this.advanceTrailingStops(coalesced);
     await this.fireProtectiveOrders(coalesced);
@@ -189,21 +229,23 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
 
     const throttleMs = this.config.getOrThrow('STOP_OUT_CHECK_INTERVAL_MS', { infer: true });
 
-    const due = new Set<string>();
+    const due = new Map<string, TenantContext>();
     for (const symbol of symbols) {
-      const exposed = await this.prisma.position.findMany({
-        where: { status: 'OPEN', symbol: { code: symbol } },
-        select: { accountId: true },
-        distinct: ['accountId'],
-      });
-      for (const { accountId } of exposed) {
-        if (nowMs - (this.lastStopOutCheck.get(accountId) ?? 0) < throttleMs) continue;
-        due.add(accountId);
+      const exposed = await this.findAcrossTenants('accounts exposed to a symbol', () =>
+        this.prisma.position.findMany({
+          where: { status: 'OPEN', symbol: { code: symbol } },
+          select: { accountId: true, tenantId: true },
+          distinct: ['accountId'],
+        }),
+      );
+      for (const { row, tenant } of exposed) {
+        if (nowMs - (this.lastStopOutCheck.get(row.accountId) ?? 0) < throttleMs) continue;
+        due.set(row.accountId, tenant);
       }
     }
     if (due.size === 0) return;
 
-    for (const accountId of due) this.lastStopOutCheck.set(accountId, nowMs);
+    for (const accountId of due.keys()) this.lastStopOutCheck.set(accountId, nowMs);
 
     /**
      * Serially, on purpose.
@@ -214,9 +256,11 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
      * is most contended, and a stop-out sweep must not be what makes the trading
      * path slow. One at a time keeps the sweep a background cost.
      */
-    for (const accountId of due) {
+    for (const [accountId, tenant] of due) {
       try {
-        await this.liquidateIfRequired(accountId);
+        // A liquidation closes positions, writes to a ledger and notifies a
+        // trader. Every one of those belongs to one firm.
+        await withTenant(tenant, () => this.liquidateIfRequired(accountId));
       } catch (error) {
         this.logger.error({ err: error, accountId }, 'Stop-out check failed');
       }
@@ -257,21 +301,30 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
     const spec = this.symbols.find(tick.symbol)?.spec;
     if (spec === undefined) return;
 
-    const resting = await this.prisma.order.findMany({
-      where: {
-        status: OrderStatus.PENDING,
-        symbol: { code: tick.symbol },
-        type: { in: ['LIMIT', 'STOP'] },
-      },
-      select: { id: true, side: true, type: true, price: true, expiresAt: true },
-      orderBy: { createdAt: 'asc' },
-    });
+    const resting = await this.findAcrossTenants('resting orders on a symbol', () =>
+      this.prisma.order.findMany({
+        where: {
+          status: OrderStatus.PENDING,
+          symbol: { code: tick.symbol },
+          type: { in: ['LIMIT', 'STOP'] },
+        },
+        select: {
+          id: true,
+          side: true,
+          type: true,
+          price: true,
+          expiresAt: true,
+          tenantId: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+    );
     if (resting.length === 0) return;
 
     const now = Date.now();
-    for (const order of resting) {
+    for (const { row: order, tenant } of resting) {
       if (isExpired({ timeInForce: '', expiresAt: order.expiresAt?.getTime() ?? null }, now)) {
-        await this.orders.expirePending(order.id);
+        await withTenant(tenant, () => this.orders.expirePending(order.id));
         continue;
       }
       const price = order.price?.toString();
@@ -282,7 +335,7 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
       // `fillPending` claims the order itself, so a concurrent pass loses
       // rather than opening a second position from one order. It counts its own
       // outcome against `ordersSubmitted`, including a risk rejection.
-      await this.orders.fillPending(order.id, tick);
+      await withTenant(tenant, () => this.orders.fillPending(order.id, tick));
     }
   }
 
@@ -291,23 +344,26 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
     const spec = this.symbols.find(tick.symbol)?.spec;
     if (spec === undefined) return;
 
-    const trailing = await this.prisma.position.findMany({
-      where: {
-        status: 'OPEN',
-        symbol: { code: tick.symbol },
-        trailingStopDistance: { not: null },
-      },
-      select: {
-        id: true,
-        side: true,
-        version: true,
-        stopLoss: true,
-        highWaterPrice: true,
-        trailingStopDistance: true,
-      },
-    });
+    const trailing = await this.findAcrossTenants('trailing stops on a symbol', () =>
+      this.prisma.position.findMany({
+        where: {
+          status: 'OPEN',
+          symbol: { code: tick.symbol },
+          trailingStopDistance: { not: null },
+        },
+        select: {
+          id: true,
+          side: true,
+          version: true,
+          stopLoss: true,
+          highWaterPrice: true,
+          trailingStopDistance: true,
+          tenantId: true,
+        },
+      }),
+    );
 
-    for (const position of trailing) {
+    for (const { row: position, tenant } of trailing) {
       const distance = position.trailingStopDistance?.toString();
       if (distance === undefined) continue;
 
@@ -332,29 +388,39 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
 
       // Version-guarded: if the trader moved the stop themselves between the
       // read and this write, their value wins and the ratchet retries next tick.
-      await this.prisma.position.updateMany({
-        where: { id: position.id, status: 'OPEN', version: position.version },
-        data: {
-          highWaterPrice: highWater,
-          ...(moved === null ? {} : { stopLoss: moved }),
-          version: { increment: 1 },
-        },
-      });
+      await withTenant(tenant, () =>
+        this.prisma.position.updateMany({
+          where: { id: position.id, status: 'OPEN', version: position.version },
+          data: {
+            highWaterPrice: highWater,
+            ...(moved === null ? {} : { stopLoss: moved }),
+            version: { increment: 1 },
+          },
+        }),
+      );
     }
   }
 
   private async fireProtectiveOrders(coalesced: CoalescedTick): Promise<void> {
     const tick = coalesced.latest;
-    const candidates = await this.prisma.position.findMany({
-      where: {
-        status: 'OPEN',
-        symbol: { code: tick.symbol },
-        OR: [{ stopLoss: { not: null } }, { takeProfit: { not: null } }],
-      },
-      select: { id: true, side: true, stopLoss: true, takeProfit: true },
-    });
+    const candidates = await this.findAcrossTenants('protective orders on a symbol', () =>
+      this.prisma.position.findMany({
+        where: {
+          status: 'OPEN',
+          symbol: { code: tick.symbol },
+          OR: [{ stopLoss: { not: null } }, { takeProfit: { not: null } }],
+        },
+        select: {
+          id: true,
+          side: true,
+          stopLoss: true,
+          takeProfit: true,
+          tenantId: true,
+        },
+      }),
+    );
 
-    for (const position of candidates) {
+    for (const { row: position, tenant } of candidates) {
       const reason = evaluateProtectiveTriggerOverRange(
         position.side,
         {
@@ -364,7 +430,7 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
         coalesced,
       );
       if (reason === null) continue;
-      await this.closeTriggered(position.id, reason, tick);
+      await withTenant(tenant, () => this.closeTriggered(position.id, reason, tick));
     }
   }
 

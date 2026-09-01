@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { Tick } from '@tp/market-core';
 import { RiskState, WsChannel } from '@tp/shared-types';
+import { withTenant, type TenantContext } from '@tp/tenancy';
 import { PrismaService } from '../prisma/prisma.service';
 import { TickBus } from '../market/tick-bus';
 import { AccountStateService } from '../trading/account-state.service';
@@ -151,11 +152,22 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     this.dirtySymbols.clear();
     if (symbols.length === 0) return;
 
-    const listening = new Set([
-      ...this.gateway.listeningAccounts(WsChannel.ACCOUNT),
-      ...this.gateway.listeningAccounts(WsChannel.PNL),
-    ]);
-    if (listening.size === 0) return;
+    /**
+     * Grouped by tenant, and this loop runs on a timer rather than in a request.
+     *
+     * That distinction is the whole reason the grouping exists. A timer has no
+     * tenant in scope, so every query made from here is refused — correctly:
+     * the scope guard cannot tell a background loop from a handler that forgot
+     * to open a scope, and it must assume the worse of the two. The loop does
+     * genuinely serve more than one tenant, because it serves whoever is
+     * connected to this instance.
+     *
+     * So it opens each tenant's scope in turn rather than bypassing tenancy.
+     * A bypass would have been one line and would have made this the one place
+     * on the platform where a cross-tenant read is routine.
+     */
+    const groups = this.gateway.tenantsOfListeners([WsChannel.ACCOUNT, WsChannel.PNL]);
+    if (groups.length === 0) return;
 
     const interval = this.config.getOrThrow('REALTIME_VALUATION_INTERVAL_MS', { infer: true });
 
@@ -166,14 +178,20 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
      * trip; it is a routing hint and never an input to money, which is what
      * makes holding it in memory safe. See ExposureIndex.
      */
-    const due = new Set<string>();
-    for (const symbol of symbols) {
-      for (const accountId of await this.exposure.exposedTo(symbol, listening, nowMs)) {
-        if (nowMs - (this.lastValuedAt.get(accountId) ?? 0) < interval) continue;
-        // A valuation already running means the previous pass is still serving
-        // this account; skipping is correct, since the next pass is newer.
-        if (this.inFlight.has(accountId)) continue;
-        due.add(accountId);
+    const due = new Map<string, TenantContext>();
+    for (const { tenant, accounts } of groups) {
+      if (accounts.size === 0) continue;
+      for (const symbol of symbols) {
+        const exposed = await withTenant(tenant, () =>
+          this.exposure.exposedTo(symbol, accounts, nowMs),
+        );
+        for (const accountId of exposed) {
+          if (nowMs - (this.lastValuedAt.get(accountId) ?? 0) < interval) continue;
+          // A valuation already running means the previous pass is still serving
+          // this account; skipping is correct, since the next pass is newer.
+          if (this.inFlight.has(accountId)) continue;
+          due.set(accountId, tenant);
+        }
       }
     }
     if (due.size === 0) return;
@@ -188,7 +206,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
      * on. A small window uses the I/O wait without becoming the load.
      */
     const queue = [...due];
-    for (const accountId of queue) {
+    for (const [accountId] of queue) {
       this.lastValuedAt.set(accountId, nowMs);
       this.inFlight.add(accountId);
     }
@@ -196,10 +214,13 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     const workers = Array.from({ length: Math.min(VALUATION_CONCURRENCY, queue.length) }, () =>
       (async () => {
         for (;;) {
-          const accountId = queue.shift();
-          if (accountId === undefined) return;
+          const next = queue.shift();
+          if (next === undefined) return;
+          const [accountId, tenant] = next;
           try {
-            await this.pushValuation(accountId);
+            // The valuation reads positions and writes a frame for one account.
+            // It runs in that account's tenant, exactly as a request would.
+            await withTenant(tenant, () => this.pushValuation(accountId));
           } catch (error) {
             this.logger.error({ err: error, accountId }, 'Realtime valuation failed');
           } finally {

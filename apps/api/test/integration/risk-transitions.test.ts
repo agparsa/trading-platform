@@ -12,6 +12,8 @@ import { TickBus } from '../../src/market/tick-bus';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 import type { RedisService } from '../../src/redis/redis.service';
 import {
+  DEFAULT_TENANT_ID,
+  DEFAULT_TENANT_SLUG,
   createAccount,
   createTestClient,
   hasTestDatabase,
@@ -80,6 +82,14 @@ suite('Risk state transitions (integration)', () => {
 
     const gateway = {
       listeningAccounts: () => listening,
+      /**
+       * The drain now asks *which tenant* each listener belongs to, because it
+       * runs on a timer and has to open a scope rather than query without one.
+       * These tests run in one tenant, so the stub answers with it.
+       */
+      tenantsOfListeners: () => [
+        { tenant: { tenantId: DEFAULT_TENANT_ID, slug: DEFAULT_TENANT_SLUG }, accounts: listening },
+      ],
       sendToAccount: (
         accountId: string,
         channel: WsChannel,

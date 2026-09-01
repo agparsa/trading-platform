@@ -62,7 +62,7 @@ Complete in the sense the prompt defines — UI → API → business logic → d
 | 33       | Audit log                  | append-only enforced by a **database trigger** raising `42501` — an admin cannot edit it                                                                                                  |
 | 37       | Observability              | Prometheus metrics, `/health`, `/ready`, request-id correlation, structured logging                                                                                                       |
 | 39       | Security                   | 36-probe pentest script, AES-256-GCM at rest, no secrets in git history                                                                                                                   |
-| 40       | Testing                    | 1607 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, payment idempotency, and row-level security proved by breaking it               |
+| 40       | Testing                    | 1611 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, payment idempotency, and row-level security proved by breaking it               |
 | 41       | Security testing           | cross-tenant access, privilege escalation, token replay, rate limiting, audit tampering, invitation minting                                                                               |
 | 44       | CI/CD                      | install → prisma → build → lint → format → typecheck → migrate → test → schema check → seed → build → smoke API → smoke WebSocket                                                         |
 
@@ -169,7 +169,31 @@ integration behind it.
 Adding one means implementing that interface and registering it. See
 `docs/payments.md`.
 
-### Two things this phase found in code that already passed its tests
+### The worst thing this phase found was not in the payments code
+
+Deploying it put a fresh pair of eyes on the production logs, and they were full:
+**12,296 failures on the ingest instance**, from paths nobody had looked at since
+tenant isolation went live.
+
+The guard refuses a query made with no tenant in scope. A request always has one.
+A _timer_ does not — and neither does a tick handler or a socket refresh. So the
+platform served every request perfectly while stop-losses did not fire, stop-outs
+did not liquidate, realtime valuations never reached a terminal, no snapshots were
+taken, and `refreshSockets` — the thing that takes revoked account access _off_ a
+live socket — failed before it could take anything.
+
+Nothing in 1,600 tests noticed, because every test that touches those services
+drives them from inside a scope the harness already entered.
+
+All six are fixed with one shape: discovery crosses tenants and says so with a
+reason; the work itself is re-entered inside each row's own tenant. And
+`background-scope.test.ts` now sweeps the source for anything that starts
+background work and touches the database without naming a tenant — a static
+check, because a behavioural one would have to be _given_ the list of background
+services, and the ones worth catching are exactly the ones nobody adds to such a
+list. See [multi-tenancy.md](./multi-tenancy.md) §6a.
+
+### Two things this phase found in the payments path
 
 **A capability added to a constant never reached a running platform.** Grants
 became rows in Phase 2 so a firm could change them without a deployment; the

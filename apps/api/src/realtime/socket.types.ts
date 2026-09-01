@@ -21,6 +21,12 @@ export interface SocketState {
    * reason.
    */
   tenantId: string | null;
+  /**
+   * The tenant's slug, carried so a background loop serving this socket can
+   * open its scope without a lookup. Never used to decide anything — it is for
+   * log lines and error messages, which is all `TenantContext` promises of it.
+   */
+  tenantSlug: string | null;
   /** Accounts this socket is allowed to receive private frames for. */
   accountIds: Set<string>;
   channels: Set<WsChannel>;
@@ -72,6 +78,7 @@ export function initialState(): SocketState {
   return {
     userId: null,
     tenantId: null,
+    tenantSlug: null,
     accountIds: new Set(),
     channels: new Set(),
     symbols: new Set(),

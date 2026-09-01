@@ -328,6 +328,67 @@ when the query executes: outside the scope it was supposed to be inside.
 isolation test in which one tenant's read returned another's row, while a probe
 of the same mechanism written with an `async` callback passed.
 
+## 6a. Background work has no tenant, and every path that runs on a timer forgot
+
+The guard refuses any query made with no tenant in scope. A request always has
+one, so the guard is invisible to every handler — and to every test that drives
+one, because the harness enters a scope before each case.
+
+A timer does not. Nor does a tick handler, nor a socket refresh. When isolation
+went live, those paths began throwing, and the platform went on serving requests
+perfectly while:
+
+| What stopped                    | Consequence                                                 |
+| ------------------------------- | ----------------------------------------------------------- |
+| the trigger engine's tick sweep | **stop-losses and take-profits did not fire**               |
+| the stop-out sweep              | accounts past their stop-out level were not liquidated      |
+| the realtime drain              | connected terminals stopped receiving valuations            |
+| the snapshot pass               | no account history was recorded                             |
+| `refreshSockets`                | **revoked account access was never taken off live sockets** |
+| platform metrics                | operator gauges froze at their last values                  |
+
+12,296 failures on the ingest instance, in one deployment's uptime, and nothing
+in the test suite noticed.
+
+### The shape every one of them now has
+
+Two different questions, answered two different ways:
+
+- **Finding the work** genuinely spans tenants. A price is a fact about the
+  market, and every firm holding that instrument is affected. Those discovery
+  queries are wrapped in `withoutTenantScope(reason)` and each carries its
+  reason, so a reviewer grepping for crossings finds them with the argument
+  attached. They select `tenantId` alongside whatever else they need.
+- **Doing the work** never spans tenants. Closing a position writes a ledger
+  entry, sends a notification and moves money — all of it belongs to exactly one
+  firm. So each row's work is re-entered with `withTenant(...)`, using
+  `TenantResolver.byId`, which caches and returns null for a tenant that is
+  suspended or gone. Background work skips such a tenant rather than throwing:
+  there is nobody to refuse.
+
+`RealtimeService` needs no lookup at all — a socket carries its tenant's id and
+slug from connection time, checked against the token's `tid` against the host, so
+the drain groups its listeners by tenant from memory.
+
+The alternative — running these sweeps unscoped throughout — was one line and
+would have made the tick path the one place on the platform where **writes**
+routinely happen with no tenant. That is exactly the property the guard exists
+to prevent.
+
+### The test that would have caught it
+
+`background-scope.test.ts` sweeps the source for files that start background
+work _and_ touch the database, and requires each to name a tenant somewhere.
+Static rather than behavioural, deliberately: a behavioural version would have to
+be handed a list of background services, and the ones worth catching are exactly
+the ones nobody remembers to add to such a list — so the check has to find its
+own subjects. Exemptions are a named list with a reason each, so adding one is a
+decision a reviewer can argue with.
+
+It is not a proof. A file could open a scope for one query and forget another.
+It is the difference between a service that has thought about the question and
+one that has not.
+
 ## 7. Migration
 
 Every existing row belongs to one default tenant, created by the migration.

@@ -32,7 +32,7 @@ import { DOMAIN_EVENT_CHANNEL, EventsService, type DomainEventEnvelope } from '.
 import { rateLimits, socketCorsOrigins } from '../config/env.schema';
 import { initialState, type TradingSocket } from './socket.types';
 import { TenantResolver } from '../tenancy/tenant-resolver.service';
-import { withTenant } from '@tp/tenancy';
+import { withTenant, type TenantContext } from '@tp/tenancy';
 
 const subscribeSchema = z
   .object({
@@ -274,6 +274,7 @@ export class RealtimeGateway
       );
       client.state.userId = claims.sub;
       client.state.tenantId = tenant.tenantId;
+      client.state.tenantSlug = tenant.slug;
       // `exp` is in seconds, as the JWT standard writes it.
       client.state.tokenExpiresAt = claims.exp === undefined ? null : claims.exp * 1000;
       for (const account of owned) client.state.accountIds.add(account.id);
@@ -389,10 +390,33 @@ export class RealtimeGateway
         continue;
       }
 
-      const userId = socket.state.userId;
+      const { userId, tenantId, tenantSlug } = socket.state;
       if (userId === null) continue;
+      if (tenantId === null || tenantSlug === null) {
+        // Authenticated without a tenant should be impossible — it is set beside
+        // the user id at connection. If it ever is not, the socket cannot be
+        // re-authorised, and a socket whose authority cannot be checked does not
+        // keep it.
+        this.downgrade(
+          socket,
+          'UNAUTHENTICATED',
+          'This socket could not be re-authorised; reconnect',
+        );
+        continue;
+      }
 
-      const allowed = await this.accountsFor(userId);
+      /**
+       * In the socket's own tenant, not outside every tenant.
+       *
+       * This pass runs on a timer, so nothing puts a tenant in scope for it —
+       * and the query it makes is `which accounts may this user see`, which is
+       * the most tenant-shaped question on the platform. Running it unscoped
+       * would answer with accounts from every firm and then *grant* them to the
+       * socket, since what it finds is what the socket is allowed to receive.
+       */
+      const allowed = await withTenant({ tenantId, slug: tenantSlug }, () =>
+        this.accountsFor(userId),
+      );
       // Removed first: authority that has been taken away must stop being
       // honoured before anything else about this pass can go wrong.
       for (const accountId of [...socket.state.accountIds]) {
@@ -618,6 +642,39 @@ export class RealtimeGateway
       for (const accountId of socket.state.accountIds) accounts.add(accountId);
     }
     return accounts;
+  }
+
+  /**
+   * Which tenant each listening account belongs to.
+   *
+   * The valuation loop runs on a timer rather than inside a request, so it has
+   * no tenant in scope and every query it makes would be refused — which is the
+   * scope guard doing its job, not a nuisance to work around with a bypass. The
+   * loop serves whoever is connected to this instance, which genuinely spans
+   * tenants, so it needs to know *which* tenant each account belongs to and to
+   * open that scope for each group.
+   *
+   * The answer comes from the socket, and the socket's `tenantId` was written at
+   * connection time from the resolved host after the token's `tid` was checked
+   * against it. So this is a fact already established under authentication, not
+   * a lookup that could be steered from outside.
+   */
+  tenantsOfListeners(
+    channels: readonly WsChannel[],
+  ): Array<{ tenant: TenantContext; accounts: Set<string> }> {
+    const byTenant = new Map<string, { tenant: TenantContext; accounts: Set<string> }>();
+    for (const socket of this.sockets) {
+      if (!channels.some((channel) => socket.state.channels.has(channel))) continue;
+      const { tenantId, tenantSlug } = socket.state;
+      if (tenantId === null || tenantSlug === null) continue;
+      const group = byTenant.get(tenantId) ?? {
+        tenant: { tenantId, slug: tenantSlug },
+        accounts: new Set<string>(),
+      };
+      for (const accountId of socket.state.accountIds) group.accounts.add(accountId);
+      byTenant.set(tenantId, group);
+    }
+    return [...byTenant.values()];
   }
 
   get connectionCount(): number {

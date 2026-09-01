@@ -227,6 +227,13 @@ a stale binary is the worst failure mode there is.
   the real reconciliation engine over the copy. A backup nobody has restored is a
   hypothesis. See [backup-restore.md](./backup-restore.md).
 
+`background-scope.test.ts` is the equivalent pass over a different blind spot:
+anything that runs because _time passed_ rather than because somebody asked. Every
+test in this suite drives a service from inside a tenant scope the harness has
+already entered, so none of them can see that a timer has no scope at all — which
+is how six background paths, stop-loss firing among them, went on failing in
+production while every test passed. See [multi-tenancy.md](./multi-tenancy.md) §6a.
+
 `concurrency.test.ts` is the deliberate pass over races nobody had gone looking
 for, built around one question: which pair of simultaneous requests could create
 money? It found that two orders arriving together could spend the same free
