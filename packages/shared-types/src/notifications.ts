@@ -122,6 +122,9 @@ export const CATEGORY_FOR_KIND: Readonly<Record<string, NotificationCategory>> =
   'kyc.rejected': NotificationCategory.SYSTEM,
   'kyc.revoked': NotificationCategory.SYSTEM,
   'kyc.expired': NotificationCategory.SYSTEM,
+  'withdrawal.rejected': NotificationCategory.SYSTEM,
+  'withdrawal.failed': NotificationCategory.SYSTEM,
+  'withdrawal.paid': NotificationCategory.SYSTEM,
 };
 
 export function categoryForKind(kind: string): NotificationCategory {

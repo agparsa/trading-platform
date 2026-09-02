@@ -34,6 +34,11 @@ const NAMES: Readonly<Record<UserRole, { name: string; description: string }>> =
     name: 'Risk manager',
     description: 'Sets limits, acts on integrity signals, holds the kill switch.',
   },
+  [UserRole.FINANCE]: {
+    name: 'Finance',
+    description:
+      'Approves and pays withdrawals. Deliberately cannot confirm a deposit or adjust a wallet.',
+  },
   [UserRole.ADMIN]: {
     name: 'Administrator',
     description: 'Everything administrative. Deliberately cannot open a position.',

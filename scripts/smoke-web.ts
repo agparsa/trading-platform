@@ -148,6 +148,19 @@ async function seedPeople(prisma: PrismaClient): Promise<{
   const traderRow = await prisma.user.findFirstOrThrow({ where: { email: trader } });
 
   const account = await prisma.account.findFirst({ where: { userId: traderRow.id } });
+
+  /**
+   * A wallet, so the wallet page shows its whole self — the deposit form is
+   * there without one, the withdraw form is not, and the walk asserts on
+   * both. Created the way the platform creates one: an empty row, no money.
+   */
+  const tenant = await prisma.tenant.findFirstOrThrow({ select: { id: true } });
+  await prisma.wallet.upsert({
+    where: { userId_currency: { userId: traderRow.id, currency: 'USD' } },
+    create: { tenantId: tenant.id, userId: traderRow.id, currency: 'USD' },
+    update: {},
+  });
+
   return {
     trader: { email: trader },
     admin: { email: admin },
@@ -359,6 +372,17 @@ async function main(): Promise<void> {
       'the wallet page offers the deposit method this deployment actually has',
       walletBody.slice(0, 300),
     );
+    /**
+     * The withdraw form must say the one thing that surprises people — that
+     * the balance goes down on asking — and must say what is required before
+     * a bank account is typed in.
+     */
+    ok(
+      /leaves your wallet balance the moment you ask/i.test(walletBody) &&
+        /identity has to be verified/i.test(walletBody),
+      'the wallet page states the hold and the identity gate before a request is made',
+      walletBody.slice(0, 400),
+    );
     await visit(page, '/verification', { url: '/verification', text: /Not started/i });
     /**
      * The page must say what is still needed, in words, before anything is
@@ -400,6 +424,10 @@ async function main(): Promise<void> {
       text: /Awaiting confirmation/i,
     });
     await visit(adminPage, '/admin/kyc', { url: '/admin/kyc', text: /Awaiting review/i });
+    await visit(adminPage, '/admin/withdrawals', {
+      url: '/admin/withdrawals',
+      text: /In flight/i,
+    });
     await visit(adminPage, '/admin/audit', { url: '/admin/audit' });
     await visit(adminPage, '/admin/roles', { url: '/admin/roles', text: /Administrator/i });
 

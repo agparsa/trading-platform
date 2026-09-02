@@ -347,6 +347,28 @@ and recreates nginx only when they differ, since recreating it drops whatever
 connections are open at that instant. A configuration edited by hand on the
 host still needs `docker compose … up -d --force-recreate nginx`.
 
+## Paying withdrawals
+
+Manual, by a person holding `withdrawals.pay`; see
+[withdrawals.md](./withdrawals.md) for why no rail ships. The settings:
+
+| Variable                        | Default |
+| ------------------------------- | ------- |
+| `WITHDRAWAL_MIN_AMOUNT`         | `10`    |
+| `WITHDRAWAL_MAX_AMOUNT`         | `50000` |
+| `WITHDRAWAL_DAILY_LIMIT`        | unset   |
+| `WITHDRAWAL_COOLDOWN_HOURS`     | `0`     |
+| `WITHDRAWAL_REQUIRE_KYC`        | `true`  |
+| `WITHDRAWAL_AUTO_APPROVE_BELOW` | unset   |
+
+**A deployment needs somebody in the FINANCE role before anyone can be paid.**
+ADMIN cannot approve or pay a withdrawal — the capabilities that create money
+and the ones that let it out are never one person's — so after upgrading, an
+administrator puts a second person into FINANCE from the People screen (or
+`POST /admin/users/:id/role`). Doing it ends that person's sessions; they sign
+in again with the new role. A single-operator deployment has to choose which
+half its one operator is; the platform does not choose for it.
+
 ### Roles reconcile themselves at boot
 
 A release that adds a capability writes it into a constant, and the constant is

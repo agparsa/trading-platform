@@ -154,6 +154,7 @@ const adminKeys = {
   paymentEvents: (id: string) => ['admin', 'payment-events', id] as const,
   kycQueue: (status: string) => ['admin', 'kyc', status] as const,
   kycRecord: (id: string) => ['admin', 'kyc-record', id] as const,
+  withdrawals: (status: string) => ['admin', 'withdrawals', status] as const,
 };
 
 export interface AdminInstrumentRow {
@@ -836,4 +837,117 @@ export function useRevokeKyc() {
       { idempotencyKey: crypto.randomUUID() },
     ),
   );
+}
+
+export interface AdminWithdrawalRow {
+  id: string;
+  userId: string;
+  email: string;
+  walletId: string;
+  amount: string;
+  currency: string;
+  status: string;
+  destinationHint: string;
+  reason: string | null;
+  provider: string;
+  providerReference: string | null;
+  autoApproved: boolean;
+  reviewerId: string | null;
+  approvedById: string | null;
+  paidById: string | null;
+  createdAt: string;
+  approvedAt: string | null;
+  decidedAt: string | null;
+  identityVerified: boolean;
+}
+
+export function useAdminWithdrawals(status: string) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.withdrawals(status),
+    queryFn: () =>
+      api.get<{ withdrawals: AdminWithdrawalRow[] }>(
+        status === 'queue' ? '/admin/withdrawals' : `/admin/withdrawals?status=${status}`,
+      ),
+  });
+}
+
+/**
+ * Opens the destination. A mutation rather than a query: not cached, not
+ * refetched, and every call is an audited act on the server.
+ */
+export function useOpenWithdrawalDestination() {
+  const { api } = useSession();
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      api.get<{ destination: string }>(`/admin/withdrawals/${id}/destination`),
+  });
+}
+
+function useWithdrawalAction<TInput extends { id: string }>(
+  run: (api: ReturnType<typeof useSession>['api'], input: TInput) => Promise<AdminWithdrawalRow>,
+) {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: TInput) => run(api, input),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['admin', 'withdrawals'] });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+    },
+  });
+}
+
+const key = () => ({ idempotencyKey: crypto.randomUUID() });
+
+export function useClaimWithdrawal() {
+  return useWithdrawalAction<{ id: string }>((api, { id }) =>
+    api.post<AdminWithdrawalRow>(`/admin/withdrawals/${id}/claim`, {}, key()),
+  );
+}
+
+export function useReleaseWithdrawal() {
+  return useWithdrawalAction<{ id: string }>((api, { id }) =>
+    api.post<AdminWithdrawalRow>(`/admin/withdrawals/${id}/release`, {}, key()),
+  );
+}
+
+export function useDecideWithdrawal() {
+  return useWithdrawalAction<{ id: string; outcome: 'APPROVED' | 'REJECTED'; reason: string }>(
+    (api, { id, outcome, reason }) =>
+      api.post<AdminWithdrawalRow>(`/admin/withdrawals/${id}/decide`, { outcome, reason }, key()),
+  );
+}
+
+export function useStartPayout() {
+  return useWithdrawalAction<{ id: string; providerReference: string }>(
+    (api, { id, providerReference }) =>
+      api.post<AdminWithdrawalRow>(`/admin/withdrawals/${id}/payout`, { providerReference }, key()),
+  );
+}
+
+export function useSettlePayout() {
+  return useWithdrawalAction<{ id: string; outcome: 'PAID' | 'FAILED'; reason: string }>(
+    (api, { id, outcome, reason }) =>
+      api.post<AdminWithdrawalRow>(`/admin/withdrawals/${id}/settle`, { outcome, reason }, key()),
+  );
+}
+
+/** Puts a person into a role. Their sessions end; the people views refetch. */
+export function useAssignRole() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, role, reason }: { id: string; role: string; reason: string }) =>
+      api.post<{ userId: string; role: string; sessionsEnded: number }>(
+        `/admin/users/${id}/role`,
+        { role, reason },
+        key(),
+      ),
+    onSuccess: (_result, input) => {
+      void client.invalidateQueries({ queryKey: adminKeys.user(input.id) });
+      void client.invalidateQueries({ queryKey: ['admin', 'users'] });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+    },
+  });
 }

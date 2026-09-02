@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestj
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { Permission } from '@tp/shared-types';
+import { Permission, UserRole } from '@tp/shared-types';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { IdempotencyKey } from '../common/decorators/idempotency-key.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -48,7 +48,7 @@ class MintInviteDto extends createZodDto(mintInviteSchema) {}
 const userSearchSchema = z
   .object({
     search: z.string().max(200).optional(),
-    role: z.enum(['USER', 'SUPPORT', 'OPERATOR', 'RISK_MANAGER', 'ADMIN']).optional(),
+    role: z.nativeEnum(UserRole).optional(),
     active: z.enum(['true', 'false']).optional(),
     limit: z.coerce.number().int().min(1).max(200).optional(),
   })
@@ -124,7 +124,15 @@ const auditQuerySchema = z
 
 class UserSearchDto extends createZodDto(userSearchSchema) {}
 class AccountSearchDto extends createZodDto(accountSearchSchema) {}
+const assignRoleSchema = z
+  .object({
+    role: z.nativeEnum(UserRole),
+    reason: z.string().trim().min(4).max(500),
+  })
+  .strict();
+
 class ReasonDto extends createZodDto(reasonSchema) {}
+class AssignRoleDto extends createZodDto(assignRoleSchema) {}
 class AccountStatusDto extends createZodDto(accountStatusSchema) {}
 class LimitsDto extends createZodDto(limitsSchema) {}
 class AdjustmentDto extends createZodDto(adjustmentSchema) {}
@@ -213,6 +221,23 @@ export class AdminController {
     @Body() body: ReasonDto,
   ) {
     return this.admin.forceSignOut(actor.id, id, body.reason);
+  }
+
+  @RequirePermissions(Permission.ROLES_ASSIGN)
+  @Post('users/:id/role')
+  @ApiOperation({ summary: 'Put a person into a role. Ends their sessions.' })
+  assignRole(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: AssignRoleDto,
+    @IdempotencyKey() _idempotencyKey: string,
+  ) {
+    return this.admin.assignRole({
+      actorId: actor.id,
+      userId: id,
+      role: body.role,
+      reason: body.reason,
+    });
   }
 
   @RequirePermissions(Permission.USERS_MANAGE)

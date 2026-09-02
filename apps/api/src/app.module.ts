@@ -22,6 +22,7 @@ import { PermissionsModule } from './permissions/permissions.module';
 import { WalletModule } from './wallet/wallet.module';
 import { PaymentsModule } from './payments/payments.module';
 import { KycModule } from './kyc/kyc.module';
+import { WithdrawalsModule } from './withdrawals/withdrawals.module';
 import { MasterModule } from './master/master.module';
 import { IntegrityModule } from './integrity/integrity.module';
 import { OperationsModule } from './operations/operations.module';
@@ -99,6 +100,7 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
     WalletModule,
     PaymentsModule,
     KycModule,
+    WithdrawalsModule,
     MasterModule,
     IntegrityModule,
     OperationsModule,

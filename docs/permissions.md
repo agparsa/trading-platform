@@ -145,6 +145,32 @@ cannot be named cannot be held apart from another.
 your own identity is what clears a withdrawal gate, so a role that can both
 submit and decide can clear its own path out.
 
+### Money out of nothing, complete
+
+`withdrawals.review` and `withdrawals.pay` may not sit beside `payments.confirm`,
+`wallet.adjust` or `accounts.adjust`. Confirm a deposit that never arrived, or
+adjust a wallet upward, then approve its withdrawal: the firm pays out money that
+never came in. Every other pair on the list needs a market to launder through;
+this one does not.
+
+That is why there is a **FINANCE** role and why **ADMIN cannot approve a
+withdrawal**. The administrator holds the capabilities that make money appear;
+the finance desk holds the ones that let it out; and the editor refuses to put
+both halves into either. A deployment needs at least one person in each, and
+the platform will not pretend otherwise for a single operator. See
+[withdrawals.md](./withdrawals.md).
+
+### Putting a person into a role
+
+`POST /admin/users/:id/role` needs `roles.assign`, which ADMIN holds and
+`users.manage` does not include — changing what a person may do is the one act
+that changes every other check, and it is granted and audited on its own. It
+refuses your own id, so an administrator can neither promote themselves by
+stages nor demote themselves with nobody left to undo it; and it ends every
+session the person has, because the role travels in the access token and a
+session minted before the change would keep the old capabilities until it
+expired.
+
 The escape is the one separation of duties always has: two roles, two logins, or
 a master-account link that names the account and leaves a record.
 

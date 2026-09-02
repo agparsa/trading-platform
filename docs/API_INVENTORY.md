@@ -56,6 +56,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/admin/users/:id/suspend`         | `suspend`              | USERS_MANAGE       |
 | `POST` | `/admin/users/:id/reinstate`       | `reinstate`            | USERS_MANAGE       |
 | `POST` | `/admin/users/:id/sign-out`        | `signOut`              | USERS_MANAGE       |
+| `POST` | `/admin/users/:id/role`            | `assignRole`           | ROLES_ASSIGN       |
 | `POST` | `/admin/users/:id/unlock`          | `unlock`               | USERS_MANAGE       |
 | `GET`  | `/admin/accounts`                  | `accounts`             | ACCOUNTS_READ_ANY  |
 | `GET`  | `/admin/accounts/:id`              | `account`              | ACCOUNTS_READ_ANY  |
@@ -277,7 +278,30 @@ handler is responsible for scoping the result to that user — which for
 | `GET`  | `/wallet/:id/transactions` | `transactions` | WALLET_READ     |
 | `POST` | `/wallet/transfer`         | `transfer`     | WALLET_TRANSFER |
 
-**124 routes:** 62 `GET`, 51 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
+### `withdrawals/admin-withdrawals.controller.ts` — base `/admin/withdrawals`
+
+| Verb   | Path                                 | Handler       | Requires             |
+| ------ | ------------------------------------ | ------------- | -------------------- |
+| `GET`  | `/admin/withdrawals`                 | `queue`       | WITHDRAWALS_READ_ANY |
+| `GET`  | `/admin/withdrawals/:id`             | `one`         | WITHDRAWALS_READ_ANY |
+| `GET`  | `/admin/withdrawals/:id/destination` | `destination` | WITHDRAWALS_PAY      |
+| `POST` | `/admin/withdrawals/:id/claim`       | `claim`       | WITHDRAWALS_REVIEW   |
+| `POST` | `/admin/withdrawals/:id/release`     | `release`     | WITHDRAWALS_REVIEW   |
+| `POST` | `/admin/withdrawals/:id/decide`      | `decide`      | WITHDRAWALS_REVIEW   |
+| `POST` | `/admin/withdrawals/:id/payout`      | `startPayout` | WITHDRAWALS_PAY      |
+| `POST` | `/admin/withdrawals/:id/settle`      | `settle`      | WITHDRAWALS_PAY      |
+
+### `withdrawals/withdrawals.controller.ts` — base `/withdrawals`
+
+| Verb   | Path                      | Handler   | Requires            |
+| ------ | ------------------------- | --------- | ------------------- |
+| `GET`  | `/withdrawals/terms`      | `terms`   | WITHDRAWALS_READ    |
+| `GET`  | `/withdrawals`            | `mine`    | WITHDRAWALS_READ    |
+| `GET`  | `/withdrawals/:id`        | `one`     | WITHDRAWALS_READ    |
+| `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
+| `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
+
+**138 routes:** 68 `GET`, 59 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

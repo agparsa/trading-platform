@@ -158,6 +158,36 @@ export const Permission = {
   /** Decide: verify, reject, or revoke a verification already granted. */
   KYC_REVIEW: 'kyc.review',
 
+  // --- withdrawals ---
+  /** See your own withdrawals. */
+  WITHDRAWALS_READ: 'withdrawals.read',
+  /** Ask for money to be paid out of your wallet, and cancel the request before it is decided. */
+  WITHDRAWALS_REQUEST: 'withdrawals.request',
+  /** See anyone's withdrawals and the queue. */
+  WITHDRAWALS_READ_ANY: 'withdrawals.read_any',
+  /**
+   * Approve or reject.
+   *
+   * The most consequential capability on the platform after the two that
+   * create money, and it must never sit beside either of them: confirm a
+   * deposit that never arrived, approve its withdrawal, and the firm pays out
+   * money that never came in. See INCOMPATIBLE_PERMISSIONS.
+   */
+  WITHDRAWALS_REVIEW: 'withdrawals.review',
+  /** Start a payout and record that it was paid, or that it failed. */
+  WITHDRAWALS_PAY: 'withdrawals.pay',
+
+  // --- users ---
+  /**
+   * Put a person into a role.
+   *
+   * Not part of `users.manage`, which suspends and reinstates. Changing what a
+   * person may do is the one administrative act that changes every other
+   * check, and it needs a name of its own so it can be granted — and audited
+   * — on its own.
+   */
+  ROLES_ASSIGN: 'roles.assign',
+
   // --- roles ---
   /** See which roles exist and what each one carries. */
   ROLES_READ: 'roles.read',
@@ -197,6 +227,8 @@ const TRADER: readonly Permission[] = [
   Permission.PAYMENTS_CREATE,
   Permission.KYC_READ,
   Permission.KYC_SUBMIT,
+  Permission.WITHDRAWALS_READ,
+  Permission.WITHDRAWALS_REQUEST,
   Permission.ORDERS_READ,
   Permission.ORDERS_CREATE,
   Permission.ORDERS_CANCEL,
@@ -238,6 +270,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.WALLET_READ_ANY,
     Permission.PAYMENTS_READ_ANY,
     Permission.KYC_READ_ANY,
+    Permission.WITHDRAWALS_READ_ANY,
     Permission.USERS_READ_ANY,
     Permission.ORDERS_READ,
     Permission.POSITIONS_READ,
@@ -250,6 +283,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.WALLET_READ_ANY,
     Permission.PAYMENTS_READ_ANY,
     Permission.KYC_READ_ANY,
+    Permission.WITHDRAWALS_READ_ANY,
     Permission.USERS_READ_ANY,
     Permission.ORDERS_READ,
     Permission.ORDERS_CANCEL,
@@ -273,6 +307,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.KYC_READ_ANY,
     Permission.KYC_DOCUMENTS_READ,
     Permission.KYC_REVIEW,
+    Permission.WITHDRAWALS_READ_ANY,
     Permission.USERS_READ_ANY,
     Permission.USERS_MANAGE,
     Permission.ORDERS_READ,
@@ -294,6 +329,27 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.SYSTEM_KILL_SWITCH,
   ],
 
+  /**
+   * Money out, and only money out.
+   *
+   * Holds `withdrawals.review` and `withdrawals.pay`, and reads everything it
+   * needs to judge a request — wallets, payments, identity status. Holds
+   * neither `payments.confirm` nor `wallet.adjust`: the two halves of "invent
+   * money, then take it out" are never one person's, and that is what this
+   * role exists to keep apart from `ADMIN`.
+   */
+  [UserRole.FINANCE]: [
+    Permission.ACCOUNTS_READ_ANY,
+    Permission.WALLET_READ_ANY,
+    Permission.PAYMENTS_READ_ANY,
+    Permission.KYC_READ_ANY,
+    Permission.WITHDRAWALS_READ_ANY,
+    Permission.WITHDRAWALS_REVIEW,
+    Permission.WITHDRAWALS_PAY,
+    Permission.USERS_READ_ANY,
+    Permission.AUDIT_READ,
+  ],
+
   [UserRole.ADMIN]: [
     Permission.ACCOUNTS_READ,
     Permission.ACCOUNTS_READ_ANY,
@@ -307,8 +363,10 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.KYC_READ_ANY,
     Permission.KYC_DOCUMENTS_READ,
     Permission.KYC_REVIEW,
+    Permission.WITHDRAWALS_READ_ANY,
     Permission.USERS_READ_ANY,
     Permission.USERS_MANAGE,
+    Permission.ROLES_ASSIGN,
     Permission.INVITES_MANAGE,
     Permission.ORDERS_READ,
     Permission.ORDERS_CANCEL,
@@ -400,6 +458,21 @@ export const INCOMPATIBLE_PERMISSIONS: readonly (readonly [Permission, Permissio
    * clear its own path out.
    */
   [Permission.KYC_REVIEW, Permission.KYC_SUBMIT],
+  /**
+   * Money out of nothing, complete. Confirm a deposit that never arrived, or
+   * adjust a wallet upward, then approve its withdrawal: the firm pays out
+   * money that never came in. These are the pairs the FINANCE role exists to
+   * keep apart from ADMIN, and neither role may be edited into holding both.
+   */
+  [Permission.WITHDRAWALS_REVIEW, Permission.PAYMENTS_CONFIRM],
+  [Permission.WITHDRAWALS_REVIEW, Permission.WALLET_ADJUST],
+  [Permission.WITHDRAWALS_REVIEW, Permission.ACCOUNTS_ADJUST],
+  [Permission.WITHDRAWALS_PAY, Permission.PAYMENTS_CONFIRM],
+  [Permission.WITHDRAWALS_PAY, Permission.WALLET_ADJUST],
+  [Permission.WITHDRAWALS_PAY, Permission.ACCOUNTS_ADJUST],
+  /** Approving or paying your own withdrawal. */
+  [Permission.WITHDRAWALS_REVIEW, Permission.WITHDRAWALS_REQUEST],
+  [Permission.WITHDRAWALS_PAY, Permission.WITHDRAWALS_REQUEST],
 ];
 
 /** Every incompatible pair present in this set. Empty means the set is allowed. */

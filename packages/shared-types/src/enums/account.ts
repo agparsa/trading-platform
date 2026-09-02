@@ -20,6 +20,12 @@ export const UserRole = {
   SUPPORT: 'SUPPORT',
   OPERATOR: 'OPERATOR',
   RISK_MANAGER: 'RISK_MANAGER',
+  /**
+   * Money out. Approves and pays withdrawals; deliberately cannot confirm a
+   * deposit or adjust a wallet, because the two halves of "invent money, then
+   * take it out" must never be one person's.
+   */
+  FINANCE: 'FINANCE',
   ADMIN: 'ADMIN',
 } as const;
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];

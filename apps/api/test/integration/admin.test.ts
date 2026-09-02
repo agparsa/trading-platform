@@ -2,7 +2,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import type { PrismaClient } from '@prisma/client';
-import { DomainError, Permission, UserRole, roleHasPermissions } from '@tp/shared-types';
+import {
+  DomainError,
+  Permission,
+  TradingErrorCode,
+  UserRole,
+  roleHasPermissions,
+} from '@tp/shared-types';
 import { AdminService } from '../../src/admin/admin.service';
 import { AdjustmentsService } from '../../src/admin/adjustments.service';
 import { AuditQueryService } from '../../src/admin/audit-query.service';
@@ -266,6 +272,68 @@ suite('Administration (integration)', () => {
       expect((await prisma.user.findUniqueOrThrow({ where: { id: trader.userId } })).isActive).toBe(
         true,
       );
+    });
+  });
+
+  describe('putting a person into a role', () => {
+    it('changes the role, ends every session, and records who and why', async () => {
+      const actor = await anAdministrator();
+      const person = await createAccount(prisma);
+      await prisma.refreshToken.create({
+        data: {
+          tenantId: DEFAULT_TENANT_ID,
+          userId: person.userId,
+          tokenHash: `hash-${Date.now()}`,
+          familyId: randomUUID(),
+          expiresAt: new Date(Date.now() + 86_400_000),
+        },
+      });
+
+      const result = await admin.assignRole({
+        actorId: actor.id,
+        userId: person.userId,
+        role: 'FINANCE',
+        reason: 'Joins the finance desk from Monday.',
+      });
+
+      expect(result.role).toBe('FINANCE');
+      // The role travels in the token: a live session would keep the old one.
+      expect(result.sessionsEnded).toBe(1);
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: person.userId } })).role).toBe(
+        'FINANCE',
+      );
+      const trail = await prisma.auditLog.findFirst({
+        where: { action: 'user.role_assigned', resourceId: person.userId },
+      });
+      expect(trail?.actorId).toBe(actor.id);
+      expect(trail?.before).toMatchObject({ role: 'USER' });
+      expect(trail?.after).toMatchObject({ role: 'FINANCE' });
+    });
+
+    it('refuses to change your own role', async () => {
+      const actor = await anAdministrator();
+      await expect(
+        admin.assignRole({
+          actorId: actor.id,
+          userId: actor.id,
+          role: 'USER',
+          reason: 'Stepping down.',
+        }),
+      ).rejects.toMatchObject({ code: TradingErrorCode.VALIDATION_FAILED });
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: actor.id } })).role).toBe('ADMIN');
+    });
+
+    it('does nothing, and ends nothing, when the role is already held', async () => {
+      const actor = await anAdministrator();
+      const person = await createAccount(prisma);
+      const result = await admin.assignRole({
+        actorId: actor.id,
+        userId: person.userId,
+        role: 'USER',
+        reason: 'No change.',
+      });
+      expect(result.sessionsEnded).toBe(0);
+      expect(await prisma.auditLog.count({ where: { action: 'user.role_assigned' } })).toBe(0);
     });
   });
 

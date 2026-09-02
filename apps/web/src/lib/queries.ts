@@ -197,6 +197,8 @@ export const queryKeys = {
   payments: ['payments'] as const,
   paymentProviders: ['payment-providers'] as const,
   kyc: ['kyc'] as const,
+  withdrawals: ['withdrawals'] as const,
+  withdrawalTerms: (currency: string) => ['withdrawal-terms', currency] as const,
 };
 
 /** Everything a trading event can invalidate, in one place. */
@@ -851,6 +853,89 @@ export function useSubmitKyc() {
     mutationFn: () => api.post<KycView>('/kyc/submit', {}, { idempotencyKey: crypto.randomUUID() }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.kyc });
+    },
+  });
+}
+
+export interface WithdrawalRow {
+  id: string;
+  walletId: string;
+  amount: string;
+  currency: string;
+  status: string;
+  destinationHint: string;
+  reason: string | null;
+  providerReference: string | null;
+  canCancel: boolean;
+  createdAt: string;
+  approvedAt: string | null;
+  decidedAt: string | null;
+}
+
+export interface WithdrawalTerms {
+  minimum: string;
+  maximum: string;
+  dailyLimit: string | null;
+  remainingToday: string | null;
+  cooldownHours: number;
+  nextAllowedAt: string | null;
+  identityRequired: boolean;
+  identityVerified: boolean;
+}
+
+export function useWithdrawalTerms(currency: string) {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: queryKeys.withdrawalTerms(currency),
+    queryFn: () => api.get<WithdrawalTerms>('/withdrawals/terms', { query: { currency } }),
+    enabled: accessToken !== null,
+  });
+}
+
+export function useWithdrawals() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: queryKeys.withdrawals,
+    queryFn: () => api.get<{ withdrawals: WithdrawalRow[] }>('/withdrawals'),
+    enabled: accessToken !== null,
+  });
+}
+
+/**
+ * Asks for money out. The wallet is debited the moment this succeeds, so the
+ * wallet and its movements are refetched — the balance the person sees must be
+ * what they can still use, not what they had before asking.
+ */
+export function useRequestWithdrawal() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { walletId: string; amount: string; destination: string }) =>
+      api.post<WithdrawalRow>('/withdrawals', input, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.withdrawals });
+      void client.invalidateQueries({ queryKey: ['withdrawal-terms'] });
+      void client.invalidateQueries({ queryKey: queryKeys.wallets });
+      void client.invalidateQueries({ queryKey: ['wallet-transactions'] });
+    },
+  });
+}
+
+export function useCancelWithdrawal() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      api.post<WithdrawalRow>(
+        `/withdrawals/${id}/cancel`,
+        {},
+        { idempotencyKey: crypto.randomUUID() },
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.withdrawals });
+      void client.invalidateQueries({ queryKey: ['withdrawal-terms'] });
+      void client.invalidateQueries({ queryKey: queryKeys.wallets });
+      void client.invalidateQueries({ queryKey: ['wallet-transactions'] });
     },
   });
 }

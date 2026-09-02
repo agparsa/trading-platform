@@ -34,6 +34,7 @@
     "@tp/shared-types": "workspace:*",
     "@tp/tenancy": "workspace:*",
     "@tp/trading-core": "workspace:*",
+    "@tp/withdrawals-core": "workspace:*",
     "bullmq": "catalog:",
     "cookie": "catalog:",
     "express": "catalog:",

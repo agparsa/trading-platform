@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { cn } from '@tp/ui';
-import { Button } from '@/components/primitives';
+import { Button, inputClass } from '@/components/primitives';
 import {
   useAdminUser,
   useAdminUsers,
+  useAssignRole,
   useForceSignOut,
   useSuspendUser,
   useUnlockUser,
@@ -48,6 +49,7 @@ export function PeoplePanel({
   const users = useAdminUsers(search);
   const suspend = useSuspendUser();
   const signOut = useForceSignOut();
+  const assignRole = useAssignRole();
   const unlock = useUnlockUser();
 
   return (
@@ -59,7 +61,9 @@ export function PeoplePanel({
         </span>
       </div>
 
-      <ErrorLine error={users.error ?? suspend.error ?? signOut.error ?? unlock.error} />
+      <ErrorLine
+        error={users.error ?? assignRole.error ?? suspend.error ?? signOut.error ?? unlock.error}
+      />
 
       {users.isLoading ? (
         <Loading />
@@ -98,7 +102,14 @@ export function PeoplePanel({
                   </button>
                 </td>
                 <td className="px-2 py-1.5 text-terminal-muted">{user.displayName}</td>
-                <td className="px-2 py-1.5 text-terminal-muted">{user.role}</td>
+                <td className="px-2 py-1.5 text-terminal-muted">
+                  <RoleCell
+                    userId={user.id}
+                    role={user.role}
+                    busy={assignRole.isPending}
+                    onAssign={(role, reason) => assignRole.mutate({ id: user.id, role, reason })}
+                  />
+                </td>
                 <td className="px-2 py-1.5">
                   <StatusPill status={user.isActive ? 'ACTIVE' : 'SUSPENDED'} />
                   {user.lockedUntil === null ? null : (
@@ -244,6 +255,86 @@ export function UserDetail({ userId }: { userId: string }) {
           </tbody>
         </Table>
       )}
+    </div>
+  );
+}
+
+const ROLES = ['USER', 'SUPPORT', 'OPERATOR', 'RISK_MANAGER', 'FINANCE', 'ADMIN'] as const;
+
+/**
+ * The role, and the one control that changes it.
+ *
+ * Changing a role ends every session the person has — the role travels in the
+ * token — and needs a reason, because who may do what is the first thing an
+ * auditor reads. The server refuses a change to your own role; the control
+ * does not hide that case, so the refusal is the truth rather than a missing
+ * button.
+ */
+function RoleCell({
+  userId,
+  role,
+  busy,
+  onAssign,
+}: {
+  userId: string;
+  role: string;
+  busy: boolean;
+  onAssign: (role: string, reason: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [next, setNext] = useState(role);
+  const [reason, setReason] = useState('');
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="underline decoration-dotted underline-offset-2 hover:text-terminal-text"
+        title="Change role"
+        onClick={() => {
+          setNext(role);
+          setEditing(true);
+        }}
+      >
+        {role}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1" data-user={userId}>
+      <select
+        className={cn(inputClass, 'w-36 py-1 text-xs')}
+        value={next}
+        onChange={(event) => setNext(event.target.value)}
+      >
+        {ROLES.map((one) => (
+          <option key={one} value={one}>
+            {one}
+          </option>
+        ))}
+      </select>
+      <input
+        className={cn(inputClass, 'w-48 py-1 text-xs')}
+        placeholder="Why — their sessions will end"
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
+      />
+      <Button
+        variant={next === 'ADMIN' || next === 'FINANCE' ? 'danger' : 'neutral'}
+        className="px-2 py-0.5"
+        disabled={busy || next === role || reason.trim().length < 4}
+        onClick={() => {
+          onAssign(next, reason.trim());
+          setEditing(false);
+          setReason('');
+        }}
+      >
+        Change
+      </Button>
+      <Button variant="ghost" className="px-2 py-0.5" onClick={() => setEditing(false)}>
+        Cancel
+      </Button>
     </div>
   );
 }

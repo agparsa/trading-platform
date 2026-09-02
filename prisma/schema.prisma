@@ -95,6 +95,7 @@ model Tenant {
   paymentEvents           PaymentEvent[]
   kycRecords              KycRecord[]
   kycDocuments            KycDocument[]
+  withdrawalRequests      WithdrawalRequest[]
 
   @@map("tenants")
 }
@@ -114,6 +115,8 @@ enum UserRole {
   SUPPORT
   OPERATOR
   RISK_MANAGER
+  /// Money out, and only money out. Cannot confirm a deposit or adjust a wallet.
+  FINANCE
   ADMIN
 }
 
@@ -170,7 +173,8 @@ model User {
   paymentIntents PaymentIntent[]
   wallets        Wallet[]
   kycRecord      KycRecord?
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  withdrawals    WithdrawalRequest[]
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   /// One address per tenant, not per platform: the same person may hold an account with two firms.
   @@unique([tenantId, email])
@@ -1672,6 +1676,7 @@ model Wallet {
   user         User                @relation(fields: [userId], references: [id], onDelete: Restrict)
   tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   transactions WalletTransaction[]
+  withdrawals  WithdrawalRequest[]
 
   @@unique([userId, currency])
   @@index([tenantId])
@@ -1959,4 +1964,85 @@ enum KycDocumentKind {
   DRIVING_LICENCE
   PROOF_OF_ADDRESS
   SELFIE
+}
+
+/// A request to pay money out of a wallet.
+///
+/// ## The hold
+///
+/// The wallet is debited when the request is made — `holdTransactionId` is that
+/// movement — and credited back, by a compensating movement, if the request
+/// ends any way but PAID. Between those two the money is on the platform and in
+/// nobody's balance, which is the only honest place for it: a balance that
+/// still showed it could be transferred into a trading account and traded
+/// while a bank transfer of the same money was in flight.
+///
+/// ## The destination
+///
+/// Where the money goes is a bank account or similar, given by the person, and
+/// it is sealed with this row's id as the context — like an identity document,
+/// and for the same reason. `destinationHint` is the last few characters, for
+/// the person's own list; an operator paying the request opens the whole thing,
+/// and that opening is audited.
+model WithdrawalRequest {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+  walletId String @map("wallet_id") @db.Uuid
+
+  amount   Decimal @db.Decimal(28, 10)
+  currency String  @db.VarChar(3)
+
+  status WithdrawalStatus @default(REQUESTED)
+
+  /// Sealed. Opened by an operator paying the request; every opening audited.
+  destination     String
+  /// Last characters of the destination, for a list. Not enough to pay anything.
+  destinationHint String @map("destination_hint")
+
+  /// The wallet movement that took the money out at request time.
+  holdTransactionId    String  @unique @map("hold_transaction_id") @db.Uuid
+  /// The compensating movement that gave it back, if the request did not end PAID.
+  releaseTransactionId String? @unique @map("release_transaction_id") @db.Uuid
+
+  /// Which rail paid it: 'manual' for a person, or a provider's name.
+  provider          String  @default("manual")
+  providerReference String? @map("provider_reference")
+
+  /// Why it was refused or failed, in words the person is shown.
+  reason String?
+
+  reviewerId   String?   @map("reviewer_id") @db.Uuid
+  approvedById String?   @map("approved_by_id") @db.Uuid
+  approvedAt   DateTime? @map("approved_at") @db.Timestamptz(6)
+  /// True when the amount was under the auto-approval threshold and no person said yes.
+  autoApproved Boolean   @default(false) @map("auto_approved")
+  paidById     String?   @map("paid_by_id") @db.Uuid
+  decidedAt    DateTime? @map("decided_at") @db.Timestamptz(6)
+
+  /// Bumped on every write, so a decision cannot overwrite a newer one.
+  version Int @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, createdAt])
+  @@index([tenantId])
+  @@map("withdrawal_requests")
+}
+
+enum WithdrawalStatus {
+  REQUESTED
+  UNDER_REVIEW
+  APPROVED
+  PROCESSING
+  PAID
+  REJECTED
+  CANCELLED
+  FAILED
 }

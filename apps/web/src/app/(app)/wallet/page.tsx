@@ -7,14 +7,19 @@ import { Button, EmptyState, Field, Panel, inputClass } from '@/components/primi
 import { money, signedMoney, toneClass, toneOf, utcTime } from '@/lib/format';
 import {
   useAccounts,
+  useCancelWithdrawal,
   usePaymentProviders,
   usePayments,
+  useRequestWithdrawal,
   useStartPayment,
   useWalletTransactions,
   useWalletTransfer,
   useWallets,
+  useWithdrawalTerms,
+  useWithdrawals,
   type PaymentRow,
   type WalletRow,
+  type WithdrawalRow,
 } from '@/lib/queries';
 
 /**
@@ -42,6 +47,9 @@ export default function WalletPage() {
   const providers = usePaymentProviders();
   const payments = usePayments();
   const startPayment = useStartPayment();
+  const withdrawals = useWithdrawals();
+  const requestWithdrawal = useRequestWithdrawal();
+  const cancelWithdrawal = useCancelWithdrawal();
 
   const rows = wallets.data?.wallets ?? [];
   const [walletId, setWalletId] = useState<string | null>(null);
@@ -125,6 +133,17 @@ export default function WalletPage() {
                 payments={(payments.data?.payments ?? []).filter(
                   (row) => row.currency === wallet.currency,
                 )}
+              />
+
+              <WithdrawSection
+                wallet={wallet}
+                withdrawals={(withdrawals.data?.withdrawals ?? []).filter(
+                  (row) => row.currency === wallet.currency,
+                )}
+                busy={requestWithdrawal.isPending || cancelWithdrawal.isPending}
+                error={requestWithdrawal.error ?? cancelWithdrawal.error}
+                onRequest={(input) => requestWithdrawal.mutate(input)}
+                onCancel={(id) => cancelWithdrawal.mutate({ id })}
               />
 
               <TransferForm
@@ -484,6 +503,190 @@ function PaymentHistory({ payments }: { payments: readonly PaymentRow[] }) {
           </tbody>
         </table>
       </Panel>
+    </div>
+  );
+}
+
+const WITHDRAWAL_STATUS_LABELS: Record<string, string> = {
+  REQUESTED: 'Requested',
+  UNDER_REVIEW: 'Being reviewed',
+  APPROVED: 'Approved, awaiting payment',
+  PROCESSING: 'Transfer sent',
+  PAID: 'Paid',
+  REJECTED: 'Not approved',
+  CANCELLED: 'Cancelled',
+  FAILED: 'Transfer failed',
+};
+
+/**
+ * Money out.
+ *
+ * The one thing this section must say plainly: the wallet is debited the
+ * moment a request is made, not when it is paid. The balance above goes down
+ * on submit, and comes back only if the request is refused, cancelled or the
+ * transfer fails. A screen that showed the old balance beside a pending
+ * withdrawal would be showing money that could be spent twice.
+ *
+ * The terms come from the server before anything is typed, so a person is not
+ * told "your identity must be verified" after filling in a bank account.
+ */
+function WithdrawSection({
+  wallet,
+  withdrawals,
+  busy,
+  error,
+  onRequest,
+  onCancel,
+}: {
+  wallet: WalletRow;
+  withdrawals: readonly WithdrawalRow[];
+  busy: boolean;
+  error: unknown;
+  onRequest: (input: { walletId: string; amount: string; destination: string }) => void;
+  onCancel: (id: string) => void;
+}) {
+  const terms = useWithdrawalTerms(wallet.currency);
+  const [amount, setAmount] = useState('');
+  const [destination, setDestination] = useState('');
+
+  const blocked = useMemo(() => {
+    if (wallet.status === 'FROZEN') return 'This wallet is frozen.';
+    if (terms.data?.identityRequired === true && terms.data.identityVerified === false) {
+      return 'Verify your identity first.';
+    }
+    if (terms.data?.nextAllowedAt !== null && terms.data?.nextAllowedAt !== undefined) {
+      return `Next request from ${utcTime(terms.data.nextAllowedAt)}.`;
+    }
+    if (!/^\d+(\.\d{1,2})?$/.test(amount.trim())) return 'Enter an amount.';
+    if (Number(amount) <= 0) return 'The amount must be more than zero.';
+    if (destination.trim().length < 8) return 'Say where the money should go.';
+    return null;
+  }, [wallet, terms.data, amount, destination]);
+
+  return (
+    <div className="space-y-4">
+      <Panel className="max-w-lg space-y-3 p-4">
+        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Withdraw</p>
+
+        {terms.data === undefined ? null : (
+          <p className="text-[11px] leading-relaxed text-terminal-muted">
+            Between {money(terms.data.minimum, wallet.currency)} and{' '}
+            {money(terms.data.maximum, wallet.currency)} per request
+            {terms.data.dailyLimit === null
+              ? ''
+              : `; ${money(terms.data.remainingToday ?? '0', wallet.currency)} of today's ${money(terms.data.dailyLimit, wallet.currency)} remains`}
+            .
+            {terms.data.identityRequired && !terms.data.identityVerified ? (
+              <>
+                {' '}
+                Your identity has to be verified before money can be paid out — see the{' '}
+                <a href="/verification" className="underline">
+                  Verification
+                </a>{' '}
+                page.
+              </>
+            ) : null}
+          </p>
+        )}
+
+        <Field label={`Amount (${wallet.currency})`}>
+          <input
+            className={inputClass}
+            inputMode="decimal"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder="0.00"
+          />
+        </Field>
+
+        <Field label="Pay to">
+          <textarea
+            className={`${inputClass} min-h-[4rem]`}
+            value={destination}
+            onChange={(event) => setDestination(event.target.value)}
+            placeholder="Account name, and the account number or IBAN, as your bank would want it"
+            maxLength={500}
+          />
+        </Field>
+
+        {error === null || error === undefined ? null : (
+          <p className="text-[11px] text-terminal-negative">
+            {error instanceof DomainError ? error.message : 'The request did not go through.'}
+          </p>
+        )}
+
+        <div className="flex items-center gap-2">
+          <Button
+            disabled={blocked !== null || busy}
+            onClick={() => {
+              onRequest({
+                walletId: wallet.id,
+                amount: amount.trim(),
+                destination: destination.trim(),
+              });
+              setAmount('');
+              setDestination('');
+            }}
+          >
+            {busy ? 'Working…' : 'Request withdrawal'}
+          </Button>
+          {blocked === null ? null : (
+            <span className="text-[11px] text-terminal-muted">{blocked}</span>
+          )}
+        </div>
+
+        <p className="text-[10px] leading-relaxed text-terminal-muted">
+          The amount leaves your wallet balance the moment you ask, and comes back only if the
+          request is refused, cancelled, or the transfer fails. Somebody reviews every request and a
+          person sends the money; you will be told when it is paid.
+        </p>
+      </Panel>
+
+      {withdrawals.length === 0 ? null : (
+        <Panel className="overflow-auto">
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+                <th className="px-3 py-2">Requested</th>
+                <th className="px-3 py-2 text-right">Amount</th>
+                <th className="px-3 py-2">To</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {withdrawals.map((row) => (
+                <tr key={row.id} className="border-t border-terminal-border/60">
+                  <td className="numeric px-3 py-1.5 text-terminal-muted">
+                    {utcTime(row.createdAt)}
+                  </td>
+                  <td className="numeric px-3 py-1.5 text-right text-terminal-text">
+                    {money(row.amount, row.currency)}
+                  </td>
+                  <td className="px-3 py-1.5 text-terminal-muted">…{row.destinationHint}</td>
+                  <td className="px-3 py-1.5 text-terminal-muted">
+                    {WITHDRAWAL_STATUS_LABELS[row.status] ?? row.status}
+                    {row.reason === null ? '' : ` — ${row.reason}`}
+                    {row.providerReference === null ? '' : ` (ref ${row.providerReference})`}
+                  </td>
+                  <td className="px-3 py-1.5 text-right">
+                    {row.canCancel ? (
+                      <Button
+                        variant="ghost"
+                        className="px-2 py-0.5"
+                        disabled={busy}
+                        onClick={() => onCancel(row.id)}
+                      >
+                        Cancel
+                      </Button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+      )}
     </div>
   );
 }

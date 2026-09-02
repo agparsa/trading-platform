@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { toDecimal } from '@tp/financial-core';
-import { DomainError, TradingErrorCode } from '@tp/shared-types';
+import { DomainError, TradingErrorCode, type UserRole } from '@tp/shared-types';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionsService } from '../auth/sessions.service';
@@ -203,6 +203,61 @@ export class AdminService {
       after: { reason, sessionsEnded },
     });
     return { userId, sessionsEnded };
+  }
+
+  /**
+   * Puts a person into a role.
+   *
+   * The most consequential administrative act on the platform: every other
+   * check reads the role, so changing it changes all of them at once. Three
+   * rules, each for a reason.
+   *
+   *   - **Not yourself.** An administrator who could promote themselves would
+   *     hold every role at once by stages, and one who demoted themselves by
+   *     mistake would have nobody left to undo it.
+   *   - **Every session of the target ends.** The role travels in the access
+   *     token, so a session minted before the change would keep the old
+   *     capabilities until it expired — and the change most worth making
+   *     quickly is a demotion.
+   *   - **A reason, recorded.** Who may do what is the first thing an auditor
+   *     reads, and a role change with no reason is a line they cannot read.
+   */
+  async assignRole(input: {
+    readonly actorId: string;
+    readonly userId: string;
+    readonly role: UserRole;
+    readonly reason: string;
+  }): Promise<{ userId: string; role: UserRole; sessionsEnded: number }> {
+    if (input.userId === input.actorId) {
+      throw new DomainError(
+        TradingErrorCode.VALIDATION_FAILED,
+        'You cannot change your own role. Ask another administrator.',
+      );
+    }
+    const user = await this.prisma.user.findFirst({
+      where: { id: input.userId },
+      select: { id: true, role: true },
+    });
+    if (user === null) {
+      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'User not found');
+    }
+    if (user.role === input.role) {
+      return { userId: user.id, role: input.role, sessionsEnded: 0 };
+    }
+
+    await this.prisma.user.update({ where: { id: user.id }, data: { role: input.role } });
+    const sessionsEnded = await this.sessions.revokeAll(user.id);
+
+    await this.audit.record({
+      actorId: input.actorId,
+      actorType: 'ADMIN',
+      action: 'user.role_assigned',
+      resourceType: 'user',
+      resourceId: user.id,
+      before: { role: user.role },
+      after: { role: input.role, reason: input.reason, sessionsEnded },
+    });
+    return { userId: user.id, role: input.role, sessionsEnded };
   }
 
   /** Clear a lockout from failed sign-in attempts. */

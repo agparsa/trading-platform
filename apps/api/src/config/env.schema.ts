@@ -79,6 +79,30 @@ export const envSchema = z
      */
     KYC_DOCUMENT_RETENTION_DAYS: z.coerce.number().int().min(1).max(7300).default(1826),
 
+    /** Smallest withdrawal that will be taken. Paying a cent costs more than it moves. */
+    WITHDRAWAL_MIN_AMOUNT: z.string().default('10'),
+    /** Largest single withdrawal. */
+    WITHDRAWAL_MAX_AMOUNT: z.string().default('50000'),
+    /** Largest sum of withdrawals in any rolling 24 hours. Unset means no cap. */
+    WITHDRAWAL_DAILY_LIMIT: z.string().optional(),
+    /** Hours between one withdrawal request and the next. 0 means none. */
+    WITHDRAWAL_COOLDOWN_HOURS: z.coerce.number().int().min(0).max(720).default(0),
+    /**
+     * Whether a verified identity is required before a withdrawal is even
+     * considered. On by default; the only reason to turn it off is a deployment
+     * that verifies people some other way.
+     */
+    WITHDRAWAL_REQUIRE_KYC: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
+    /**
+     * Requests below this are approved without a person. Unset means every
+     * request waits for somebody holding `withdrawals.review`. Approval is not
+     * payment: an auto-approved request still needs a person to pay it.
+     */
+    WITHDRAWAL_AUTO_APPROVE_BELOW: z.string().optional(),
+
     REDIS_URL: z.string().startsWith('redis://'),
 
     // Long enough that a brute-force is hopeless; refuse to boot on a short one.

@@ -1001,6 +1001,92 @@ const checks: Check[] = [
   },
   {
     /**
+     * A withdrawal over HTTP: refused at the gate, then the shape of the
+     * refusal once verified is not something this check can reach without a
+     * finance login it must not create. What it can prove is the part that
+     * matters most from outside — that an unverified person is told exactly
+     * why, that nothing was debited, and that a trader is refused every
+     * finance route.
+     */
+    name: 'a withdrawal: refused at the identity gate, debiting nothing',
+    run: async () => {
+      const email = `smoke-wd-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: registration(email, password, 'Smoke Withdrawal'),
+      });
+      const login = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (login.status === 429) {
+        throw new Error(
+          'the login limiter was already spent; this check must run before the rate-limit check',
+        );
+      }
+      if (!login.ok) {
+        console.log('      (registration is closed on this deployment; skipped)');
+        return;
+      }
+      const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+      const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+      const terms = await fetch(`${BASE}/api/v1/withdrawals/terms?currency=USD`, { headers: auth });
+      assert(terms.ok, `GET /withdrawals/terms returned ${terms.status}`);
+      const stated = (
+        (await terms.json()) as {
+          data: { minimum: string; identityRequired: boolean; identityVerified: boolean };
+        }
+      ).data;
+      assert(/^\d+\.\d{2}$/.test(stated.minimum), `minimum is not money: ${stated.minimum}`);
+
+      // A wallet to ask from. Reading /wallet creates none; asking to
+      // withdraw needs a wallet id, so the wallet is ensured by a transfer
+      // endpoint's sibling: GET /wallet after a deposit intent is not it either.
+      // The API creates a wallet on first money; with none, the request is
+      // refused for the wallet before the gate — which is also a correct refusal.
+      const wallets = await fetch(`${BASE}/api/v1/wallet`, { headers: auth });
+      const list = ((await wallets.json()) as { data: { wallets: Array<{ id: string }> } }).data;
+      const walletId = list.wallets[0]?.id ?? '00000000-0000-4000-8000-000000000000';
+
+      const refused = await fetch(`${BASE}/api/v1/withdrawals`, {
+        method: 'POST',
+        headers: { ...auth, 'Idempotency-Key': `smoke-wd-${Date.now()}` },
+        body: JSON.stringify({
+          walletId,
+          amount: '100.00',
+          destination: 'GB29 NWBK 6016 1331 9268 19 — Smoke',
+        }),
+      });
+      assert(
+        refused.status === 400 || refused.status === 404,
+        `an unverified person's withdrawal was answered ${refused.status}`,
+      );
+      const body = (await refused.json()) as { ok: boolean; error?: { message: string } };
+      assert(body.ok === false, 'a refusal came back inside a success envelope');
+      if (stated.identityRequired && list.wallets.length > 0) {
+        assert(
+          /identity has to be verified/.test(body.error?.message ?? ''),
+          `the refusal did not name identity: ${body.error?.message}`,
+        );
+      }
+
+      const mine = await fetch(`${BASE}/api/v1/withdrawals`, { headers: auth });
+      const own = ((await mine.json()) as { data: { withdrawals: unknown[] } }).data;
+      assert(own.withdrawals.length === 0, 'a refused withdrawal left a record behind');
+
+      // The finance routes are not a trader's.
+      for (const path of ['/admin/withdrawals', `/admin/withdrawals/${walletId}/destination`]) {
+        const desk = await fetch(`${BASE}/api/v1${path}`, { headers: auth });
+        assert(desk.status === 403, `${path} answered a trader ${desk.status}`);
+      }
+    },
+  },
+  {
+    /**
      * Invitations, end to end over HTTP.
      *
      * The service has integration tests; this checks the parts they cannot —
