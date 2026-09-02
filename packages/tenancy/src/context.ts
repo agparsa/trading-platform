@@ -139,3 +139,21 @@ export function requireTenantId(): string {
   }
   return tenant.tenantId;
 }
+
+/**
+ * Runs `fn` outside every scope — the state a process entry point starts in.
+ *
+ * Exists for one reason: to prove that something opens its own scope. A test
+ * harness enters a tenant in `beforeEach` so that ordinary tests can write
+ * rows, and that is exactly what hid a job which never opened one — every
+ * test drove it from inside a scope the harness had opened, and in production,
+ * where a queue hands a job nothing, its first write was refused. Five times,
+ * on schedule, for weeks.
+ *
+ * It cannot widen anything: outside a scope the extension refuses every
+ * scoped query, so the only thing this can do to code that is correct is
+ * nothing.
+ */
+export async function outsideAnyScope<T>(fn: () => T | Promise<T>): Promise<T> {
+  return storage.exit(async () => fn());
+}

@@ -389,6 +389,27 @@ It is not a proof. A file could open a scope for one query and forget another.
 It is the difference between a service that has thought about the question and
 one that has not.
 
+### The worker: the job that had thought about it, and still forgot one write
+
+The reconciliation job was the model citizen — `withoutTenantScope` with a
+reason for the sweep, `withTenant` for each account's checking — and it never
+ran in production. Its _run row_, written before the sweep and closed after it,
+carried a `tenantId` in its data and was written in no scope at all. The
+extension refused it, as it should; the queue retried five times an hour; the
+console showed no run since the day tenancy went live. The static sweep could
+not see it: the file named a tenant, several times.
+
+What hid it was the test harness. `beforeEach` enters a tenant so that ordinary
+tests can write rows, so every test of the job drove it from _inside_ a scope
+it had never opened. A queue hands a job nothing.
+
+So `@tp/tenancy` gained `outsideAnyScope(fn)` — `AsyncLocalStorage.exit`, the
+state a process entry point actually starts in — and `jobs.test.ts` drives
+every entry point the registry attaches from there. It cannot widen anything:
+outside a scope the extension refuses every scoped query, so the only thing it
+can do to correct code is nothing. Three of the new tests failed against the
+old service; the swap and maintenance jobs passed, because they had been right.
+
 ## 7. Migration
 
 Every existing row belongs to one default tenant, created by the migration.

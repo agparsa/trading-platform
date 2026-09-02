@@ -6,7 +6,7 @@ import { SwapAccrualService } from '../../src/jobs/swap-accrual.service';
 import { ReconciliationService } from '../../src/jobs/reconciliation.service';
 import { MaintenanceService } from '../../src/jobs/maintenance.service';
 import type { PrismaService } from '../../src/prisma.service';
-import { withTenant, withoutTenantScope } from '@tp/tenancy';
+import { outsideAnyScope, withTenant, withoutTenantScope } from '@tp/tenancy';
 import {
   createAccount,
   createTestClient,
@@ -718,6 +718,104 @@ suite('Worker jobs (integration)', () => {
       expect(await service().releaseAbandonedClaims(now)).toBe(1);
       const remaining = await prisma.idempotencyKey.findMany();
       expect(remaining.map((r) => r.key).sort()).toEqual(['done', 'recent']);
+    });
+  });
+
+  /**
+   * A queue hands a job nothing: no request, no tenant, no scope. Every job has
+   * to open its own, and every test in this file had been proving the opposite
+   * — the harness enters a tenant in `beforeEach`, so a job that forgot ran
+   * happily here and was refused in production on its first write. That is
+   * how the scheduled reconciliation failed five times an hour for weeks,
+   * with the console showing no run since the day tenancy went live.
+   *
+   * So each entry point the registry attaches is driven from *outside* any
+   * scope, which is the state it actually starts in.
+   */
+  describe('jobs open their own scope', () => {
+    it('reconciliation, scheduled: the run row and its closing update', async () => {
+      const { accountId } = await createAccount(prisma, { balance: '100000' });
+      await prisma.account.update({ where: { id: accountId }, data: { balance: '100500' } });
+
+      const summary = await outsideAnyScope(() =>
+        new ReconciliationService(prismaService).check({ trigger: 'SCHEDULED' }),
+      );
+
+      expect(summary.checked).toBe(1);
+      expect(summary.findings).toBe(1);
+      const run = await prisma.reconciliationRun.findUniqueOrThrow({
+        where: { id: summary.runId },
+      });
+      expect(run.status).toBe('COMPLETED');
+      expect(run.tenantId).toBe(DEFAULT_TENANT_ID);
+      expect(await prisma.reconciliationFinding.count({ where: { accountId } })).toBe(1);
+    });
+
+    it('reconciliation, requested: finds the tenant the API filed the run under', async () => {
+      const other = await createTenant(prisma, 'other-firm');
+      const requested = await withTenant({ tenantId: other, slug: 'other-firm' }, () =>
+        prisma.reconciliationRun.create({ data: { tenantId: other, trigger: 'MANUAL' } }),
+      );
+
+      const summary = await outsideAnyScope(() =>
+        new ReconciliationService(prismaService).check({ runId: requested.id, trigger: 'MANUAL' }),
+      );
+
+      expect(summary.runId).toBe(requested.id);
+      const run = await withoutTenantScope('the test reads back a row in another tenant', () =>
+        prisma.reconciliationRun.findUniqueOrThrow({ where: { id: requested.id } }),
+      );
+      expect(run.status).toBe('COMPLETED');
+      expect(run.tenantId).toBe(other);
+    });
+
+    it('reconciliation, failed: the failure is still recorded', async () => {
+      await createAccount(prisma, { balance: '100000' });
+      const broken = new ReconciliationService({
+        tenant: prismaService.tenant,
+        reconciliationRun: prismaService.reconciliationRun,
+        account: {
+          findMany: async () => {
+            throw new Error('the database went away');
+          },
+        },
+      } as unknown as PrismaService);
+
+      await expect(outsideAnyScope(() => broken.check())).rejects.toThrow('went away');
+      const run = await prisma.reconciliationRun.findFirstOrThrow({
+        orderBy: { startedAt: 'desc' },
+      });
+      expect(run.status).toBe('FAILED');
+      expect(run.error).toContain('went away');
+    });
+
+    it('swap accrual', async () => {
+      await openPosition('BUY', '1.00');
+      const summary = await outsideAnyScope(() =>
+        new SwapAccrualService(prismaService, buildConfig() as never).accrue(
+          new Date('2026-08-24T22:00:00Z'),
+        ),
+      );
+      expect(summary.failed).toBe(0);
+    });
+
+    it('maintenance, every sweep', async () => {
+      const maintenance = new MaintenanceService(prismaService);
+      await expect(
+        outsideAnyScope(async () => ({
+          expired: await maintenance.sweepIdempotencyKeys(),
+          abandoned: await maintenance.releaseAbandonedClaims(),
+          payments: await maintenance.expireStalePayments(),
+          verifications: await maintenance.expireVerifications(),
+          documents: await maintenance.purgeIdentityDocuments(365),
+        })),
+      ).resolves.toEqual({
+        expired: 0,
+        abandoned: 0,
+        payments: 0,
+        verifications: 0,
+        documents: 0,
+      });
     });
   });
 });

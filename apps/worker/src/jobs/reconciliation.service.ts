@@ -9,7 +9,7 @@ import {
   type LedgerTotals,
 } from '@tp/reconciliation-core';
 import { PrismaService } from '../prisma.service';
-import { withTenant, withoutTenantScope } from '@tp/tenancy';
+import { withTenant, withoutTenantScope, type TenantContext } from '@tp/tenancy';
 
 export interface ReconciliationSummary {
   readonly runId: string;
@@ -84,22 +84,30 @@ export class ReconciliationService {
      * with a special case in its scoping. So a scheduled sweep is recorded
      * against the platform's default tenant, and a run somebody asked for is
      * recorded against theirs.
+     *
+     * And it is written *inside* that tenant's scope. A queue hands this job
+     * nothing — no request, no tenant — and a row carrying a `tenantId` is
+     * still refused by the extension when no scope is open. That is the
+     * extension doing its job, and it cost every scheduled run for weeks:
+     * five refused attempts an hour, on schedule, and a console that showed
+     * no run since the day tenancy went live. Every test had driven this from
+     * inside a scope the harness opened.
      */
-    const runTenantId = options.tenantId ?? (await this.defaultTenantId());
-    // The run row itself is written under whichever tenant owns it.
-    const run =
+    const runTenant = await this.runTenant(options);
+    const run = await withTenant(runTenant, () =>
       options.runId === undefined
-        ? await this.prisma.reconciliationRun.create({
+        ? this.prisma.reconciliationRun.create({
             data: {
-              tenantId: runTenantId,
+              tenantId: runTenant.tenantId,
               trigger: options.trigger ?? 'SCHEDULED',
               requestedByUserId: options.requestedByUserId ?? null,
             },
           })
-        : await this.prisma.reconciliationRun.update({
+        : this.prisma.reconciliationRun.update({
             where: { id: options.runId },
             data: { status: 'RUNNING', startedAt: new Date() },
-          });
+          }),
+    );
 
     try {
       /**
@@ -121,6 +129,14 @@ export class ReconciliationService {
             orderBy: { createdAt: 'asc' },
           }),
       );
+      // `Tenant` is not a scoped model; the slugs are for the scope each
+      // account's checking runs in, so a log line names a firm, not a uuid.
+      const slugs = new Map(
+        (await this.prisma.tenant.findMany({ select: { id: true, slug: true } })).map((row) => [
+          row.id,
+          row.slug,
+        ]),
+      );
 
       const reports: AccountReport[] = [];
       let findings = 0;
@@ -138,7 +154,7 @@ export class ReconciliationService {
          * report the difference as a discrepancy.
          */
         const outcome = await withTenant(
-          { tenantId: account.tenantId, slug: account.tenantId },
+          { tenantId: account.tenantId, slug: slugs.get(account.tenantId) ?? account.tenantId },
           async () => {
             const records = await this.loadRecords(account);
             const report = reconcileAccount(records);
@@ -169,18 +185,20 @@ export class ReconciliationService {
         recurred += outcome.localRecurred;
       }
 
-      await this.prisma.reconciliationRun.update({
-        where: { id: run.id },
-        data: {
-          status: 'COMPLETED',
-          accountsChecked: accounts.length,
-          findingsRaised: raised,
-          findingsRecurred: recurred,
-          criticalCount: critical,
-          finishedAt: new Date(),
-          durationMs: Date.now() - startedAt,
-        },
-      });
+      await withTenant(runTenant, () =>
+        this.prisma.reconciliationRun.update({
+          where: { id: run.id },
+          data: {
+            status: 'COMPLETED',
+            accountsChecked: accounts.length,
+            findingsRaised: raised,
+            findingsRecurred: recurred,
+            criticalCount: critical,
+            finishedAt: new Date(),
+            durationMs: Date.now() - startedAt,
+          },
+        }),
+      );
 
       if (findings === 0) {
         this.logger.log(
@@ -210,15 +228,17 @@ export class ReconciliationService {
        * clean bill of health — the worst possible confusion for a check whose
        * whole purpose is to notice that something is wrong.
        */
-      await this.prisma.reconciliationRun.update({
-        where: { id: run.id },
-        data: {
-          status: 'FAILED',
-          error: error instanceof Error ? error.message : String(error),
-          finishedAt: new Date(),
-          durationMs: Date.now() - startedAt,
-        },
-      });
+      await withTenant(runTenant, () =>
+        this.prisma.reconciliationRun.update({
+          where: { id: run.id },
+          data: {
+            status: 'FAILED',
+            error: error instanceof Error ? error.message : String(error),
+            finishedAt: new Date(),
+            durationMs: Date.now() - startedAt,
+          },
+        }),
+      );
       throw error;
     }
   }
@@ -406,19 +426,44 @@ export class ReconciliationService {
    * genuinely gone away.
    */
   /**
-   * The tenant a platform-wide sweep files its run under.
+   * The tenant this run's row belongs to, and so the scope its writes need.
    *
-   * Looked up rather than configured: a constant would be a second place the
-   * default tenant's identity is written down, and the two would disagree the
-   * first time somebody renamed it.
+   * A run a person asked for already has a row, created by the API in their
+   * tenant; it is found across tenants because nothing here knows which one
+   * yet. A run for one tenant is theirs. A platform-wide sweep files under the
+   * oldest tenant — looked up rather than configured: a constant would be a
+   * second place the default tenant's identity is written down, and the two
+   * would disagree the first time somebody renamed it.
    */
-  private async defaultTenantId(): Promise<string> {
-    // `Tenant` is not a scoped model, so this needs no scope of its own.
-    const tenant = await this.prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' } });
-    if (tenant === null) {
-      throw new Error('Reconciliation cannot run: the platform has no tenants.');
+  private async runTenant(options: { runId?: string; tenantId?: string }): Promise<TenantContext> {
+    // `Tenant` is not a scoped model, so its reads need no scope of their own.
+    if (options.runId !== undefined) {
+      const runId = options.runId;
+      const existing = await withoutTenantScope(
+        'a requested run was filed by the API in its tenant; the job has to find which',
+        () =>
+          this.prisma.reconciliationRun.findUnique({
+            where: { id: runId },
+            select: { tenant: { select: { id: true, slug: true } } },
+          }),
+      );
+      if (existing === null) {
+        throw new Error(`Reconciliation run ${runId} does not exist.`);
+      }
+      return { tenantId: existing.tenant.id, slug: existing.tenant.slug };
     }
-    return tenant.id;
+    const tenant =
+      options.tenantId === undefined
+        ? await this.prisma.tenant.findFirst({ orderBy: { createdAt: 'asc' } })
+        : await this.prisma.tenant.findUnique({ where: { id: options.tenantId } });
+    if (tenant === null) {
+      throw new Error(
+        options.tenantId === undefined
+          ? 'Reconciliation cannot run: the platform has no tenants.'
+          : `Reconciliation cannot run: no tenant has the id ${options.tenantId}.`,
+      );
+    }
+    return { tenantId: tenant.id, slug: tenant.slug };
   }
 
   private async record(
