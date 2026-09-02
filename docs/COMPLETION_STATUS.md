@@ -21,7 +21,7 @@ pnpm lint             ok
 pnpm format:check     ok
 pnpm typecheck        ok
 pnpm inventory --check ok
-pnpm test             120 files, 1562 tests, 0 failures
+pnpm test             132 files, 1746 tests, 0 failures
 pnpm build            ok
 ```
 
@@ -64,7 +64,7 @@ Complete in the sense the prompt defines — UI → API → business logic → d
 | 33       | Audit log                  | append-only enforced by a **database trigger** raising `42501` — an admin cannot edit it                                                                                                                                |
 | 37       | Observability              | Prometheus metrics, `/health`, `/ready`, request-id correlation, structured logging                                                                                                                                     |
 | 39       | Security                   | 40-probe pentest script, AES-256-GCM at rest, no secrets in git history                                                                                                                                                 |
-| 40       | Testing                    | 1720 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, payment idempotency, and row-level security proved by breaking it                                             |
+| 40       | Testing                    | 1746 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, payment idempotency, and row-level security proved by breaking it                                             |
 | 41       | Security testing           | cross-tenant access, privilege escalation, token replay, rate limiting, audit tampering, invitation minting                                                                                                             |
 | 44       | CI/CD                      | install → prisma → build → lint → format → typecheck → migrate → test → schema check → seed → build → smoke API → smoke WebSocket                                                                                       |
 
@@ -149,6 +149,40 @@ describe do not exist, and §45 says do not document features that do not exist.
 | 15 — real market data             | not started, plus a commercial dependency    |
 
 **11 of 16.**
+
+## Phase 7's deploy, and the three things it found
+
+The withdrawals migration applied cleanly, the boot reconcile created the
+FINANCE role with its nine grants, and ADMIN gained `roles.assign`. Then the
+check that was meant to be a formality — which administrator will put somebody
+into FINANCE? — found that production has **no administrator**: twenty-five
+registered users, every one of them `USER`, since the first deploy. Nothing
+creates one, correctly; nothing documented how the first one comes to exist.
+`scripts/first-administrator.sh` now does — the compiled CLI inside the migrate
+image, doing what `POST /admin/users/:id/role` does minus the actor it cannot
+have, refusing once an administrator exists. See
+[deployment.md](./deployment.md#the-first-administrator).
+
+The worker's log then showed **reconciliation had never run** since tenancy
+went live: five refused attempts an hour, because the run row was written in
+no scope. The harness had hidden it by entering a tenant in `beforeEach`.
+`@tp/tenancy` gained `outsideAnyScope`, every job the registry attaches is now
+driven from there, and three of those tests fail against the old service. See
+[multi-tenancy.md](./multi-tenancy.md).
+
+The first run after that reported, within the hour, a real discrepancy: the
+ledger held exactly **twice the swap** the trades reported on one account.
+Closing a position had posted its accrued swap to the ledger a second time, the
+worker having settled it the night it accrued. Every test had closed positions
+the day they opened; two now hold one overnight. See
+[pnl.md](./pnl.md#swap-is-settled-the-night-it-accrues-and-reported-at-close)
+and [reconciliation.md](./reconciliation.md). The finding stays open and the
+balance stays as found, for a person to correct with a reason — which is the
+reconciliation engine's rule, applied to the first thing it caught.
+
+Three defects, none of them visible to 1,720 passing tests, all three found by
+looking at what the deploy actually did. The smoke suite and the production log
+after every deploy are not optional.
 
 ## Phase 6 — and the ten minutes the API was down
 
