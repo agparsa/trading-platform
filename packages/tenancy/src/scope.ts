@@ -85,6 +85,9 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'KycRecord',
   'KycDocument',
   'WithdrawalRequest',
+  'ApiKey',
+  'ServiceToken',
+  'CredentialUsage',
 ]);
 
 /**

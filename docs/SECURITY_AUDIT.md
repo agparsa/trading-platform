@@ -31,7 +31,7 @@ cannot be pasted into another. `common/crypto/secret-box.ts`.
 
 ## 2. Authorization
 
-Four global guards: `ThrottlerGuard` → `JwtAuthGuard` → `RolesGuard` →
+Four global guards: `ThrottlerGuard` → `BearerAuthGuard` → `RolesGuard` →
 `PermissionsGuard`. Registration is asserted by
 `common/guards/permissions-coverage.test.ts`, which exists for a specific
 reason: deleting the `APP_GUARD` line would make the API public while every unit

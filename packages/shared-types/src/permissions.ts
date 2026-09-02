@@ -202,6 +202,30 @@ export const Permission = {
    */
   ROLES_MANAGE: 'roles.manage',
 
+  // --- programmatic access ---
+  /**
+   * Mint, list and revoke **your own** API keys.
+   *
+   * A key acts as the person who minted it, with a subset of their
+   * capabilities fixed at minting — see KEYABLE_PERMISSIONS for what may be in
+   * that subset and why some things may not.
+   */
+  API_KEYS_MANAGE: 'api_keys.manage',
+  /**
+   * See every key in the tenant: who holds one, what it carries, when it was
+   * last used and from where. Never the secret — nobody has it, including the
+   * platform.
+   */
+  API_KEYS_READ_ANY: 'api_keys.read_any',
+  /** Revoke anyone's key. The response to a leak, and it needs no more than that. */
+  API_KEYS_REVOKE_ANY: 'api_keys.revoke_any',
+  /**
+   * Mint, list and revoke service tokens: machine identities that belong to
+   * the firm rather than to a person, for an integration that reads the
+   * platform. See SERVICE_GRANTABLE_PERMISSIONS for what one may carry.
+   */
+  SERVICE_TOKENS_MANAGE: 'service_tokens.manage',
+
   // --- system ---
   SYSTEM_KILL_SWITCH: 'system.kill_switch',
   SYSTEM_OPERATIONS: 'system.operations',
@@ -236,6 +260,7 @@ const TRADER: readonly Permission[] = [
   Permission.POSITIONS_READ,
   Permission.POSITIONS_CLOSE,
   Permission.POSITIONS_MODIFY,
+  Permission.API_KEYS_MANAGE,
 ];
 
 /**
@@ -275,6 +300,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.ORDERS_READ,
     Permission.POSITIONS_READ,
     Permission.MASTER_READ,
+    Permission.API_KEYS_READ_ANY,
   ],
 
   [UserRole.OPERATOR]: [
@@ -296,6 +322,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.INSTRUMENTS_READ,
     Permission.RECONCILIATION_READ,
     Permission.SYSTEM_OPERATIONS,
+    Permission.API_KEYS_READ_ANY,
   ],
 
   [UserRole.RISK_MANAGER]: [
@@ -327,6 +354,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.ROLES_READ,
     Permission.SYSTEM_OPERATIONS,
     Permission.SYSTEM_KILL_SWITCH,
+    Permission.API_KEYS_READ_ANY,
+    Permission.API_KEYS_REVOKE_ANY,
   ],
 
   /**
@@ -394,6 +423,9 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.ROLES_MANAGE,
     Permission.SYSTEM_OPERATIONS,
     Permission.SYSTEM_KILL_SWITCH,
+    Permission.API_KEYS_READ_ANY,
+    Permission.API_KEYS_REVOKE_ANY,
+    Permission.SERVICE_TOKENS_MANAGE,
   ],
 };
 
@@ -548,4 +580,99 @@ const LINKABLE = new Set<string>(LINKABLE_CAPABILITIES);
 /** Is this a capability a link is allowed to carry at all? */
 export function isLinkableCapability(value: string): value is Permission {
   return LINKABLE.has(value);
+}
+
+/**
+ * What an API key may **not** carry, whatever its holder holds.
+ *
+ * A key acts as the person who minted it, so the question is not "may this
+ * person do it" — they may — but "may a long-lived secret in a config file do
+ * it without them". For most capabilities the answer is yes: that is what a
+ * key is for. For these it is no, each for one of three reasons:
+ *
+ *   - **money appears or leaves** — adjusting a ledger, confirming a deposit,
+ *     asking for or approving a withdrawal. A leaked key must not be able to
+ *     drain a wallet to a new destination, and a person confirming a bank
+ *     transfer is a person reading a statement;
+ *   - **it changes who may do what** — roles, users, invitations, and keys
+ *     themselves. A key that can mint keys is a key that never expires;
+ *   - **it is an act the platform records as a person's** — opening an
+ *     identity document, halting trading, changing an instrument's terms.
+ *
+ * A list of exclusions rather than inclusions, so a capability added later is
+ * keyable unless somebody decides otherwise — the ordinary case — and the
+ * decision, when made, is one entry here with the reason above it.
+ */
+export const PERSON_ONLY_PERMISSIONS: readonly Permission[] = [
+  Permission.ACCOUNTS_ADJUST,
+  Permission.ACCOUNTS_MANAGE,
+  Permission.WALLET_ADJUST,
+  Permission.WALLET_MANAGE,
+  Permission.PAYMENTS_CREATE,
+  Permission.PAYMENTS_CONFIRM,
+  Permission.WITHDRAWALS_REQUEST,
+  Permission.WITHDRAWALS_REVIEW,
+  Permission.WITHDRAWALS_PAY,
+  Permission.KYC_SUBMIT,
+  Permission.KYC_DOCUMENTS_READ,
+  Permission.KYC_REVIEW,
+  Permission.USERS_MANAGE,
+  Permission.ROLES_ASSIGN,
+  Permission.ROLES_MANAGE,
+  Permission.INVITES_MANAGE,
+  Permission.API_KEYS_MANAGE,
+  Permission.API_KEYS_REVOKE_ANY,
+  Permission.SERVICE_TOKENS_MANAGE,
+  Permission.INSTRUMENTS_MANAGE,
+  Permission.MASTER_MANAGE,
+  Permission.INTEGRITY_MANAGE,
+  Permission.RECONCILIATION_MANAGE,
+  Permission.RISK_MANAGE,
+  Permission.SYSTEM_KILL_SWITCH,
+  Permission.SYSTEM_OPERATIONS,
+];
+
+/** What an API key may carry: everything a person may hold that is not person-only. */
+export const KEYABLE_PERMISSIONS: readonly Permission[] = ALL_PERMISSIONS.filter(
+  (permission) => !PERSON_ONLY_PERMISSIONS.includes(permission),
+);
+
+export function isKeyable(value: string): value is Permission {
+  return (KEYABLE_PERMISSIONS as readonly string[]).includes(value);
+}
+
+/**
+ * What a service token may carry: **reads across the tenant, and nothing else.**
+ *
+ * A service token belongs to the firm, not to a person, and that is exactly
+ * the problem with letting it write. Every write on this platform is audited
+ * against the person who made it, and the audit log has no way to say "an
+ * integration did this" — an actor column that is a user id or nothing. Until
+ * it has one, a machine may look and may not touch; and the routes a machine
+ * may look at are the ones that read across accounts rather than "mine",
+ * because a token has no "mine".
+ *
+ * An inclusion list, unlike the one above, because the safe default for a
+ * machine identity is the opposite of the safe default for a person's key:
+ * nothing, until somebody decides otherwise.
+ */
+export const SERVICE_GRANTABLE_PERMISSIONS: readonly Permission[] = [
+  Permission.ACCOUNTS_READ_ANY,
+  Permission.USERS_READ_ANY,
+  Permission.WALLET_READ_ANY,
+  Permission.PAYMENTS_READ_ANY,
+  Permission.KYC_READ_ANY,
+  Permission.WITHDRAWALS_READ_ANY,
+  Permission.RISK_READ,
+  Permission.AUDIT_READ,
+  Permission.INSTRUMENTS_READ,
+  Permission.RECONCILIATION_READ,
+  Permission.INTEGRITY_READ,
+  Permission.MASTER_READ,
+  Permission.ROLES_READ,
+  Permission.API_KEYS_READ_ANY,
+];
+
+export function isServiceGrantable(value: string): value is Permission {
+  return (SERVICE_GRANTABLE_PERMISSIONS as readonly string[]).includes(value);
 }

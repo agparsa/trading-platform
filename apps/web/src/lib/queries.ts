@@ -199,6 +199,7 @@ export const queryKeys = {
   kyc: ['kyc'] as const,
   withdrawals: ['withdrawals'] as const,
   withdrawalTerms: (currency: string) => ['withdrawal-terms', currency] as const,
+  apiKeys: ['api-keys'] as const,
 };
 
 /** Everything a trading event can invalidate, in one place. */
@@ -936,6 +937,74 @@ export function useCancelWithdrawal() {
       void client.invalidateQueries({ queryKey: ['withdrawal-terms'] });
       void client.invalidateQueries({ queryKey: queryKeys.wallets });
       void client.invalidateQueries({ queryKey: ['wallet-transactions'] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// API keys
+// ---------------------------------------------------------------------------
+
+export interface ApiKeyRow {
+  id: string;
+  name: string;
+  fingerprint: string;
+  permissions: string[];
+  rateLimitPerMinute: number;
+  status: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+  expiresAt: string;
+  lastUsedAt: string | null;
+  lastUsedIp: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  createdAt: string;
+  usage7d: { requests: number; refused: number; throttled: number };
+}
+
+export function useApiKeys() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: queryKeys.apiKeys,
+    queryFn: () => api.get<{ keys: ApiKeyRow[] }>('/api-keys'),
+    enabled: accessToken !== null,
+  });
+}
+
+/**
+ * Mints a key. The response is the only time the secret exists on this side
+ * of the wire; the caller shows it once and keeps it in component state, never
+ * in the query cache, so a later refetch cannot bring it back.
+ */
+export function useMintApiKey() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      name: string;
+      permissions: string[];
+      expiresInDays?: number;
+      rateLimitPerMinute?: number;
+      password: string;
+    }) =>
+      api.post<{ key: ApiKeyRow; token: string }>('/api-keys', input, {
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.apiKeys });
+    },
+  });
+}
+
+export function useRevokeApiKey() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      api.post<ApiKeyRow>(`/api-keys/${id}/revoke`, reason === undefined ? {} : { reason }, {
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.apiKeys });
     },
   });
 }

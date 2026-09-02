@@ -10,6 +10,11 @@ import {
   conflictsIn,
   escalationsIn,
   isPermission,
+  KEYABLE_PERMISSIONS,
+  PERSON_ONLY_PERMISSIONS,
+  SERVICE_GRANTABLE_PERMISSIONS,
+  isKeyable,
+  isServiceGrantable,
 } from './permissions';
 
 /**
@@ -460,5 +465,92 @@ describe('isPermission', () => {
     'constructor',
   ])('refuses %j', (value) => {
     expect(isPermission(value)).toBe(false);
+  });
+});
+
+describe('programmatic access', () => {
+  it('lets every person manage their own keys, and staff see and revoke them', () => {
+    expect(roleHasPermissions(UserRole.USER, [Permission.API_KEYS_MANAGE])).toBe(true);
+    expect(roleHasPermissions(UserRole.SUPPORT, [Permission.API_KEYS_READ_ANY])).toBe(true);
+    expect(roleHasPermissions(UserRole.SUPPORT, [Permission.API_KEYS_REVOKE_ANY])).toBe(false);
+    expect(roleHasPermissions(UserRole.RISK_MANAGER, [Permission.API_KEYS_REVOKE_ANY])).toBe(true);
+    expect(roleHasPermissions(UserRole.ADMIN, [Permission.API_KEYS_REVOKE_ANY])).toBe(true);
+  });
+
+  it('lets only an administrator mint a machine identity', () => {
+    for (const role of Object.values(UserRole)) {
+      expect(roleHasPermissions(role, [Permission.SERVICE_TOKENS_MANAGE])).toBe(
+        role === UserRole.ADMIN,
+      );
+    }
+  });
+
+  it('partitions the catalogue: every capability is keyable or person-only, never both', () => {
+    const union = new Set([...KEYABLE_PERMISSIONS, ...PERSON_ONLY_PERMISSIONS]);
+    expect(union.size).toBe(ALL_PERMISSIONS.length);
+    expect(KEYABLE_PERMISSIONS.filter((p) => PERSON_ONLY_PERMISSIONS.includes(p))).toEqual([]);
+  });
+
+  it('keeps money, roles and keys themselves out of a key', () => {
+    for (const forbidden of [
+      Permission.ACCOUNTS_ADJUST,
+      Permission.WALLET_ADJUST,
+      Permission.PAYMENTS_CONFIRM,
+      Permission.WITHDRAWALS_REQUEST,
+      Permission.WITHDRAWALS_REVIEW,
+      Permission.WITHDRAWALS_PAY,
+      Permission.KYC_DOCUMENTS_READ,
+      Permission.ROLES_ASSIGN,
+      Permission.ROLES_MANAGE,
+      Permission.USERS_MANAGE,
+      Permission.API_KEYS_MANAGE,
+      Permission.SERVICE_TOKENS_MANAGE,
+      Permission.SYSTEM_KILL_SWITCH,
+    ]) {
+      expect(isKeyable(forbidden)).toBe(false);
+    }
+  });
+
+  it('lets a key trade and read, which is what a key is for', () => {
+    for (const allowed of [
+      Permission.ORDERS_CREATE,
+      Permission.ORDERS_CANCEL,
+      Permission.POSITIONS_CLOSE,
+      Permission.POSITIONS_READ,
+      Permission.ACCOUNTS_READ,
+      Permission.WALLET_READ,
+      Permission.ACCOUNTS_READ_ANY,
+      Permission.RISK_READ,
+    ]) {
+      expect(isKeyable(allowed)).toBe(true);
+    }
+  });
+
+  it('lets a service token read across the tenant and write nothing', () => {
+    expect(SERVICE_GRANTABLE_PERMISSIONS.length).toBeGreaterThan(0);
+    for (const permission of SERVICE_GRANTABLE_PERMISSIONS) {
+      expect(permission.endsWith('.read') || permission.endsWith('.read_any')).toBe(true);
+      // No "mine": a token has none.
+      expect(
+        [
+          Permission.ACCOUNTS_READ,
+          Permission.WALLET_READ,
+          Permission.PAYMENTS_READ,
+          Permission.KYC_READ,
+          Permission.WITHDRAWALS_READ,
+          Permission.ORDERS_READ,
+          Permission.POSITIONS_READ,
+        ].includes(permission),
+      ).toBe(false);
+    }
+    expect(isServiceGrantable(Permission.ACCOUNTS_MANAGE)).toBe(false);
+    expect(isServiceGrantable(Permission.ORDERS_CREATE)).toBe(false);
+    expect(isServiceGrantable(Permission.ACCOUNTS_READ_ANY)).toBe(true);
+  });
+
+  it('gives an administrator everything a service token may carry, so the subset rule can hold', () => {
+    // A token may carry only what its minter holds; if ADMIN lacked one of
+    // these, no token could ever carry it and the list would be a lie.
+    expect(roleHasPermissions(UserRole.ADMIN, SERVICE_GRANTABLE_PERMISSIONS)).toBe(true);
   });
 });

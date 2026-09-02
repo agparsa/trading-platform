@@ -6,6 +6,12 @@ import { permissionsFor } from '@tp/shared-types';
 import { PermissionsGuard } from './permissions.guard';
 import { RequirePermissions } from '../decorators/permissions.decorator';
 import type { RolesService } from '../../permissions/roles.service';
+import type { CredentialsService } from '../../credentials/credentials.service';
+import { withTenant } from '@tp/tenancy';
+
+/** Refusals are counted against the request's tenant, which a real request always has. */
+const inScope = <T>(fn: () => Promise<T>) =>
+  withTenant({ tenantId: '00000000-0000-4000-8000-0000000000ff', slug: 'test' }, fn);
 
 /**
  * The guard is the only thing standing between a declaration and an actual
@@ -34,14 +40,25 @@ class Routes {
   undeclared(): void {}
 }
 
-function contextFor(method: keyof Routes, user?: { role: string }): ExecutionContext {
+function contextFor(
+  method: keyof Routes,
+  user?: {
+    role: string;
+    principal?: 'session' | 'api_key' | 'service_token';
+    credentialId?: string;
+    permissions?: ReadonlySet<string>;
+  },
+): ExecutionContext {
   const handler = Routes.prototype[method];
   return {
     getHandler: () => handler,
     getClass: () => Routes,
     switchToHttp: () => ({
       getRequest: () => ({
-        user: user === undefined ? undefined : { ...user, id: 'u1', email: 'u@t' },
+        user:
+          user === undefined
+            ? undefined
+            : { principal: 'session', ...user, id: 'u1', email: 'u@t', sessionId: 's1' },
       }),
     }),
   } as unknown as ExecutionContext;
@@ -68,8 +85,23 @@ function rolesStub(): RolesService & { asked: string[] } {
   return service as unknown as RolesService & { asked: string[] };
 }
 
-function guard(roles: RolesService = rolesStub()): PermissionsGuard {
-  return new PermissionsGuard(new Reflector(), roles);
+/** Counts refusals the way the real service does, so a test can see them. */
+function credentialsStub(): CredentialsService & { refusals: string[] } {
+  const refusals: string[] = [];
+  const service = {
+    refusals,
+    noteRefusal: (kind: string, credentialId: string) => {
+      refusals.push(`${kind}:${credentialId}`);
+    },
+  };
+  return service as unknown as CredentialsService & { refusals: string[] };
+}
+
+function guard(
+  roles: RolesService = rolesStub(),
+  credentials: CredentialsService = credentialsStub(),
+): PermissionsGuard {
+  return new PermissionsGuard(new Reflector(), roles, credentials);
 }
 
 describe('PermissionsGuard', () => {
@@ -187,5 +219,97 @@ describe('PermissionsGuard', () => {
     ).resolves.toBe(true);
     // A route that declares nothing must not cost a lookup on every request.
     expect(roles.asked).toEqual([]);
+  });
+
+  /**
+   * A credential's capabilities are the set the auth guard attached, not the
+   * role's. The role is still on the principal — it is the holder's — and a
+   * guard that fell back to it would give every key everything its holder has,
+   * which is exactly what "per-key permissions" exists to prevent.
+   */
+  describe('with an API key', () => {
+    const key = (permissions: string[]) => ({
+      role: UserRole.USER,
+      principal: 'api_key' as const,
+      credentialId: 'k1',
+      permissions: new Set(permissions),
+    });
+
+    it('allows what the key carries', async () => {
+      await expect(
+        guard().canActivate(contextFor('close', key([Permission.POSITIONS_CLOSE]))),
+      ).resolves.toBe(true);
+    });
+
+    it('refuses what the key does not carry, though the holder does, and counts it', async () => {
+      const roles = rolesStub();
+      const credentials = credentialsStub();
+      const thrown = await inScope(() =>
+        guard(roles, credentials).canActivate(
+          contextFor('close', key([Permission.POSITIONS_READ])),
+        ),
+      ).then(
+        () => undefined,
+        (error: unknown) => error as DomainError,
+      );
+      expect(thrown?.code).toBe(TradingErrorCode.FORBIDDEN);
+      expect(thrown?.message).toContain('this credential does not carry');
+      expect(roles.asked).toEqual([]);
+      expect(credentials.refusals).toEqual(['api_key:k1']);
+    });
+
+    it('refuses a route that declares nothing — those are a person’s', async () => {
+      const credentials = credentialsStub();
+      await expect(
+        inScope(() =>
+          guard(rolesStub(), credentials).canActivate(
+            contextFor('undeclared', key([Permission.POSITIONS_CLOSE])),
+          ),
+        ),
+      ).rejects.toBeInstanceOf(DomainError);
+      await expect(
+        inScope(() =>
+          guard(rolesStub(), credentials).canActivate(
+            contextFor('declaredEmpty', key([Permission.POSITIONS_CLOSE])),
+          ),
+        ),
+      ).rejects.toBeInstanceOf(DomainError);
+      expect(credentials.refusals).toHaveLength(2);
+    });
+
+    it('treats a principal with no permission set as holding nothing', async () => {
+      await expect(
+        guard().canActivate(
+          contextFor('close', { role: UserRole.USER, principal: 'api_key', credentialId: 'k1' }),
+        ),
+      ).rejects.toBeInstanceOf(DomainError);
+    });
+  });
+
+  describe('with a service token', () => {
+    it('is bounded by the token’s set and never by a role', async () => {
+      const roles = rolesStub();
+      await expect(
+        guard(roles).canActivate(
+          contextFor('close', {
+            role: 'SERVICE',
+            principal: 'service_token',
+            credentialId: 't1',
+            permissions: new Set([Permission.POSITIONS_CLOSE]),
+          }),
+        ),
+      ).resolves.toBe(true);
+      await expect(
+        guard(roles).canActivate(
+          contextFor('close', {
+            role: 'SERVICE',
+            principal: 'service_token',
+            credentialId: 't1',
+            permissions: new Set([Permission.ACCOUNTS_READ_ANY]),
+          }),
+        ),
+      ).rejects.toBeInstanceOf(DomainError);
+      expect(roles.asked).toEqual([]);
+    });
   });
 });

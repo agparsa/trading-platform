@@ -11,8 +11,29 @@ import { REQUEST_ID_HEADER } from '@tp/shared-types';
  */
 export interface RequestWithContext extends Request {
   requestId?: string;
-  /** Attached by JwtAuthGuard. Absent on public routes. */
-  user?: { id: string; email: string; role: string; sessionId: string };
+  /** Attached by BearerAuthGuard. Absent on public routes. */
+  user?: RequestPrincipal;
+}
+
+/**
+ * Who is asking, as the guard established it.
+ *
+ * A session is a person at a screen. An API key is a person's script: `id`
+ * is still theirs, so everything they do through it is theirs — but
+ * `permissions` is the key's subset and the permission guard reads that
+ * rather than the role. A service token is the firm's integration: `id` is
+ * the token's own, `role` is `SERVICE`, and only routes whose declared
+ * capabilities the token carries are reachable at all.
+ */
+export interface RequestPrincipal {
+  id: string;
+  email: string;
+  role: string;
+  sessionId: string;
+  principal: 'session' | 'api_key' | 'service_token';
+  /** Set for a key or token; absent for a session, whose capabilities are its role's. */
+  credentialId?: string;
+  permissions?: ReadonlySet<string>;
 }
 
 /**

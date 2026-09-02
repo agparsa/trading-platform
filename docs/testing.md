@@ -189,7 +189,7 @@ Two scripts drive a real build rather than a mock, and both refuse to run if
 something is already holding the port — a smoke test that silently passes against
 a stale binary is the worst failure mode there is.
 
-- `pnpm smoke` — 17 checks: envelopes, auth, a full trade round trip, the ledger,
+- `pnpm smoke` — 18 checks: envelopes, auth, a full trade round trip, the ledger,
   a resting order placed, listed, refused on the wrong side and cancelled, the
   refresh cookie's attributes, body absence, foreign-origin refusal and
   revocation on logout, two-factor enrolment through to a refused replay, session
@@ -199,17 +199,21 @@ a stale binary is the worst failure mode there is.
   confirm it, and an identity document uploaded as bytes, a fake refused by its
   bytes, an oversized one refused by the parser, and a submission that will not
   verify anybody, and a withdrawal refused at the identity gate with nothing
-  debited and every finance route shut to a trader. That last one throws rather than skipping if the login limiter is
-  already spent — a skip there would hide the whole payment path.
+  debited and every finance route shut to a trader, and an API key minted with
+  the password, shown once, accepted where it holds a capability, refused where
+  it does not or where a person must be, and dead when revoked. The withdrawal
+  and key checks throw rather than skipping if the login limiter is already
+  spent — a skip there would hide the whole path.
 - `pnpm smoke:ws` — 8 checks: quote and candle streaming, gapless sequencing,
   private-channel refusal, cross-account isolation.
-- `pnpm smoke:web` — 61 checks across 23 routes, in a real browser: every screen
-  signed into, landed on, and read for console errors, plus two checks about
-  content — that the roles screen shows real grants, and that the wallet page
-  offers the deposit method this deployment actually has. Set
+- `pnpm smoke:web` — 69 checks across 24 routes, in a real browser: every screen
+  signed into, landed on, and read for console errors, plus checks about
+  content — that the roles screen shows real grants, that the wallet page
+  offers the deposit method this deployment actually has, and that a key
+  minted from the security page is shown once and never again. Set
   `PLAYWRIGHT_CHROMIUM_PATH` where Chromium is provisioned outside Playwright's
   own download.
-- `pnpm pentest` — 40 attacks attempted against the compiled binary; an attack
+- `pnpm pentest` — 42 attacks attempted against the compiled binary; an attack
   that succeeds fails the run. It was itself tested by breaking the API four
   times to see whether the probes noticed — two did not, and both gaps are now
   closed. Three of the attacks aim at the money path: confirming your own

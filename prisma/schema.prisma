@@ -96,6 +96,9 @@ model Tenant {
   kycRecords              KycRecord[]
   kycDocuments            KycDocument[]
   withdrawalRequests      WithdrawalRequest[]
+  apiKeys                 ApiKey[]
+  serviceTokens           ServiceToken[]
+  credentialUsage         CredentialUsage[]
 
   @@map("tenants")
 }
@@ -170,11 +173,14 @@ model User {
   notificationPreferences NotificationPreference[]
   notificationSettings    NotificationSetting[]
 
-  paymentIntents PaymentIntent[]
-  wallets        Wallet[]
-  kycRecord      KycRecord?
-  withdrawals    WithdrawalRequest[]
-  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  paymentIntents      PaymentIntent[]
+  wallets             Wallet[]
+  kycRecord           KycRecord?
+  withdrawals         WithdrawalRequest[]
+  apiKeys             ApiKey[]
+  /// Tokens this person minted, for the audit trail; the tokens belong to the firm.
+  serviceTokensMinted ServiceToken[]
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   /// One address per tenant, not per platform: the same person may hold an account with two firms.
   @@unique([tenantId, email])
@@ -2045,4 +2051,104 @@ enum WithdrawalStatus {
   REJECTED
   CANCELLED
   FAILED
+}
+
+/// A person's programmatic credential. It acts as them, within a subset of
+/// their capabilities fixed at minting and intersected with their current ones
+/// on every use.
+///
+/// The secret is nowhere. `secretHash` is its SHA-256; `fingerprint` is the
+/// public name a person identifies it by, and what every list and audit row
+/// shows. See docs/api-keys.md.
+model ApiKey {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+
+  /// What the person called it: "trading bot", "spreadsheet".
+  name               String
+  /// `tpk_<handle>`. Unique, public, and what the key is looked up by.
+  fingerprint        String   @unique
+  secretHash         String   @map("secret_hash")
+  /// `Permission` values, validated against KEYABLE_PERMISSIONS and the holder's role at minting.
+  permissions        String[]
+  rateLimitPerMinute Int      @map("rate_limit_per_minute")
+
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(6)
+  lastUsedIp String?   @map("last_used_ip")
+
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
+  /// Null when the holder revoked it themselves.
+  revokedById   String?   @map("revoked_by_id") @db.Uuid
+  revokedReason String?   @map("revoked_reason")
+
+  createdFromIp String?  @map("created_from_ip")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([tenantId])
+  @@map("api_keys")
+}
+
+/// A machine identity that belongs to the firm rather than to a person, for an
+/// integration that reads the platform. Carries only what
+/// SERVICE_GRANTABLE_PERMISSIONS allows and only what its minter held.
+model ServiceToken {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  name               String
+  description        String?
+  /// `tps_<handle>`.
+  fingerprint        String   @unique
+  secretHash         String   @map("secret_hash")
+  permissions        String[]
+  rateLimitPerMinute Int      @map("rate_limit_per_minute")
+
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(6)
+  lastUsedIp String?   @map("last_used_ip")
+
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
+  revokedById   String?   @map("revoked_by_id") @db.Uuid
+  revokedReason String?   @map("revoked_reason")
+
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  createdBy User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@map("service_tokens")
+}
+
+enum CredentialKind {
+  API_KEY
+  SERVICE_TOKEN
+}
+
+/// One row per credential per day: how often it was presented, how often it
+/// was refused a capability, how often it was throttled. Enough to answer "is
+/// this key still used" and "is something hammering us with it" without a row
+/// per request.
+model CredentialUsage {
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String         @map("tenant_id") @db.Uuid
+  kind         CredentialKind
+  credentialId String         @map("credential_id") @db.Uuid
+  day          DateTime       @db.Date
+  requests     Int            @default(0)
+  refused      Int            @default(0)
+  throttled    Int            @default(0)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([kind, credentialId, day])
+  @@index([tenantId])
+  @@map("credential_usage")
 }

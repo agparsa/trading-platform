@@ -125,6 +125,10 @@ export const CATEGORY_FOR_KIND: Readonly<Record<string, NotificationCategory>> =
   'withdrawal.rejected': NotificationCategory.SYSTEM,
   'withdrawal.failed': NotificationCategory.SYSTEM,
   'withdrawal.paid': NotificationCategory.SYSTEM,
+  // A key minted or revoked is something its holder must hear about whatever
+  // their preferences: the first is how they learn of one they did not mint.
+  'api_key.minted': NotificationCategory.SYSTEM,
+  'api_key.revoked': NotificationCategory.SYSTEM,
 };
 
 export function categoryForKind(kind: string): NotificationCategory {

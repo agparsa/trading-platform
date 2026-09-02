@@ -404,6 +404,16 @@ one role, so this is two accounts at the least — and if there is no
 administrator yet, [the first administrator](#the-first-administrator) comes
 before either.
 
+## Programmatic access
+
+Nothing to configure. A person mints API keys from the Security page with their
+password; an administrator mints service tokens from `/admin/credentials`.
+The defaults — a year at most, ninety days unless chosen, ten live keys a
+person, three hundred requests a minute per credential — are `API_KEY_*` in
+`.env.example`, and the per-credential limit needs the Redis the platform
+already has. Every secret is shown once and stored hashed; there is nothing on
+the host to back up or rotate for them. See [api-keys.md](./api-keys.md).
+
 ### Roles reconcile themselves at boot
 
 A release that adds a capability writes it into a constant, and the constant is

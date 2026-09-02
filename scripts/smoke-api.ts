@@ -1087,6 +1087,116 @@ const checks: Check[] = [
   },
   {
     /**
+     * An API key, end to end over HTTP: minted with the password, shown once,
+     * accepted on a route that names a capability it carries, refused on one
+     * it does not, refused where a person has to be, and dead the instant it
+     * is revoked. The guard that does all of this is global and untestable
+     * without a booted application, which is exactly what this is.
+     */
+    name: 'an API key: shown once, bounded by its capabilities, dead when revoked',
+    run: async () => {
+      const email = `smoke-key-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: registration(email, password, 'Smoke Keys'),
+      });
+      const login = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (login.status === 429) {
+        throw new Error(
+          'the login limiter was already spent; this check must run before the rate-limit check',
+        );
+      }
+      if (!login.ok) {
+        console.log('      (registration is closed on this deployment; skipped)');
+        return;
+      }
+      const session = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+      const asSession = { Authorization: `Bearer ${session}`, 'Content-Type': 'application/json' };
+
+      const wrongPassword = await fetch(`${BASE}/api/v1/api-keys`, {
+        method: 'POST',
+        headers: asSession,
+        body: JSON.stringify({ name: 'smoke', permissions: ['accounts.read'], password: 'nope' }),
+      });
+      assert(
+        wrongPassword.status === 401,
+        `a key was minted without the password (${wrongPassword.status})`,
+      );
+
+      const minted = await fetch(`${BASE}/api/v1/api-keys`, {
+        method: 'POST',
+        headers: asSession,
+        body: JSON.stringify({
+          name: 'smoke',
+          permissions: ['accounts.read'],
+          password,
+          expiresInDays: 1,
+        }),
+      });
+      assert(minted.status === 201, `POST /api-keys returned ${minted.status}`);
+      const { key, token } = (
+        (await minted.json()) as {
+          data: { key: { id: string; fingerprint: string }; token: string };
+        }
+      ).data;
+      assert(token.startsWith(`${key.fingerprint}_`), 'the token does not carry its fingerprint');
+      assert(token.startsWith('tpk_'), `the token has the wrong prefix: ${token.slice(0, 4)}`);
+
+      const listed = await fetch(`${BASE}/api/v1/api-keys`, { headers: asSession });
+      const listing = JSON.stringify(await listed.json());
+      assert(listing.includes(key.fingerprint), 'the listing does not show the key');
+      assert(!listing.includes(token), 'THE LISTING SHOWS THE SECRET');
+
+      const asKey = { Authorization: `Bearer ${token}` };
+      const allowed = await fetch(`${BASE}/api/v1/accounts`, { headers: asKey });
+      assert(
+        allowed.status === 200,
+        `a key holding accounts.read was answered ${allowed.status} on GET /accounts`,
+      );
+
+      const beyond = await fetch(`${BASE}/api/v1/wallet`, { headers: asKey });
+      assert(
+        beyond.status === 403,
+        `a key without wallet.read was answered ${beyond.status} on GET /wallet`,
+      );
+
+      const personal = await fetch(`${BASE}/api/v1/auth/me`, { headers: asKey });
+      assert(
+        personal.status === 403,
+        `a key reached a route that names no capability (${personal.status})`,
+      );
+
+      const breeding = await fetch(`${BASE}/api/v1/api-keys`, {
+        method: 'POST',
+        headers: { ...asKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'child', permissions: ['accounts.read'], password }),
+      });
+      assert(breeding.status === 403, `a key reached the place keys are made (${breeding.status})`);
+
+      const revoked = await fetch(`${BASE}/api/v1/api-keys/${key.id}/revoke`, {
+        method: 'POST',
+        headers: asSession,
+        body: JSON.stringify({ reason: 'smoke' }),
+      });
+      assert(revoked.status === 201, `revoking returned ${revoked.status}`);
+      const dead = await fetch(`${BASE}/api/v1/accounts`, { headers: asKey });
+      assert(dead.status === 401, `a revoked key was answered ${dead.status}`);
+
+      // The staff routes are not a trader's.
+      for (const path of ['/admin/api-keys', '/admin/service-tokens']) {
+        const desk = await fetch(`${BASE}/api/v1${path}`, { headers: asSession });
+        assert(desk.status === 403, `${path} answered a trader ${desk.status}`);
+      }
+    },
+  },
+  {
+    /**
      * Invitations, end to end over HTTP.
      *
      * The service has integration tests; this checks the parts they cannot —

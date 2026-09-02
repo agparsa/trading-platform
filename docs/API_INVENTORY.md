@@ -23,10 +23,16 @@ All routes are prefixed `/api/v1` except those marked version-neutral
 
 ## How authorization is applied
 
-Four guards run globally, in order: `ThrottlerGuard` → `JwtAuthGuard` →
+Four guards run globally, in order: `ThrottlerGuard` → `BearerAuthGuard` →
 `RolesGuard` → `PermissionsGuard`. A route is therefore **authenticated and
 permission-checked by default**; `@Public()` opts out of authentication and
 `@SelfService()` marks a route that acts only on the caller's own record.
+
+Three things may follow `Bearer`: a session's access token, an API key
+(`tpk_…`) or a service token (`tps_…`). A key or token reaches only routes
+that **name a capability** it carries — _authenticated only_ routes are a
+person's — and never a `SELF-SERVICE` or `SESSION-ONLY` route. See
+[api-keys.md](./api-keys.md).
 
 The column below records what each handler actually demands. Where it says
 _authenticated only_, the route is reachable by any signed-in user and the
@@ -95,6 +101,24 @@ handler is responsible for scoping the result to that user — which for
 | `POST`   | `/auth/password-reset/confirm` | `resetPassword`           | PUBLIC, throttled       |
 | `POST`   | `/auth/password`               | `changePassword`          | SELF-SERVICE            |
 | `GET`    | `/auth/me`                     | `me`                      | _authenticated only_    |
+
+### `credentials/admin-credentials.controller.ts` — base `/admin`
+
+| Verb   | Path                               | Handler       | Requires                                    |
+| ------ | ---------------------------------- | ------------- | ------------------------------------------- |
+| `GET`  | `/admin/api-keys`                  | `keys`        | SESSION-ONLY (class), API_KEYS_READ_ANY     |
+| `POST` | `/admin/api-keys/:id/revoke`       | `revokeKey`   | SESSION-ONLY (class), API_KEYS_REVOKE_ANY   |
+| `GET`  | `/admin/service-tokens`            | `tokens`      | SESSION-ONLY (class), SERVICE_TOKENS_MANAGE |
+| `POST` | `/admin/service-tokens`            | `mintToken`   | SESSION-ONLY (class), SERVICE_TOKENS_MANAGE |
+| `POST` | `/admin/service-tokens/:id/revoke` | `revokeToken` | SESSION-ONLY (class), SERVICE_TOKENS_MANAGE |
+
+### `credentials/api-keys.controller.ts` — base `/api-keys`
+
+| Verb   | Path                   | Handler  | Requires                              |
+| ------ | ---------------------- | -------- | ------------------------------------- |
+| `GET`  | `/api-keys`            | `mine`   | SESSION-ONLY (class), API_KEYS_MANAGE |
+| `POST` | `/api-keys`            | `mint`   | SESSION-ONLY (class), API_KEYS_MANAGE |
+| `POST` | `/api-keys/:id/revoke` | `revoke` | SESSION-ONLY (class), API_KEYS_MANAGE |
 
 ### `devices/devices.controller.ts` — base `/devices`
 
@@ -301,7 +325,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**138 routes:** 68 `GET`, 59 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
+**146 routes:** 71 `GET`, 64 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

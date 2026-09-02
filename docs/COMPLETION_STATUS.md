@@ -21,7 +21,7 @@ pnpm lint             ok
 pnpm format:check     ok
 pnpm typecheck        ok
 pnpm inventory --check ok
-pnpm test             132 files, 1746 tests, 0 failures
+pnpm test             134 files, 1787 tests, 0 failures
 pnpm build            ok
 ```
 
@@ -64,7 +64,7 @@ Complete in the sense the prompt defines — UI → API → business logic → d
 | 33       | Audit log                  | append-only enforced by a **database trigger** raising `42501` — an admin cannot edit it                                                                                                                                |
 | 37       | Observability              | Prometheus metrics, `/health`, `/ready`, request-id correlation, structured logging                                                                                                                                     |
 | 39       | Security                   | 40-probe pentest script, AES-256-GCM at rest, no secrets in git history                                                                                                                                                 |
-| 40       | Testing                    | 1746 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, payment idempotency, and row-level security proved by breaking it                                             |
+| 40       | Testing                    | 1787 tests including PnL, margin, drawdown, exposure, permissions, order validation, push classification, payment idempotency, and row-level security proved by breaking it                                             |
 | 41       | Security testing           | cross-tenant access, privilege escalation, token replay, rate limiting, audit tampering, invitation minting                                                                                                             |
 | 44       | CI/CD                      | install → prisma → build → lint → format → typecheck → migrate → test → schema check → seed → build → smoke API → smoke WebSocket                                                                                       |
 
@@ -82,8 +82,6 @@ Checked by search, not by assumption.
 
 | §   | Area                 | Status                                                                                 |
 | --- | -------------------- | -------------------------------------------------------------------------------------- |
-| 9   | Token management     | no `ApiKey` or `ServiceToken` model, no admin section                                  |
-| 10  | API management       | no registry, no scopes, no per-key rate limits, no usage logs                          |
 | 10  | Webhooks             | no `Webhook` model, no outbound delivery                                               |
 | 6   | KYC                  | no `KYCRecord` model, nothing in `apps/api/src`                                        |
 | 34  | Security Centre      | the data exists (sessions, audit, risk events); the admin section does not             |
@@ -140,7 +138,7 @@ describe do not exist, and §45 says do not document features that do not exist.
 | 6 — KYC                           | done; manual review real, provider pending   |
 | 7 — withdrawals                   | done; hold at request, FINANCE, rail pending |
 | 8 — notification platform         | done; admin statistics view remains          |
-| 9 — API and token management      | not started                                  |
+| 9 — API and token management      | done; keys and tokens, read-only machines    |
 | 10 — outbound webhooks            | not started                                  |
 | 11 — Security Centre              | not started                                  |
 | 12 — mobile foundation            | done; Android builds, iOS not attempted      |
@@ -148,7 +146,28 @@ describe do not exist, and §45 says do not document features that do not exist.
 | 14 — AI context layer             | not started                                  |
 | 15 — real market data             | not started, plus a commercial dependency    |
 
-**11 of 16.**
+**12 of 16.**
+
+## Phase 9 — API keys and service tokens
+
+`ApiKey` and `ServiceToken`, tenant-scoped, with per-credential permissions,
+an expiry, revocation, a per-credential rate limit and a daily usage counter.
+The specification's rule holds without exception: the secret is 32 random
+bytes shown once, its SHA-256 is what is stored, and `tpk_<handle>` is the
+fingerprint every list and audit row shows. A key acts as its holder within a
+subset of their capabilities fixed at minting and intersected with their
+current role on every use; `PERSON_ONLY_PERMISSIONS` names what a key may
+never carry and why. A service token belongs to the firm and carries reads
+across the tenant and nothing else — the audit log has no way yet to name a
+machine that wrote, and that gap is stated rather than filled. Credentials
+reach only routes that name a capability, never a self-service or session-only
+one, and never the WebSocket. Minting asks for the password again.
+
+Screens: API keys on `/security`; everyone's keys and the firm's tokens on
+`/admin/credentials`. Twenty integration tests, fifteen guard tests, nine on
+the credential format, five mutations caught; the smoke suite mints and uses a
+key over HTTP; two pentest probes try to do more with a stolen key than it was
+minted for. See [api-keys.md](./api-keys.md).
 
 ## Phase 7's deploy, and the three things it found
 

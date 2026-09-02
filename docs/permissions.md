@@ -342,6 +342,25 @@ declare when there is one to declare it; until then it is a name with no
 enforcement behind it, which is worth stating plainly rather than leaving for
 someone to discover.
 
+## A key is a role's subset, a token is a firm's
+
+A role is what a person may attempt. An **API key** is a subset of that, fixed
+when the key is minted and intersected with the role on every use, carried by
+a script rather than a browser. `PERSON_ONLY_PERMISSIONS` names what a key may
+never carry — money in, money out, roles, identity documents, keys themselves
+— and `KEYABLE_PERMISSIONS` is everything else. A **service token** belongs to
+the firm and carries only `SERVICE_GRANTABLE_PERMISSIONS`: reads across the
+tenant, because the audit log has no way yet to name a machine that wrote. Both
+may carry only what the person minting them holds, which is the same rule as
+editing a role. The permission guard reads a credential's own set rather than
+its holder's role, and refuses a credential every route that declares no
+capability. See [api-keys.md](./api-keys.md).
+
+Four capabilities came with them: `api_keys.manage` (your own; every person),
+`api_keys.read_any` (staff see who holds what), `api_keys.revoke_any` (risk
+management and administration end anyone's), and `service_tokens.manage`
+(administration only).
+
 ## The administrative surface
 
 `apps/api/src/admin/` is one controller, so the question "what can an

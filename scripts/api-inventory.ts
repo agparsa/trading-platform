@@ -61,6 +61,12 @@ function routesIn(file: string): { controller: string; base: string; routes: Rou
   const controllerMatch = /@Controller\(([^)]*)\)/.exec(source);
   const base = basePath(controllerMatch?.[1] ?? '');
   const classLevelPublic = source.slice(0, controllerMatch?.index ?? 0).includes('@Public()');
+  // `@SessionOnly()` sits on the class for the credential controllers: a key
+  // must not reach the place keys are made. Recorded per route so the
+  // inventory says it where a reader looks.
+  const classLevelSessionOnly = source
+    .slice(0, (controllerMatch?.index ?? 0) + 200)
+    .includes('@SessionOnly()');
 
   const lines = source.slice((controllerMatch?.index ?? 0) + 1).split('\n');
   const routes: Route[] = [];
@@ -94,6 +100,7 @@ function routesIn(file: string): { controller: string; base: string; routes: Rou
 
       const guards: string[] = [];
       if (classLevelPublic) guards.push('PUBLIC (class)');
+      if (classLevelSessionOnly) guards.push('SESSION-ONLY (class)');
       for (const decorator of [...pending, ...trailing]) {
         if (decorator.startsWith('@RequirePermissions')) {
           guards.push(
@@ -103,6 +110,7 @@ function routesIn(file: string): { controller: string; base: string; routes: Rou
           );
         } else if (decorator.startsWith('@Public')) guards.push('PUBLIC');
         else if (decorator.startsWith('@SelfService')) guards.push('SELF-SERVICE');
+        else if (decorator.startsWith('@SessionOnly')) guards.push('SESSION-ONLY');
         else if (decorator.startsWith('@Roles')) {
           guards.push(`roles: ${/\((.*)\)/.exec(decorator)?.[1] ?? ''}`);
         } else if (decorator.startsWith('@Throttle')) guards.push('throttled');

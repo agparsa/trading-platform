@@ -23,6 +23,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { PaymentsModule } from './payments/payments.module';
 import { KycModule } from './kyc/kyc.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
+import { CredentialsModule } from './credentials/credentials.module';
 import { MasterModule } from './master/master.module';
 import { IntegrityModule } from './integrity/integrity.module';
 import { OperationsModule } from './operations/operations.module';
@@ -34,7 +35,7 @@ import { IdempotencyModule } from './common/idempotency/idempotency.module';
 import { EventsModule } from './realtime/events.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { PlatformMetricsModule } from './metrics/platform-metrics.module';
-import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { BearerAuthGuard } from './common/guards/bearer-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { TenancyModule } from './tenancy/tenancy.module';
@@ -101,6 +102,7 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
     PaymentsModule,
     KycModule,
     WithdrawalsModule,
+    CredentialsModule,
     MasterModule,
     IntegrityModule,
     OperationsModule,
@@ -117,7 +119,7 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
     // flood is rejected without a database read, and roles are checked only once
     // a user has been established.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: BearerAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     // After the role guard, so a route may narrow by role and by capability.
     { provide: APP_GUARD, useClass: PermissionsGuard },

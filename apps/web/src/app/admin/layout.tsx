@@ -18,6 +18,7 @@ const SECTIONS = [
   { href: '/admin/withdrawals', label: 'Withdrawals' },
   { href: '/admin/reconciliation', label: 'Reconciliation' },
   { href: '/admin/roles', label: 'Roles' },
+  { href: '/admin/credentials', label: 'Credentials' },
   { href: '/admin/audit', label: 'Audit' },
 ] as const;
 

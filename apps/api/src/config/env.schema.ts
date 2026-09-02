@@ -103,6 +103,23 @@ export const envSchema = z
      */
     WITHDRAWAL_AUTO_APPROVE_BELOW: z.string().optional(),
 
+    /**
+     * Programmatic access — API keys a person mints for themselves, and service
+     * tokens an administrator mints for an integration. See docs/api-keys.md.
+     */
+    /** The longest a key or token may live. A person may choose shorter. */
+    API_KEY_MAX_TTL_DAYS: z.coerce.number().int().min(1).max(3650).default(365),
+    /** What a person gets if they do not choose a lifetime. */
+    API_KEY_DEFAULT_TTL_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
+    /** Live (unexpired, unrevoked) keys one person may hold at once. */
+    API_KEY_MAX_PER_USER: z.coerce.number().int().min(1).max(100).default(10),
+    /**
+     * Requests per minute one credential may make, on top of the per-address
+     * limit. A key is a long-lived secret in a script; a script in a loop
+     * must not take the platform down with a credential that is valid.
+     */
+    API_KEY_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).max(100000).default(300),
+
     REDIS_URL: z.string().startsWith('redis://'),
 
     // Long enough that a brute-force is hopeless; refuse to boot on a short one.

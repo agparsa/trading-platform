@@ -82,7 +82,7 @@ senior role inherits a junior one. That decision is load-bearing: `ADMIN` holds
 `positions.close`, `positions.modify`, on any account including its own, so that
 nobody can credit an account and then trade the credit.
 
-Four guards are registered globally (`ThrottlerGuard`, `JwtAuthGuard`,
+Four guards are registered globally (`ThrottlerGuard`, `BearerAuthGuard`,
 `RolesGuard`, `PermissionsGuard`), and a coverage test asserts the `APP_GUARD`
 registration still exists — because deleting that one line would leave every unit
 test passing while the API became public.

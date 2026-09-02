@@ -18,7 +18,7 @@ Every screen has an address now. The terminal did not change.
 | `/wallet`               | money held for you, and moving it to and from an account   |
 | `/verification`         | prove who you are, once, so withdrawals can be paid to you |
 | `/history`              | trades, closed positions, orders — including refused ones  |
-| `/security`             | two-factor, recovery codes, active sessions                |
+| `/security`             | two-factor, recovery codes, active sessions, your API keys |
 | `/settings`             | one-click trading, confirmations, default size             |
 | `/login`                | sign in and register                                       |
 | `/status`               | build and deployment status                                |
@@ -34,6 +34,7 @@ Every screen has an address now. The terminal did not change.
 | `/admin/kyc`            | verifications waiting for a reviewer                       |
 | `/admin/reconciliation` | runs and findings                                          |
 | `/admin/roles`          | what each role may do                                      |
+| `/admin/credentials`    | everyone's API keys, and the firm's service tokens         |
 | `/admin/audit`          | the audit trail                                            |
 
 `/wallet` arrived with phase 4 and not before. Until there was a wallet the link

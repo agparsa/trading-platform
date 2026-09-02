@@ -155,6 +155,8 @@ const adminKeys = {
   kycQueue: (status: string) => ['admin', 'kyc', status] as const,
   kycRecord: (id: string) => ['admin', 'kyc-record', id] as const,
   withdrawals: (status: string) => ['admin', 'withdrawals', status] as const,
+  apiKeys: (search: string) => ['admin', 'api-keys', search] as const,
+  serviceTokens: ['admin', 'service-tokens'] as const,
 };
 
 export interface AdminInstrumentRow {
@@ -947,6 +949,111 @@ export function useAssignRole() {
     onSuccess: (_result, input) => {
       void client.invalidateQueries({ queryKey: adminKeys.user(input.id) });
       void client.invalidateQueries({ queryKey: ['admin', 'users'] });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Credentials: everyone's API keys, and the firm's service tokens
+// ---------------------------------------------------------------------------
+
+export interface AdminApiKeyRow {
+  id: string;
+  userId: string;
+  email: string;
+  name: string;
+  fingerprint: string;
+  permissions: string[];
+  rateLimitPerMinute: number;
+  status: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+  expiresAt: string;
+  lastUsedAt: string | null;
+  lastUsedIp: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  createdAt: string;
+  usage7d: { requests: number; refused: number; throttled: number };
+}
+
+export interface ServiceTokenRow {
+  id: string;
+  name: string;
+  description: string | null;
+  fingerprint: string;
+  permissions: string[];
+  rateLimitPerMinute: number;
+  status: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+  expiresAt: string;
+  lastUsedAt: string | null;
+  lastUsedIp: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  createdAt: string;
+  createdBy: string;
+  usage7d: { requests: number; refused: number; throttled: number };
+}
+
+export function useAdminApiKeys(search: string) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.apiKeys(search),
+    queryFn: () =>
+      api.get<{ keys: AdminApiKeyRow[] }>('/admin/api-keys', {
+        query: search === '' ? {} : { search },
+      }),
+  });
+}
+
+export function useRevokeAnyApiKey() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.post<AdminApiKeyRow>(`/admin/api-keys/${id}/revoke`, { reason }, key()),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['admin', 'api-keys'] });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+    },
+  });
+}
+
+export function useServiceTokens() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.serviceTokens,
+    queryFn: () => api.get<{ tokens: ServiceTokenRow[] }>('/admin/service-tokens'),
+  });
+}
+
+/** The secret is in the response and nowhere else; the panel shows it once. */
+export function useMintServiceToken() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      name: string;
+      description?: string;
+      permissions: string[];
+      expiresInDays?: number;
+      rateLimitPerMinute?: number;
+    }) =>
+      api.post<{ token: ServiceTokenRow; secret: string }>('/admin/service-tokens', input, key()),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: adminKeys.serviceTokens });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+    },
+  });
+}
+
+export function useRevokeServiceToken() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.post<ServiceTokenRow>(`/admin/service-tokens/${id}/revoke`, { reason }, key()),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: adminKeys.serviceTokens });
       void client.invalidateQueries({ queryKey: adminKeys.audit('') });
     },
   });

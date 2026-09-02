@@ -398,6 +398,43 @@ async function main(): Promise<void> {
     );
     await visit(page, '/history', { url: '/history', text: /Trades/i });
     await visit(page, '/security', { url: '/security', text: /Two-factor/i });
+    /**
+     * A key, minted through the page. The secret appears once, in a box the
+     * page marks, and nothing else on the page carries it afterwards — which
+     * is the one property of this feature worth driving a browser to prove.
+     */
+    const securityBody = await page.locator('body').innerText();
+    ok(
+      /API keys/i.test(securityBody) && /Create key/i.test(securityBody),
+      'the security page offers API keys beside sessions',
+      securityBody.slice(0, 300),
+    );
+    await page.getByPlaceholder(/What will use it/i).fill('smoke bot');
+    await page
+      .locator('label', { hasText: /^positions\.read$/ })
+      .locator('input[type="checkbox"]')
+      .check();
+    await page.locator('input[autocomplete="current-password"]').fill(PASSWORD);
+    await page.getByRole('button', { name: /Create key/i }).click();
+    const secretBox = page.getByTestId('api-key-secret');
+    const minted = await secretBox.waitFor({ timeout: 10_000 }).then(
+      () => true,
+      () => false,
+    );
+    ok(minted, 'a key can be minted from the security page');
+    const secret = minted ? (await secretBox.locator('pre').innerText()).trim() : '';
+    ok(
+      /^tpk_[A-Za-z0-9]{12}_[A-Za-z0-9_-]{43}$/.test(secret),
+      'the minted key has its shape',
+      secret.slice(0, 20),
+    );
+    await page.getByRole('button', { name: /I have saved it/i }).click();
+    const afterwards = await page.locator('body').innerText();
+    ok(
+      secret !== '' && !afterwards.includes(secret) && afterwards.includes(secret.slice(0, 16)),
+      'once dismissed, the page shows the fingerprint and never the secret again',
+      afterwards.slice(0, 200),
+    );
     await visit(page, '/settings', { url: '/settings', text: /One-click/i });
 
     console.log('\n  As an administrator\n');
@@ -442,6 +479,18 @@ async function main(): Promise<void> {
         !/\borders\.create\b/.test(rolesBody.split('ADMIN')[1] ?? ''),
       'the roles screen shows real grants',
       rolesBody.slice(0, 200),
+    );
+
+    await visit(adminPage, '/admin/credentials', {
+      url: '/admin/credentials',
+      text: new RegExp(people.trader.email.replace(/[.@+]/g, '.')),
+    });
+    await adminPage.getByRole('tab', { name: /Service tokens/i }).click();
+    const tokensBody = await adminPage.locator('body').innerText();
+    ok(
+      /New service token/i.test(tokensBody) && /accounts\.read_any/.test(tokensBody),
+      'the credentials screen offers service tokens with reads across the tenant',
+      tokensBody.slice(0, 200),
     );
 
     console.log('\n  A trader reaching an administrative URL\n');
