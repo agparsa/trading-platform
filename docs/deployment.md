@@ -96,6 +96,38 @@ everything else waits on it. To add serving capacity:
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --scale api=3
 ```
 
+### The first administrator
+
+A deployment that has just come up has no administrator. The seed creates no
+users, registration creates traders, and no endpoint mints an administrator —
+correctly, because an endpoint that did would be the first thing anybody hostile
+looked for. Every role change goes through `POST /admin/users/:id/role`, which
+needs `roles.assign`, which only an administrator holds. So the first one comes
+from the person who already holds everything: the operator at the host.
+
+```bash
+./scripts/first-administrator.sh --email you@firm.example \
+  --reason "first administrator after deployment"
+```
+
+The person registers through the site and verifies their address first; the
+platform does not create accounts from a shell, because a password typed at a
+host is a password in a shell history. The script then does what the endpoint
+would do, minus the actor it cannot have: changes the role, ends every session
+the person has (the role travels in the token), and writes the audit row —
+actor `SYSTEM`, with the host's name, the operator's username and the reason —
+in the same transaction. It refuses once the tenant has an active administrator:
+from then on the record of who appointed whom belongs to the administrators.
+`--even-if-one-exists` is the break-glass for the day the only administrator
+has left the company, and the audit row says it was used.
+
+It runs the compiled CLI (`apps/api/dist/cli/first-administrator.js`) inside
+the `migrate` image, which already holds the built code, the Prisma client and
+the owner connection; `--tenant <slug>` for a tenant other than the default.
+
+This was found the hard way: a production host with twenty-five registered
+users, every one of them `USER`, and an admin panel nobody could open.
+
 ### What the production stack does differently
 
 **Ingestion is its own process.** `api-ingest` pulls market data and runs the
@@ -367,7 +399,10 @@ and the ones that let it out are never one person's — so after upgrading, an
 administrator puts a second person into FINANCE from the People screen (or
 `POST /admin/users/:id/role`). Doing it ends that person's sessions; they sign
 in again with the new role. A single-operator deployment has to choose which
-half its one operator is; the platform does not choose for it.
+half its one operator is; the platform does not choose for it. A person holds
+one role, so this is two accounts at the least — and if there is no
+administrator yet, [the first administrator](#the-first-administrator) comes
+before either.
 
 ### Roles reconcile themselves at boot
 

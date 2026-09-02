@@ -174,6 +174,12 @@ expired.
 The escape is the one separation of duties always has: two roles, two logins, or
 a master-account link that names the account and leaves a record.
 
+The first administrator cannot be appointed this way, because appointing needs
+one. That act belongs to the host: `scripts/first-administrator.sh` runs the
+compiled CLI inside the migrate image, does what the endpoint does with actor
+`SYSTEM` and the host's name in the audit row, and refuses once an active
+administrator exists. See [deployment.md](./deployment.md#the-first-administrator).
+
 ### What a release does to roles that already exist
 
 Grants became rows so a firm could change them without a deployment. That made

@@ -142,4 +142,13 @@ cat <<'NEXT'
 
     docker compose -f docker-compose.prod.yml --env-file .env.production \
       logs nginx | grep -i certificate
+
+  There is no administrator yet. Nothing creates one: register through the
+  site, verify the address, then appoint that account from this host —
+
+    ./scripts/first-administrator.sh --email you@firm.example \
+      --reason "first administrator after deployment"
+
+  Every later role change is that administrator's, from the People screen.
+  Withdrawals need a second person in FINANCE; see docs/withdrawals.md.
 NEXT

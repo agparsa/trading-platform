@@ -93,7 +93,14 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.spec.ts', '**/*.test.ts', 'scripts/**/*.ts', 'prisma/seed.ts'],
+    files: [
+      '**/*.spec.ts',
+      '**/*.test.ts',
+      'scripts/**/*.ts',
+      'prisma/seed.ts',
+      // A command-line tool's output is its interface.
+      'apps/api/src/cli/**/*.ts',
+    ],
     rules: {
       'no-console': 'off',
       '@typescript-eslint/no-explicit-any': 'off',

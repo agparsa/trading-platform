@@ -97,6 +97,21 @@ returns to `OPEN` on the next attempt.
 not a performance knob, and the API logs a warning at boot when it is off. Check
 that first.
 
+### Nobody can open the admin panel
+
+Every screen under `/admin` answers 403 for everyone. Either there is no
+administrator — a fresh deployment has none, and nothing creates one — or the
+only one has gone. Both are the same act at the host:
+
+```bash
+./scripts/first-administrator.sh --email you@firm.example --reason "..."
+./scripts/first-administrator.sh --email ... --reason "..." --even-if-one-exists   # the last one left
+```
+
+The person must already be registered and verified. The act ends their sessions
+and is written to the audit log with the host's name; see
+[deployment.md](./deployment.md#the-first-administrator).
+
 ## Deploys
 
 ### Migrations

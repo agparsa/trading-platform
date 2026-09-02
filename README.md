@@ -229,6 +229,13 @@ against the real deployment: `pnpm smoke`, `pnpm smoke:ws`, `pnpm pentest` and
 `pnpm restore:rehearse`. Each of them boots or attacks something rather than
 reading a config file.
 
+A deployment that has just come up has **no administrator**, and nothing
+creates one — every role change goes through an endpoint only an administrator
+may call. Register through the site, verify the address, then appoint that
+account from the host: `./scripts/first-administrator.sh --email you@firm.example --reason "..."`.
+It ends the person's sessions and writes the audit row; it refuses once an
+administrator exists.
+
 **Behind a CDN**, set `TRUSTED_PROXIES_FILE` to that provider's ranges. Without
 it every per-IP rate limit — nginx's and the application's — counts the CDN
 rather than the client, so one attacker gets the same allowance as the entire

@@ -943,3 +943,37 @@ describe('scripts/upgrade-server.sh', () => {
     expect(script).toMatch(/merge --ff-only/);
   });
 });
+
+describe('scripts/first-administrator.sh', () => {
+  const script = readFileSync(resolve(ROOT, 'scripts/first-administrator.sh'), 'utf8');
+
+  /**
+   * A fresh deployment has traders and no administrator, and the only way to
+   * put somebody into a role needs one. Production was found in exactly that
+   * state: twenty-five users, every one of them USER, and an admin panel nobody
+   * could open. The way in has to exist, and it has to be the correct act — a
+   * raw UPDATE leaves the old sessions holding the old role and an audit log
+   * that shows an administrator nobody appointed.
+   */
+  it('runs the compiled CLI inside the migrate image, which holds the code and the owner connection', () => {
+    expect(script).toMatch(/run --rm --no-deps migrate/);
+    expect(script).toContain('node apps/api/dist/cli/first-administrator.js "$@"');
+  });
+
+  it('points at a file the API build produces', () => {
+    // dist/cli/x.js exists only if src/cli/x.ts does, and tsconfig.build.json
+    // includes src/**.
+    expect(existsSync(resolve(ROOT, 'apps/api/src/cli/first-administrator.ts'))).toBe(true);
+    expect(read('apps/api/tsconfig.build.json')).toMatch(/"include": \["src\/\*\*\/\*\.ts"\]/);
+  });
+
+  it('is what first-deploy.sh tells the operator to run next', () => {
+    expect(read('scripts/first-deploy.sh')).toContain('./scripts/first-administrator.sh --email');
+  });
+
+  it('takes no password and creates no account', () => {
+    // A password typed at a host is a password in a shell history.
+    expect(script).not.toMatch(/password/i);
+    expect(read('apps/api/src/cli/first-administrator.ts')).not.toMatch(/user\.create\(/);
+  });
+});

@@ -115,9 +115,10 @@ async function waitFor(url: string, name: string): Promise<void> {
 /**
  * A trader and an administrator, both real.
  *
- * The administrator is promoted in the database because there is no endpoint
- * that mints one — which is the right answer, and the reason this is here rather
- * than in a fixture.
+ * The administrator is promoted in the database because no endpoint mints the
+ * first one — which is the right answer, and the reason this is here rather
+ * than in a fixture. On a host that act is `scripts/first-administrator.sh`;
+ * here the smoke test already holds the database.
  */
 async function seedPeople(prisma: PrismaClient): Promise<{
   trader: { email: string };
