@@ -371,6 +371,111 @@ suite('Trading core (integration)', () => {
     });
   });
 
+  /**
+   * Overnight financing is settled into the balance on the night it accrues:
+   * the worker writes the ledger entry, moves the balance and adds the amount
+   * to `position.swap` in one transaction. Closing must therefore *report*
+   * that swap on the trade and post nothing. It posted it again, for four
+   * months, and the first reconciliation run to reach production found the
+   * ledger holding exactly twice the swap the trades reported.
+   */
+  describe('swap accounting', () => {
+    /** Exactly what `SwapAccrualService.postAccrual` does, for one night. */
+    const settleOvernight = async (accountId: string, positionId: string, amount: string) => {
+      const money = Money.of(amount, 'USD');
+      await prisma.$transaction(async (tx) => {
+        const account = await tx.account.findUniqueOrThrow({ where: { id: accountId } });
+        const after = Money.of(account.balance.toString(), 'USD').plus(money);
+        await tx.balanceLedger.create({
+          data: {
+            tenantId: account.tenantId,
+            accountId,
+            type: 'SWAP',
+            amount: money.toString(),
+            balanceAfter: after.toString(),
+            currency: 'USD',
+            referenceType: 'Position',
+            referenceId: positionId,
+            idempotencyKey: `swap:${positionId}:2026-09-01`,
+            description: 'Overnight financing, 1 night(s), 2026-09-01',
+          },
+        });
+        await tx.account.update({ where: { id: accountId }, data: { balance: after.toString() } });
+        await tx.position.update({
+          where: { id: positionId },
+          data: { swap: { increment: money.toString() } },
+        });
+      });
+    };
+
+    const swapPosted = async (positionId: string) => {
+      const rows = await prisma.balanceLedger.findMany({
+        where: { referenceId: positionId, type: 'SWAP' },
+      });
+      return rows.reduce(
+        (total, row) => total.plus(Money.of(row.amount.toString(), 'USD')),
+        Money.zero('USD'),
+      );
+    };
+
+    it('reports the swap on the trade and posts it to the ledger exactly once', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+      await settleOvernight(accountId, opened.positionId!, '-12.50');
+      const settled = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
+
+      await stack.publishQuote('XAUUSD', '4600.00', '4600.14');
+      const closed = await stack.positions.close(userId, opened.positionId!, null);
+
+      expect(closed.swap).toBe('-12.50');
+      expect(closed.netPnl).toBe(
+        Money.of(closed.grossPnl, 'USD')
+          .minus(Money.of(closed.commission, 'USD'))
+          .minus(Money.of('12.50', 'USD'))
+          .toString(),
+      );
+      // The night's entry, and only the night's entry.
+      expect((await swapPosted(opened.positionId!)).toString()).toBe('-12.50');
+      // This close moved the balance by the price result and the closing leg's
+      // commission; the swap had moved it the night before.
+      const delta = Money.of(closed.balanceAfter, 'USD').minus(
+        Money.of(settled.balance.toString(), 'USD'),
+      );
+      expect(delta.toString()).toBe(
+        Money.of(closed.grossPnl, 'USD').minus(Money.of(closed.exitCommission, 'USD')).toString(),
+      );
+      const replay = await prisma.$transaction((tx) => ledger.replayBalance(tx, accountId));
+      expect(replay.matches).toBe(true);
+    });
+
+    it('apportions it across partial closes without posting any of it', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+      await settleOvernight(accountId, opened.positionId!, '-12.50');
+      await stack.publishQuote('XAUUSD', '4600.00', '4600.14');
+
+      const first = await stack.positions.close(userId, opened.positionId!, '0.40');
+      const remaining = await prisma.position.findUniqueOrThrow({
+        where: { id: opened.positionId! },
+      });
+      expect(first.swap).toBe('-5.00');
+      expect(Money.of(remaining.swap.toString(), 'USD').toString()).toBe('-7.50');
+
+      const second = await stack.positions.close(userId, opened.positionId!, null);
+      expect(second.swap).toBe('-7.50');
+
+      const trades = await prisma.trade.findMany({ where: { positionId: opened.positionId! } });
+      const reported = trades.reduce(
+        (total, trade) => total.plus(Money.of(trade.swap.toString(), 'USD')),
+        Money.zero('USD'),
+      );
+      expect(reported.toString()).toBe('-12.50');
+      expect((await swapPosted(opened.positionId!)).toString()).toBe('-12.50');
+      const replay = await prisma.$transaction((tx) => ledger.replayBalance(tx, accountId));
+      expect(replay.matches).toBe(true);
+    });
+  });
+
   describe('concurrency', () => {
     /**
      * The guard that stops a manual close, a stop-loss trigger and a

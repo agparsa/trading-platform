@@ -39,6 +39,23 @@ Commission is stored as a positive magnitude and subtracted. Swap is stored
 **signed** — negative debits, positive credits — and added. Mixing the two
 conventions is the usual way a swap credit ends up charged as a cost.
 
+### Swap is settled the night it accrues, and reported at close
+
+Overnight financing moves the balance **on the night it is charged**: the
+worker's accrual writes the ledger entry, moves the balance and adds the amount
+to `position.swap`, in one transaction. `position.swap` is therefore the record
+of what has _already been paid_, and closing carries its share onto the trade
+row — apportioned to the volume closed — so that `netPnl` is the whole round
+trip. Closing posts **no** swap to the ledger.
+
+It did, until the first reconciliation run to reach production. Every position
+held overnight was charged its swap twice — once at midnight and once at close,
+under "swap released" — and the ledger held exactly double the swap the trades
+reported. So `netPnl` reconciles with the balance over the position's whole
+life, not with the movement a single close produces: the entry commission was
+taken at the open and the swap on each night in between. The two tests under
+"swap accounting" in `trading.test.ts` hold the close to that.
+
 ### `commission` is the round trip, not one leg
 
 Commission is charged twice: once when the position opens, once when it closes.

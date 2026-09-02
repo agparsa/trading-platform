@@ -212,11 +212,12 @@ export class PositionsService {
       });
       const commission = entryCommission.plus(exitCommission);
 
-      // Net is the round trip: what the trader actually kept. It must reconcile
-      // with the balance change this close produced, which includes the
-      // commission charged back when the position was opened. Every term is
-      // already at cent precision, so this sum needs no rounding of its own —
-      // and must not get one.
+      // Net is the round trip: what the trader actually kept. It reconciles
+      // with the balance over the position's whole life — the entry
+      // commission charged when it opened, the swap settled each night it was
+      // held, and what this close moves — and not with this close alone.
+      // Every term is already at cent precision, so this sum needs no rounding
+      // of its own — and must not get one.
       const net = gross.minus(commission).plus(swap);
       const marginReleased = Money.of(position.margin, position.accountCurrency).times(
         closedFraction,
@@ -341,16 +342,20 @@ export class PositionsService {
             description: `Commission on closing ${position.symbolCode}`,
           });
         }
-        if (!swap.isZero()) {
-          await this.ledger.post(tx, {
-            accountId: position.accountId,
-            type: 'SWAP',
-            amount: swap,
-            referenceType: 'Position',
-            referenceId: position.id,
-            description: `Swap released on closing ${position.symbolCode}`,
-          });
-        }
+        /**
+         * Swap is **not** posted here, and the absence is the point.
+         *
+         * Overnight financing is settled into the balance on the night it
+         * accrues — `swap-accrual.service.ts` in the worker writes the ledger
+         * entry, moves the balance and adds the amount to `position.swap` in
+         * one transaction. So `position.swap` is the record of what has
+         * *already been charged*, and its share is carried onto the trade row
+         * so the trade's net is the whole round trip. Posting it to the ledger
+         * again at close charged — or credited — every overnight position
+         * twice. Reconciliation found it the first hour it ran: the ledger
+         * held exactly double the swap the trades reported, and the realized
+         * total was out by the same amount.
+         */
 
         const remainingMargin = Money.of(position.margin, position.accountCurrency).minus(
           marginReleased,

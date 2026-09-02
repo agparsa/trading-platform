@@ -123,6 +123,29 @@ no execution behind them — a shape no code path in this system can produce.
 The fixture was fixed, not the check. A test built on a position that cannot
 exist is testing against something that cannot happen.
 
+### And the first thing it found in production was real
+
+The scheduled run had been refused for two days — its run row was written in no
+tenant scope; see [multi-tenancy.md](./multi-tenancy.md) — and the first hour
+after that was fixed it reported, on one account:
+
+```
+SWAP_MISMATCH           WARNING   records report 42.98 of swap; the ledger posted 85.96
+REALIZED_PNL_MISMATCH   CRITICAL  trades report 22845.12 realized but the ledger paid 22888.10
+```
+
+Exactly double, and the same difference twice. Seventeen positions held over
+one midnight had each been charged their financing at midnight by the worker,
+and charged it again when they closed the next morning — the close path posted
+`position.swap` to the ledger as "swap released", not knowing it had been
+settled the night it accrued. Every test that closed a position had closed it
+the same day it opened. Two tests now hold a position overnight first; see
+[pnl.md](./pnl.md#swap-is-settled-the-night-it-accrues-and-reported-at-close).
+
+The findings stay open until a person resolves them, and the balance stays as
+it was found. That is the rule above doing its job: the correction is an
+adjustment with a reason, made by somebody who has read this.
+
 ## Runs and findings
 
 Reconciliation used to leave its results as risk events and nothing else. That
