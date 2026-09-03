@@ -1,403 +1,293 @@
 # Implementation Plan
 
-**Baseline:** commit `76fd42a`, branch `feat/m1-realtime-terminal`.
-1,095 tests across 86 files, green. Deployed and verified on `devopss.ir`.
+**Baseline:** `f630e3e` on `main`, deployed at devopss.ir. 134 test files /
+1,787 tests, 18 API smoke checks, 8 WebSocket checks, 69 browser checks, 42
+pentest probes — all green.
 
-**Target:** the multi-tenant commercial trading ecosystem described in the master
-specification — mobile applications, KYC, wallet and payments, an integration
-platform, a security centre, and an AI layer.
+**Target:** the multi-tenant, multi-broker trading-platform specification of
+3 September 2026, with the two commercial terminals in its screenshots as the
+UX reference. Sixteen phases, numbered as the specification numbers them.
+
+**Audit:** [architecture-audit.md](./architecture-audit.md) — what exists,
+what is short, what is absent, and the extension point for each.
 
 ---
 
 ## Read this first
 
-The distance between the baseline and the target is **months of engineering, not
-weeks.** This document sequences that distance honestly. It does not pretend the
-work is nearly done, and it does not pad the existing platform's achievements to
-make the remainder look smaller.
+This is the second plan this repository has carried. The first — sixteen phases
+against the standalone-platform specification — is complete through its
+phase 9 and is recorded at the end of this document; its work is the baseline
+above, and nothing in it is undone.
 
-What exists is a well-built single-tenant trading platform: a deterministic
-decimal financial core, an append-only ledger, a real risk engine, a working
-realtime terminal, an admin console, reconciliation, and adversarial security
-testing. That is a genuine asset and the plan is built to preserve it. The
-specification's instruction — _do not blindly rewrite, do not delete working
-functionality, do not replace working architecture out of preference_ — is the
-governing constraint on every phase below.
+The distance from the baseline to the new target is **months, not weeks**, and
+most of it is one word: _broker_. The trading core the specification insists
+on preserving exists and is proven. What does not exist is external
+execution — the adapter SDK, connection state, external mapping, external
+reconciliation — and the terminal the screenshots describe. This plan builds
+the first with mock adapters and contract tests up to the point where a real
+broker's API specification is needed, and stops there and says so, because the
+specification says to. It builds the second on the terminal that exists.
 
 ## The ordering principle
 
-Two rules decide the sequence, and they override any wish to build the exciting
-parts first.
-
-**1. Tenancy goes first, because its cost grows with every commit.**
-Retrofitting `tenantId` into 29 models and 84 routes is expensive today and more
-expensive after another 40 routes exist. Every phase after Phase 1 assumes it.
-
-**2. Nothing user-facing is built on a surface that has to move.**
-The web app is one page. Wallet, KYC, security centre and API keys have nowhere
-to live, and bolting eight panels onto the terminal would produce work that must
-be redone. The restructure is small and it comes early.
+1. **Foundations that other phases read go first.** Broker as a first-class
+   tenant profile, the role groups, the event envelope's second version — every
+   later phase writes against them.
+2. **Nothing external is faked.** Phase 2 ships an adapter interface, a state
+   machine, a mock and a contract suite; a connector to a real venue is a
+   separate, later act that starts with reading that venue's documentation.
+3. **The terminal is upgraded, not replaced.** The chart's draggable levels,
+   the ticket's checks, the panels' commands all stay; the information
+   architecture around them changes.
 
 ## Definition of Done
 
-Applied per phase, from the specification. A feature is complete only when
-**UI → API → business logic → database → authorization → security → audit →
-tests** are connected. Specifically, for every phase:
-
-- Backend enforces every permission. Frontend permission logic is presentation.
-- No floating point anywhere near money.
-- Every mutation writes an audit record with before and after state.
-- Tenant identity is derived from the authenticated context, never from input.
-- No secret is stored raw, logged, or committed.
-- `pnpm verify` green, and `pnpm smoke` green — because `verify` does not boot
-  the application and `smoke` does. That distinction has already cost one
-  production outage in this repository.
+From §99, applied per phase: domain model, API, authorization, tenant
+isolation, validation, persistence, realtime events where required, UI on real
+state with error/loading/empty states, security tests, regression tests,
+documentation, observability where relevant. Plus this repository's own rules:
+no float near money; every mutation audited with before and after; tenant from
+the authenticated context only; no secret stored raw, logged or committed;
+`pnpm verify` **and** `pnpm smoke` green, because one does not boot the
+application and the other does; and the production log read after every
+deploy, because three real defects this month were invisible to 1,700 tests.
 
 ---
 
-## Phase 0 — Close what is open · ~1 day · **done, except the two operator decisions**
-
-Not a feature. Four defects that should not survive another week.
-
-| Item                                                                                 | Why now                                                                                                   |
-| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| Gate registration (`REGISTRATION_MODE`: open / invite / closed)                      | A public domain currently accepts anyone                                                                  |
-| Remove the 21 test accounts from the production database                             | Left over from verification runs                                                                          |
-| Make `audit_logs` append-only in the database, not only in the application           | The specification requires administrators cannot alter audit logs; today only the application prevents it |
-| Add `RECONCILIATION_MANAGE`; move the finding-status write off `RECONCILIATION_READ` | A write gated by a read permission                                                                        |
-
-**Done when:** registration refuses an uninvited address in production, the
-database refuses an `UPDATE` on `audit_logs`, and the pentest script has a probe
-for each.
-
-### What actually happened
-
-Three of the four are done and verified.
-
-- **Registration modes** — `open` / `invite` / `closed`, with the API refusing to
-  boot `open` in production unless told to in as many words. Real invitations:
-  120-bit codes, hashed at rest, shown once, single-use by default, claimed in
-  one atomic statement so two simultaneous redemptions cannot both win. 17
-  integration tests and 8 unit tests. [registration.md](./registration.md).
-- **Append-only audit log** — `UPDATE`, `DELETE` and `TRUNCATE` refused by
-  trigger, raising `42501`. A `REVOKE` alone would not have worked; the reasoning
-  is in [security.md](./security.md#audit).
-- **`RECONCILIATION_MANAGE`** — the finding-status write no longer rides on a
-  read permission. `OPERATOR` can see findings and can no longer close them.
-
-Three new pentest probes, 28 attacks refused. Suite is 1,134 tests across 89
-files, and `pnpm smoke` boots the application and passes 13/13 — which is the
-check that catches a service added to a controller but not reachable from its
-module, a mistake this repository has made before.
-
-**Not done, because neither is a commit:** the deployment still runs the old
-build with registration open, and the 21 test accounts are still in the
-production database. Both need the operator to decide and act.
-
----
-
-## Phase 1 — Multi-tenancy · ~3–4 weeks · **the hinge of the whole plan** · _schema, enforcement and isolation done; see "What actually happened" below_
-
-The largest single item and the one everything else waits on.
-
-**Schema.** A `Tenant` model; `tenantId` on the ~20 owned models. `Symbol`,
-`SymbolSpec`, `MarketSession` and `Candle` stay global — instruments are a
-platform fact; their _commercial terms_ become tenant-scoped, which the existing
-split between contract spec and terms already accommodates.
-
-**The sharp edge is `User.email`.** It is globally unique today. The same person
-may be a user of two tenants, so it becomes `@@unique([tenantId, email])` — and
-that is a behavioural change to login, not merely a schema change. Login must
-resolve the tenant before it resolves the user, which means the tenant comes
-from the hostname or an explicit tenant selection, and is then fixed for the
-session.
-
-**Enforcement, in two layers, because one is not enough.**
-
-1. A Prisma client extension that **refuses** a query against a tenant-scoped
-   model when no tenant filter is present. Forgetting must be a crash, not a
-   leak. A guard that silently permits an unscoped query is worse than none,
-   because it is trusted.
-2. Postgres row-level security beneath it, so that a bug in layer 1 is still
-   contained by the database.
-
-**Derivation.** The tenant comes from the authenticated context. Not a header,
-not a body field, not a query parameter. The specification states this and it is
-right: the moment a client can name its tenant, the boundary is decorative.
-
-**Realtime.** Rooms become tenant-namespaced. A subscription check must verify
-tenant before account.
-
-**Tests.** A cross-tenant probe per resource type, added to `pnpm pentest`: Tenant
-A's token against Tenant B's account, order, position, ledger, notification,
-audit entry. Each must return a not-found, not a forbidden — a forbidden confirms
-the resource exists.
-
-**Migration.** All existing rows become one default tenant. Data migration is
-trivial; code migration is not.
-
-**Done when:** every tenant-scoped model carries `tenantId`, the extension throws
-on an unscoped query, RLS is enabled, the cross-tenant probes pass, and the
-existing 1,095 tests still pass.
-
-### What actually happened
-
-Done:
-
-- **Schema.** `Tenant`, `TenantStatus`, and `tenantId` on 26 models — every one
-  that is owned. `SystemSetting` carries a nullable one, where null means the
-  platform. `Symbol`, `SymbolSpec`, `MarketSession` and `Candle` stay global.
-- **Uniques became per-tenant** where identity is per-firm: `User.email`,
-  `Account.number`, `RiskRuleConfig.name`, `IdempotencyKey`, `Notification`'s
-  dedupe key. High-entropy secrets stayed global.
-- **The migration is hand-written and non-destructive** — nullable column,
-  backfill, then NOT NULL, because the generated version adds a NOT NULL column
-  to twenty-six populated tables and fails on the first row.
-- **Enforcement, layer one.** A Prisma extension that injects the tenant into
-  every filter, stamps every create including nested ones, throws when a payload
-  names a different tenant, and throws when there is no tenant at all. Its model
-  list is checked against the schema by a test.
-- **Enforcement, layer two.** RLS policies on all 27 tables, verified against a
-  non-owner role: no `app.tenant_id` reads zero rows; setting it reads exactly
-  one tenant's. Not `FORCE`d — see [multi-tenancy.md](./multi-tenancy.md) §6.
-- **Derivation.** The tenant comes from the hostname before authentication and
-  from the token's signed `tid` after, and the guard refuses a token whose
-  tenant is not the one the hostname serves. The WebSocket gateway makes the
-  same check on the handshake.
-- **Tests.** 18 isolation tests and an adversarial probe that creates a second
-  tenant on its own hostname. 1,169 tests green, 29 pentest probes refused,
-  14 smoke checks against a booted application.
-
-Not done, and named as such in
-[multi-tenancy.md](./multi-tenancy.md) §9: RLS is not forced; instrument terms
-are still global; the platform-wide kill switch cannot be set through the API;
-roles are still compile-time constants; the worker is cross-tenant by
-construction rather than scoped per tenant.
-
-Since written, two of the three items below have been done: the worker now
-carries the same scope and extension the API does (`@tp/tenancy`), and
-commercial instrument terms moved to `tenant_symbol_terms` — which turned out to
-be a live cross-tenant _write_, not merely a missing feature.
-
-**Remaining Phase 1 work:** run the application as a database role that does not
-own its tables, add per-connection `app.tenant_id` plumbing, and force RLS. That
-one needs a deployment change and cannot be finished from the codebase alone.
-
----
-
-## Phase 2 — Roles and permissions as data · ~1 week
-
-Today roles are TypeScript constants; a new role is a deployment. Under tenancy
-each tenant defines its own.
-
-`Role` and `PermissionGrant` become rows, seeded from today's constants so
-behaviour is identical on day one. `ALL_PERMISSIONS` stays a compile-time
-constant — permissions are code because code checks them; the _grants_ become
-data.
-
-**The one rule that must survive this change:** `ADMIN` holds no trading
-permission. When roles become editable, someone will grant their admin role
-`orders.create` on a Tuesday afternoon. Either the platform forbids the
-combination of `accounts.adjust` and `orders.create` in one role outright, or it
-warns loudly and audits the grant. This must be decided in this phase, not
-discovered later.
-
----
-
-## Phase 3 — Web application restructure · ~1 week
-
-Route groups around the existing terminal. **The terminal is not rewritten** —
-it moves from `/` to `/terminal` and the shell around it gains real routes:
-`/account`, `/history`, `/wallet`, `/security`, `/settings`, and nested admin
-routes `/admin/people/:id`, `/admin/accounts/:id`.
-
-Small phase, early, because every later feature needs somewhere to live and
-because deep-linking is what an operator working an incident actually needs.
-
----
-
-## Phase 4 — Wallet and finance · ~2–3 weeks
-
-`Wallet` and `WalletTransaction`, on top of the existing `BalanceLedger` rather
-than beside it. The ledger stays the source of truth for account balance; the
-wallet is the user-facing funds surface and its movements post to the ledger.
-
-Two ledgers that both believe they are authoritative is the classic way to lose
-money in an accounting system. Not repeating it is the whole design constraint
-of this phase.
-
-Decimal throughout. Idempotency keys on every credit. Full audit.
-
----
-
-## Phase 5 — Payments · ~2–3 weeks
-
-Provider-agnostic behind an adapter, the same way market data is. `PaymentIntent`
-with an explicit state machine; provider webhooks; **idempotent handlers keyed on
-the provider's event id**, because a payment provider will deliver the same
-webhook twice and one of those must not credit twice.
-
-A failed payment must never create funds. The ledger's existing unique
-`idempotencyKey` already gives the mechanism.
-
-**Provider selection is a business decision, not an engineering one**, and it
-gates this phase.
-
----
-
-## Phase 6 — KYC · ~2–3 weeks
-
-`KycRecord`, `KycDocument`, a review workflow, an admin queue. Documents are
-identity documents: encrypted at rest, access audited, retention policy stated,
-and never in application logs.
-
-Kept separate from trading logic, per the specification. A withdrawal may require
-verified KYC; opening a position does not.
-
----
-
-## Phase 7 — Withdrawals · ~1–2 weeks
-
-`WithdrawalRequest` with approval workflow, limits, cooldowns, and a KYC gate.
-Depends on Phases 4, 5 and 6 — it is the point where all three meet, which is
-why it is not merged into any of them.
-
----
-
-## Phase 8 — Notification platform · ~2 weeks
-
-`NotificationPreference` per user, per channel, per kind. `PushDevice` for FCM
-and APNs tokens. Worker dispatch per channel. Trading sounds as a client-side
-concern driven by server events.
-
-**The specification's rule here is a correctness requirement, not a preference:**
-a notification — and a sound — fires when the backend confirms execution, never
-when the user clicks Buy. The event stream already emits `order.filled` and
-`position.opened` server-side, so the correct implementation is also the simple
-one, provided nobody wires a sound to a click handler.
-
-This phase is a prerequisite for mobile being useful, which is why it precedes it.
-
----
-
-## Phase 9 — API and token management · ~2 weeks
-
-`ApiKey` and `ServiceToken`, scoped to a tenant, with per-key permissions, an
-expiry, and revocation.
-
-The specification's rule, without exception: **never store the raw secret; hash
-it; store a fingerprint for identification; show the generated secret exactly
-once.** A platform that can show a user their existing API key is a platform
-that stored it.
-
-This is also the surface the future PropFA product consumes, which makes its
-design a boundary decision rather than a convenience feature.
-
----
-
-## Phase 10 — Outbound webhooks · ~1–2 weeks
-
-`Webhook` and `WebhookDelivery`. Signed payloads, exponential backoff, a delivery
-log, replay from the log. Subscribers to the existing domain events — the event
-bus already exists and already mints a stable `eventId` per occurrence, which is
-exactly what a consumer needs to deduplicate.
-
----
-
-## Phase 11 — Security Center · ~1–2 weeks
-
-Mostly surfacing what already exists: sessions, devices, IP history, 2FA state,
-audit of one's own account, active API keys. Plus `SecurityEvent` as a
-first-class feed rather than a filter over `AuditLog`.
-
-Small, high-value, and it lands late only because it is worth more once there is
-more to show.
-
----
-
-## Phase 12 — Mobile foundation · ~3–4 weeks
-
-Backend first: refresh-token delivery by client type — `Set-Cookie` for web,
-response body for native, **with the server deciding, never the client asking.**
-Then FCM and APNs wiring on top of Phase 8. Then `apps/mobile` as an Expo
-workspace consuming `@tp/shared-types` and `@tp/financial-core` by workspace
-reference, and an app shell with auth, accounts and push.
-
-`MOBILE_AUDIT.md` §3 has the reasoning for not simply moving the web client to
-body-delivered tokens.
-
----
-
-## Phase 13 — Mobile trading · ~4–6 weeks
-
-Terminal, charts, positions, orders, watchlist, notifications, biometric unlock.
-Then two app-store submissions, which have their own timelines that no amount of
-engineering shortens.
-
-**The rule that must not bend:** mobile uses the same `/orders` route as the
-browser. If mobile needs different behaviour, it gets a different transport to
-the same service — never a different service. The way "never bypass the risk
-engine" gets violated is never deliberate; it is a lightweight endpoint added for
-latency that skips a check the main path performs.
-
----
-
-## Phase 14 — AI context layer · ~2–3 weeks
-
-An abstraction that answers questions about platform state through a **defined,
-read-only, permission-scoped, tenant-scoped, audited** interface.
-
-The specification's constraints are absolute and they are the design: **no
-unrestricted database access, no arbitrary SQL, no direct database manipulation.**
-The AI layer calls the same services a user's session would, under the same
-permission checks, and every call is audited. It is a consumer of the platform,
-not a privileged path into it.
-
----
-
-## Phase 15 — Real market data · ~3–4 weeks, plus a commercial dependency
-
-The provider interface is already the correct seam. Behind it today is a
-simulator; nothing real has ever traded here.
-
-Needs: a data vendor, a broker or liquidity relationship, execution semantics
-including slippage and requotes, and a separate audit of its own. It is last
-because it is the phase where the platform stops being a simulation, and
-everything preceding it should be correct before that is true.
+## Phase 0 — Repository audit · **done**
+
+[architecture-audit.md](./architecture-audit.md). Produced by inspection.
+
+## Phase 1 — Domain and multi-tenant foundation · ~1–2 weeks
+
+Most of the foundation exists (tenancy with RLS, roles as rows, capabilities,
+audit). What this phase adds is the vocabulary the rest of the specification
+uses, additively:
+
+- `Tenant.kind` (PLATFORM | BROKER) and a `Broker` profile (legal name,
+  status, default execution mode, limits). The default tenant is the platform.
+- **Role groups.** Platform roles (`PLATFORM_SUPER_ADMIN`, `PLATFORM_OPERATOR`,
+  `PLATFORM_SUPPORT`, `PLATFORM_AUDITOR`, `PLATFORM_DEVELOPER`) seeded on the
+  platform tenant; broker roles (`BROKER_OWNER`, `BROKER_ADMIN`,
+  `BROKER_TRADING_MANAGER`, `BROKER_SUPPORT`, `BROKER_ANALYST`,
+  `BROKER_DEVELOPER`) as the broker tenant's built-ins, mapped onto the existing
+  capabilities; `TRADING_USER` = `USER`. The existing roles keep working; the
+  reconcile-at-boot mechanism seeds the new ones.
+- **Event envelope v2**: `version`, `aggregateType`, `aggregateId`, `actorId`,
+  `correlationId` (the request id), `causationId` — additive, consumers
+  untouched, `docs/realtime.md` updated.
+- `SecurityEvent` model and service (login, 2FA, session revoked, credential
+  minted/revoked, suspicious sign-in) — the feed §46 and §62 want, written
+  from the places those things already happen.
+- Account status `LOCKED` and `PENDING` with explicit trading behaviour.
+- Tenant-level and account-level rate limits (§68) in the existing throttling.
+
+Tests: role-group seeds, envelope v2 shape, security events written, cross-tenant
+probes extended to the new tables.
+
+## Phase 2 — Broker connection and adapter SDK · ~2–3 weeks
+
+`packages/broker-sdk`:
+
+- `BrokerAdapter` interface with the §10 method set and **capability
+  discovery** (`getCapabilities()` → supportsMarketOrders … supportsApiToken).
+- Connection state machine: CONNECTED, CONNECTING, DISCONNECTED, DEGRADED,
+  AUTH_FAILED, RATE_LIMITED, UNKNOWN; heartbeat, last quote, last order event,
+  backoff, circuit breaker (§43, §88).
+- `MockBrokerAdapter` with scripted behaviours: fills, partial fills,
+  rejections, timeouts, disconnects, duplicate and out-of-order events — the
+  failure catalogue of §41 and §67 as fixtures.
+- A **contract test suite** any adapter must pass.
+- `BrokerConnection`, `BrokerCredential` (sealed with `SecretBox`; metadata
+  only leaves the server), admin routes and a Connections / Credentials /
+  Connection Health section in the broker panel.
+
+**BLOCKED after this point:** a connector to a real venue needs that venue's
+API documentation and sandbox credentials. The interface, mock, contract
+tests, credential abstraction, state machine and mapping layer will be ready;
+the connector is reported as blocked, not stubbed.
+
+## Phase 3 — Broker accounts and external account mapping · ~2 weeks
+
+- `externalAccountId` on `Account`; `externalOrderId` / `externalExecutionId`
+  / `externalPositionId` on the trading rows; `BrokerInstrumentMapping`.
+- `Account.executionMode` (INTERNAL | EXTERNAL_BROKER). `OrdersService` gains
+  one branch at the point it executes: external orders go to the adapter with
+  a client order id, and their outcome is FILLED / REJECTED / **UNKNOWN**; an
+  UNKNOWN outcome is recorded, queried back, and never retried blindly (§41,
+  §103).
+- Outbox (`OutboxEvent`, written with the domain change, relayed by the
+  worker) and inbox (`BrokerInboundEvent`, keyed by external id: dedupe, order,
+  replay) (§42).
+- Reconnect recovery sequence (§43) against the mock.
+
+## Phase 4 — Master accounts and permission hierarchy · ~1–2 weeks
+
+- Master roles (`MASTER_OWNER`, `MASTER_MANAGER`, `MASTER_TRADER`,
+  `MASTER_VIEWER`) as seeds over the existing `LINKABLE_CAPABILITIES`.
+- Aggregation: exposure, P&L, margin, open positions and orders across a
+  desk's accounts (§15).
+- The desk layer in the risk hierarchy (§40): platform → broker → desk →
+  account, each only stricter.
+- Master Accounts section in the broker panel; desk view in the terminal.
+
+## Phase 5 — Broker management panel · ~3 weeks
+
+The §13 navigation on the existing admin console: dashboard cards from real
+figures (§14), Users, Trading Accounts, Master Accounts, Orders / Positions /
+Closed Trades / Order History across the tenant, Instruments and Sessions,
+Risk / Margin / Leverage / Exposure, Fees, Broker Connections, Reconciliation,
+Reports, Alerts, Audit, Security (Sessions, Devices, IP rules), Branding,
+Developer (API keys — exists; Webhooks — Phase 12; API documentation). Every
+table on a real query; every action on a real command.
+
+## Phase 6 — Trading terminal UX upgrade · ~3–4 weeks
+
+The screenshots, as behaviour, on an original brand:
+
+- **Header:** brand, environment badge, current broker, account selector with
+  balance / equity / floating P&L, connection status, notifications, profile.
+- **Watchlist:** Favourites, Top Movers, search, categories (forex, metals,
+  indices, energy, crypto, equities); each row icon, symbol, price, daily %,
+  spread, market status; the selected row expands to an inline quick ticket —
+  SELL price / volume with − + and notional / BUY price — and an "Advanced
+  order" link.
+- **Advanced ticket:** market / limit / stop / stop-limit by capability;
+  side, volume, entry, SL, TP, trailing, expiry, time in force; live margin,
+  potential loss/profit, risk %, reward %, R/R, commission, estimated swap.
+- **Bottom panel:** Open positions (n) · Pending · Closed · Order history ·
+  Finance · Alerts · Logs; the §24 columns; multi-select with "Close (n)";
+  filter and export.
+- **Server-side `CloseAllPositionsCommand`** (§25).
+- **Edit position dialog** (§30) with the **shared calculator** (§31) in
+  `@tp/trading-core`: price / distance / ticks / P&L / % for SL and TP, R/R,
+  used by the ticket, the dialog, chart drag and mobile.
+- Toasts on confirmed events only; connection status; account switching that
+  swaps every scoped store atomically (§16); quick-trading on/off and
+  large-order confirmation (§86); design tokens (§52, §83); responsive
+  compositions for tablet and mobile browser (§57); keyboard and screen-reader
+  paths (§61); `docs/uiux.md`.
+
+## Phase 7 — Chart, overlays, SL/TP drag · ~2 weeks
+
+The draggable levels exist; this phase adds indicators, the drawing set
+(cursor, crosshair, horizontal/vertical, trendline, ray, rectangle, text,
+measurement), the full timeframe list, bid/ask axis labels, P&L on the level
+labels, and **persistence**: `ChartLayout`, `ChartTemplate`, `UserDrawing`,
+indicator settings, viewport state — per user, per account.
+
+## Phase 8 — Realtime and notification hardening · ~1–2 weeks
+
+Envelope v2 on the wire; leader election or a distributed lock for ingest,
+trigger engine and scheduled reconciliation (§64); latency metrics named in
+§34 (tick-to-P&L, tick-to-socket, order acknowledgement, socket lag, quote
+age, queue lag, lock wait); `Alert` (price alerts) with the notification
+channels; the §50 event set complete; haptics hooks for mobile.
+
+## Phase 9 — Reconciliation · ~1–2 weeks
+
+External reconciliation against the adapter (mock, then real): balances,
+equity, orders, executions, positions, fees, swaps, cash movements; the §44
+statuses (`MATCHED`, `MISSING_INTERNAL`, `MISSING_EXTERNAL`,
+`QUANTITY_MISMATCH`, `PRICE_MISMATCH`, `FEE_MISMATCH`, `BALANCE_MISMATCH`,
+`UNKNOWN`); `ReconciliationItem` beside the existing findings;
+`ResolutionRecord` for every decision; on-demand and scheduled runs; nothing
+repaired silently (§112).
+
+## Phase 10 — Security and anti-abuse · ~2 weeks
+
+Break-glass impersonation (§9): explicit permission, reason, time-limited,
+read-only by default, visible indicator, full audit. `SecurityEvent` feed and
+Security Centre (sessions, devices, IP history, 2FA, own audit, active keys).
+Fraud signals for request rate, duplicate ids, replay, timestamp skew, sequence
+anomalies, rapid cancel/replace, device and IP change (§46) with operator
+review and no automatic punishment. IP rules per tenant. The §72 security
+test list extended to the new surfaces.
+
+## Phase 11 — Mobile architecture · ~3 weeks · partly BLOCKED
+
+The Expo app exists. This phase: account switching that swaps state
+atomically, chart with position overlays, SL/TP editing through the shared
+calculator, reconnect with backoff/jitter/sequence recovery and the §55
+states, biometric unlock (Keychain / Keystore), haptics, confirmations (§56).
+**BLOCKED for acceptance (§105)** on a physical device; iOS additionally on
+macOS, Xcode and a signing key — none of which this environment has.
+
+## Phase 12 — Broker API, webhooks, developer portal · ~2 weeks
+
+Webhooks (§49): `Webhook`, `WebhookDelivery`, signed payloads
+(`t=…,v1=hmac-sha256`), retry schedule with backoff, delivery log, replay,
+auto-disable after a failure streak, the event list including
+`reconciliation.mismatch` and `security.alert`; delivery by the worker;
+`/admin/webhooks`. API documentation page from the OpenAPI the API already
+serves. Service tokens gain writes once the audit model has a service actor.
+
+## Phase 13 — Observability, load, failure injection · ~2 weeks
+
+The §63 metric set; dashboards; the §74 load scenarios at 100 / 500 / 1,000
+traders and 200 / 1,000 / 5,000 sockets with p50/p95/p99; the §75 failure
+injection harness (Redis away, Postgres latency, broker timeout/disconnect,
+duplicate and missing and out-of-order broker events, market data gap, socket
+and worker and API crashes) with the invariant that financial state survives.
+
+## Phase 14 — Production deployment hardening · ~1–2 weeks
+
+Separate containers for WebSocket, ingest, trigger engine, workers,
+scheduler and broker adapters (§77); graceful shutdown; secrets manager
+integration; `docs/disaster-recovery.md` with a performed restore rehearsal;
+feature flags for external execution, new adapters, new chart, quick trading,
+trailing stop, mobile trading, white label (§95).
+
+## Phase 15 — Final audit
+
+`docs/final-audit.md` with PASS / PARTIAL / BLOCKED per area, every BLOCKED
+item stating what is missing, why, the external dependency, and the interface
+or mock already in place (§107).
 
 ---
 
 ## Sequence and dependencies
 
 ```
-Phase 0  ─┐
-Phase 1  ─┴─▶ everything            (tenancy first, always)
-Phase 2  ───▶ 9, 11
-Phase 3  ───▶ 4, 6, 11
-Phase 4  ───▶ 5 ─▶ 7
-Phase 6  ───────────▶ 7
-Phase 8  ───▶ 12 ─▶ 13
-Phase 9  ───▶ 10
-Phase 14 ─── independent, needs 1 and 2
-Phase 15 ─── independent, gated commercially
+0 audit ─→ 1 foundation ─→ 2 adapter SDK ─→ 3 external mapping ─→ 9 reconciliation
+                │                 │
+                ├─→ 4 masters ─→ 5 broker panel
+                │
+                ├─→ 6 terminal ─→ 7 chart
+                │
+                ├─→ 8 realtime hardening ─→ 13 observability / load
+                │
+                ├─→ 10 security ─→ 12 webhooks / developer
+                │
+                └─→ 11 mobile (blocked at acceptance)
+                                          14 production hardening ─→ 15 final audit
 ```
+
+Phases 4–8 and 10–12 are independent of 2–3 and can interleave; 9 needs 3.
 
 ## Total, stated plainly
 
-Sequentially, by one engineer: **roughly nine to twelve months.** With a team
-working the parallel tracks — trading/backend, finance/compliance, mobile — the
-critical path is shorter, but Phase 1 blocks everything and cannot be
-parallelised away.
-
-Anyone who tells you this is a few weeks of work has not read the specification
-or has not read the repository.
+Roughly **25–30 engineering weeks** of work is described above, of which
+Phases 2–3 and 9 end at a boundary this repository cannot cross alone — a
+broker's API — and Phase 11 ends at a device this environment does not have.
+Everything else is buildable here, in the order given.
 
 ## What will not be touched
 
-`financial-core`, `trading-core`, `risk-core`, the balance ledger, the order and
-position state machines, the trigger engine. They are correct, they are tested,
-and re-deriving them would be the most expensive mistake available in this
-programme.
+The PropFA seam (§91, §113): no challenge, profit target, drawdown evaluation,
+payout or trader-evaluation logic enters this repository. Future products
+consume `DomainEvent`, `RiskRule`, accounts, positions, orders and the ledger.
 
-They will gain `tenantId` where they touch persistence. Their arithmetic will not
-change.
+---
+
+## The previous plan, for the record
+
+Against the standalone-platform specification (August 2026): phases 0–9 done
+and deployed (multi-tenancy with RLS, roles as data, web restructure, wallet
+and finance, payments, KYC, withdrawals, notifications, API keys and service
+tokens), 12 and 13 done (mobile foundation and trading; the APK was never
+opened on a device), 10 (webhooks), 11 (Security Centre), 14 (AI context
+layer) and 15 (real market data) not started. Those four map onto the new
+Phases 12, 10, — (the AI layer is not in the new specification) and 2–3
+respectively. `COMPLETION_STATUS.md` records that plan's evidence.

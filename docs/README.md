@@ -2,14 +2,17 @@
 
 Phase 0 deliverables — the design the implementation is held to.
 
-**The audit against the master specification**
+**The audit against the multi-broker specification (3 September 2026)**
+
+- [architecture-audit.md](./architecture-audit.md) — the repository against the current specification: what exists, what is short, what is absent, and the extension point for each
+- [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) — sixteen phases numbered as the specification numbers them, dependencies, honest estimates, and where the work is blocked on a broker's API
+
+**The earlier audit, against the standalone-platform specification (August 2026)**
 
 Eight documents produced by inspecting the repository, not by recalling it.
-Start with the architecture audit; the plan sequences everything the audit
-found missing.
+Kept as history; several things they call missing now exist.
 
-- [ARCHITECTURE_AUDIT.md](./ARCHITECTURE_AUDIT.md) — what exists, what works, what is missing outright
-- [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) — sixteen phases, dependencies, honest estimates
+- [ARCHITECTURE_AUDIT.md](./ARCHITECTURE_AUDIT.md) — what existed, what worked, what was missing outright
 - [API_INVENTORY.md](./API_INVENTORY.md) — all 84 routes with the permission each demands, generated from source
 - [DATABASE_AUDIT.md](./DATABASE_AUDIT.md) — 29 models, zero float columns, and the tenancy problem
 - [SECURITY_AUDIT.md](./SECURITY_AUDIT.md) — controls located in source, seven findings

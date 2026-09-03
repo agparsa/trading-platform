@@ -1,5 +1,10 @@
 # Completion status against the MASTER PROMPT
 
+> This document tracks the **earlier** standalone-platform specification. The
+> repository is now planned against the multi-broker specification of
+> 3 September 2026 — see [architecture-audit.md](./architecture-audit.md) and
+> [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md). The evidence below stands.
+
 Measured against the working tree, not against memory. Every figure below comes
 from a command run against this repository.
 

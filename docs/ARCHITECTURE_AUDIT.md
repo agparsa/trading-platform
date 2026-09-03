@@ -1,3 +1,9 @@
+> **Superseded on 3 September 2026** by [architecture-audit.md](./architecture-audit.md),
+> the audit against the multi-broker specification. This document is the audit
+> against the earlier standalone-platform specification, at a much earlier
+> baseline, and is kept as history. Several rows below say "missing" about
+> things that now exist.
+
 # Architecture Audit
 
 **Audited:** commit `76fd42a`, branch `feat/m1-realtime-terminal`
