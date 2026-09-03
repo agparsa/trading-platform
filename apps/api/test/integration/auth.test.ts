@@ -15,6 +15,8 @@ import { AccountsService } from '../../src/accounts/accounts.service';
 import { LedgerService } from '../../src/accounts/ledger.service';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { RolesService } from '../../src/permissions/roles.service';
+import { redisStub } from './redis-stub';
 import { createTestClient, hasTestDatabase, resetDatabase } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
@@ -110,7 +112,12 @@ suite('Auth (integration)', () => {
       accounts,
       audit,
       email,
-      new InvitesService(prismaService, audit, config as any),
+      new InvitesService(
+        prismaService,
+        audit,
+        new RolesService(prismaService, redisStub().service, audit),
+        config as any,
+      ),
       config as any,
     );
   });

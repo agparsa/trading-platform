@@ -19,6 +19,8 @@ const SECTIONS = [
   { href: '/admin/reconciliation', label: 'Reconciliation' },
   { href: '/admin/roles', label: 'Roles' },
   { href: '/admin/credentials', label: 'Credentials' },
+  { href: '/admin/security', label: 'Security' },
+  { href: '/admin/brokers', label: 'Brokers' },
   { href: '/admin/audit', label: 'Audit' },
 ] as const;
 

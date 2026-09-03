@@ -175,6 +175,7 @@ const COUNTED = [
   'position_events',
   'trades',
   'audit_logs',
+  'security_events',
   'risk_events',
   'account_snapshots',
   'refresh_tokens',

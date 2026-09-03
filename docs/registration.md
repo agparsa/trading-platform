@@ -54,6 +54,17 @@ the contract the specification requires of any generated secret, and it applies
 here for the same reason it applies to API keys: a system that can show you your
 secret is a system that kept it.
 
+### An invitation may carry a role
+
+`POST /admin/invites` takes `grantsRole`. Whoever redeems the code is created in
+that role instead of `USER`, and `USER_REGISTERED` records it. The minter is
+bounded exactly as when assigning a role directly — the role must exist in the
+tenant, must not be above the minter's group, and if somebody has edited its
+grants must not hold what the minter does not — because an invitation is a role
+assignment with a delay in it. A code offered on an **open** tenant is claimed
+too, and a wrong one refused there too, since this is the only way a
+registration arrives in a role. Detail in [brokers.md](./brokers.md).
+
 ### Redemption
 
 ```

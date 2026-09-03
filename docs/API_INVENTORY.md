@@ -102,6 +102,15 @@ handler is responsible for scoping the result to that user — which for
 | `POST`   | `/auth/password`               | `changePassword`          | SELF-SERVICE            |
 | `GET`    | `/auth/me`                     | `me`                      | _authenticated only_    |
 
+### `brokers/brokers.controller.ts` — base `/admin/brokers`
+
+| Verb   | Path                        | Handler     | Requires                             |
+| ------ | --------------------------- | ----------- | ------------------------------------ |
+| `GET`  | `/admin/brokers`            | `list`      | SESSION-ONLY (class), TENANTS_READ   |
+| `GET`  | `/admin/brokers/:id`        | `get`       | SESSION-ONLY (class), TENANTS_READ   |
+| `POST` | `/admin/brokers`            | `create`    | SESSION-ONLY (class), TENANTS_MANAGE |
+| `POST` | `/admin/brokers/:id/status` | `setStatus` | SESSION-ONLY (class), TENANTS_MANAGE |
+
 ### `credentials/admin-credentials.controller.ts` — base `/admin`
 
 | Verb   | Path                               | Handler       | Requires                                    |
@@ -252,6 +261,19 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/reconciliation/findings/:id/status` | `setStatus` | RECONCILIATION_MANAGE |
 | `POST` | `/reconciliation/runs`                | `run`       | RECONCILIATION_RUN    |
 
+### `security/admin-security.controller.ts` — base `/admin/security`
+
+| Verb  | Path                      | Handler   | Requires      |
+| ----- | ------------------------- | --------- | ------------- |
+| `GET` | `/admin/security/events`  | `feed`    | SECURITY_READ |
+| `GET` | `/admin/security/summary` | `summary` | SECURITY_READ |
+
+### `security/security.controller.ts` — base `/security`
+
+| Verb  | Path               | Handler | Requires     |
+| ----- | ------------------ | ------- | ------------ |
+| `GET` | `/security/events` | `mine`  | SELF-SERVICE |
+
 ### `symbols/symbols.controller.ts` — base `/symbols`
 
 | Verb  | Path             | Handler | Requires             |
@@ -325,7 +347,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**146 routes:** 71 `GET`, 64 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
+**153 routes:** 76 `GET`, 66 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

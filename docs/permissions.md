@@ -65,6 +65,19 @@ this table is what it started as.
 | `RISK_MANAGER` | Operator's set, plus `risk.manage`, `audit.read`, reconciliation manage and run, kill switch                                       |
 | `ADMIN`        | Everything administrative, plus `roles.read`/`roles.manage` — but **not** `orders.create`, `positions.close` or `positions.modify` |
 
+Since the multi-broker phase the roles come in three **groups** — END_USER,
+BROKER, PLATFORM — and a tenant seeds the groups its kind allows: a broker
+seeds the first two, the platform all three. The broker group also holds
+`BROKER_OWNER` (ADMIN plus `tenant.settings.manage`), `BROKER_ANALYST`
+(every read, no write) and `BROKER_DEVELOPER` (keys, tokens, and what they
+need to read). The platform group is `PLATFORM_SUPER_ADMIN` (ADMIN plus
+`tenants.read`/`tenants.manage`/`tenant.settings.manage`), `PLATFORM_OPERATOR`
+(brokers and the desk, no money creation, no roles), `PLATFORM_SUPPORT`,
+`PLATFORM_AUDITOR` and `PLATFORM_DEVELOPER`. `SECURITY_READ` — the firm's
+security feed — is held by support, risk, administration, the analyst and
+every platform role. The specification's names for the older roles, the
+tenant-kind rule and who may appoint whom are in [brokers.md](./brokers.md).
+
 ### Why ADMIN cannot trade
 
 This is the one entry that surprises people, so it is worth stating plainly.

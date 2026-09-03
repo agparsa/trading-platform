@@ -125,8 +125,17 @@ export class AuthService {
      * and claiming after would let a spent code open a second account.
      */
     const { user, inviteFingerprint } = await this.prisma.$transaction(async (tx) => {
-      const inviteCodeId =
-        mode === 'invite' ? await this.invites.claim(tx, input.inviteCode as string) : null;
+      /**
+       * A code offered on an open tenant is claimed too, not ignored: an
+       * invitation is the only way a registration can arrive in a role other
+       * than USER, and a firm's first owner is created this way whatever the
+       * tenant's registration mode. A wrong code is refused even here — someone
+       * who typed one expects it to have counted.
+       */
+      const offered = (input.inviteCode ?? '').trim();
+      const invite =
+        mode === 'invite' || offered.length > 0 ? await this.invites.claim(tx, offered) : null;
+      const inviteCodeId = invite?.id ?? null;
 
       const created = await tx.user.create({
         data: {
@@ -134,6 +143,7 @@ export class AuthService {
           email: input.email,
           passwordHash,
           displayName: input.displayName,
+          ...(invite?.grantsRole ? { role: invite.grantsRole } : {}),
           emailVerificationTokenHash: this.hashToken(verificationToken),
           emailVerificationExpiresAt: new Date(
             Date.now() +
@@ -169,6 +179,7 @@ export class AuthService {
         email: user.email,
         displayName: user.displayName,
         registrationMode: mode,
+        role: user.role,
         // The fingerprint identifies the invitation. The code itself is not
         // stored here or anywhere else.
         ...(inviteFingerprint === null ? {} : { inviteFingerprint }),

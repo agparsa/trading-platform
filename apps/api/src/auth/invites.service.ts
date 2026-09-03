@@ -1,10 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DomainError, TradingErrorCode } from '@tp/shared-types';
+import { DomainError, TradingErrorCode, type UserRole } from '@tp/shared-types';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
+import { RolesService } from '../permissions/roles.service';
 import type { Env } from '../config/env.schema';
 import { requireTenantId } from '@tp/tenancy';
 
@@ -34,6 +35,7 @@ export interface MintedInvite {
   fingerprint: string;
   expiresAt: Date;
   maxUses: number;
+  grantsRole: UserRole | null;
 }
 
 export interface InviteSummary {
@@ -46,6 +48,13 @@ export interface InviteSummary {
   revokedAt: Date | null;
   createdAt: Date;
   createdById: string | null;
+  grantsRole: UserRole | null;
+}
+
+/** Who is minting: their id for the record, their role for the bound. */
+export interface Minter {
+  readonly id: string;
+  readonly role: string;
 }
 
 @Injectable()
@@ -53,22 +62,32 @@ export class InvitesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly roles: RolesService,
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
   ) {}
 
   /**
    * Generate a code, store its hash, return the plaintext once.
    *
+   * An invitation may carry a **role**: whoever redeems it is created in that
+   * role instead of USER. It is how a firm's first owner is appointed and how a
+   * platform administrator brings in a colleague without a second step. Two
+   * bounds, the same two that bound assigning a role directly: the role must be
+   * one this tenant has, and it must carry nothing the minter lacks. An
+   * invitation is a role assignment with a delay in it, and a delay is not a
+   * reason for a weaker rule.
+   *
    * The plaintext is returned and never written anywhere else — not to the
    * audit record, not to a log line. The audit record carries the fingerprint,
    * which identifies the invitation without being able to redeem it.
    */
   async mint(
-    actorId: string,
+    minter: Minter,
     input: {
       label?: string | undefined;
       maxUses?: number | undefined;
       ttlHours?: number | undefined;
+      grantsRole?: UserRole | undefined;
     },
     context: {
       requestId?: string | null;
@@ -88,6 +107,9 @@ export class InvitesService {
       input.ttlHours ?? this.config.get('INVITE_CODE_TTL_HOURS', { infer: true });
     const expiresAt = new Date(Date.now() + ttlHours * 3_600_000);
 
+    const grantsRole = input.grantsRole ?? null;
+    if (grantsRole !== null) await this.roles.assertAssignable(grantsRole, minter.role);
+
     const code = generateCode();
     const created = await this.prisma.inviteCode.create({
       data: {
@@ -95,14 +117,15 @@ export class InvitesService {
         codeHash: hashCode(code),
         fingerprint: code.slice(0, FINGERPRINT_LENGTH),
         label: input.label ?? null,
-        createdById: actorId,
+        createdById: minter.id,
         maxUses,
         expiresAt,
+        grantsRole,
       },
     });
 
     await this.audit.record({
-      actorId,
+      actorId: minter.id,
       actorType: 'ADMIN',
       action: 'INVITE_CODE_CREATED',
       resourceType: 'InviteCode',
@@ -112,6 +135,7 @@ export class InvitesService {
         label: created.label,
         maxUses: created.maxUses,
         expiresAt: created.expiresAt.toISOString(),
+        grantsRole,
       },
       requestId: context.requestId ?? null,
       ipAddress: context.ipAddress ?? null,
@@ -124,6 +148,7 @@ export class InvitesService {
       fingerprint: created.fingerprint,
       expiresAt: created.expiresAt,
       maxUses: created.maxUses,
+      grantsRole: created.grantsRole,
     };
   }
 
@@ -143,6 +168,7 @@ export class InvitesService {
       revokedAt: row.revokedAt,
       createdAt: row.createdAt,
       createdById: row.createdById,
+      grantsRole: row.grantsRole,
     }));
   }
 
@@ -193,22 +219,26 @@ export class InvitesService {
    *   2. The row is matched by hash, so the plaintext is never compared against
    *      anything stored.
    *
-   * Returns the invitation's id, for the redemption record the caller writes.
+   * Returns the invitation's id, for the redemption record the caller writes,
+   * and the role it grants, for the user the caller creates.
    */
-  async claim(tx: Prisma.TransactionClient, code: string): Promise<string> {
+  async claim(
+    tx: Prisma.TransactionClient,
+    code: string,
+  ): Promise<{ id: string; grantsRole: UserRole | null }> {
     const normalised = normaliseCode(code);
     if (normalised.length === 0) {
       throw invalidInvite();
     }
 
-    const rows = await tx.$queryRaw<{ id: string }[]>`
+    const rows = await tx.$queryRaw<{ id: string; grants_role: UserRole | null }[]>`
       UPDATE invite_codes
          SET use_count = use_count + 1
        WHERE code_hash = ${hashCode(normalised)}
          AND revoked_at IS NULL
          AND expires_at > now()
          AND use_count < max_uses
-      RETURNING id
+      RETURNING id, grants_role
     `;
 
     const claimed = rows[0];
@@ -218,7 +248,7 @@ export class InvitesService {
       // into an oracle for enumerating valid codes.
       throw invalidInvite();
     }
-    return claimed.id;
+    return { id: claimed.id, grantsRole: claimed.grants_role };
   }
 
   /** Record who came in on which invitation. Called inside the same transaction. */

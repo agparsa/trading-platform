@@ -8,6 +8,7 @@ import { SESSION_ONLY_KEY } from '../decorators/session-only.decorator';
 import { TokenService } from '../../auth/token.service';
 import { CredentialsService } from '../../credentials/credentials.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { noteActor } from '../request-scope';
 import type { RequestWithContext } from '../request-context';
 import { currentTenant } from '@tp/tenancy';
 
@@ -106,6 +107,7 @@ export class BearerAuthGuard implements CanActivate {
               credentialId: principal.credentialId,
               permissions: principal.permissions,
             };
+      noteActor(request.user.id);
       return true;
     }
 
@@ -129,6 +131,7 @@ export class BearerAuthGuard implements CanActivate {
       sessionId: claims.fam,
       principal: 'session',
     };
+    noteActor(request.user.id);
     return true;
   }
 }

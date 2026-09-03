@@ -226,6 +226,28 @@ export const Permission = {
    */
   SERVICE_TOKENS_MANAGE: 'service_tokens.manage',
 
+  // --- tenants (the platform's view of its brokers) ---
+  /** See which brokers exist and their status. Platform roles only. */
+  TENANTS_READ: 'tenants.read',
+  /**
+   * Create a broker, change its status or hostname, hand its first owner an
+   * invitation. Held by the platform's operators and nobody in a broker: a
+   * broker that could create brokers would be the platform.
+   */
+  TENANTS_MANAGE: 'tenants.manage',
+  /** A firm's own settings and branding. The owner's, and the platform's. */
+  TENANT_SETTINGS_MANAGE: 'tenant.settings.manage',
+
+  // --- security ---
+  /**
+   * The security event feed: sign-ins, lockouts, second factors, sessions
+   * ended, credentials minted and revoked, roles assigned. Separate from
+   * `audit.read` because it is read by support to answer "why can't I sign
+   * in" and by risk to notice a pattern, neither of whom needs the whole
+   * audit trail to do it.
+   */
+  SECURITY_READ: 'security.read',
+
   // --- system ---
   SYSTEM_KILL_SWITCH: 'system.kill_switch',
   SYSTEM_OPERATIONS: 'system.operations',
@@ -287,6 +309,61 @@ const TRADER: readonly Permission[] = [
  * needs to act on an account, a master-account link grants it per account and
  * leaves a record — see LINKABLE_CAPABILITIES.
  */
+/**
+ * The administrator's set, named because two roles are built on it: the
+ * firm's owner (this plus the firm's own settings) and the platform's super
+ * administrator (this plus the platform's brokers).
+ */
+const ADMIN_PERMISSIONS: readonly Permission[] = [
+  Permission.ACCOUNTS_READ,
+  Permission.ACCOUNTS_READ_ANY,
+  Permission.ACCOUNTS_MANAGE,
+  Permission.ACCOUNTS_ADJUST,
+  Permission.WALLET_READ_ANY,
+  Permission.WALLET_ADJUST,
+  Permission.WALLET_MANAGE,
+  Permission.PAYMENTS_READ_ANY,
+  Permission.PAYMENTS_CONFIRM,
+  Permission.KYC_READ_ANY,
+  Permission.KYC_DOCUMENTS_READ,
+  Permission.KYC_REVIEW,
+  Permission.WITHDRAWALS_READ_ANY,
+  Permission.USERS_READ_ANY,
+  Permission.USERS_MANAGE,
+  Permission.ROLES_ASSIGN,
+  Permission.INVITES_MANAGE,
+  Permission.ORDERS_READ,
+  Permission.ORDERS_CANCEL,
+  Permission.POSITIONS_READ,
+  Permission.RISK_READ,
+  Permission.RISK_MANAGE,
+  Permission.AUDIT_READ,
+  Permission.MASTER_READ,
+  Permission.MASTER_MANAGE,
+  Permission.INTEGRITY_READ,
+  Permission.INTEGRITY_MANAGE,
+  Permission.INSTRUMENTS_READ,
+  Permission.INSTRUMENTS_MANAGE,
+  Permission.RECONCILIATION_READ,
+  Permission.RECONCILIATION_MANAGE,
+  Permission.RECONCILIATION_RUN,
+  /**
+   * Only ADMIN edits roles. `escalationsIn` already bounds what any editor can
+   * grant, so this is not the safety mechanism — it is the smaller statement
+   * that changing what a role means is an administrative act, not an
+   * operational one, and a risk manager halting trading at 3am should not be
+   * one keystroke from rewriting their own capabilities.
+   */
+  Permission.ROLES_READ,
+  Permission.ROLES_MANAGE,
+  Permission.SYSTEM_OPERATIONS,
+  Permission.SYSTEM_KILL_SWITCH,
+  Permission.API_KEYS_READ_ANY,
+  Permission.API_KEYS_REVOKE_ANY,
+  Permission.SERVICE_TOKENS_MANAGE,
+  Permission.SECURITY_READ,
+];
+
 export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
   [UserRole.USER]: TRADER,
 
@@ -301,6 +378,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.POSITIONS_READ,
     Permission.MASTER_READ,
     Permission.API_KEYS_READ_ANY,
+    Permission.SECURITY_READ,
   ],
 
   [UserRole.OPERATOR]: [
@@ -356,6 +434,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.SYSTEM_KILL_SWITCH,
     Permission.API_KEYS_READ_ANY,
     Permission.API_KEYS_REVOKE_ANY,
+    Permission.SECURITY_READ,
   ],
 
   /**
@@ -379,52 +458,125 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.AUDIT_READ,
   ],
 
-  [UserRole.ADMIN]: [
-    Permission.ACCOUNTS_READ,
+  [UserRole.ADMIN]: ADMIN_PERMISSIONS,
+
+  /**
+   * The firm's owner: the administrator's set, plus the firm's own settings
+   * and branding. Nothing else — the owner is bound by the same separations as
+   * the administrator, and cannot trade or approve a withdrawal either.
+   */
+  [UserRole.BROKER_OWNER]: [...ADMIN_PERMISSIONS, Permission.TENANT_SETTINGS_MANAGE],
+
+  /** Reads everything in the firm and changes nothing. */
+  [UserRole.BROKER_ANALYST]: [
+    Permission.ACCOUNTS_READ_ANY,
+    Permission.USERS_READ_ANY,
+    Permission.ORDERS_READ,
+    Permission.POSITIONS_READ,
+    Permission.WALLET_READ_ANY,
+    Permission.PAYMENTS_READ_ANY,
+    Permission.KYC_READ_ANY,
+    Permission.WITHDRAWALS_READ_ANY,
+    Permission.RISK_READ,
+    Permission.AUDIT_READ,
+    Permission.MASTER_READ,
+    Permission.INTEGRITY_READ,
+    Permission.INSTRUMENTS_READ,
+    Permission.RECONCILIATION_READ,
+    Permission.ROLES_READ,
+    Permission.API_KEYS_READ_ANY,
+    Permission.SECURITY_READ,
+  ],
+
+  /** The firm's integrations: keys, tokens, and what they need to read to be built. */
+  [UserRole.BROKER_DEVELOPER]: [
+    Permission.INSTRUMENTS_READ,
+    Permission.ACCOUNTS_READ_ANY,
+    Permission.ROLES_READ,
+    Permission.API_KEYS_MANAGE,
+    Permission.API_KEYS_READ_ANY,
+    Permission.SERVICE_TOKENS_MANAGE,
+  ],
+
+  /**
+   * The platform's roles. Seeded on the platform tenant only, so a broker's
+   * administrator can neither hold nor assign one — the row does not exist
+   * where they are.
+   */
+  [UserRole.PLATFORM_SUPER_ADMIN]: [
+    ...ADMIN_PERMISSIONS,
+    Permission.TENANTS_READ,
+    Permission.TENANTS_MANAGE,
+    Permission.TENANT_SETTINGS_MANAGE,
+  ],
+
+  [UserRole.PLATFORM_OPERATOR]: [
+    Permission.TENANTS_READ,
+    Permission.TENANTS_MANAGE,
     Permission.ACCOUNTS_READ_ANY,
     Permission.ACCOUNTS_MANAGE,
-    Permission.ACCOUNTS_ADJUST,
-    Permission.WALLET_READ_ANY,
-    Permission.WALLET_ADJUST,
-    Permission.WALLET_MANAGE,
-    Permission.PAYMENTS_READ_ANY,
-    Permission.PAYMENTS_CONFIRM,
-    Permission.KYC_READ_ANY,
-    Permission.KYC_DOCUMENTS_READ,
-    Permission.KYC_REVIEW,
-    Permission.WITHDRAWALS_READ_ANY,
     Permission.USERS_READ_ANY,
     Permission.USERS_MANAGE,
-    Permission.ROLES_ASSIGN,
-    Permission.INVITES_MANAGE,
     Permission.ORDERS_READ,
     Permission.ORDERS_CANCEL,
     Permission.POSITIONS_READ,
+    Permission.POSITIONS_CLOSE,
     Permission.RISK_READ,
-    Permission.RISK_MANAGE,
-    Permission.AUDIT_READ,
     Permission.MASTER_READ,
-    Permission.MASTER_MANAGE,
     Permission.INTEGRITY_READ,
-    Permission.INTEGRITY_MANAGE,
     Permission.INSTRUMENTS_READ,
-    Permission.INSTRUMENTS_MANAGE,
     Permission.RECONCILIATION_READ,
-    Permission.RECONCILIATION_MANAGE,
     Permission.RECONCILIATION_RUN,
-    /**
-     * Only ADMIN edits roles. `escalationsIn` already bounds what any editor can
-     * grant, so this is not the safety mechanism — it is the smaller statement
-     * that changing what a role means is an administrative act, not an
-     * operational one, and a risk manager halting trading at 3am should not be
-     * one keystroke from rewriting their own capabilities.
-     */
     Permission.ROLES_READ,
-    Permission.ROLES_MANAGE,
-    Permission.SYSTEM_OPERATIONS,
-    Permission.SYSTEM_KILL_SWITCH,
     Permission.API_KEYS_READ_ANY,
     Permission.API_KEYS_REVOKE_ANY,
+    Permission.SECURITY_READ,
+    Permission.SYSTEM_OPERATIONS,
+  ],
+
+  [UserRole.PLATFORM_SUPPORT]: [
+    Permission.TENANTS_READ,
+    Permission.ACCOUNTS_READ_ANY,
+    Permission.USERS_READ_ANY,
+    Permission.ORDERS_READ,
+    Permission.POSITIONS_READ,
+    Permission.WALLET_READ_ANY,
+    Permission.PAYMENTS_READ_ANY,
+    Permission.KYC_READ_ANY,
+    Permission.WITHDRAWALS_READ_ANY,
+    Permission.MASTER_READ,
+    Permission.API_KEYS_READ_ANY,
+    Permission.SECURITY_READ,
+  ],
+
+  /** Reads everything, including the audit and security feeds, and changes nothing. */
+  [UserRole.PLATFORM_AUDITOR]: [
+    Permission.TENANTS_READ,
+    Permission.ACCOUNTS_READ_ANY,
+    Permission.USERS_READ_ANY,
+    Permission.ORDERS_READ,
+    Permission.POSITIONS_READ,
+    Permission.WALLET_READ_ANY,
+    Permission.PAYMENTS_READ_ANY,
+    Permission.KYC_READ_ANY,
+    Permission.WITHDRAWALS_READ_ANY,
+    Permission.RISK_READ,
+    Permission.AUDIT_READ,
+    Permission.MASTER_READ,
+    Permission.INTEGRITY_READ,
+    Permission.INSTRUMENTS_READ,
+    Permission.RECONCILIATION_READ,
+    Permission.ROLES_READ,
+    Permission.API_KEYS_READ_ANY,
+    Permission.SECURITY_READ,
+  ],
+
+  [UserRole.PLATFORM_DEVELOPER]: [
+    Permission.TENANTS_READ,
+    Permission.INSTRUMENTS_READ,
+    Permission.ROLES_READ,
+    Permission.API_KEYS_MANAGE,
+    Permission.API_KEYS_READ_ANY,
     Permission.SERVICE_TOKENS_MANAGE,
   ],
 };
@@ -630,6 +782,8 @@ export const PERSON_ONLY_PERMISSIONS: readonly Permission[] = [
   Permission.RISK_MANAGE,
   Permission.SYSTEM_KILL_SWITCH,
   Permission.SYSTEM_OPERATIONS,
+  Permission.TENANTS_MANAGE,
+  Permission.TENANT_SETTINGS_MANAGE,
 ];
 
 /** What an API key may carry: everything a person may hold that is not person-only. */

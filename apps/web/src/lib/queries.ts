@@ -200,6 +200,7 @@ export const queryKeys = {
   withdrawals: ['withdrawals'] as const,
   withdrawalTerms: (currency: string) => ['withdrawal-terms', currency] as const,
   apiKeys: ['api-keys'] as const,
+  securityEvents: ['security-events'] as const,
 };
 
 /** Everything a trading event can invalidate, in one place. */
@@ -1006,5 +1007,31 @@ export function useRevokeApiKey() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.apiKeys });
     },
+  });
+}
+
+// ---- Security feed --------------------------------------------------------
+
+export interface SecurityEventRow {
+  id: string;
+  kind: string;
+  severity: 'INFO' | 'NOTICE' | 'WARNING';
+  at: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  requestId: string | null;
+  /** Somebody other than you did it: staff, or the platform. */
+  byOther: boolean;
+  details: Record<string, unknown> | null;
+}
+
+/** What has happened to your own account, newest first. */
+export function useSecurityEvents(limit = 50) {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: [...queryKeys.securityEvents, limit] as const,
+    queryFn: () => api.get<{ events: SecurityEventRow[] }>(`/security/events?limit=${limit}`),
+    enabled: accessToken !== null,
+    refetchInterval: 60_000,
   });
 }

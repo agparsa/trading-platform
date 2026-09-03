@@ -172,6 +172,29 @@ Redis restart drops frames, clients re-snapshot, and no data is lost.
 Events are published **after** the database transaction commits, never inside it.
 A subscriber must not be told about a fill that a rollback is about to erase.
 
+### The envelope, version 2
+
+What travels between instances (and what a later outbox or webhook will carry)
+is `DomainEventEnvelope`. Version 1 had `event`, `eventId`, `origin`,
+`accountId`, `tenantId`, `data` and `timestamp`. Version 2 is **additive** —
+every v1 reader is untouched, and the socket frame a client sees is unchanged:
+
+| Field           | What                                                                                     |
+| --------------- | ---------------------------------------------------------------------------------------- |
+| `version`       | `2`. A reader that finds it missing has a v1 envelope.                                   |
+| `aggregateType` | `order`, `position` or `account` — from the event's name and the id in its data          |
+| `aggregateId`   | that thing's id; the account's when the event is about the account                       |
+| `actorId`       | the person or credential whose request caused this; `null` for the engine's own work     |
+| `correlationId` | the request id, so a client's trace and this event share a key; `null` outside a request |
+| `causationId`   | the event this one followed from, when the publisher knows                               |
+
+`actorId` and `correlationId` come from a request-scoped store
+(`common/request-scope.ts`) that the request-id middleware opens and the auth
+guard fills in — a publisher does not have to know who is asking. Separate from
+the tenant scope on purpose: the tenant is a security boundary set in four
+places; this is provenance, read only to stamp things, and nothing decides
+anything from it.
+
 Fan-out is an explicit per-socket filter rather than Socket.IO rooms. A room
 would have to be trusted to contain the right sockets; the filter can be read in
 one place and tested by deleting it.

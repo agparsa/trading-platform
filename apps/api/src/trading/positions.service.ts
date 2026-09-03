@@ -18,6 +18,7 @@ import {
   Permission,
   TradingErrorCode,
   type OrderSide,
+  accountStatusPolicy,
 } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { SymbolsService } from '../symbols/symbols.service';
@@ -28,6 +29,7 @@ import { KillSwitchService } from '../operations/kill-switch.service';
 import { LedgerService } from '../accounts/ledger.service';
 import { AuditService } from '../common/audit/audit.service';
 import { EventsService } from '../realtime/events.service';
+import { TradingThrottle } from './trading-throttle.service';
 import { AccountStateService } from './account-state.service';
 import { OrdersService } from './orders.service';
 import type { CloseResult, ModifyPositionRequest, OrderResult } from './trading.types';
@@ -38,6 +40,8 @@ interface LoadedPosition {
   accountId: string;
   ownerUserId: string;
   accountCurrency: string;
+  /** The account's status at load, which decides what its holder may do. */
+  accountStatus: string;
   symbolCode: string;
   symbolId: string;
   side: OrderSide;
@@ -74,6 +78,7 @@ export class PositionsService {
     private readonly orders: OrdersService,
     private readonly events: EventsService,
     private readonly accountState: AccountStateService,
+    private readonly throttle: TradingThrottle,
   ) {}
 
   /**
@@ -124,6 +129,20 @@ export class PositionsService {
     actorUserId: string | null,
   ): Promise<CloseResult> {
     const positionId = position.id;
+    /**
+     * A person closing is bound by the account's status; the engine is not.
+     * A stop-loss or a liquidation on a locked account must still fire —
+     * the lock is on the holder, not on the risk.
+     */
+    if (actorUserId !== null && !accountStatusPolicy(position.accountStatus).close) {
+      throw new DomainError(
+        TradingErrorCode.ACCOUNT_NOT_TRADEABLE,
+        `This account is ${position.accountStatus.toLowerCase()} and its positions cannot be closed by its holder`,
+        { status: position.accountStatus, positionId },
+      );
+    }
+    // The engine's closes are not throttled: a stop that fires is not a request.
+    if (actorUserId !== null) await this.throttle.assertAllowed(position.accountId);
     if (position.status !== 'OPEN') {
       throw new DomainError(
         TradingErrorCode.POSITION_ALREADY_CLOSING,
@@ -491,6 +510,14 @@ export class PositionsService {
    */
   async modify(userId: string, request: ModifyPositionRequest): Promise<Record<string, unknown>> {
     const position = await this.loadOwned(userId, request.positionId, Permission.POSITIONS_MODIFY);
+    if (!accountStatusPolicy(position.accountStatus).modify) {
+      throw new DomainError(
+        TradingErrorCode.ACCOUNT_NOT_TRADEABLE,
+        `This account is ${position.accountStatus.toLowerCase()} and its positions cannot be modified`,
+        { status: position.accountStatus, positionId: position.id },
+      );
+    }
+    await this.throttle.assertAllowed(position.accountId);
     if (position.status !== 'OPEN') {
       throw new DomainError(
         TradingErrorCode.POSITION_ALREADY_CLOSING,
@@ -808,6 +835,7 @@ export class PositionsService {
       accountId: position.accountId,
       ownerUserId: position.account.userId,
       accountCurrency: position.account.currency,
+      accountStatus: position.account.status,
       symbolCode: position.symbol.code,
       symbolId: position.symbolId,
       side: position.side,

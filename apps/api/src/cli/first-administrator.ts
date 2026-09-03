@@ -34,11 +34,21 @@
 import { hostname, userInfo } from 'node:os';
 import { PrismaClient } from '@prisma/client';
 
+/**
+ * The two roles a host may appoint to. ADMIN runs a firm; PLATFORM_SUPER_ADMIN
+ * runs the platform, and exists only on the PLATFORM tenant — the CLI checks
+ * the tenant's kind and its seeded roles before it will write either.
+ */
+export const APPOINTABLE_ROLES = ['ADMIN', 'PLATFORM_SUPER_ADMIN'] as const;
+export type AppointableRole = (typeof APPOINTABLE_ROLES)[number];
+
 export interface AppointmentInput {
   readonly email: string;
   readonly reason: string;
   readonly tenantSlug: string;
   readonly evenIfOneExists: boolean;
+  /** ADMIN unless said otherwise. */
+  readonly role?: AppointableRole;
   /** Where the act is recorded as coming from. Defaults to this host. */
   readonly origin?: { readonly host: string; readonly user: string };
 }
@@ -55,6 +65,10 @@ export class AppointmentRefused extends Error {
 }
 
 const MIN_REASON = 8;
+
+function describe(role: AppointableRole): string {
+  return role === 'ADMIN' ? 'administrator' : 'platform super administrator';
+}
 
 export function normaliseEmail(raw: string): string {
   return raw.trim().toLowerCase();
@@ -82,15 +96,31 @@ export async function appointAdministrator(
     throw new AppointmentRefused(`"${input.email}" is not an email address.`);
   }
 
+  const role: AppointableRole = input.role ?? 'ADMIN';
+
   const tenant = await prisma.tenant.findUnique({
     where: { slug: input.tenantSlug },
-    select: { id: true, status: true },
+    select: { id: true, status: true, kind: true },
   });
   if (tenant === null) {
     throw new AppointmentRefused(`No tenant has the slug "${input.tenantSlug}".`);
   }
   if (tenant.status !== 'ACTIVE') {
     throw new AppointmentRefused(`Tenant "${input.tenantSlug}" is ${tenant.status}, not ACTIVE.`);
+  }
+  if (role === 'PLATFORM_SUPER_ADMIN' && tenant.kind !== 'PLATFORM') {
+    throw new AppointmentRefused(
+      `"${input.tenantSlug}" is a ${tenant.kind} tenant. Platform roles exist only on the platform.`,
+    );
+  }
+  const seeded = await prisma.role.findFirst({
+    where: { tenantId: tenant.id, key: role },
+    select: { id: true },
+  });
+  if (seeded === null) {
+    throw new AppointmentRefused(
+      `"${input.tenantSlug}" has no ${role} role. Start the API once so roles are seeded, then retry.`,
+    );
   }
 
   const user = await prisma.user.findUnique({
@@ -112,16 +142,16 @@ export async function appointAdministrator(
   if (!user.isActive) {
     throw new AppointmentRefused(`${email} is suspended. Reinstate them first, and say why.`);
   }
-  if (user.role === 'ADMIN') {
+  if (user.role === role) {
     return { kind: 'already', userId: user.id };
   }
 
   const existing = await prisma.user.count({
-    where: { tenantId: tenant.id, role: 'ADMIN', isActive: true },
+    where: { tenantId: tenant.id, role, isActive: true },
   });
   if (existing > 0 && !input.evenIfOneExists) {
     throw new AppointmentRefused(
-      `"${input.tenantSlug}" already has ${existing === 1 ? 'an administrator' : `${existing} administrators`}. ` +
+      `"${input.tenantSlug}" already has ${existing === 1 ? `${role === 'ADMIN' ? 'an' : 'a'} ${describe(role)}` : `${existing} ${describe(role)}s`}. ` +
         'They appoint the next one from the People screen (POST /admin/users/:id/role), so the ' +
         'record names who did it. If none of them can — the last one has left — pass ' +
         '--even-if-one-exists, and that will be recorded too.',
@@ -136,7 +166,7 @@ export async function appointAdministrator(
     // both be "the first".
     const changed = await tx.user.updateMany({
       where: { id: user.id, tenantId: tenant.id, role: user.role },
-      data: { role: 'ADMIN' },
+      data: { role },
     });
     if (changed.count !== 1) {
       throw new AppointmentRefused(`${email}'s role changed while this ran. Look, then run again.`);
@@ -155,7 +185,7 @@ export async function appointAdministrator(
         resourceId: user.id,
         before: { role: user.role },
         after: {
-          role: 'ADMIN',
+          role,
           reason,
           sessionsEnded: revoked.count,
           appointedFrom: 'host',
@@ -176,6 +206,7 @@ export interface ParsedArgs {
   readonly reason: string;
   readonly tenantSlug: string;
   readonly evenIfOneExists: boolean;
+  readonly role: AppointableRole;
 }
 
 export function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): ParsedArgs {
@@ -183,6 +214,7 @@ export function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): Pars
   let reason: string | undefined;
   let tenantSlug = env['TENANT_DEFAULT_SLUG'] ?? 'default';
   let evenIfOneExists = false;
+  let role: AppointableRole = 'ADMIN';
 
   const take = (flag: string, index: number): string => {
     const value = argv[index + 1];
@@ -207,6 +239,15 @@ export function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): Pars
         tenantSlug = take(arg, index);
         index += 1;
         break;
+      case '--role': {
+        const value = take(arg, index);
+        index += 1;
+        if (!(APPOINTABLE_ROLES as readonly string[]).includes(value)) {
+          throw new AppointmentRefused(`--role must be one of ${APPOINTABLE_ROLES.join(', ')}.`);
+        }
+        role = value as AppointableRole;
+        break;
+      }
       case '--even-if-one-exists':
         evenIfOneExists = true;
         break;
@@ -216,14 +257,15 @@ export function parseArgs(argv: readonly string[], env: NodeJS.ProcessEnv): Pars
   }
   if (email === undefined) throw new AppointmentRefused('--email is required.');
   if (reason === undefined) throw new AppointmentRefused('--reason is required.');
-  return { email, reason, tenantSlug, evenIfOneExists };
+  return { email, reason, tenantSlug, evenIfOneExists, role };
 }
 
-const USAGE = `usage: first-administrator --email <address> --reason "<why>" [--tenant <slug>] [--even-if-one-exists]
+const USAGE = `usage: first-administrator --email <address> --reason "<why>" [--tenant <slug>] [--role ADMIN|PLATFORM_SUPER_ADMIN] [--even-if-one-exists]
 
-Appoints an existing, verified, active user as ADMIN. Ends their sessions and
-writes the audit row. Refuses if the tenant already has an active administrator,
-unless --even-if-one-exists.`;
+Appoints an existing, verified, active user as ADMIN (or, on the platform
+tenant, PLATFORM_SUPER_ADMIN). Ends their sessions and writes the audit row.
+Refuses if the tenant already has an active holder of that role, unless
+--even-if-one-exists.`;
 
 async function main(): Promise<number> {
   let args: ParsedArgs;
@@ -243,7 +285,7 @@ async function main(): Promise<number> {
       return 0;
     }
     console.log(
-      `${normaliseEmail(args.email)} is now an administrator of "${args.tenantSlug}". ` +
+      `${normaliseEmail(args.email)} is now ${args.role} of "${args.tenantSlug}". ` +
         `${outcome.sessionsEnded} session${outcome.sessionsEnded === 1 ? '' : 's'} ended; ` +
         'they sign in again and the role is in the token. Recorded in the audit log.',
     );

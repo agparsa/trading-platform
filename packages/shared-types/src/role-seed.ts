@@ -1,4 +1,10 @@
-import { UserRole } from './enums/account';
+import {
+  ROLE_GROUP,
+  type RoleGroup,
+  TenantKind,
+  UserRole,
+  rolesForTenantKind,
+} from './enums/account';
 import { type Permission, permissionsFor } from './permissions';
 
 /**
@@ -17,8 +23,21 @@ export interface SeedRole {
   readonly key: UserRole;
   readonly name: string;
   readonly description: string;
+  readonly group: RoleGroup;
   readonly permissions: readonly Permission[];
 }
+
+/**
+ * The specification's role names, where they differ from this repository's
+ * keys. The keys stay: a rename that touches every row, token and test buys
+ * nothing that a display name does not.
+ */
+export const ROLE_ALIASES: Readonly<Record<string, UserRole>> = {
+  TRADING_USER: UserRole.USER,
+  BROKER_SUPPORT: UserRole.SUPPORT,
+  BROKER_TRADING_MANAGER: UserRole.RISK_MANAGER,
+  BROKER_ADMIN: UserRole.ADMIN,
+};
 
 const NAMES: Readonly<Record<UserRole, { name: string; description: string }>> = {
   [UserRole.USER]: { name: 'Trader', description: 'Trades their own accounts.' },
@@ -43,13 +62,51 @@ const NAMES: Readonly<Record<UserRole, { name: string; description: string }>> =
     name: 'Administrator',
     description: 'Everything administrative. Deliberately cannot open a position.',
   },
+  [UserRole.BROKER_OWNER]: {
+    name: 'Owner',
+    description: "The administrator's powers plus the firm's own settings and branding.",
+  },
+  [UserRole.BROKER_ANALYST]: {
+    name: 'Analyst',
+    description: 'Reads everything in the firm. Changes nothing.',
+  },
+  [UserRole.BROKER_DEVELOPER]: {
+    name: 'Developer',
+    description: "The firm's integrations: keys, tokens, and what they need to read.",
+  },
+  [UserRole.PLATFORM_SUPER_ADMIN]: {
+    name: 'Platform super administrator',
+    description: 'Runs the platform: brokers, and everything an administrator may do here.',
+  },
+  [UserRole.PLATFORM_OPERATOR]: {
+    name: 'Platform operator',
+    description: 'Creates and manages brokers; intervenes on the desk; makes no money appear.',
+  },
+  [UserRole.PLATFORM_SUPPORT]: {
+    name: 'Platform support',
+    description: 'Reads across the platform to answer questions. Changes nothing.',
+  },
+  [UserRole.PLATFORM_AUDITOR]: {
+    name: 'Platform auditor',
+    description: 'Reads everything, including the audit and security feeds. Changes nothing.',
+  },
+  [UserRole.PLATFORM_DEVELOPER]: {
+    name: 'Platform developer',
+    description: "The platform's own integrations: keys and tokens.",
+  },
 };
 
-export function seedRoles(): readonly SeedRole[] {
-  return Object.values(UserRole).map((key) => ({
+/**
+ * The roles a tenant of this kind seeds. A broker gets the broker and end-user
+ * groups; the platform gets all three — in a single-operator deployment the
+ * platform is also the firm that trades.
+ */
+export function seedRoles(kind: TenantKind = TenantKind.PLATFORM): readonly SeedRole[] {
+  return rolesForTenantKind(kind).map((key) => ({
     key,
     name: NAMES[key].name,
     description: NAMES[key].description,
+    group: ROLE_GROUP[key],
     permissions: permissionsFor(key),
   }));
 }

@@ -16,6 +16,8 @@ import { AccountsService } from '../../src/accounts/accounts.service';
 import { LedgerService } from '../../src/accounts/ledger.service';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { RolesService } from '../../src/permissions/roles.service';
+import { redisStub } from './redis-stub';
 import { createTestClient, hasTestDatabase, resetDatabase, DEFAULT_TENANT_ID } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
@@ -68,7 +70,12 @@ suite('Registration modes (integration)', () => {
       new LedgerService(),
       config as never,
     );
-    const invites = new InvitesService(prismaService, audit, config as never);
+    const invites = new InvitesService(
+      prismaService,
+      audit,
+      new RolesService(prismaService, redisStub().service, audit),
+      config as never,
+    );
     const auth = new AuthService(
       prismaService,
       passwords,
@@ -158,7 +165,7 @@ suite('Registration modes (integration)', () => {
 
     it('admits the holder of a valid code and records who came in on it', async () => {
       const { auth, invites } = wire('invite');
-      const minted = await invites.mint(adminId, { label: 'first tester' });
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, { label: 'first tester' });
 
       const { userId } = await auth.register({
         email: 'invited@test.local',
@@ -175,7 +182,7 @@ suite('Registration modes (integration)', () => {
 
     it('accepts a code retyped with dashes and in lower case', async () => {
       const { auth, invites } = wire('invite');
-      const minted = await invites.mint(adminId, {});
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, {});
       const asTyped = `${minted.code.slice(0, 8)}-${minted.code.slice(8)}`.toLowerCase();
 
       await expect(
@@ -190,7 +197,7 @@ suite('Registration modes (integration)', () => {
 
     it('will not let one code open two accounts', async () => {
       const { auth, invites } = wire('invite');
-      const minted = await invites.mint(adminId, {});
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, {});
       await auth.register({
         email: 'first@test.local',
         password: PASSWORD,
@@ -210,7 +217,7 @@ suite('Registration modes (integration)', () => {
 
     it('lets a multi-use code open exactly as many accounts as it says', async () => {
       const { auth, invites } = wire('invite');
-      const minted = await invites.mint(adminId, { maxUses: 3 });
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, { maxUses: 3 });
       for (const n of [1, 2, 3]) {
         await auth.register({
           email: `bulk${n}@test.local`,
@@ -237,7 +244,7 @@ suite('Registration modes (integration)', () => {
        * becomes a two-use one under load.
        */
       const { auth, invites } = wire('invite');
-      const minted = await invites.mint(adminId, {});
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, {});
 
       const results = await Promise.allSettled([
         auth.register({
@@ -262,7 +269,7 @@ suite('Registration modes (integration)', () => {
 
     it('refuses an expired code', async () => {
       const { auth, invites } = wire('invite');
-      const minted = await invites.mint(adminId, {});
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, {});
       await prisma.inviteCode.update({
         where: { id: minted.id },
         data: { expiresAt: new Date(Date.now() - 1_000) },
@@ -279,7 +286,7 @@ suite('Registration modes (integration)', () => {
 
     it('refuses a revoked code', async () => {
       const { auth, invites } = wire('invite');
-      const minted = await invites.mint(adminId, {});
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, {});
       await invites.revoke(adminId, minted.id);
       await expect(
         auth.register({
@@ -298,12 +305,12 @@ suite('Registration modes (integration)', () => {
        * the registration endpoint into a way to test guesses.
        */
       const { auth, invites } = wire('invite');
-      const expired = await invites.mint(adminId, {});
+      const expired = await invites.mint({ id: adminId, role: 'ADMIN' }, {});
       await prisma.inviteCode.update({
         where: { id: expired.id },
         data: { expiresAt: new Date(Date.now() - 1_000) },
       });
-      const revoked = await invites.mint(adminId, {});
+      const revoked = await invites.mint({ id: adminId, role: 'ADMIN' }, {});
       await invites.revoke(adminId, revoked.id);
 
       const messages = await Promise.all(
@@ -324,7 +331,7 @@ suite('Registration modes (integration)', () => {
 
     it('does not store the code, only its hash and a fingerprint', async () => {
       const { invites } = wire('invite');
-      const minted = await invites.mint(adminId, { label: 'never stored' });
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, { label: 'never stored' });
       const row = await prisma.inviteCode.findUniqueOrThrow({ where: { id: minted.id } });
 
       expect(row.codeHash).not.toContain(minted.code);
@@ -338,7 +345,7 @@ suite('Registration modes (integration)', () => {
 
     it('never returns the code again, not even to the administrator who minted it', async () => {
       const { invites } = wire('invite');
-      const minted = await invites.mint(adminId, {});
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, {});
       const listed = await invites.list();
       expect(JSON.stringify(listed)).not.toContain(minted.code);
       // Nor the hash: a hash in a list is a hash in a log is a hash in a ticket.
@@ -347,7 +354,7 @@ suite('Registration modes (integration)', () => {
 
     it('keeps the code out of the audit trail, keeping the fingerprint', async () => {
       const { auth, invites } = wire('invite');
-      const minted = await invites.mint(adminId, {});
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, {});
       await auth.register({
         email: 'audited@test.local',
         password: PASSWORD,
@@ -364,16 +371,119 @@ suite('Registration modes (integration)', () => {
     });
   });
 
+  describe('a role in the invitation', () => {
+    it('creates the redeemer in that role, and says so in the audit trail', async () => {
+      const { auth, invites } = wire('invite');
+      const minted = await invites.mint(
+        { id: adminId, role: 'ADMIN' },
+        { label: 'new support hire', grantsRole: 'SUPPORT' },
+      );
+      expect(minted.grantsRole).toBe('SUPPORT');
+
+      const { userId } = await auth.register({
+        email: 'support@test.local',
+        password: PASSWORD,
+        displayName: 'S',
+        inviteCode: minted.code,
+      });
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: userId } })).role).toBe('SUPPORT');
+      const entry = await prisma.auditLog.findFirstOrThrow({
+        where: { action: 'USER_REGISTERED', resourceId: userId },
+      });
+      expect(entry.after).toMatchObject({ role: 'SUPPORT', inviteFingerprint: minted.fingerprint });
+      const listed = (await invites.list()).find((row) => row.id === minted.id);
+      expect(listed?.grantsRole).toBe('SUPPORT');
+    });
+
+    it('creates the redeemer as a trader when the invitation grants nothing', async () => {
+      const { auth, invites } = wire('invite');
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, {});
+      const { userId } = await auth.register({
+        email: 'trader@test.local',
+        password: PASSWORD,
+        displayName: 'T',
+        inviteCode: minted.code,
+      });
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: userId } })).role).toBe('USER');
+    });
+
+    it('lets an administrator invite into a shipped role they could not hold themselves', async () => {
+      const { invites } = wire('invite');
+      // ADMIN deliberately lacks what FINANCE holds; appointing finance is still its job.
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, { grantsRole: 'FINANCE' });
+      expect(minted.grantsRole).toBe('FINANCE');
+    });
+
+    it('refuses an invitation into a role above the minter, whatever the grants say', async () => {
+      const { invites } = wire('invite');
+      await expect(
+        invites.mint({ id: adminId, role: 'USER' }, { grantsRole: 'SUPPORT' }),
+      ).rejects.toMatchObject({ code: TradingErrorCode.FORBIDDEN });
+      // The test tenant is the platform, so the platform roles exist here;
+      // a broker administrator still does not appoint platform staff.
+      await expect(
+        invites.mint({ id: adminId, role: 'ADMIN' }, { grantsRole: 'PLATFORM_OPERATOR' }),
+      ).rejects.toMatchObject({ code: TradingErrorCode.FORBIDDEN });
+      const platform = await invites.mint(
+        { id: adminId, role: 'PLATFORM_SUPER_ADMIN' },
+        { grantsRole: 'PLATFORM_OPERATOR' },
+      );
+      expect(platform.grantsRole).toBe('PLATFORM_OPERATOR');
+      expect(await prisma.inviteCode.count()).toBe(1);
+    });
+
+    it('refuses an invitation into a role somebody widened beyond the minter', async () => {
+      const { invites } = wire('invite');
+      const support = await prisma.role.findFirstOrThrow({ where: { key: 'SUPPORT' } });
+      await prisma.rolePermission.create({
+        data: { tenantId: DEFAULT_TENANT_ID, roleId: support.id, permission: 'withdrawals.pay' },
+      });
+      await prisma.role.update({ where: { id: support.id }, data: { grantsEditedAt: new Date() } });
+      await expect(
+        invites.mint({ id: adminId, role: 'ADMIN' }, { grantsRole: 'SUPPORT' }),
+      ).rejects.toMatchObject({ code: TradingErrorCode.FORBIDDEN });
+      expect(await prisma.inviteCode.count()).toBe(0);
+    });
+
+    it('refuses a role this tenant does not have', async () => {
+      const { invites } = wire('invite');
+      await prisma.role.deleteMany({ where: { key: 'SUPPORT' } });
+      await expect(
+        invites.mint({ id: adminId, role: 'ADMIN' }, { grantsRole: 'SUPPORT' }),
+      ).rejects.toMatchObject({ code: TradingErrorCode.VALIDATION_FAILED });
+    });
+  });
+
   describe('open', () => {
-    it('admits anyone, and ignores an invite code offered anyway', async () => {
-      const { auth } = wire('open');
+    it('admits anyone, and honours a code offered anyway rather than ignoring it', async () => {
+      const { auth, invites } = wire('open');
       const { userId } = await auth.register({
         email: 'walkin@test.local',
         password: PASSWORD,
         displayName: 'W',
-        inviteCode: 'IRRELEVANT',
       });
       expect(await prisma.inviteRedemption.count({ where: { userId } })).toBe(0);
+
+      // A real code counts: it is the only way a registration arrives in a role.
+      const minted = await invites.mint({ id: adminId, role: 'ADMIN' }, {});
+      const invited = await auth.register({
+        email: 'offered@test.local',
+        password: PASSWORD,
+        displayName: 'O',
+        inviteCode: minted.code,
+      });
+      expect(await prisma.inviteRedemption.count({ where: { userId: invited.userId } })).toBe(1);
+
+      // A wrong one is refused, even here: whoever typed it expected it to matter.
+      await expect(
+        auth.register({
+          email: 'wrong@test.local',
+          password: PASSWORD,
+          displayName: 'X',
+          inviteCode: 'IRRELEVANT',
+        }),
+      ).rejects.toMatchObject({ code: TradingErrorCode.VALIDATION_FAILED });
+      expect(await prisma.user.count({ where: { email: 'wrong@test.local' } })).toBe(0);
     });
 
     it('records the mode it was running in, so a registration can be explained later', async () => {

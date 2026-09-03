@@ -222,6 +222,37 @@ suite('the first administrator', () => {
     expect(untouched.role).toBe('USER');
   });
 
+  it('appoints a platform super administrator on the platform tenant only', async () => {
+    const who = await person();
+    await expect(appoint(who.email, { role: 'PLATFORM_SUPER_ADMIN' })).resolves.toMatchObject({
+      kind: 'appointed',
+    });
+    expect((await scoped.user.findUniqueOrThrow({ where: { id: who.id } })).role).toBe(
+      'PLATFORM_SUPER_ADMIN',
+    );
+    const trail = await scoped.auditLog.findFirstOrThrow({
+      where: { action: 'user.role_assigned', resourceId: who.id },
+    });
+    expect(trail.after).toMatchObject({ role: 'PLATFORM_SUPER_ADMIN' });
+
+    // A broker tenant does not have the role, and the CLI says which reason first.
+    const broker = await createTenant(scoped, 'a-broker');
+    const theirs = await person({ tenantId: broker, email: 'owner@broker.test' });
+    await expect(
+      appoint(theirs.email, { tenantSlug: 'a-broker', role: 'PLATFORM_SUPER_ADMIN' }),
+    ).rejects.toThrow(/BROKER tenant/);
+    // An ordinary administrator on a broker is fine, as before.
+    await expect(appoint(theirs.email, { tenantSlug: 'a-broker' })).resolves.toMatchObject({
+      kind: 'appointed',
+    });
+  });
+
+  it('refuses a role the tenant has not seeded yet', async () => {
+    const who = await person();
+    await plain.role.deleteMany({ where: { tenantId: DEFAULT_TENANT_ID, key: 'ADMIN' } });
+    await expect(appoint(who.email)).rejects.toThrow(/has no ADMIN role/);
+  });
+
   it('is one transaction: a role changed underneath it leaves nothing behind', async () => {
     const who = await person();
     const live = await session(who.id);
@@ -267,7 +298,14 @@ describe('the arguments', () => {
       reason: 'because deployment',
       tenantSlug: 'firm',
       evenIfOneExists: false,
+      role: 'ADMIN',
     });
+    expect(
+      parseArgs(['--email', 'a@b.test', '--reason', 'r', '--role', 'PLATFORM_SUPER_ADMIN'], {}),
+    ).toMatchObject({ role: 'PLATFORM_SUPER_ADMIN' });
+    expect(() => parseArgs(['--email', 'a@b.test', '--reason', 'r', '--role', 'USER'], {})).toThrow(
+      /--role must be one of/,
+    );
     expect(
       parseArgs(
         ['--tenant', 'x', '--even-if-one-exists', '--email', 'a@b.test', '--reason', 'r'],

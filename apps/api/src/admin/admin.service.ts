@@ -5,6 +5,7 @@ import { DomainError, TradingErrorCode, type UserRole } from '@tp/shared-types';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionsService } from '../auth/sessions.service';
+import { RolesService } from '../permissions/roles.service';
 import { requireTenantId } from '@tp/tenancy';
 
 /**
@@ -29,6 +30,7 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly sessions: SessionsService,
+    private readonly roles: RolesService,
   ) {}
 
   /**
@@ -224,6 +226,8 @@ export class AdminService {
    */
   async assignRole(input: {
     readonly actorId: string;
+    /** What the actor holds, so they cannot hand out more than that. */
+    readonly actorRole: string;
     readonly userId: string;
     readonly role: UserRole;
     readonly reason: string;
@@ -234,6 +238,7 @@ export class AdminService {
         'You cannot change your own role. Ask another administrator.',
       );
     }
+    await this.roles.assertAssignable(input.role, input.actorRole);
     const user = await this.prisma.user.findFirst({
       where: { id: input.userId },
       select: { id: true, role: true },
@@ -386,7 +391,7 @@ export class AdminService {
   async setAccountStatus(
     actorId: string,
     accountId: string,
-    status: 'ACTIVE' | 'RESTRICTED' | 'CLOSE_ONLY' | 'SUSPENDED' | 'CLOSED',
+    status: 'PENDING' | 'ACTIVE' | 'RESTRICTED' | 'CLOSE_ONLY' | 'LOCKED' | 'SUSPENDED' | 'CLOSED',
     reason: string,
   ): Promise<{ accountId: string; status: string; openPositions: number }> {
     const account = await this.prisma.account.findUnique({

@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { enterTenantScope, tenantScopeExtension } from '@tp/tenancy';
+import { enterTenantScope, tenantScopeExtension, withTenant } from '@tp/tenancy';
 import { seedTenantRoles } from '../../../../prisma/roles';
 
 /**
@@ -82,11 +82,13 @@ export async function createTenant(
   prisma: PrismaClient,
   slug: string,
   primaryHost?: string,
+  kind: 'PLATFORM' | 'BROKER' = 'BROKER',
 ): Promise<string> {
   const tenant = await prisma.tenant.create({
     data: {
       slug,
       name: slug,
+      kind,
       ...(primaryHost === undefined ? {} : { primaryHost }),
     },
   });
@@ -95,8 +97,13 @@ export async function createTenant(
    * without them falls back to the compile-time grants and logs an error on
    * every request — behaviour that is right in production and would make these
    * tests prove something other than what they claim.
+   *
+   * Inside the new tenant's own scope, because `Role` is tenant-scoped and the
+   * caller is standing in a different tenant.
    */
-  await seedTenantRoles(prisma, tenant.id);
+  await withTenant({ tenantId: tenant.id, slug: tenant.slug, kind }, () =>
+    seedTenantRoles(prisma, tenant.id, kind),
+  );
   return tenant.id;
 }
 
@@ -119,13 +126,14 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
    * the harness sees what the audit log's guarantee actually costs to break.
    */
   await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs DISABLE TRIGGER USER`);
+  await prisma.$executeRawUnsafe(`ALTER TABLE security_events DISABLE TRIGGER USER`);
   try {
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
         tenants,
         integrity_signal_events, integrity_signals,
         master_account_links, master_accounts,
-        audit_logs, risk_events, account_snapshots, balance_ledger,
+        audit_logs, security_events, risk_events, account_snapshots, balance_ledger,
         trades, executions, position_events, positions,
         order_events, orders, account_settings,
         reconciliation_findings, reconciliation_runs,
@@ -139,6 +147,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
     `);
   } finally {
     await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs ENABLE TRIGGER USER`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE security_events ENABLE TRIGGER USER`);
   }
 
   /**
@@ -156,9 +165,14 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
    * scope" while the line that set it sat right there in the source.
    */
   const tenant = await prisma.tenant.create({
-    data: { id: DEFAULT_TENANT_ID, slug: DEFAULT_TENANT_SLUG, name: 'Test Tenant' },
+    data: {
+      id: DEFAULT_TENANT_ID,
+      slug: DEFAULT_TENANT_SLUG,
+      name: 'Test Tenant',
+      kind: 'PLATFORM',
+    },
   });
-  enterTenantScope({ tenantId: tenant.id, slug: tenant.slug });
+  enterTenantScope({ tenantId: tenant.id, slug: tenant.slug, kind: 'PLATFORM' });
   /**
    * Roles are rows now, and the truncation above took them with the tenant.
    *

@@ -10,7 +10,7 @@ import { CredentialsService } from '../../src/credentials/credentials.service';
 import type { NotificationsService } from '../../src/notifications/notifications.service';
 import { RolesService } from '../../src/permissions/roles.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
-import type { RedisService } from '../../src/redis/redis.service';
+import { redisStub } from './redis-stub';
 import {
   DEFAULT_TENANT_ID,
   DEFAULT_TENANT_SLUG,
@@ -23,40 +23,6 @@ import {
 const suite = hasTestDatabase ? describe : describe.skip;
 const PASSWORD = 'correct horse battery staple 9';
 const TENANT = { tenantId: DEFAULT_TENANT_ID, slug: DEFAULT_TENANT_SLUG };
-
-/**
- * Redis, as far as this service uses it: one counter per credential per
- * minute. In memory so the tests decide what minute it is and what Redis
- * does, including dying.
- */
-function redisStub(): { service: RedisService; counters: Map<string, number>; failing: boolean } {
-  const counters = new Map<string, number>();
-  const state = { failing: false };
-  const client = {
-    incr: async (key: string) => {
-      if (state.failing) throw new Error('Redis is away');
-      const next = (counters.get(key) ?? 0) + 1;
-      counters.set(key, next);
-      return next;
-    },
-    expire: async () => 1,
-  };
-  const service = {
-    client,
-    publisher: { publish: async () => 1 },
-    subscriber: { subscribe: async () => undefined, on: () => undefined },
-  } as unknown as RedisService;
-  return {
-    service,
-    counters,
-    get failing() {
-      return state.failing;
-    },
-    set failing(value: boolean) {
-      state.failing = value;
-    },
-  };
-}
 
 suite('API keys and service tokens', () => {
   let prisma: PrismaClient;

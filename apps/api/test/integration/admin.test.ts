@@ -22,6 +22,8 @@ import { TotpService } from '../../src/auth/totp.service';
 import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import { base32Decode, codeForStep, stepFor } from '../../src/auth/totp';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { RolesService } from '../../src/permissions/roles.service';
+import { redisStub } from './redis-stub';
 import {
   createAccount,
   createTestClient,
@@ -135,7 +137,12 @@ suite('Administration (integration)', () => {
     );
     const sessions = new SessionsService(prismaService, audit, new SilentEmailAdapter());
 
-    admin = new AdminService(prismaService, audit, sessions);
+    admin = new AdminService(
+      prismaService,
+      audit,
+      sessions,
+      new RolesService(prismaService, redisStub().service, audit),
+    );
     adjustments = new AdjustmentsService(prismaService, new LedgerService(), audit, totp);
     auditQuery = new AuditQueryService(prismaService);
     riskConsole = new RiskConsoleService(prismaService, stack.accountState);
@@ -291,6 +298,7 @@ suite('Administration (integration)', () => {
 
       const result = await admin.assignRole({
         actorId: actor.id,
+        actorRole: 'ADMIN',
         userId: person.userId,
         role: 'FINANCE',
         reason: 'Joins the finance desk from Monday.',
@@ -315,6 +323,7 @@ suite('Administration (integration)', () => {
       await expect(
         admin.assignRole({
           actorId: actor.id,
+          actorRole: 'ADMIN',
           userId: actor.id,
           role: 'USER',
           reason: 'Stepping down.',
@@ -323,11 +332,72 @@ suite('Administration (integration)', () => {
       expect((await prisma.user.findUniqueOrThrow({ where: { id: actor.id } })).role).toBe('ADMIN');
     });
 
+    it('refuses a role this firm does not have', async () => {
+      const actor = await anAdministrator();
+      const person = await createAccount(prisma);
+      await prisma.role.deleteMany({ where: { key: 'FINANCE' } });
+      await expect(
+        admin.assignRole({
+          actorId: actor.id,
+          actorRole: 'ADMIN',
+          userId: person.userId,
+          role: 'FINANCE',
+          reason: 'There is no finance role here.',
+        }),
+      ).rejects.toMatchObject({ code: TradingErrorCode.VALIDATION_FAILED });
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: person.userId } })).role).toBe(
+        'USER',
+      );
+    });
+
+    it('refuses a role above the assigner: broker staff do not appoint platform staff', async () => {
+      const actor = await anAdministrator();
+      const person = await createAccount(prisma);
+      await expect(
+        admin.assignRole({
+          actorId: actor.id,
+          actorRole: 'ADMIN',
+          userId: person.userId,
+          role: 'PLATFORM_OPERATOR',
+          reason: 'Promotion beyond my reach.',
+        }),
+      ).rejects.toMatchObject({ code: TradingErrorCode.FORBIDDEN });
+      // The same appointment by platform staff is fine.
+      const result = await admin.assignRole({
+        actorId: actor.id,
+        actorRole: 'PLATFORM_SUPER_ADMIN',
+        userId: person.userId,
+        role: 'PLATFORM_OPERATOR',
+        reason: 'Joins platform operations.',
+      });
+      expect(result.role).toBe('PLATFORM_OPERATOR');
+    });
+
+    it('refuses a role somebody widened to hold what the assigner does not', async () => {
+      const actor = await anAdministrator();
+      const person = await createAccount(prisma);
+      const support = await prisma.role.findFirstOrThrow({ where: { key: 'SUPPORT' } });
+      await prisma.rolePermission.create({
+        data: { tenantId: DEFAULT_TENANT_ID, roleId: support.id, permission: 'withdrawals.pay' },
+      });
+      await prisma.role.update({ where: { id: support.id }, data: { grantsEditedAt: new Date() } });
+      await expect(
+        admin.assignRole({
+          actorId: actor.id,
+          actorRole: 'ADMIN',
+          userId: person.userId,
+          role: 'SUPPORT',
+          reason: 'Support, which now pays withdrawals.',
+        }),
+      ).rejects.toMatchObject({ code: TradingErrorCode.FORBIDDEN });
+    });
+
     it('does nothing, and ends nothing, when the role is already held', async () => {
       const actor = await anAdministrator();
       const person = await createAccount(prisma);
       const result = await admin.assignRole({
         actorId: actor.id,
+        actorRole: 'ADMIN',
         userId: person.userId,
         role: 'USER',
         reason: 'No change.',

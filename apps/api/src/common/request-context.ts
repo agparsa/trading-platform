@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { REQUEST_ID_HEADER } from '@tp/shared-types';
+import { runInRequestScope } from './request-scope';
 
 /**
  * Express's `Request` extended with our per-request id.
@@ -51,5 +52,8 @@ export function requestContext(req: RequestWithContext, res: Response, next: Nex
       : randomUUID();
   req.requestId = id;
   res.setHeader(REQUEST_ID_HEADER, id);
-  next();
+  // The rest of the request runs inside the scope, so anything it publishes
+  // can say which request caused it. `next` is called synchronously, which is
+  // what makes the scope reach the handlers — see tenancy's `withTenant`.
+  runInRequestScope({ requestId: id, actorId: null }, next);
 }

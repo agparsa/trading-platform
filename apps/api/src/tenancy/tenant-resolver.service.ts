@@ -59,7 +59,7 @@ export class TenantResolver {
         ? null
         : await this.prisma.tenant.findUnique({
             where: { primaryHost: host },
-            select: { id: true, slug: true, status: true },
+            select: { id: true, slug: true, status: true, kind: true },
           });
 
     const tenant = byHost ?? (await this.fallback(host));
@@ -77,7 +77,7 @@ export class TenantResolver {
       );
     }
 
-    const context: TenantContext = { tenantId: tenant.id, slug: tenant.slug };
+    const context: TenantContext = { tenantId: tenant.id, slug: tenant.slug, kind: tenant.kind };
     this.cache.set(host, { context, until: Date.now() + TenantResolver.TTL_MS });
     return context;
   }
@@ -108,12 +108,12 @@ export class TenantResolver {
       () =>
         this.prisma.tenant.findUnique({
           where: { id: tenantId },
-          select: { id: true, slug: true, status: true },
+          select: { id: true, slug: true, status: true, kind: true },
         }),
     );
     if (tenant === null || tenant.status !== 'ACTIVE') return null;
 
-    const context: TenantContext = { tenantId: tenant.id, slug: tenant.slug };
+    const context: TenantContext = { tenantId: tenant.id, slug: tenant.slug, kind: tenant.kind };
     this.byIdCache.set(tenantId, { context, until: Date.now() + TenantResolver.TTL_MS });
     return context;
   }
@@ -129,7 +129,9 @@ export class TenantResolver {
    * `TENANT_HOST_STRICT=true` turns the fallback off, and the deployment
    * checklist turns it on the moment a second tenant exists.
    */
-  private async fallback(host: string): Promise<{ id: string; slug: string; status: string }> {
+  private async fallback(
+    host: string,
+  ): Promise<{ id: string; slug: string; status: string; kind: 'PLATFORM' | 'BROKER' }> {
     if (this.config.get('TENANT_HOST_STRICT', { infer: true })) {
       this.logger.warn({ host }, 'Refused a request for a hostname no tenant claims');
       throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'Unknown host.');
@@ -138,7 +140,7 @@ export class TenantResolver {
     const slug = this.config.get('TENANT_DEFAULT_SLUG', { infer: true });
     const tenant = await this.prisma.tenant.findUnique({
       where: { slug },
-      select: { id: true, slug: true, status: true },
+      select: { id: true, slug: true, status: true, kind: true },
     });
     if (tenant === null) {
       throw new Error(
@@ -149,8 +151,9 @@ export class TenantResolver {
     return tenant;
   }
 
-  /** Drops the cache. Called after a tenant is created or renamed. */
+  /** Drops both caches. Called after a tenant is created, renamed or suspended. */
   forget(): void {
     this.cache.clear();
+    this.byIdCache.clear();
   }
 }

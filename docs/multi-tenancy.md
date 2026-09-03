@@ -454,6 +454,16 @@ which is how it was checked.
 There is a general lesson in it: a security test that passes is worth nothing
 until the thing it guards has been broken and the test has been watched to fail.
 
+## 8a. Two kinds of tenant
+
+`Tenant.kind` is PLATFORM for the one tenant that operates the deployment and
+BROKER for every other. The platform creates brokers (`/admin/brokers`), seeds
+their roles inside their own scope, and mints the invitation their first owner
+registers with; a broker's staff cannot reach any of that, by capability and by
+a check on the kind of tenant in scope that no permissions edit can change.
+`TenantContext` carries the kind when the resolver set it. [brokers.md](./brokers.md)
+has the whole of it.
+
 ## 9. What is not done
 
 Recorded here rather than implied to be finished.
@@ -466,7 +476,6 @@ Recorded here rather than implied to be finished.
 - **A platform-wide kill switch cannot be set through the API.** The row is read
   and honoured; nothing writes it, because halting every firm should not sit
   behind the same permission as halting one's own.
-- **Roles are still compile-time constants**, so a tenant cannot define its own.
 - **The instrument cache is process-wide.** A tenant's terms are resolved into
   it at load and refreshed on change, which keeps `require()` a map lookup on
   the hottest path in the system. The cost is that a change is visible to the

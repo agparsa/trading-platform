@@ -52,10 +52,11 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
    * ownership of the table to do it.
    */
   await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs DISABLE TRIGGER USER`);
+  await prisma.$executeRawUnsafe(`ALTER TABLE security_events DISABLE TRIGGER USER`);
   try {
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
-        audit_logs, risk_events, account_snapshots, balance_ledger,
+        audit_logs, security_events, risk_events, account_snapshots, balance_ledger,
         trades, executions, position_events, positions,
         order_events, orders, account_settings,
         reconciliation_findings, reconciliation_runs,
@@ -69,14 +70,20 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
     `);
   } finally {
     await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs ENABLE TRIGGER USER`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE security_events ENABLE TRIGGER USER`);
   }
 
   const tenant = await prisma.tenant.create({
-    data: { id: DEFAULT_TENANT_ID, slug: DEFAULT_TENANT_SLUG, name: 'Test Tenant' },
+    data: {
+      id: DEFAULT_TENANT_ID,
+      slug: DEFAULT_TENANT_SLUG,
+      name: 'Test Tenant',
+      kind: 'PLATFORM',
+    },
   });
   // `enterWith` rather than `withTenant`, because a `beforeEach` cannot wrap the
   // test body. See the API harness for the full note.
-  enterTenantScope({ tenantId: tenant.id, slug: tenant.slug });
+  enterTenantScope({ tenantId: tenant.id, slug: tenant.slug, kind: 'PLATFORM' });
   // After the scope: `Role` is tenant-scoped and seeding it without one is refused.
   await seedTenantRoles(prisma, tenant.id);
   return tenant.id;

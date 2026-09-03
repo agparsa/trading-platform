@@ -55,6 +55,8 @@ Kept as history; several things they call missing now exist.
 - [anti-fraud.md](./anti-fraud.md) — integrity signals: observations, never verdicts
 - [database.md](./database.md) — schema conventions, the ledger, transactions, indexes
 - [multi-tenancy.md](./multi-tenancy.md) — how one platform holds several firms, and where the boundary is enforced
+- [brokers.md](./brokers.md) — the two kinds of tenant, role groups, who appoints whom, and how a broker is created
+- [security-events.md](./security-events.md) — the security feed, derived from the audit log, for a person and for the firm
 - [security.md](./security.md) — boot refusal, credentials, logging, audit
 - [two-factor.md](./two-factor.md) — TOTP proved against the RFC, and why a code works once
 - [encryption-at-rest.md](./encryption-at-rest.md) — the secret box, and the row a ciphertext is bound to

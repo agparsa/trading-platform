@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DomainEvent } from '@tp/shared-types';
-import { EventsService, INSTANCE_ID, type DomainEventEnvelope } from './events.service';
+import {
+  EventsService,
+  INSTANCE_ID,
+  aggregateOf,
+  type DomainEventEnvelope,
+} from './events.service';
 import type { RedisService } from '../redis/redis.service';
+import { noteActor, runInRequestScope } from '../common/request-scope';
 
 function serviceWith(published: string[]) {
   const redis = {
@@ -57,6 +63,75 @@ describe('EventsService', () => {
   });
 
   /**
+   * Envelope v2: where an event came from, for whoever reads it later.
+   *
+   * The fields are additive — nothing that read v1 changes — and they are
+   * filled from the request scope, so a publisher does not have to know who
+   * is asking. Outside a request they are null rather than invented.
+   */
+  describe('envelope v2', () => {
+    it('says what the event is about, from the event name and the id in the data', () => {
+      expect(
+        aggregateOf(DomainEvent.ORDER_FILLED, 'acc', { orderId: 'o1', positionId: 'p1' }),
+      ).toEqual({ type: 'order', id: 'o1' });
+      expect(aggregateOf(DomainEvent.POSITION_CLOSED, 'acc', { positionId: 'p1' })).toEqual({
+        type: 'position',
+        id: 'p1',
+      });
+      expect(aggregateOf(DomainEvent.BALANCE_CHANGED, 'acc', { positionId: 'p1' })).toEqual({
+        type: 'account',
+        id: 'acc',
+      });
+      // A malformed payload falls back to the account rather than to "undefined".
+      expect(aggregateOf(DomainEvent.ORDER_CREATED, 'acc', {})).toEqual({
+        type: 'account',
+        id: 'acc',
+      });
+    });
+
+    it('carries the request and the actor when published from one, and nulls when not', async () => {
+      const published: string[] = [];
+      const events = serviceWith(published);
+      const seen: DomainEventEnvelope[] = [];
+      events.onEvent((envelope) => {
+        seen.push(envelope);
+      });
+
+      await runInRequestScope({ requestId: 'req-42', actorId: null }, async () => {
+        noteActor('user-7');
+        await events.publish(
+          DomainEvent.ORDER_FILLED,
+          'account-1',
+          { orderId: 'o1' },
+          {
+            causationId: 'evt-0',
+          },
+        );
+      });
+      await events.publish(DomainEvent.BALANCE_CHANGED, 'account-1', {});
+
+      expect(seen[0]).toMatchObject({
+        version: 2,
+        aggregateType: 'order',
+        aggregateId: 'o1',
+        actorId: 'user-7',
+        correlationId: 'req-42',
+        causationId: 'evt-0',
+      });
+      expect(seen[1]).toMatchObject({
+        version: 2,
+        aggregateType: 'account',
+        aggregateId: 'account-1',
+        actorId: null,
+        correlationId: null,
+        causationId: null,
+      });
+      // The Redis hop carries the same fields.
+      expect(JSON.parse(published[0] as string)).toMatchObject({ correlationId: 'req-42' });
+    });
+  });
+
+  /**
    * The frame the gateway receives back from Redis after publishing it. Handling
    * it would deliver the event to every local socket a second time.
    */
@@ -95,6 +170,12 @@ describe('EventsService', () => {
       tenantId: '00000000-0000-4000-8000-0000000000ff',
       data: {},
       timestamp: Date.now(),
+      version: 2,
+      aggregateType: 'account',
+      aggregateId: 'account-1',
+      actorId: null,
+      correlationId: null,
+      causationId: null,
     };
     const delivered = await events.deliverRemote(fromElsewhere);
 

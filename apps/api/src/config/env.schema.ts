@@ -120,6 +120,21 @@ export const envSchema = z
      */
     API_KEY_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).max(100000).default(300),
 
+    // The order path's own ceilings, per account and per tenant, on top of the
+    // per-address limit. See trading/trading-throttle.service.ts.
+    ORDER_RATE_LIMIT_PER_ACCOUNT_PER_MINUTE: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(100000)
+      .default(120),
+    ORDER_RATE_LIMIT_PER_TENANT_PER_MINUTE: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(10000000)
+      .default(6000),
+
     REDIS_URL: z.string().startsWith('redis://'),
 
     // Long enough that a brute-force is hopeless; refuse to boot on a short one.

@@ -138,6 +138,8 @@ export interface IntegritySignalRow {
 
 const adminKeys = {
   users: (search: string) => ['admin', 'users', search] as const,
+  brokers: ['admin', 'brokers'] as const,
+  securityFeed: (filter: string) => ['admin', 'security-feed', filter] as const,
   user: (id: string) => ['admin', 'user', id] as const,
   accounts: (search: string) => ['admin', 'accounts', search] as const,
   account: (id: string) => ['admin', 'account', id] as const,
@@ -1056,5 +1058,106 @@ export function useRevokeServiceToken() {
       void client.invalidateQueries({ queryKey: adminKeys.serviceTokens });
       void client.invalidateQueries({ queryKey: adminKeys.audit('') });
     },
+  });
+}
+
+// ---- Brokers (platform only) ---------------------------------------------
+
+export interface BrokerRow {
+  id: string;
+  slug: string;
+  name: string;
+  legalName: string | null;
+  primaryHost: string | null;
+  status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
+  defaultExecutionMode: 'INTERNAL' | 'EXTERNAL_BROKER';
+  users: number;
+  accounts: number;
+  createdAt: string;
+}
+
+export interface BrokerCreated {
+  broker: BrokerRow;
+  /** Shown once; the server keeps a hash and a fingerprint, nothing more. */
+  ownerInvite: { id: string; code: string; fingerprint: string; expiresAt: string };
+}
+
+export function useBrokers() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.brokers,
+    queryFn: () => api.get<{ brokers: BrokerRow[] }>('/admin/brokers'),
+  });
+}
+
+export function useCreateBroker() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      slug: string;
+      name: string;
+      legalName?: string;
+      primaryHost?: string;
+      defaultExecutionMode?: 'INTERNAL' | 'EXTERNAL_BROKER';
+    }) => api.post<BrokerCreated>('/admin/brokers', input, key()),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: adminKeys.brokers });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+    },
+  });
+}
+
+export function useSetBrokerStatus() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      status,
+      reason,
+    }: {
+      id: string;
+      status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
+      reason: string;
+    }) => api.post<BrokerRow>(`/admin/brokers/${id}/status`, { status, reason }, key()),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: adminKeys.brokers });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+    },
+  });
+}
+
+// ---- Security feed (the firm's) ------------------------------------------
+
+export interface AdminSecurityEventRow {
+  id: string;
+  kind: string;
+  severity: 'INFO' | 'NOTICE' | 'WARNING';
+  at: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  requestId: string | null;
+  byOther: boolean;
+  details: Record<string, unknown> | null;
+  userId: string | null;
+  userEmail: string | null;
+  userDisplayName: string | null;
+  actorId: string | null;
+  actorType: string;
+  auditLogId: string | null;
+}
+
+export function useSecurityFeed(filter: { severity?: string; kind?: string; userId?: string }) {
+  const { api } = useSession();
+  const query: Record<string, string> = {};
+  if (filter.severity) query['severity'] = filter.severity;
+  if (filter.kind) query['kind'] = filter.kind;
+  if (filter.userId) query['userId'] = filter.userId;
+  return useQuery({
+    queryKey: adminKeys.securityFeed(JSON.stringify(query)),
+    queryFn: () =>
+      api.get<{ events: AdminSecurityEventRow[] }>('/admin/security/events', { query }),
+    refetchInterval: 30_000,
   });
 }

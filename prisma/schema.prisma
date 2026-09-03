@@ -53,6 +53,15 @@ model Tenant {
 
   status TenantStatus @default(ACTIVE)
 
+  /// A broker is a tenant. The one PLATFORM tenant operates the deployment and,
+  /// in a single-operator deployment, also trades; it is the only tenant that
+  /// seeds the platform roles. Every other tenant is a BROKER.
+  kind                 TenantKind    @default(BROKER)
+  /// The firm's registered name, for documents and the broker panel.
+  legalName            String?       @map("legal_name")
+  /// Where a new account under this tenant executes unless the account says otherwise.
+  defaultExecutionMode ExecutionMode @default(INTERNAL) @map("default_execution_mode")
+
   createdAt               DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
   users                   User[]
@@ -71,6 +80,7 @@ model Tenant {
   riskRuleConfigs         RiskRuleConfig[]
   riskEvents              RiskEvent[]
   auditLogs               AuditLog[]
+  securityEvents          SecurityEvent[]
   idempotencyKeys         IdempotencyKey[]
   masterAccounts          MasterAccount[]
   masterAccountLinks      MasterAccountLink[]
@@ -109,6 +119,18 @@ enum TenantStatus {
   CLOSED
 }
 
+enum TenantKind {
+  PLATFORM
+  BROKER
+}
+
+/// Where an account's orders execute. EXTERNAL_BROKER is a mode before it is a
+/// code path, so nothing pretends a venue is connected when none is.
+enum ExecutionMode {
+  INTERNAL
+  EXTERNAL_BROKER
+}
+
 // ---------------------------------------------------------------------------
 // Identity & access
 // ---------------------------------------------------------------------------
@@ -121,6 +143,16 @@ enum UserRole {
   /// Money out, and only money out. Cannot confirm a deposit or adjust a wallet.
   FINANCE
   ADMIN
+  /// The administrator's powers plus the firm's own settings and branding.
+  BROKER_OWNER
+  BROKER_ANALYST
+  BROKER_DEVELOPER
+  /// Platform roles: seeded on the PLATFORM tenant only.
+  PLATFORM_SUPER_ADMIN
+  PLATFORM_OPERATOR
+  PLATFORM_SUPPORT
+  PLATFORM_AUDITOR
+  PLATFORM_DEVELOPER
 }
 
 model User {
@@ -164,6 +196,7 @@ model User {
   accounts                Account[]
   refreshTokens           RefreshToken[]
   auditLogs               AuditLog[]
+  securityEvents          SecurityEvent[]
   recoveryCodes           TotpRecoveryCode[]
   masterAccounts          MasterAccount[]
   notifications           Notification[]
@@ -244,9 +277,11 @@ model RefreshToken {
 // ---------------------------------------------------------------------------
 
 enum AccountStatus {
+  PENDING
   ACTIVE
   RESTRICTED
   CLOSE_ONLY
+  LOCKED
   SUSPENDED
   CLOSED
 }
@@ -1131,6 +1166,11 @@ model InviteCode {
   /// How many accounts this code may open. One, unless deliberately widened.
   maxUses  Int @default(1) @map("max_uses")
   useCount Int @default(0) @map("use_count")
+
+  /// The role the person who redeems this receives, instead of USER. How a
+  /// broker's first owner is appointed: the platform mints the invitation on
+  /// the new tenant, and whoever registers with it owns the firm.
+  grantsRole UserRole? @map("grants_role")
 
   expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
   revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
@@ -2057,6 +2097,79 @@ enum WithdrawalStatus {
 /// their capabilities fixed at minting and intersected with their current ones
 /// on every use.
 ///
+/// One line in a person's security feed, and one in the firm's.
+///
+/// Derived from the audit log rather than written beside it: `AuditService`
+/// writes a row here whenever the action it is recording is one of the kinds
+/// below, in the same transaction when it has one. So the feed cannot disagree
+/// with the audit trail, and a sign-in that reached the audit log reached the
+/// feed. Append-only, like its source. See docs/security-events.md.
+model SecurityEvent {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  /// Whose security this concerns. Null when nobody's yet — a failed sign-in
+  /// for an address nobody has is the firm's business, not a person's.
+  userId String? @map("user_id") @db.Uuid
+
+  kind     SecurityEventKind
+  severity SecuritySeverity
+
+  /// Who caused it: the person themselves, a member of staff, or nobody.
+  actorId   String? @map("actor_id") @db.Uuid
+  actorType String  @map("actor_type")
+
+  requestId String? @map("request_id")
+  ipAddress String? @map("ip_address")
+  userAgent String? @map("user_agent")
+
+  /// What the audit row said, already redacted. Never a secret.
+  details Json?
+
+  /// The audit row this was derived from, for the investigator who wants the rest.
+  auditLogId String? @map("audit_log_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([kind, createdAt(sort: Desc)])
+  @@map("security_events")
+}
+
+enum SecurityEventKind {
+  SIGN_IN
+  SIGN_IN_FAILED
+  SECOND_FACTOR_FAILED
+  SIGN_IN_NEW_DEVICE
+  SIGN_OUT
+  SESSION_REVOKED
+  SESSIONS_REVOKED_BY_STAFF
+  EMAIL_VERIFIED
+  PASSWORD_CHANGED
+  PASSWORD_RESET
+  TWO_FACTOR_ENABLED
+  TWO_FACTOR_DISABLED
+  RECOVERY_CODE_USED
+  API_KEY_MINTED
+  API_KEY_REVOKED
+  SERVICE_TOKEN_MINTED
+  SERVICE_TOKEN_REVOKED
+  ROLE_ASSIGNED
+  USER_SUSPENDED
+  USER_REINSTATED
+  USER_UNLOCKED
+}
+
+enum SecuritySeverity {
+  INFO
+  NOTICE
+  WARNING
+}
+
 /// The secret is nowhere. `secretHash` is its SHA-256; `fingerprint` is the
 /// public name a person identifies it by, and what every list and audit row
 /// shows. See docs/api-keys.md.

@@ -4,10 +4,12 @@ import {
   ALL_PERMISSIONS,
   DomainError,
   type Permission,
+  ROLE_GROUP,
   TradingErrorCode,
   UserRole,
   conflictsIn,
   escalationsIn,
+  groupOutranks,
   isPermission,
   permissionsFor as codePermissionsFor,
   seedRoles,
@@ -131,7 +133,7 @@ export class RolesService implements OnModuleInit {
     try {
       tenants = await withoutTenantScope(
         'a release adds capabilities to every tenant, not to one',
-        () => this.prisma.tenant.findMany({ select: { id: true, slug: true } }),
+        () => this.prisma.tenant.findMany({ select: { id: true, slug: true, kind: true } }),
       );
     } catch (error) {
       this.logger.error(
@@ -145,8 +147,9 @@ export class RolesService implements OnModuleInit {
     let refreshed = 0;
     for (const tenant of tenants) {
       try {
-        const result = await withTenant({ tenantId: tenant.id, slug: tenant.slug }, () =>
-          seedTenantRoles(this.prisma as unknown as PrismaClient, tenant.id),
+        const result = await withTenant(
+          { tenantId: tenant.id, slug: tenant.slug, kind: tenant.kind },
+          () => seedTenantRoles(this.prisma as unknown as PrismaClient, tenant.id, tenant.kind),
         );
         created += result.created;
         refreshed += result.refreshed;
@@ -187,6 +190,66 @@ export class RolesService implements OnModuleInit {
      * make deletion do nothing.
      */
     return roles.byKey.get(roleKey) ?? new Set<Permission>();
+  }
+
+  /**
+   * May somebody in `assignerRole` put a person into `role`?
+   *
+   * Three refusals, in order of how often they should fire:
+   *
+   * 1. **Not a role this tenant has.** The enum lists every role any tenant
+   *    could seed; a broker does not seed the platform's. `PLATFORM_SUPER_ADMIN`
+   *    on a broker's user would be a role with no grants — harmless today, a
+   *    live account waiting for the day somebody seeds it.
+   * 2. **Above the assigner's group.** A broker administrator appoints broker
+   *    staff and traders; only platform staff appoint platform staff. This is
+   *    decided by group rather than by comparing grants, because the built-in
+   *    roles are deliberately *not* nested: an administrator cannot pay a
+   *    withdrawal and finance cannot assign a role, and the separation is the
+   *    point. Comparing grants would leave nobody able to appoint the finance
+   *    desk at all.
+   * 3. **Grants the assigner lacks, when somebody edited them.** A built-in
+   *    role with its shipped grants is a reviewed design, and appointing to it
+   *    is what `roles.assign` is for. A role somebody has widened is that
+   *    person's design, and here the bound that stops an editor widening their
+   *    own role applies: you cannot hand out what you do not hold.
+   */
+  async assertAssignable(role: UserRole, assignerRole: string): Promise<void> {
+    const row = await this.prisma.role.findFirst({
+      where: { key: role },
+      select: { id: true, isSystem: true, grantsEditedAt: true },
+    });
+    if (row === null) {
+      throw new DomainError(
+        TradingErrorCode.VALIDATION_FAILED,
+        `${role} is not a role this firm has.`,
+        { role },
+      );
+    }
+
+    const assignerGroup = isUserRole(assignerRole) ? ROLE_GROUP[assignerRole] : undefined;
+    if (assignerGroup === undefined || !groupOutranks(assignerGroup, ROLE_GROUP[role])) {
+      throw new DomainError(
+        TradingErrorCode.FORBIDDEN,
+        `${role} is appointed by ${ROLE_GROUP[role].toLowerCase()} staff, not from ${assignerRole}.`,
+        { role, assignerRole },
+      );
+    }
+
+    if (row.isSystem && row.grantsEditedAt === null) return;
+
+    const [granted, held] = await Promise.all([
+      this.permissionsFor(role),
+      this.permissionsFor(assignerRole),
+    ]);
+    const escalations = escalationsIn(granted, held);
+    if (escalations.length > 0) {
+      throw new DomainError(
+        TradingErrorCode.FORBIDDEN,
+        `${role} has been edited to hold capabilities you do not: ${escalations.join(', ')}`,
+        { escalations: escalations.join(',') },
+      );
+    }
   }
 
   /** Does this role carry every capability listed? All of them, not any. */
@@ -519,3 +582,7 @@ function builtIn(): ReadonlyMap<string, ReadonlySet<Permission>> {
 
 /** Exported for the catalogue endpoint: everything a role could be granted. */
 export const GRANTABLE_PERMISSIONS: readonly Permission[] = [...ALL_PERMISSIONS].sort();
+
+function isUserRole(value: string): value is UserRole {
+  return (Object.values(UserRole) as string[]).includes(value);
+}

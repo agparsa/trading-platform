@@ -772,6 +772,97 @@ suite('Trading core (integration)', () => {
     });
   });
 
+  describe('what each account status allows', () => {
+    const setStatus = (accountId: string, status: string) =>
+      prisma.account.update({ where: { id: accountId }, data: { status: status as never } });
+
+    it('lets a close-only or restricted holder manage and close, but not open', async () => {
+      for (const status of ['CLOSE_ONLY', 'RESTRICTED'] as const) {
+        const { userId, accountId } = await openAccount();
+        const opened = await buyOneLot(userId, accountId);
+        await setStatus(accountId, status);
+
+        await expect(buyOneLot(userId, accountId)).rejects.toMatchObject({
+          code: 'ACCOUNT_NOT_TRADEABLE',
+        });
+        await stack.positions.modify(userId, {
+          positionId: opened.positionId!,
+          stopLoss: '4500.00',
+        });
+        const closed = await stack.positions.close(userId, opened.positionId!, null);
+        expect(closed.fullyClosed).toBe(true);
+      }
+    });
+
+    it('lets a suspended holder close and nothing else', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+      await setStatus(accountId, 'SUSPENDED');
+      await expect(
+        stack.positions.modify(userId, { positionId: opened.positionId!, stopLoss: '4500.00' }),
+      ).rejects.toMatchObject({ code: 'ACCOUNT_NOT_TRADEABLE' });
+      await expect(stack.positions.close(userId, opened.positionId!, null)).resolves.toMatchObject({
+        fullyClosed: true,
+      });
+    });
+
+    it('locks the holder out entirely, while the engine still closes', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+      await setStatus(accountId, 'LOCKED');
+
+      await expect(buyOneLot(userId, accountId)).rejects.toMatchObject({
+        code: 'ACCOUNT_NOT_TRADEABLE',
+      });
+      await expect(
+        stack.positions.modify(userId, { positionId: opened.positionId!, stopLoss: '4500.00' }),
+      ).rejects.toMatchObject({ code: 'ACCOUNT_NOT_TRADEABLE' });
+      await expect(stack.positions.close(userId, opened.positionId!, null)).rejects.toMatchObject({
+        code: 'ACCOUNT_NOT_TRADEABLE',
+      });
+      const still = await prisma.position.findUniqueOrThrow({ where: { id: opened.positionId! } });
+      expect(still.status).toBe('OPEN');
+
+      // A stop firing is the engine's act, not the holder's.
+      const closed = await stack.positions.closeForSystem(opened.positionId!, null, 'STOP_LOSS');
+      expect(closed.fullyClosed).toBe(true);
+    });
+
+    it('refuses everything on a pending account', async () => {
+      const { userId, accountId } = await openAccount();
+      await setStatus(accountId, 'PENDING');
+      await expect(buyOneLot(userId, accountId)).rejects.toMatchObject({
+        code: 'ACCOUNT_NOT_TRADEABLE',
+      });
+    });
+  });
+
+  describe('the order-path ceiling', () => {
+    it('refuses the action over the per-account limit and leaves the account untouched', async () => {
+      const limited = await buildTradingStack(prisma, { orderRateLimitPerAccount: 2 });
+      await limited.publishQuote('XAUUSD', BID, ASK);
+      const { userId, accountId } = await openAccount();
+      const first = await limited.orders.openPosition(userId, {
+        accountId,
+        symbol: 'XAUUSD',
+        side: 'BUY',
+        volume: '0.10',
+      });
+      // The second action is the close; the third is over.
+      await limited.positions.close(userId, first.positionId!, null);
+      await expect(
+        limited.orders.openPosition(userId, {
+          accountId,
+          symbol: 'XAUUSD',
+          side: 'BUY',
+          volume: '0.10',
+        }),
+      ).rejects.toMatchObject({ code: 'RATE_LIMITED' });
+      expect(await prisma.order.count({ where: { accountId } })).toBe(2);
+      expect(await prisma.position.count({ where: { accountId, status: 'OPEN' } })).toBe(0);
+    });
+  });
+
   describe('failure recovery', () => {
     /**
      * A close that fails after claiming the position must not strand it in

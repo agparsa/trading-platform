@@ -1197,6 +1197,69 @@ const checks: Check[] = [
   },
   {
     /**
+     * The security feed, over HTTP.
+     *
+     * A sign-in and a minted key were just recorded for this person; both must
+     * be in their own feed, the feed must be closed to a key (it is where a
+     * stolen key's use would show), and the firm's feed and the platform's
+     * broker list must be closed to a trader.
+     */
+    name: 'the security feed: mine is mine, closed to keys, and the firm’s is staff only',
+    run: async () => {
+      const email = `smoke-feed-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: registration(email, password, 'Smoke Feed'),
+      });
+      const login = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!login.ok) {
+        console.log('      (registration is closed on this deployment; skipped)');
+        return;
+      }
+      const session = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+      const asSession = { Authorization: `Bearer ${session}`, 'Content-Type': 'application/json' };
+
+      const feed = await fetch(`${BASE}/api/v1/security/events`, { headers: asSession });
+      assert(feed.status === 200, `GET /security/events returned ${feed.status}`);
+      const events = ((await feed.json()) as { data: { events: { kind: string }[] } }).data.events;
+      assert(
+        events.some((event) => event.kind === 'SIGN_IN'),
+        `the sign-in that just happened is not in the feed: ${events.map((e) => e.kind).join(',')}`,
+      );
+
+      const minted = await fetch(`${BASE}/api/v1/api-keys`, {
+        method: 'POST',
+        headers: { ...asSession, 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify({ name: 'feed probe', permissions: ['accounts.read'], password }),
+      });
+      assert(minted.status === 201, `POST /api-keys returned ${minted.status}`);
+      const token = ((await minted.json()) as { data: { token: string } }).data.token;
+
+      const again = await fetch(`${BASE}/api/v1/security/events`, { headers: asSession });
+      const kinds = (
+        (await again.json()) as { data: { events: { kind: string }[] } }
+      ).data.events.map((event) => event.kind);
+      assert(kinds.includes('API_KEY_MINTED'), `the key that was just minted is not in the feed`);
+
+      const withKey = await fetch(`${BASE}/api/v1/security/events`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      assert(withKey.status === 403, `a key could read the security feed: ${withKey.status}`);
+
+      for (const path of ['/admin/security/events', '/admin/security/summary', '/admin/brokers']) {
+        const desk = await fetch(`${BASE}/api/v1${path}`, { headers: asSession });
+        assert(desk.status === 403, `${path} answered a trader ${desk.status}`);
+      }
+    },
+  },
+  {
+    /**
      * Invitations, end to end over HTTP.
      *
      * The service has integration tests; this checks the parts they cannot —
@@ -1271,13 +1334,12 @@ const checks: Check[] = [
          * `process.env` this script hands the child — so the check asserts what
          * that mode actually promises rather than what would be convenient.
          *
-         * Under `open`, offering a code must change nothing: the registration
-         * succeeds and the invitation is left unspent. That is a real assertion
-         * and it has a real failure mode, which is a claim path that runs
-         * whatever the mode.
-         *
-         * Under `invite`, the code is consumed exactly once and the redemption
-         * is recorded.
+         * Under `open` and `invite` alike, a real code offered is consumed
+         * exactly once and the redemption recorded. Open mode used to ignore
+         * an offered code; it claims it now, because an invitation is the only
+         * way a registration arrives in a role other than USER and a firm's
+         * first owner is created this way whatever the mode — see
+         * docs/brokers.md. A wrong code is refused in open mode too.
          */
         const mode = process.env['REGISTRATION_MODE'] ?? 'open';
         const redeem = (email: string) =>
@@ -1306,7 +1368,7 @@ const checks: Check[] = [
           const redemptions = await prisma.inviteRedemption.count({
             where: { inviteCodeId: invite.id },
           });
-          const expected = mode === 'invite' ? 1 : 0;
+          const expected = 1;
           assert(
             after.useCount === expected,
             `use count is ${after.useCount}, expected ${expected} in ${mode} mode`,
@@ -1315,6 +1377,22 @@ const checks: Check[] = [
             redemptions === expected,
             `${redemptions} redemptions recorded, expected ${expected} in ${mode} mode`,
           );
+          if (mode === 'open') {
+            const wrong = await fetch(`${BASE}/api/v1/auth/register`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: `smoke-wrong-code-${Date.now()}@test.local`,
+                password,
+                displayName: 'Wrong',
+                inviteCode: 'NOTACODE',
+              }),
+            });
+            assert(
+              wrong.status === 400,
+              `a wrong code on an open platform answered ${wrong.status}`,
+            );
+          }
         }
 
         await prisma.user.update({ where: { id: admin.id }, data: { role: 'USER' } });

@@ -8,6 +8,7 @@ import { PositionsService } from './positions.service';
 import { RiskContextBuilder } from './risk-context.builder';
 import { TriggerEngineService } from './trigger-engine.service';
 import { TradingController } from './trading.controller';
+import { TradingThrottle } from './trading-throttle.service';
 import { SnapshotService } from './snapshot.service';
 
 @Module({
@@ -21,6 +22,7 @@ import { SnapshotService } from './snapshot.service';
     PositionsService,
     TriggerEngineService,
     SnapshotService,
+    TradingThrottle,
   ],
   exports: [
     AccountStateService,

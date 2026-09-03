@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { seedRoles } from '@tp/shared-types';
+import { TenantKind, seedRoles } from '@tp/shared-types';
 
 export interface SeedRolesResult {
   /** Roles that did not exist and were created. */
@@ -32,15 +32,29 @@ export interface SeedRolesResult {
  * is what tells the two apart, and the asymmetry is deliberate: a deploy that
  * silently re-widened a role an operator had narrowed would be the worst kind of
  * regression, because nothing about it would look wrong.
+ *
+ * ## Which roles
+ *
+ * The tenant's kind decides: a broker gets the broker and end-user groups, the
+ * platform gets those and its own. The kind is read from the tenant's row unless
+ * the caller already has it, and a tenant that does not exist gets nothing —
+ * seeding roles for a tenant id that is not a tenant is how orphan rows begin.
+ *
+ * Roles a tenant of this kind does not seed are **not removed** if present: a
+ * tenant whose kind changed from PLATFORM to BROKER would otherwise lose roles
+ * people hold, silently, at the next boot. That is an operator's decision.
  */
 export async function seedTenantRoles(
   prisma: PrismaClient,
   tenantId: string,
+  kind?: TenantKind,
 ): Promise<SeedRolesResult> {
   let created = 0;
   let refreshed = 0;
 
-  for (const role of seedRoles()) {
+  const tenantKind = kind ?? (await kindOf(prisma, tenantId));
+
+  for (const role of seedRoles(tenantKind)) {
     const existing = await prisma.role.findFirst({
       where: { tenantId, key: role.key },
       select: { id: true, isSystem: true, grantsEditedAt: true },
@@ -86,4 +100,13 @@ export async function seedTenantRoles(
   }
 
   return { created, refreshed };
+}
+
+async function kindOf(prisma: PrismaClient, tenantId: string): Promise<TenantKind> {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { kind: true },
+  });
+  if (tenant === null) throw new Error(`No tenant ${tenantId} to seed roles for`);
+  return tenant.kind === 'PLATFORM' ? TenantKind.PLATFORM : TenantKind.BROKER;
 }

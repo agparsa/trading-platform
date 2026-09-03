@@ -88,6 +88,7 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'ApiKey',
   'ServiceToken',
   'CredentialUsage',
+  'SecurityEvent',
 ]);
 
 /**

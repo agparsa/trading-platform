@@ -124,6 +124,11 @@ has left the company, and the audit row says it was used.
 It runs the compiled CLI (`apps/api/dist/cli/first-administrator.js`) inside
 the `migrate` image, which already holds the built code, the Prisma client and
 the owner connection; `--tenant <slug>` for a tenant other than the default.
+`--role PLATFORM_SUPER_ADMIN` appoints the platform's first super administrator
+instead — accepted only on the PLATFORM tenant, and only once the API has
+started at least once so the role is seeded. From then on that person creates
+brokers from `/admin/brokers` and each broker's owner arrives by invitation
+([brokers.md](./brokers.md)).
 
 This was found the hard way: a production host with twenty-five registered
 users, every one of them `USER`, and an admin panel nobody could open.

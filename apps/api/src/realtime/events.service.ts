@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { DomainEvent } from '@tp/shared-types';
 import { currentTenant } from '@tp/tenancy';
+import { currentRequestScope } from '../common/request-scope';
 import { RedisService } from '../redis/redis.service';
 
 /** Redis channel every API instance relays to its own connected sockets. */
@@ -40,6 +41,53 @@ export interface DomainEventEnvelope {
   readonly tenantId: string | null;
   readonly data: Record<string, unknown>;
   readonly timestamp: number;
+
+  // ---- Envelope v2 -------------------------------------------------------
+  // Additive: every consumer of v1 reads the fields above and ignores these.
+  // They exist so an event can be traced back to what caused it — by a
+  // webhook subscriber, an outbox reader, or somebody with a log file — and
+  // so the same envelope can be the body of a webhook without reshaping.
+
+  /** 2. A consumer that finds it missing is reading a v1 envelope. */
+  readonly version: 2;
+  /** What the event is about: `order`, `position`, `account`. */
+  readonly aggregateType: AggregateType;
+  /** That thing's id. The account's when the event is about the account. */
+  readonly aggregateId: string;
+  /** The person (or credential) whose request caused this. Null for the engine's own work. */
+  readonly actorId: string | null;
+  /** The request id, so a client's trace and this event share a key. Null outside a request. */
+  readonly correlationId: string | null;
+  /** The event this one followed from, when the publisher knows. */
+  readonly causationId: string | null;
+}
+
+export type AggregateType = 'order' | 'position' | 'account';
+
+/**
+ * What an event is about, from its name. Every event in the catalogue is
+ * named `<aggregate>.<what happened>`, except the two account-level ones that
+ * predate the convention; the table keeps those honest.
+ */
+export function aggregateOf(
+  event: DomainEvent,
+  accountId: string,
+  data: Record<string, unknown>,
+): { type: AggregateType; id: string } {
+  const prefix = event.split('.')[0];
+  if (prefix === 'order' && typeof data['orderId'] === 'string') {
+    return { type: 'order', id: data['orderId'] };
+  }
+  if (prefix === 'position' && typeof data['positionId'] === 'string') {
+    return { type: 'position', id: data['positionId'] };
+  }
+  return { type: 'account', id: accountId };
+}
+
+/** What a publisher may add to the envelope beyond the event itself. */
+export interface PublishOptions {
+  /** The event this one followed from. */
+  readonly causationId?: string | null;
 }
 
 /**
@@ -84,7 +132,10 @@ export class EventsService {
     event: DomainEvent,
     accountId: string,
     data: Record<string, unknown>,
+    options: PublishOptions = {},
   ): Promise<void> {
+    const aggregate = aggregateOf(event, accountId, data);
+    const request = currentRequestScope();
     const envelope: DomainEventEnvelope = {
       event,
       eventId: randomUUID(),
@@ -95,6 +146,12 @@ export class EventsService {
       tenantId: currentTenant()?.tenantId ?? null,
       data,
       timestamp: Date.now(),
+      version: 2,
+      aggregateType: aggregate.type,
+      aggregateId: aggregate.id,
+      actorId: request?.actorId ?? null,
+      correlationId: request?.requestId ?? null,
+      causationId: options.causationId ?? null,
     };
 
     for (const handler of this.handlers) {

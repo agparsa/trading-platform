@@ -138,6 +138,12 @@ suite('Trading events become notifications (integration)', () => {
       tenantId: DEFAULT_TENANT_ID,
       data: { symbol: 'BTCUSDT', reason: CloseReason.TAKE_PROFIT, netPnl: '42', fullyClosed: true },
       timestamp: Date.now(),
+      version: 2,
+      aggregateType: 'account',
+      aggregateId: accountId,
+      actorId: null,
+      correlationId: null,
+      causationId: null,
     };
 
     /**
@@ -170,6 +176,12 @@ suite('Trading events become notifications (integration)', () => {
         tenantId: DEFAULT_TENANT_ID,
         data: { symbol: 'BTCUSDT' },
         timestamp: Date.now(),
+        version: 2,
+        aggregateType: 'account',
+        aggregateId: accountId,
+        actorId: null,
+        correlationId: null,
+        causationId: null,
       });
     });
 
@@ -190,6 +202,12 @@ suite('Trading events become notifications (integration)', () => {
       tenantId: DEFAULT_TENANT_ID,
       data: { symbol: 'BTCUSDT' },
       timestamp: Date.now(),
+      version: 2,
+      aggregateType: 'account',
+      aggregateId: accountId,
+      actorId: null,
+      correlationId: null,
+      causationId: null,
     });
 
     expect(captured.raised).toHaveLength(first);
@@ -212,6 +230,12 @@ suite('Trading events become notifications (integration)', () => {
         tenantId: null,
         data: { symbol: 'BTCUSDT' },
         timestamp: Date.now(),
+        version: 2,
+        aggregateType: 'account',
+        aggregateId: accountId,
+        actorId: null,
+        correlationId: null,
+        causationId: null,
       });
     });
     // Filing it under a default tenant would put one firm's trade in another

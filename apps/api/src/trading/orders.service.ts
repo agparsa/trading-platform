@@ -19,6 +19,7 @@ import {
   OrderStatus,
   Permission,
   TradingErrorCode,
+  accountStatusPolicy,
 } from '@tp/shared-types';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -31,6 +32,7 @@ import { LedgerService } from '../accounts/ledger.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { AuditService } from '../common/audit/audit.service';
 import { EventsService } from '../realtime/events.service';
+import { TradingThrottle } from './trading-throttle.service';
 import { endOfTradingDay, isSessionOpen } from '../market/session';
 import { AccountStateService } from './account-state.service';
 import { RiskContextBuilder } from './risk-context.builder';
@@ -109,6 +111,7 @@ export class OrdersService {
     private readonly metrics: MetricsService,
     private readonly audit: AuditService,
     private readonly events: EventsService,
+    private readonly throttle: TradingThrottle,
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
   ) {}
 
@@ -157,8 +160,8 @@ export class OrdersService {
     );
 
     const warnings: string[] = [];
-    if (account.status !== 'ACTIVE') {
-      warnings.push(`This account is ${account.status.toLowerCase()} and cannot open positions.`);
+    if (!accountStatusPolicy(account.status).open) {
+      warnings.push(accountStatusPolicy(account.status).explanation);
     }
     if (!isSessionOpen(instrument.session, now)) {
       warnings.push(`${symbolCode} is outside its trading session.`);
@@ -278,13 +281,14 @@ export class OrdersService {
       request.accountId,
       Permission.ORDERS_CREATE,
     );
-    if (account.status !== 'ACTIVE') {
+    if (!accountStatusPolicy(account.status).open) {
       throw new DomainError(
         TradingErrorCode.ACCOUNT_NOT_TRADEABLE,
         `This account is ${account.status.toLowerCase()} and cannot open positions`,
         { status: account.status },
       );
     }
+    await this.throttle.assertAllowed(account.id);
 
     if (!isSessionOpen(instrument.session, now)) {
       throw new DomainError(
@@ -606,13 +610,14 @@ export class OrdersService {
       request.accountId,
       Permission.ORDERS_CREATE,
     );
-    if (account.status !== 'ACTIVE') {
+    if (!accountStatusPolicy(account.status).open) {
       throw new DomainError(
         TradingErrorCode.ACCOUNT_NOT_TRADEABLE,
         `This account is ${account.status.toLowerCase()} and cannot place orders`,
         { status: account.status },
       );
     }
+    await this.throttle.assertAllowed(account.id);
 
     const volume = normalizeVolume(spec, request.volume);
     const volumeCheck = checkVolume(spec, volume);

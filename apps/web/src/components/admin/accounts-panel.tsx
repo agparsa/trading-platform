@@ -12,7 +12,15 @@ import {
 import { money, signedMoney, utcTime } from '@/lib/format';
 import { ErrorLine, Head, Loading, ReasonedAction, SearchBox, StatusPill, Table } from './shared';
 
-const STATUSES = ['ACTIVE', 'RESTRICTED', 'CLOSE_ONLY', 'SUSPENDED', 'CLOSED'] as const;
+const STATUSES = [
+  'PENDING',
+  'ACTIVE',
+  'RESTRICTED',
+  'CLOSE_ONLY',
+  'LOCKED',
+  'SUSPENDED',
+  'CLOSED',
+] as const;
 
 /**
  * Accounts.

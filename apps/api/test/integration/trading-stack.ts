@@ -19,6 +19,7 @@ import { AuditService } from '../../src/common/audit/audit.service';
 import { MetricsService } from '../../src/metrics/metrics.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 import type { RedisService } from '../../src/redis/redis.service';
+import { TradingThrottle } from '../../src/trading/trading-throttle.service';
 import type { TenantResolver } from '../../src/tenancy/tenant-resolver.service';
 import { DEFAULT_TENANT_ID, DEFAULT_TENANT_SLUG } from './harness';
 
@@ -39,6 +40,14 @@ class FakeRedis {
     },
     get: async (key: string) => this.store.get(key) ?? null,
     del: async (key: string) => (this.store.delete(key) ? 1 : 0),
+    // The order-path throttle: one counter per key. Tests that want to hit a
+    // ceiling set the limit low through the config rather than looping.
+    incr: async (key: string) => {
+      const next = Number(this.store.get(key) ?? '0') + 1;
+      this.store.set(key, String(next));
+      return next;
+    },
+    expire: async () => 1,
   };
   readonly publisher = { publish: async () => 1 };
   readonly subscriber = {
@@ -73,7 +82,16 @@ export interface TradingStack {
  * decorator metadata; see the note in auth.test.ts. Explicit construction also
  * makes the dependency graph of the trading path visible in one place.
  */
-export async function buildTradingStack(prisma: PrismaClient): Promise<TradingStack> {
+export interface TradingStackOptions {
+  /** Order-path ceilings; effectively unlimited unless a test is about them. */
+  readonly orderRateLimitPerAccount?: number;
+  readonly orderRateLimitPerTenant?: number;
+}
+
+export async function buildTradingStack(
+  prisma: PrismaClient,
+  options: TradingStackOptions = {},
+): Promise<TradingStack> {
   const prismaService = prisma as unknown as PrismaService;
   const config = new ConfigService<Record<string, unknown>, true>({
     QUOTE_MAX_AGE_MS: 5_000,
@@ -88,6 +106,8 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     // No throttle in tests: every tick must be acted on, or a stop-out
     // assertion would depend on how fast the test machine is.
     STOP_OUT_CHECK_INTERVAL_MS: 0,
+    ORDER_RATE_LIMIT_PER_ACCOUNT_PER_MINUTE: options.orderRateLimitPerAccount ?? 100_000,
+    ORDER_RATE_LIMIT_PER_TENANT_PER_MINUTE: options.orderRateLimitPerTenant ?? 100_000,
   } as never);
 
   const redis = new FakeRedis() as unknown as RedisService;
@@ -110,6 +130,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
   const audit = new AuditService(prismaService);
   const killSwitch = new KillSwitchService(prismaService, audit);
   const events = new EventsService(redis);
+  const throttle = new TradingThrottle(redis, config as never);
 
   const orders = new OrdersService(
     prismaService,
@@ -124,6 +145,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     metrics,
     audit,
     events,
+    throttle,
     config as never,
   );
   const positions = new PositionsService(
@@ -138,6 +160,7 @@ export async function buildTradingStack(prisma: PrismaClient): Promise<TradingSt
     orders,
     events,
     accountState,
+    throttle,
   );
 
   /**

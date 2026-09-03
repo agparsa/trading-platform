@@ -40,6 +40,8 @@ const mintInviteSchema = z
     label: z.string().trim().min(1).max(200).optional(),
     maxUses: z.coerce.number().int().min(1).max(1_000).optional(),
     ttlHours: z.coerce.number().int().min(1).max(8_760).optional(),
+    /** The role the redeemer receives instead of USER. Bounded by the minter's own. */
+    grantsRole: z.nativeEnum(UserRole).optional(),
   })
   .strict();
 
@@ -57,7 +59,9 @@ const userSearchSchema = z
 const accountSearchSchema = z
   .object({
     search: z.string().max(200).optional(),
-    status: z.enum(['ACTIVE', 'RESTRICTED', 'CLOSE_ONLY', 'SUSPENDED', 'CLOSED']).optional(),
+    status: z
+      .enum(['PENDING', 'ACTIVE', 'RESTRICTED', 'CLOSE_ONLY', 'LOCKED', 'SUSPENDED', 'CLOSED'])
+      .optional(),
     limit: z.coerce.number().int().min(1).max(200).optional(),
   })
   .strict();
@@ -67,7 +71,15 @@ const reasonSchema = z.object({ reason: z.string().min(4).max(500) }).strict();
 
 const accountStatusSchema = z
   .object({
-    status: z.enum(['ACTIVE', 'RESTRICTED', 'CLOSE_ONLY', 'SUSPENDED', 'CLOSED']),
+    status: z.enum([
+      'PENDING',
+      'ACTIVE',
+      'RESTRICTED',
+      'CLOSE_ONLY',
+      'LOCKED',
+      'SUSPENDED',
+      'CLOSED',
+    ]),
     reason: z.string().min(4).max(500),
   })
   .strict();
@@ -234,6 +246,7 @@ export class AdminController {
   ) {
     return this.admin.assignRole({
       actorId: actor.id,
+      actorRole: actor.role,
       userId: id,
       role: body.role,
       reason: body.reason,
@@ -430,7 +443,7 @@ export class AdminController {
   @Post('invites')
   @ApiOperation({ summary: 'Create an invitation; the code is shown once and never again' })
   mintInvite(@CurrentUser() actor: AuthenticatedUser, @Body() body: MintInviteDto) {
-    return this.invites.mint(actor.id, body);
+    return this.invites.mint({ id: actor.id, role: actor.role }, body);
   }
 
   /** Invitations, by fingerprint. The codes themselves are not stored. */

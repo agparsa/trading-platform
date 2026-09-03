@@ -59,7 +59,7 @@ deploy, because three real defects this month were invisible to 1,700 tests.
 
 [architecture-audit.md](./architecture-audit.md). Produced by inspection.
 
-## Phase 1 — Domain and multi-tenant foundation · ~1–2 weeks
+## Phase 1 — Domain and multi-tenant foundation · **done**
 
 Most of the foundation exists (tenancy with RLS, roles as rows, capabilities,
 audit). What this phase adds is the vocabulary the rest of the specification
@@ -85,6 +85,13 @@ uses, additively:
 
 Tests: role-group seeds, envelope v2 shape, security events written, cross-tenant
 probes extended to the new tables.
+
+Done as written, plus what the work found: the assignability rule (who may put
+whom into which role — group, then edited-grants), role-granting invitations,
+the broker creation flow with the owner invitation, and one policy table for
+what every account status allows. [brokers.md](./brokers.md),
+[security-events.md](./security-events.md), and the Phase 1 section of
+[COMPLETION_STATUS.md](./COMPLETION_STATUS.md).
 
 ## Phase 2 — Broker connection and adapter SDK · ~2–3 weeks
 

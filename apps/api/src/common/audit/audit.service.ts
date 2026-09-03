@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { requireTenantId } from '@tp/tenancy';
+import { currentRequestScope } from '../request-scope';
+import { SECURITY_KINDS, isPersonResource } from '../../security/security-kinds';
 
 export type AuditActorType = 'USER' | 'ADMIN' | 'SYSTEM';
 
@@ -96,12 +98,22 @@ export class AuditService {
   }
 }
 
-type AuditWriter = Pick<Prisma.TransactionClient, 'auditLog'>;
+type AuditWriter = Pick<Prisma.TransactionClient, 'auditLog' | 'securityEvent'>;
 
+/**
+ * The audit row, and — when the action is somebody's security business — the
+ * security event derived from it, in that order and on the same client. The
+ * feed is a projection of the audit log, so a feed row without its audit row
+ * is not a state that should exist.
+ */
 async function writeAudit(client: AuditWriter, entry: AuditRecord): Promise<void> {
-  await client.auditLog.create({
+  const tenantId = requireTenantId();
+  const requestId = entry.requestId ?? currentRequestScope()?.requestId ?? null;
+  const after =
+    entry.after === undefined ? undefined : (redact(entry.after) as Prisma.InputJsonValue);
+  const written = await client.auditLog.create({
     data: {
-      tenantId: requireTenantId(),
+      tenantId,
       actorId: entry.actorId ?? null,
       actorType: entry.actorType,
       action: entry.action,
@@ -109,10 +121,33 @@ async function writeAudit(client: AuditWriter, entry: AuditRecord): Promise<void
       resourceId: entry.resourceId ?? null,
       before:
         entry.before === undefined ? undefined : (redact(entry.before) as Prisma.InputJsonValue),
-      after: entry.after === undefined ? undefined : (redact(entry.after) as Prisma.InputJsonValue),
-      requestId: entry.requestId ?? null,
+      after,
+      requestId,
       ipAddress: entry.ipAddress ?? null,
       userAgent: entry.userAgent ?? null,
+    },
+    select: { id: true },
+  });
+
+  const security = SECURITY_KINDS[entry.action];
+  if (security === undefined) return;
+  const subject =
+    security.subject === 'resource' && isPersonResource(entry.resourceType)
+      ? (entry.resourceId ?? null)
+      : (entry.actorId ?? null);
+  await client.securityEvent.create({
+    data: {
+      tenantId,
+      userId: subject,
+      kind: security.kind,
+      severity: security.severity,
+      actorId: entry.actorId ?? null,
+      actorType: entry.actorType,
+      requestId,
+      ipAddress: entry.ipAddress ?? null,
+      userAgent: entry.userAgent ?? null,
+      details: after,
+      auditLogId: written.id,
     },
   });
 }

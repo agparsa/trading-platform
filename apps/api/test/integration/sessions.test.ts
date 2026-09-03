@@ -16,6 +16,8 @@ import { LedgerService } from '../../src/accounts/ledger.service';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { RolesService } from '../../src/permissions/roles.service';
+import { redisStub } from './redis-stub';
 import { createTestClient, hasTestDatabase, resetDatabase } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
@@ -98,7 +100,12 @@ suite('Sessions and device visibility (integration)', () => {
       ),
       audit,
       email,
-      new InvitesService(prismaService, audit, config as never),
+      new InvitesService(
+        prismaService,
+        audit,
+        new RolesService(prismaService, redisStub().service, audit),
+        config as never,
+      ),
       config as never,
     );
   });

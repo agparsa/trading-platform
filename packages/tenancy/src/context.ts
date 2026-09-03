@@ -21,6 +21,12 @@ export interface TenantContext {
   readonly tenantId: string;
   /** For log lines and error messages. Never used to decide anything. */
   readonly slug: string;
+  /**
+   * PLATFORM or BROKER. Optional because the worker opens scopes from rows
+   * that name a tenant id and nothing more; a caller that needs the kind and
+   * finds it missing reads the tenant's row rather than assuming one.
+   */
+  readonly kind?: 'PLATFORM' | 'BROKER';
 }
 
 /**

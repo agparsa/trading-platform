@@ -435,6 +435,27 @@ async function main(): Promise<void> {
       'once dismissed, the page shows the fingerprint and never the secret again',
       afterwards.slice(0, 200),
     );
+    /**
+     * The security feed is the same page, on real rows: the sign-in that
+     * opened this browser session and the key minted a moment ago must both
+     * be there, in the person's words rather than as enum codes.
+     */
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const feed = page.getByTestId('security-events');
+    const feedShown = await feed
+      .getByText(/API key created/i)
+      .first()
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    const feedBody = feedShown ? await feed.innerText() : '';
+    ok(
+      feedShown && /Signed in/i.test(feedBody),
+      'the security page lists the sign-in and the minted key in its feed',
+      feedBody.replace(/\s+/g, ' ').slice(0, 200),
+    );
     await visit(page, '/settings', { url: '/settings', text: /One-click/i });
 
     console.log('\n  As an administrator\n');
@@ -491,6 +512,57 @@ async function main(): Promise<void> {
       /New service token/i.test(tokensBody) && /accounts\.read_any/.test(tokensBody),
       'the credentials screen offers service tokens with reads across the tenant',
       tokensBody.slice(0, 200),
+    );
+
+    await visit(adminPage, '/admin/security', { url: '/admin/security', text: /SIGN_IN/ });
+    const securityFeed = await adminPage.getByTestId('security-feed').innerText();
+    ok(
+      new RegExp(people.trader.email.replace(/[.@+]/g, '.')).test(securityFeed) &&
+        /API_KEY_MINTED/.test(securityFeed),
+      "the firm's security feed shows the trader's sign-in and minted key",
+      securityFeed.replace(/\s+/g, ' ').slice(0, 200),
+    );
+
+    /**
+     * Brokers: the admin here is an ADMIN on the platform tenant, which reads
+     * the list (tenants.read is not in ADMIN's set, so the refusal is the
+     * honest outcome) — the platform super administrator's screen is proven by
+     * promoting and reloading.
+     */
+    await visit(adminPage, '/admin/brokers', { url: '/admin/brokers' });
+    const adminRow = await prisma.user.findFirstOrThrow({ where: { email: people.admin.email } });
+    await prisma.user.update({
+      where: { id: adminRow.id },
+      data: { role: 'PLATFORM_SUPER_ADMIN' },
+    });
+    // The role travels in the token: end the session and sign in again.
+    await prisma.refreshToken.updateMany({
+      where: { userId: adminRow.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    await adminContext.clearCookies();
+    await signIn(adminPage, people.admin.email);
+    await visit(adminPage, '/admin/brokers', { url: '/admin/brokers', text: /New broker/i });
+    await adminPage.getByPlaceholder('acme-fx').fill(`smoke-broker-${Date.now()}`);
+    await adminPage.getByPlaceholder('Acme FX').fill('Smoke Broker');
+    await adminPage.getByRole('button', { name: /Create broker/i }).click();
+    const inviteBox = adminPage.getByTestId('broker-owner-invite');
+    const brokerMade = await inviteBox.waitFor({ timeout: 10_000 }).then(
+      () => true,
+      () => false,
+    );
+    const inviteCode = brokerMade ? (await inviteBox.locator('pre').innerText()).trim() : '';
+    ok(
+      brokerMade && /^[A-Z2-9]{24}$/.test(inviteCode),
+      'a broker can be created from the console and the owner invitation is shown once',
+      inviteCode.slice(0, 8),
+    );
+    await adminPage.getByRole('button', { name: /I have passed it on/i }).click();
+    const brokersBody = await adminPage.getByTestId('brokers-panel').innerText();
+    ok(
+      /Smoke Broker/.test(brokersBody) && !brokersBody.includes(inviteCode),
+      'the broker is listed and the invitation code is gone from the page',
+      brokersBody.replace(/\s+/g, ' ').slice(0, 200),
     );
 
     console.log('\n  A trader reaching an administrative URL\n');

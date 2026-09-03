@@ -26,12 +26,12 @@ pnpm lint             ok
 pnpm format:check     ok
 pnpm typecheck        ok
 pnpm inventory --check ok
-pnpm test             134 files, 1787 tests, 0 failures
+pnpm test             137 files, 1846 tests, 0 failures
 pnpm build            ok
 ```
 
-4 applications (`api`, `web`, `worker`, `mobile`), 13 workspace packages, 41
-Prisma models, 106 API routes, ~78,000 lines of TypeScript. Live at
+4 applications (`api`, `web`, `worker`, `mobile`), 13 workspace packages, 42
+Prisma models, 113 API routes, ~78,000 lines of TypeScript. Live at
 https://devopss.ir.
 
 The route count was 95 here and 84 in `docs/API_INVENTORY.md`'s hand-written
@@ -151,7 +151,43 @@ describe do not exist, and §45 says do not document features that do not exist.
 | 14 — AI context layer             | not started                                  |
 | 15 — real market data             | not started, plus a commercial dependency    |
 
-**12 of 16.**
+**12 of 16** of the earlier plan. The specification was then replaced
+([architecture-audit.md](./architecture-audit.md)); progress against the new
+plan's phases is below and in [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md).
+
+## New plan, Phase 1 — domain and multi-tenant foundation
+
+`Tenant.kind` (PLATFORM | BROKER) with a broker profile (`legalName`,
+`defaultExecutionMode`); the oldest tenant is the platform. Eight new roles in
+three groups, seeded by tenant kind and reconciled into existing tenants at
+boot; the specification's role names map onto the existing keys. Who may put
+someone into a role is one rule in `RolesService.assertAssignable` — a role the
+tenant has, not above the assigner's group, and not widened beyond the assigner
+— used by role assignment and by role-granting invitations alike. The platform
+creates brokers (`/admin/brokers`) and hands back the owner's invitation once;
+a broker cannot reach that, by capability and by tenant kind. The
+first-administrator CLI takes `--role PLATFORM_SUPER_ADMIN`.
+
+Envelope v2 on every domain event: `version`, `aggregateType`, `aggregateId`,
+`actorId`, `correlationId`, `causationId`, filled from a request-scoped store
+the middleware opens and the guard fills — additive, no consumer changed.
+
+`SecurityEvent`: a projection of the audit log written by `AuditService`
+itself, append-only, tenant-scoped; a person reads their own on `/security`, the
+firm reads everyone's on `/admin/security`. Account statuses `PENDING` and
+`LOCKED`, and one policy table (`ACCOUNT_STATUS_POLICY`) that decides open,
+modify and close for every status — the holder of a locked account does
+nothing, the engine's stops still fire. Order-path ceilings per account and per
+tenant in Redis, allow-and-log when Redis is away.
+
+Fifty-nine new tests across brokers, registration, administration, the CLI,
+security events, the envelope, the throttle and the status policy; seven
+mutations caught. Smoke 19 checks (the security feed over HTTP; the boot
+failure on a `Date` in a DTO schema was caught here and nowhere else), web smoke
+81 checks over 26 routes (the feed on `/security`, the broker created from
+`/admin/brokers`), pentest 44 attacks refused (running the platform from a
+broker with an escalated role; reading another person's feed). See
+[brokers.md](./brokers.md) and [security-events.md](./security-events.md).
 
 ## Phase 9 — API keys and service tokens
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { UserRole } from './enums/account';
+import { TenantKind, UserRole, rolesForTenantKind } from './enums/account';
+import { ROLE_ALIASES, seedRoles } from './role-seed';
 import {
   ALL_PERMISSIONS,
   Permission,
@@ -16,6 +17,17 @@ import {
   isKeyable,
   isServiceGrantable,
 } from './permissions';
+
+/**
+ * The three roles built on the administrator's set: the administrator, the
+ * firm's owner, and the platform's super administrator. Where a test says
+ * "only an administrator", it means these.
+ */
+const ADMINISTRATORS: readonly UserRole[] = [
+  UserRole.ADMIN,
+  UserRole.BROKER_OWNER,
+  UserRole.PLATFORM_SUPER_ADMIN,
+];
 
 /**
  * The permission catalogue is a security control, so what is asserted here is
@@ -157,9 +169,8 @@ describe('instrument capabilities', () => {
   it('lets only an administrator change what the platform trades', () => {
     for (const role of Object.values(UserRole)) {
       const may = roleHasPermissions(role, [Permission.INSTRUMENTS_MANAGE]);
-      expect(may, `${role} should ${role === UserRole.ADMIN ? '' : 'not '}manage instruments`).toBe(
-        role === UserRole.ADMIN,
-      );
+      const should = ADMINISTRATORS.includes(role);
+      expect(may, `${role} should ${should ? '' : 'not '}manage instruments`).toBe(should);
     }
   });
 
@@ -235,7 +246,9 @@ describe('invitations', () => {
    */
   it('is an administrator capability alone', () => {
     for (const role of Object.values(UserRole)) {
-      expect(roleHasPermissions(role, [Permission.INVITES_MANAGE])).toBe(role === UserRole.ADMIN);
+      expect(roleHasPermissions(role, [Permission.INVITES_MANAGE])).toBe(
+        ADMINISTRATORS.includes(role),
+      );
     }
   });
 
@@ -477,10 +490,11 @@ describe('programmatic access', () => {
     expect(roleHasPermissions(UserRole.ADMIN, [Permission.API_KEYS_REVOKE_ANY])).toBe(true);
   });
 
-  it('lets only an administrator mint a machine identity', () => {
+  it('lets only an administrator or a developer mint a machine identity', () => {
+    const minters = [...ADMINISTRATORS, UserRole.BROKER_DEVELOPER, UserRole.PLATFORM_DEVELOPER];
     for (const role of Object.values(UserRole)) {
       expect(roleHasPermissions(role, [Permission.SERVICE_TOKENS_MANAGE])).toBe(
-        role === UserRole.ADMIN,
+        minters.includes(role),
       );
     }
   });
@@ -552,5 +566,58 @@ describe('programmatic access', () => {
     // A token may carry only what its minter holds; if ADMIN lacked one of
     // these, no token could ever carry it and the list would be a lie.
     expect(roleHasPermissions(UserRole.ADMIN, SERVICE_GRANTABLE_PERMISSIONS)).toBe(true);
+  });
+});
+
+describe('role groups', () => {
+  it('seeds platform roles on the platform tenant only', () => {
+    const broker = rolesForTenantKind(TenantKind.BROKER);
+    const platform = rolesForTenantKind(TenantKind.PLATFORM);
+    expect(broker).not.toContain(UserRole.PLATFORM_SUPER_ADMIN);
+    expect(broker).toContain(UserRole.BROKER_OWNER);
+    expect(broker).toContain(UserRole.USER);
+    expect(platform).toEqual(Object.values(UserRole));
+    expect(seedRoles(TenantKind.BROKER).map((role) => role.key)).toEqual(broker);
+  });
+
+  it('keeps the platform-only capabilities out of every broker role', () => {
+    for (const role of rolesForTenantKind(TenantKind.BROKER)) {
+      expect(roleHasPermissions(role, [Permission.TENANTS_MANAGE])).toBe(false);
+      expect(roleHasPermissions(role, [Permission.TENANTS_READ])).toBe(false);
+    }
+    expect(roleHasPermissions(UserRole.PLATFORM_SUPER_ADMIN, [Permission.TENANTS_MANAGE])).toBe(
+      true,
+    );
+    expect(roleHasPermissions(UserRole.PLATFORM_OPERATOR, [Permission.TENANTS_MANAGE])).toBe(true);
+    expect(roleHasPermissions(UserRole.PLATFORM_AUDITOR, [Permission.TENANTS_MANAGE])).toBe(false);
+  });
+
+  it('binds the owner and the super administrator by the same separations as the administrator', () => {
+    for (const role of [UserRole.BROKER_OWNER, UserRole.PLATFORM_SUPER_ADMIN]) {
+      expect(roleHasPermissions(role, [Permission.ORDERS_CREATE])).toBe(false);
+      expect(roleHasPermissions(role, [Permission.WITHDRAWALS_REVIEW])).toBe(false);
+      expect(conflictsIn(permissionsFor(role))).toEqual([]);
+    }
+  });
+
+  it('gives the read-only roles no way to write', () => {
+    const writes = ALL_PERMISSIONS.filter(
+      (p) => !p.endsWith('.read') && !p.endsWith('.read_any') && p !== Permission.API_KEYS_MANAGE,
+    );
+    for (const role of [
+      UserRole.BROKER_ANALYST,
+      UserRole.PLATFORM_AUDITOR,
+      UserRole.PLATFORM_SUPPORT,
+    ]) {
+      for (const permission of writes) {
+        expect(roleHasPermissions(role, [permission]), `${role} holds ${permission}`).toBe(false);
+      }
+    }
+  });
+
+  it('names the specification’s roles that this repository keys differently', () => {
+    expect(ROLE_ALIASES['BROKER_ADMIN']).toBe(UserRole.ADMIN);
+    expect(ROLE_ALIASES['TRADING_USER']).toBe(UserRole.USER);
+    for (const key of Object.values(ROLE_ALIASES)) expect(Object.values(UserRole)).toContain(key);
   });
 });

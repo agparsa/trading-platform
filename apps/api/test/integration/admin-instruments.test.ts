@@ -147,9 +147,16 @@ suite('Administering instruments (integration)', () => {
   });
 
   it('is administrators only', () => {
+    // The owner and the platform's super administrator carry the administrator's
+    // set; nobody else changes an instrument's terms.
+    const administrators = new Set<UserRole>([
+      UserRole.ADMIN,
+      UserRole.BROKER_OWNER,
+      UserRole.PLATFORM_SUPER_ADMIN,
+    ]);
     for (const role of Object.values(UserRole)) {
       expect(roleHasPermissions(role, [Permission.INSTRUMENTS_MANAGE])).toBe(
-        role === UserRole.ADMIN,
+        administrators.has(role),
       );
     }
   });
