@@ -9,11 +9,16 @@ import { RiskContextBuilder } from './risk-context.builder';
 import { TriggerEngineService } from './trigger-engine.service';
 import { TradingController } from './trading.controller';
 import { TradingThrottle } from './trading-throttle.service';
+import { OutboxModule } from '../outbox/outbox.module';
+import { BrokerConnectionsModule } from '../broker-connections/broker-connections.module';
+import { ExternalExecutionService } from './external-execution.service';
 import { SnapshotService } from './snapshot.service';
+import { VenueRecoveryService } from './venue-recovery.service';
+import { VenueRecoveryController } from './venue-recovery.controller';
 
 @Module({
-  imports: [MarketModule, AccountsModule],
-  controllers: [TradingController],
+  imports: [MarketModule, AccountsModule, OutboxModule, BrokerConnectionsModule],
+  controllers: [TradingController, VenueRecoveryController],
   providers: [
     ConversionService,
     AccountStateService,
@@ -23,6 +28,8 @@ import { SnapshotService } from './snapshot.service';
     TriggerEngineService,
     SnapshotService,
     TradingThrottle,
+    ExternalExecutionService,
+    VenueRecoveryService,
   ],
   exports: [
     AccountStateService,
@@ -31,6 +38,7 @@ import { SnapshotService } from './snapshot.service';
     ConversionService,
     TriggerEngineService,
     SnapshotService,
+    VenueRecoveryService,
   ],
 })
 export class TradingModule {}

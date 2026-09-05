@@ -88,6 +88,13 @@ export function aggregateOf(
 export interface PublishOptions {
   /** The event this one followed from. */
   readonly causationId?: string | null;
+  /**
+   * The occurrence's id, when it has already been minted — by the outbox,
+   * inside the transaction that produced the change. One occurrence then has
+   * one id however many ways it travels, and a subscriber reading both the
+   * socket and a webhook can tell they are the same thing.
+   */
+  readonly eventId?: string;
 }
 
 /**
@@ -138,7 +145,7 @@ export class EventsService {
     const request = currentRequestScope();
     const envelope: DomainEventEnvelope = {
       event,
-      eventId: randomUUID(),
+      eventId: options.eventId ?? randomUUID(),
       origin: INSTANCE_ID,
       accountId,
       // Captured here, where a request scope still exists. By the time a

@@ -20,6 +20,18 @@ export const OrderStatus = {
   NEW: 'NEW',
   PENDING: 'PENDING',
   ACCEPTED: 'ACCEPTED',
+  /**
+   * Sent to a venue, and the venue's answer never arrived.
+   *
+   * Not an error and not a failure: the request left, the reply was lost, and
+   * the venue may have filled it. The platform records this, asks the venue
+   * again with the order's own `clientOrderId`, and **never resends on the
+   * strength of a timeout** — see docs/broker-integration.md and §41.
+   *
+   * Only externally executed orders can be in it; the internal engine knows
+   * its own answer.
+   */
+  UNCONFIRMED: 'UNCONFIRMED',
   TRIGGERED: 'TRIGGERED',
   PARTIALLY_FILLED: 'PARTIALLY_FILLED',
   FILLED: 'FILLED',
@@ -52,6 +64,18 @@ export const OrderEventType = {
   CREATED: 'CREATED',
   VALIDATED: 'VALIDATED',
   ACCEPTED: 'ACCEPTED',
+  /**
+   * Sent to a venue, and the venue's answer never arrived.
+   *
+   * Not an error and not a failure: the request left, the reply was lost, and
+   * the venue may have filled it. The platform records this, asks the venue
+   * again with the order's own `clientOrderId`, and **never resends on the
+   * strength of a timeout** — see docs/broker-integration.md and §41.
+   *
+   * Only externally executed orders can be in it; the internal engine knows
+   * its own answer.
+   */
+  UNCONFIRMED: 'UNCONFIRMED',
   REJECTED: 'REJECTED',
   TRIGGERED: 'TRIGGERED',
   PARTIALLY_FILLED: 'PARTIALLY_FILLED',

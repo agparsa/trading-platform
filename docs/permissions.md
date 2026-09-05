@@ -75,7 +75,13 @@ need to read). The platform group is `PLATFORM_SUPER_ADMIN` (ADMIN plus
 (brokers and the desk, no money creation, no roles), `PLATFORM_SUPPORT`,
 `PLATFORM_AUDITOR` and `PLATFORM_DEVELOPER`. `SECURITY_READ` — the firm's
 security feed — is held by support, risk, administration, the analyst and
-every platform role. The specification's names for the older roles, the
+every platform role. `BROKER_CONNECTIONS_READ` — which venues a firm is
+connected to and whether they are up — is held by the desk, administration,
+the owner, the analyst, the developer and the platform's roles;
+`BROKER_CONNECTIONS_MANAGE` — setting the credentials that decide where a
+firm's orders go — is administration, the owner and the platform's super
+administrator, and is person-only
+([broker-integration.md](./broker-integration.md)). The specification's names for the older roles, the
 tenant-kind rule and who may appoint whom are in [brokers.md](./brokers.md).
 
 ### Why ADMIN cannot trade

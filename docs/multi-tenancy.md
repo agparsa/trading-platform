@@ -174,6 +174,38 @@ reason, and it is greppable — reconciliation across all tenants, the login
 lookup that has not yet resolved a user, and migrations are the only legitimate
 callers.
 
+#### What the extension does **not** reach: a nested `include`
+
+It rewrites the **top-level** query. A relation pulled in with `include` or a
+nested `select` is filtered by its foreign key alone, so a child row misfiled
+under another tenant comes back with its parent:
+
+```ts
+// Narrowed: the extension adds tenantId to this where.
+prisma.brokerConnection.findFirst({ where: { id } });
+
+// NOT narrowed: `credentials` is filtered by connectionId and nothing else.
+prisma.brokerConnection.findFirst({ id, include: { credentials: true } });
+
+// Correct: name the tenant on the relation too.
+prisma.brokerConnection.findFirst({
+  where: { id },
+  include: { credentials: { where: { tenantId: requireTenantId() } } },
+});
+```
+
+Row-level security would catch it at the database, except that the application
+role is exempt from its own policies (§6, layer two, and §9). So the rule is
+the code's: **an `include` across a tenant-scoped relation names its tenant.**
+
+This was found by a test that planted exactly such a row — a credential filed
+under one firm on another firm's connection — and watched the worker open it.
+`instruments.service.ts` had the pattern right already; the broker services
+follow it, and a mutation that removes it fails
+`broker-health.test.ts`. Where a child is only ever written in the same
+transaction as its parent the risk is theoretical, but the rule costs one
+clause and the exception costs an incident.
+
 ### Layer two: Postgres row-level security
 
 Every tenant-scoped table carries a policy comparing `tenant_id` to

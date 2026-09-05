@@ -349,6 +349,18 @@ export const envSchema = z
      * an account is worth. See snapshot.service.ts.
      */
     ACCOUNT_SNAPSHOT_INTERVAL_MS: z.coerce.number().int().min(0).default(300_000),
+    /**
+     * How often the platform asks venues what became of orders whose answers
+     * were lost. 0 disables the sweep, leaving UNCONFIRMED orders for a person
+     * to resolve by hand — which is a choice, not a default.
+     */
+    VENUE_RECOVERY_INTERVAL_MS: z.coerce.number().int().min(0).default(30_000),
+    /**
+     * How long an order is left alone before the venue is asked about it. The
+     * original request may still be in flight; a query that overtakes it reads
+     * a state about to change.
+     */
+    VENUE_RECOVERY_GRACE_MS: z.coerce.number().int().min(0).default(5_000),
     DEFAULT_ACCOUNT_LEVERAGE: z.coerce.number().int().min(1).default(100),
     IDEMPOTENCY_KEY_TTL_SECONDS: z.coerce.number().int().min(60).default(86_400),
 

@@ -30,6 +30,22 @@ const ORDER_TRANSITIONS: Readonly<Record<OrderStatus, readonly OrderStatus[]>> =
     OrderStatus.CANCEL_REQUESTED,
     OrderStatus.REJECTED,
     OrderStatus.EXPIRED,
+    // Handed to a venue, and the answer was lost. Only from ACCEPTED: an
+    // order becomes unconfirmed by being sent, never by being created.
+    OrderStatus.UNCONFIRMED,
+  ],
+  /**
+   * The venue's answer, when it finally comes, is one of these. There is no
+   * transition back to ACCEPTED: an order whose fate was unknown and is now
+   * known is resolved, not un-sent. And there is no self-loop — resending is
+   * exactly what must not happen.
+   */
+  [OrderStatus.UNCONFIRMED]: [
+    OrderStatus.PARTIALLY_FILLED,
+    OrderStatus.FILLED,
+    OrderStatus.REJECTED,
+    OrderStatus.CANCELLED,
+    OrderStatus.EXPIRED,
   ],
   [OrderStatus.TRIGGERED]: [
     OrderStatus.PARTIALLY_FILLED,

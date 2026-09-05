@@ -33,6 +33,8 @@ import { MetricsService } from '../metrics/metrics.service';
 import { AuditService } from '../common/audit/audit.service';
 import { EventsService } from '../realtime/events.service';
 import { TradingThrottle } from './trading-throttle.service';
+import { OutboxService } from '../outbox/outbox.service';
+import { ExternalExecutionService } from './external-execution.service';
 import { endOfTradingDay, isSessionOpen } from '../market/session';
 import { AccountStateService } from './account-state.service';
 import { RiskContextBuilder } from './risk-context.builder';
@@ -111,6 +113,8 @@ export class OrdersService {
     private readonly metrics: MetricsService,
     private readonly audit: AuditService,
     private readonly events: EventsService,
+    private readonly outbox: OutboxService,
+    private readonly external: ExternalExecutionService,
     private readonly throttle: TradingThrottle,
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
   ) {}
@@ -317,6 +321,51 @@ export class OrdersService {
       );
     }
 
+    /**
+     * The one place the two execution paths part.
+     *
+     * Everything above is true of both: the account may trade, the market is
+     * open, the volume is on the grid. Everything below prices from *this*
+     * platform's quote and fills against its own ledger, which an account
+     * whose money is at a venue must not do — so it goes to
+     * `ExternalExecutionService`, whose shape is different for reasons that
+     * do not fit in a branch (see that class).
+     *
+     * Deliberately after the checks and before the pricing: a venue-executed
+     * order is still refused for a closed market and a bad volume by the same
+     * code, and is never given a price this platform made up.
+     */
+    if (ExternalExecutionService.isExternal(account)) {
+      const outcome = await this.external.place({
+        account,
+        symbolId: this.symbols.requireId(symbolCode),
+        symbolCode,
+        side: request.side,
+        type: 'MARKET',
+        volume: volume.toString(),
+        price: null,
+        stopPrice: null,
+        stopLoss: request.stopLoss ?? null,
+        takeProfit: request.takeProfit ?? null,
+        userId,
+      });
+      this.metrics.ordersSubmitted.inc({
+        symbol: symbolCode,
+        type: 'MARKET',
+        outcome: outcome.status === OrderStatus.FILLED ? 'filled' : 'external',
+      });
+      return {
+        orderId: outcome.orderId,
+        positionId: outcome.externalPositionId === null ? undefined : outcome.orderId,
+        status: outcome.status,
+        symbol: symbolCode,
+        side: request.side,
+        volume: outcome.filledVolume === '0' ? volume.toString() : outcome.filledVolume,
+        price: outcome.averagePrice ?? '0',
+        ...(outcome.reason === null ? {} : { reason: outcome.reason }),
+      } as OrderResult;
+    }
+
     const tick = await this.quotes.requireFresh(symbolCode, now);
     const entryPrice = normalizePrice(spec, entryPriceFor(request.side, tick));
 
@@ -452,31 +501,50 @@ export class OrdersService {
         commission,
       });
 
-      return { order, position };
+      /**
+       * The outbox rows go in **here**, with the fill, so a durable
+       * subscriber is told if and only if the fill committed. The same ids
+       * are handed to `EventsService` after the commit, so the socket frame
+       * and the outbox row describe one occurrence rather than two.
+       */
+      const filled = {
+        orderId: order.id,
+        // The position the fill created. `position.opened` names it too, but a
+        // subscriber that cares about *this order* should not have to correlate
+        // two events by timing to learn what became of it.
+        positionId: position.id,
+        symbol: symbolCode,
+        side: request.side,
+        volume: volume.toString(),
+        price: entryPrice.toString(),
+      };
+      const opened = {
+        positionId: position.id,
+        symbol: symbolCode,
+        side: request.side,
+        volume: volume.toString(),
+        entryPrice: entryPrice.toString(),
+        margin: margin.toString(),
+      };
+      const recordedFill = await this.outbox.record(tx, DomainEvent.ORDER_FILLED, account.id, filled);
+      const recordedOpen = await this.outbox.record(
+        tx,
+        DomainEvent.POSITION_OPENED,
+        account.id,
+        opened,
+      );
+      return { order, position, filled, opened, recordedFill, recordedOpen };
     });
 
     this.metrics.ordersSubmitted.inc({ symbol: symbolCode, type: 'MARKET', outcome: 'filled' });
 
     // Published after the transaction commits, never inside it. A subscriber
     // must not be told about a fill that a rollback is about to erase.
-    await this.events.publish(DomainEvent.ORDER_FILLED, account.id, {
-      orderId: result.order.id,
-      // The position the fill created. `position.opened` names it too, but a
-      // subscriber that cares about *this order* should not have to correlate
-      // two events by timing to learn what became of it.
-      positionId: result.position.id,
-      symbol: symbolCode,
-      side: request.side,
-      volume: volume.toString(),
-      price: entryPrice.toString(),
+    await this.events.publish(DomainEvent.ORDER_FILLED, account.id, result.filled, {
+      eventId: result.recordedFill.eventId,
     });
-    await this.events.publish(DomainEvent.POSITION_OPENED, account.id, {
-      positionId: result.position.id,
-      symbol: symbolCode,
-      side: request.side,
-      volume: volume.toString(),
-      entryPrice: entryPrice.toString(),
-      margin: margin.toString(),
+    await this.events.publish(DomainEvent.POSITION_OPENED, account.id, result.opened, {
+      eventId: result.recordedOpen.eventId,
     });
     await this.audit.record({
       actorId: userId,

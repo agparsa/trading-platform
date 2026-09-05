@@ -1197,6 +1197,133 @@ const checks: Check[] = [
   },
   {
     /**
+     * Broker connections, over HTTP.
+     *
+     * The one thing worth proving on the wire: a credential goes in and no
+     * route brings it back. The service has integration tests for the sealing;
+     * this checks that the routes exist, are guarded, and that the value is
+     * absent from every representation a client can ask for — including the
+     * one that lists everything.
+     *
+     * Skipped against a deployment: it creates a connection on somebody's
+     * production platform, which is not a smoke check.
+     */
+    name: 'a venue credential goes in over HTTP and no route brings it back',
+    run: async () => {
+      if (TARGET !== undefined) {
+        console.log('      (skipped against a deployment — this one creates a connection)');
+        return;
+      }
+      const prisma = new PrismaClient();
+      const password = 'a-sufficiently-long-passphrase';
+      const email = `smoke-venue-${Date.now()}@test.local`;
+      try {
+        await fetch(`${BASE}/api/v1/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: registration(email, password, 'Smoke Venue'),
+        });
+        const user = await prisma.user.findFirst({ where: { email } });
+        if (user === null) {
+          console.log('      (registration is closed on this deployment; skipped)');
+          return;
+        }
+        await prisma.user.update({ where: { id: user.id }, data: { role: 'ADMIN' } });
+        const login = await fetch(`${BASE}/api/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+        const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+        const connectors = await fetch(`${BASE}/api/v1/admin/broker-connections/connectors`, {
+          headers: auth,
+        });
+        assert(connectors.status === 200, `connectors returned ${connectors.status}`);
+        const kinds = (
+          (await connectors.json()) as { data: { connectors: { kind: string }[] } }
+        ).data.connectors.map((row) => row.kind);
+        assert(kinds.includes('MOCK'), `the mock connector is not registered: ${kinds.join(',')}`);
+
+        const created = await fetch(`${BASE}/api/v1/admin/broker-connections`, {
+          method: 'POST',
+          headers: { ...auth, 'Idempotency-Key': crypto.randomUUID() },
+          body: JSON.stringify({ name: `smoke-${Date.now()}`, adapterKind: 'MOCK' }),
+        });
+        assert(created.status === 201, `creating a connection returned ${created.status}`);
+        const connection = ((await created.json()) as { data: { id: string } }).data;
+
+        const secret = `smoke-secret-${Date.now()}`;
+        const sealed = await fetch(
+          `${BASE}/api/v1/admin/broker-connections/${connection.id}/credentials`,
+          {
+            method: 'POST',
+            headers: { ...auth, 'Idempotency-Key': crypto.randomUUID() },
+            body: JSON.stringify({
+              kind: 'LOGIN_PASSWORD_SERVER',
+              fields: { login: '1001', password: secret, server: 'Mock-Live' },
+            }),
+          },
+        );
+        assert(sealed.status === 201, `setting credentials returned ${sealed.status}`);
+        assert(
+          !(await sealed.clone().text()).includes(secret),
+          'the response to setting a credential carried the credential back',
+        );
+
+        for (const path of [
+          '/admin/broker-connections',
+          `/admin/broker-connections/${connection.id}`,
+        ]) {
+          const response = await fetch(`${BASE}/api/v1${path}`, { headers: auth });
+          const body = await response.text();
+          assert(response.status === 200, `${path} returned ${response.status}`);
+          assert(!body.includes(secret), `${path} carried the credential value`);
+        }
+
+        // Testing it reaches the mock venue and records what it can do.
+        const tested = await fetch(
+          `${BASE}/api/v1/admin/broker-connections/${connection.id}/test`,
+          {
+            method: 'POST',
+            headers: { ...auth, 'Idempotency-Key': crypto.randomUUID() },
+            body: '{}',
+          },
+        );
+        assert(tested.status === 201, `testing the connection returned ${tested.status}`);
+        const verdict = (await tested.json()) as {
+          data: { status: string; capabilities: Record<string, unknown> | null };
+        };
+        assert(
+          verdict.data.status === 'CONNECTED',
+          `the mock venue answered ${verdict.data.status}`,
+        );
+        assert(
+          verdict.data.capabilities?.['supportsMarketOrders'] === true,
+          'the venue reported no capabilities',
+        );
+
+        // And a trader reaches none of it.
+        await prisma.user.update({ where: { id: user.id }, data: { role: 'USER' } });
+        const asTrader = await fetch(`${BASE}/api/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const traderToken = ((await asTrader.json()) as { data: { accessToken: string } }).data
+          .accessToken;
+        const refused = await fetch(`${BASE}/api/v1/admin/broker-connections`, {
+          headers: { Authorization: `Bearer ${traderToken}` },
+        });
+        assert(refused.status === 403, `a trader was answered ${refused.status}`);
+      } finally {
+        await prisma.$disconnect();
+      }
+    },
+  },
+  {
+    /**
      * The security feed, over HTTP.
      *
      * A sign-in and a minted key were just recorded for this person; both must

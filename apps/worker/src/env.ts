@@ -33,6 +33,14 @@ export const workerEnvSchema = z.object({
   SWAP_ACCRUAL_CRON: z.string().default('0 0 * * *'),
   RECONCILIATION_CRON: z.string().default('15 * * * *'),
   MAINTENANCE_CRON: z.string().default('30 * * * *'),
+  // Every minute: a venue that has been down for fifty seconds is worth
+  // knowing about, and the monitor's breaker is what stops this hammering.
+  BROKER_HEALTH_CRON: z.string().default('* * * * *'),
+  // The outbox relay. Frequent, because it is the durable copy of events a
+  // subscriber is waiting on; the backoff lives on the row, not here.
+  OUTBOX_RELAY_CRON: z.string().default('* * * * *'),
+  OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(5000).default(200),
+  OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(100).default(10),
   /**
    * How long identity documents are kept after a record is decided. Must agree
    * with the API's value: the API states the policy to the person, the worker

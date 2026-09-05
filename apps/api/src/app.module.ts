@@ -26,6 +26,8 @@ import { WithdrawalsModule } from './withdrawals/withdrawals.module';
 import { CredentialsModule } from './credentials/credentials.module';
 import { BrokersModule } from './brokers/brokers.module';
 import { SecurityModule } from './security/security.module';
+import { BrokerConnectionsModule } from './broker-connections/broker-connections.module';
+import { OutboxModule } from './outbox/outbox.module';
 import { MasterModule } from './master/master.module';
 import { IntegrityModule } from './integrity/integrity.module';
 import { OperationsModule } from './operations/operations.module';
@@ -107,6 +109,8 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
     CredentialsModule,
     BrokersModule,
     SecurityModule,
+    BrokerConnectionsModule,
+    OutboxModule,
     MasterModule,
     IntegrityModule,
     OperationsModule,

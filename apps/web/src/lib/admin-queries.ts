@@ -139,6 +139,12 @@ export interface IntegritySignalRow {
 const adminKeys = {
   users: (search: string) => ['admin', 'users', search] as const,
   brokers: ['admin', 'brokers'] as const,
+  brokerConnections: ['admin', 'broker-connections'] as const,
+  brokerConnectors: ['admin', 'broker-connectors'] as const,
+  brokerMappings: (id: string) => ['admin', 'broker-mappings', id] as const,
+  brokerCatalogue: (id: string) => ['admin', 'broker-catalogue', id] as const,
+  brokerInbox: (id: string) => ['admin', 'broker-inbox', id] as const,
+  unconfirmedOrders: ['admin', 'unconfirmed-orders'] as const,
   securityFeed: (filter: string) => ['admin', 'security-feed', filter] as const,
   user: (id: string) => ['admin', 'user', id] as const,
   accounts: (search: string) => ['admin', 'accounts', search] as const,
@@ -1159,5 +1165,346 @@ export function useSecurityFeed(filter: { severity?: string; kind?: string; user
     queryFn: () =>
       api.get<{ events: AdminSecurityEventRow[] }>('/admin/security/events', { query }),
     refetchInterval: 30_000,
+  });
+}
+
+// ---- Broker connections ---------------------------------------------------
+
+export interface ConnectorRow {
+  kind: string;
+  displayName: string;
+  /** What the connector was written against. Empty means the mock. */
+  documentation: string;
+  credentialFields: { key: string; label: string; secret: boolean }[];
+}
+
+export interface BrokerCredentialRow {
+  id: string;
+  kind: string;
+  /** Identifies the credential. There is no field here that could use it. */
+  fingerprint: string;
+  visible: Record<string, string> | null;
+  createdAt: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+}
+
+export interface BrokerConnectionRow {
+  id: string;
+  name: string;
+  adapterKind: string;
+  enabled: boolean;
+  status:
+    | 'UNKNOWN'
+    | 'CONNECTING'
+    | 'CONNECTED'
+    | 'DEGRADED'
+    | 'DISCONNECTED'
+    | 'AUTH_FAILED'
+    | 'RATE_LIMITED';
+  capabilities: Record<string, unknown> | null;
+  lastHeartbeatAt: string | null;
+  lastQuoteAt: string | null;
+  lastOrderEventAt: string | null;
+  latencyMs: number | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  circuitOpenUntil: string | null;
+  statusChangedAt: string | null;
+  createdAt: string;
+  credentials: BrokerCredentialRow[];
+}
+
+export function useBrokerConnectors() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.brokerConnectors,
+    queryFn: () => api.get<{ connectors: ConnectorRow[] }>('/admin/broker-connections/connectors'),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useBrokerConnections() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.brokerConnections,
+    queryFn: () => api.get<{ connections: BrokerConnectionRow[] }>('/admin/broker-connections'),
+    // A venue's state is the one thing on this screen that changes by itself.
+    refetchInterval: 15_000,
+  });
+}
+
+export function useCreateBrokerConnection() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; adapterKind: string }) =>
+      api.post<BrokerConnectionRow>('/admin/broker-connections', input, key()),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: adminKeys.brokerConnections });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+    },
+  });
+}
+
+/**
+ * Sets the credentials. The values leave this browser once, over TLS, and are
+ * sealed on arrival; nothing ever sends them back, so the form clears itself
+ * and the panel afterwards shows a fingerprint.
+ */
+export function useSetBrokerCredentials() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      kind,
+      fields,
+    }: {
+      id: string;
+      kind: string;
+      fields: Record<string, string>;
+    }) =>
+      api.post<BrokerConnectionRow>(
+        `/admin/broker-connections/${id}/credentials`,
+        { kind, fields },
+        key(),
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: adminKeys.brokerConnections });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+    },
+  });
+}
+
+export function useSetBrokerConnectionEnabled() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, enabled, reason }: { id: string; enabled: boolean; reason: string }) =>
+      api.post<BrokerConnectionRow>(
+        `/admin/broker-connections/${id}/enabled`,
+        { enabled, reason },
+        key(),
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: adminKeys.brokerConnections });
+    },
+  });
+}
+
+export function useTestBrokerConnection() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<{
+        status: string;
+        capabilities: Record<string, unknown> | null;
+        failure: { code: string; message: string } | null;
+      }>(`/admin/broker-connections/${id}/test`, {}, key()),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: adminKeys.brokerConnections });
+    },
+  });
+}
+
+
+// ---- Instrument mappings, the inbox, and unconfirmed orders ---------------
+
+export interface MappingRow {
+  id: string;
+  symbolId: string;
+  symbolCode: string;
+  externalSymbol: string;
+  contractSize: string | null;
+  volumeStep: string | null;
+  minVolume: string | null;
+  maxVolume: string | null;
+  priceDecimals: number | null;
+  enabled: boolean;
+  syncedAt: string | null;
+}
+
+export interface CatalogueRow {
+  externalSymbol: string;
+  description: string;
+  quoteCurrency: string;
+  contractSize: string;
+  volumeStep: string;
+  minVolume: string;
+  maxVolume: string;
+  priceDecimals: number;
+  tradable: boolean;
+  /** The platform symbol this is already mapped to, if any. */
+  mappedTo: string | null;
+}
+
+export interface InboundEventRow {
+  id: string;
+  externalEventId: string;
+  sequence: string | null;
+  kind: string;
+  externalAccountId: string | null;
+  status: 'PENDING' | 'APPLIED' | 'SKIPPED' | 'FAILED';
+  attempts: number;
+  lastError: string | null;
+  skipReason: string | null;
+  occurredAt: string;
+  receivedAt: string;
+  appliedAt: string | null;
+}
+
+export interface SyncReportRow {
+  checked: number;
+  changed: { symbolCode: string; differences: string[] }[];
+  /** Mapped instruments the venue no longer lists. Reported, never repaired. */
+  missing: string[];
+}
+
+export function useBrokerMappings(id: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.brokerMappings(id ?? ''),
+    queryFn: () => api.get<{ mappings: MappingRow[] }>(`/admin/broker-connections/${id}/mappings`),
+    enabled: id !== null,
+  });
+}
+
+/**
+ * The venue's catalogue, read live on the server each time. It is what a
+ * person maps against, and a cached one is how an instrument gets mapped to a
+ * symbol the venue retired last month.
+ */
+export function useBrokerCatalogue(id: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.brokerCatalogue(id ?? ''),
+    queryFn: () =>
+      api.get<{ instruments: CatalogueRow[] }>(`/admin/broker-connections/${id}/catalogue`),
+    enabled: id !== null,
+    staleTime: 60_000,
+  });
+}
+
+export function useMapInstrument() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      symbolCode,
+      externalSymbol,
+    }: {
+      id: string;
+      symbolCode: string;
+      externalSymbol: string;
+    }) =>
+      api.post<MappingRow>(
+        `/admin/broker-connections/${id}/mappings`,
+        { symbolCode, externalSymbol },
+        key(),
+      ),
+    onSuccess: (_row, variables) => {
+      void client.invalidateQueries({ queryKey: adminKeys.brokerMappings(variables.id) });
+      void client.invalidateQueries({ queryKey: adminKeys.brokerCatalogue(variables.id) });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+    },
+  });
+}
+
+export function useSetMappingEnabled() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      symbolCode,
+      enabled,
+    }: {
+      id: string;
+      symbolCode: string;
+      enabled: boolean;
+    }) =>
+      api.post<MappingRow>(
+        `/admin/broker-connections/${id}/mappings/enabled`,
+        { symbolCode, enabled },
+        key(),
+      ),
+    onSuccess: (_row, variables) => {
+      void client.invalidateQueries({ queryKey: adminKeys.brokerMappings(variables.id) });
+    },
+  });
+}
+
+export function useSyncMappings() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<SyncReportRow>(`/admin/broker-connections/${id}/mappings/sync`, {}, key()),
+    onSuccess: (_report, id) => {
+      void client.invalidateQueries({ queryKey: adminKeys.brokerMappings(id) });
+      void client.invalidateQueries({ queryKey: adminKeys.brokerCatalogue(id) });
+    },
+  });
+}
+
+export function useBrokerInbox(id: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.brokerInbox(id ?? ''),
+    queryFn: () => api.get<{ events: InboundEventRow[] }>(`/admin/broker-connections/${id}/inbox`),
+    enabled: id !== null,
+    refetchInterval: 15_000,
+  });
+}
+
+export function useReplayInboundEvent() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, eventId }: { id: string; eventId: string }) =>
+      api.post<{ replayed: true }>(
+        `/admin/broker-connections/${id}/inbox/${eventId}/replay`,
+        {},
+        key(),
+      ),
+    onSuccess: (_result, variables) => {
+      void client.invalidateQueries({ queryKey: adminKeys.brokerInbox(variables.id) });
+    },
+  });
+}
+
+export interface UnconfirmedOrderRow {
+  id: string;
+  clientOrderId: string | null;
+  accountId: string;
+  createdAt: string;
+}
+
+export function useUnconfirmedOrders() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.unconfirmedOrders,
+    queryFn: () => api.get<{ orders: UnconfirmedOrderRow[] }>('/admin/venue-recovery/unconfirmed'),
+    refetchInterval: 15_000,
+  });
+}
+
+/** Asks the venue again, now. It asks; it never resends and never guesses. */
+export function useResolveUnconfirmed() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (orderId: string) =>
+      api.post<{ resolved: boolean; status: string | null; reason: string | null }>(
+        `/admin/venue-recovery/unconfirmed/${orderId}/resolve`,
+        {},
+        key(),
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: adminKeys.unconfirmedOrders });
+    },
   });
 }

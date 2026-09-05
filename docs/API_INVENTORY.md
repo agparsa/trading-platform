@@ -102,6 +102,27 @@ handler is responsible for scoping the result to that user — which for
 | `POST`   | `/auth/password`               | `changePassword`          | SELF-SERVICE            |
 | `GET`    | `/auth/me`                     | `me`                      | _authenticated only_    |
 
+### `broker-connections/broker-connections.controller.ts` — base `/admin/broker-connections`
+
+| Verb   | Path                                                  | Handler             | Requires                                        |
+| ------ | ----------------------------------------------------- | ------------------- | ----------------------------------------------- |
+| `GET`  | `/admin/broker-connections/connectors`                | `connectors`        | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
+| `GET`  | `/admin/broker-connections`                           | `list`              | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
+| `GET`  | `/admin/broker-connections/:id`                       | `get`               | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
+| `POST` | `/admin/broker-connections`                           | `create`            | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `POST` | `/admin/broker-connections/:id/credentials`           | `setCredentials`    | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `POST` | `/admin/broker-connections/:id/enabled`               | `setEnabled`        | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `POST` | `/admin/broker-connections/:id/test`                  | `test`              | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `GET`  | `/admin/broker-connections/:id/mappings`              | `mappingList`       | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
+| `GET`  | `/admin/broker-connections/:id/catalogue`             | `catalogue`         | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
+| `GET`  | `/admin/broker-connections/:id/mappings/suggestions`  | `suggestions`       | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
+| `POST` | `/admin/broker-connections/:id/mappings`              | `map`               | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `POST` | `/admin/broker-connections/:id/mappings/enabled`      | `setMappingEnabled` | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `POST` | `/admin/broker-connections/:id/mappings/sync`         | `syncMappings`      | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `GET`  | `/admin/broker-connections/:id/inbox`                 | `inboxList`         | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
+| `GET`  | `/admin/broker-connections/:id/inbox/pending`         | `inboxPending`      | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
+| `POST` | `/admin/broker-connections/:id/inbox/:eventId/replay` | `replay`            | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+
 ### `brokers/brokers.controller.ts` — base `/admin/brokers`
 
 | Verb   | Path                        | Handler     | Requires                             |
@@ -300,6 +321,14 @@ handler is responsible for scoping the result to that user — which for
 | `GET`    | `/trades`                | `trades`        | POSITIONS_READ                            |
 | `GET`    | `/accounts/:id/state`    | `state`         | ACCOUNTS_READ                             |
 
+### `trading/venue-recovery.controller.ts` — base `/admin/venue-recovery`
+
+| Verb   | Path                                                 | Handler       | Requires                                        |
+| ------ | ---------------------------------------------------- | ------------- | ----------------------------------------------- |
+| `GET`  | `/admin/venue-recovery/unconfirmed`                  | `unconfirmed` | SESSION-ONLY (class), ACCOUNTS_READ_ANY         |
+| `POST` | `/admin/venue-recovery/run`                          | `run`         | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `POST` | `/admin/venue-recovery/unconfirmed/:orderId/resolve` | `resolve`     | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+
 ### `users/users.controller.ts` — base `/users`
 
 | Verb    | Path        | Handler  | Requires             |
@@ -347,7 +376,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**153 routes:** 76 `GET`, 66 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
+**172 routes:** 85 `GET`, 76 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

@@ -26,12 +26,12 @@ pnpm lint             ok
 pnpm format:check     ok
 pnpm typecheck        ok
 pnpm inventory --check ok
-pnpm test             137 files, 1846 tests, 0 failures
+pnpm test             141 files, 1903 tests, 0 failures
 pnpm build            ok
 ```
 
-4 applications (`api`, `web`, `worker`, `mobile`), 13 workspace packages, 42
-Prisma models, 113 API routes, ~78,000 lines of TypeScript. Live at
+4 applications (`api`, `web`, `worker`, `mobile`), 16 workspace packages, 52
+Prisma models, 161 API routes, ~78,000 lines of TypeScript. Live at
 https://devopss.ir.
 
 The route count was 95 here and 84 in `docs/API_INVENTORY.md`'s hand-written
@@ -188,6 +188,93 @@ failure on a `Date` in a DTO schema was caught here and nowhere else), web smoke
 `/admin/brokers`), pentest 44 attacks refused (running the platform from a
 broker with an escalated role; reading another person's feed). See
 [brokers.md](./brokers.md) and [security-events.md](./security-events.md).
+
+## New plan, Phase 2 — broker connection and adapter SDK
+
+`@tp/broker-sdk`, framework-free: the `BrokerAdapter` port; capability
+discovery (a connector says what the venue does, and an unsupported order type
+is refused before it is sent); `UNKNOWN` as a first-class order outcome with
+`queryOrder` as the recovery, so a timeout is never resent and never read as a
+breach; `ConnectionMonitor` — the seven-state machine with a doubling breaker
+that opens at once and for the cap on AUTH_FAILED and honours a venue's own
+retry-after; `MockBrokerAdapter`, which keeps real state and misbehaves on
+request across the whole §41/§67 catalogue including duplicate and
+out-of-order events; `brokerAdapterContract`, the suite any connector must
+pass; the credential envelope (seal, fingerprint, metadata, redaction); and a
+registry that **refuses to register a venue connector that names no
+documentation**.
+
+On the platform: `BrokerConnection` and `BrokerCredential` — RLS, a trigger
+that fixes what was sealed, a trigger that refuses deletion — the
+`/admin/broker-connections` routes (session-only; `broker_connections.manage`
+is person-only), the Connections screen, and the worker's per-minute health
+sweep that skips a connection whose breaker is open and reports a missing
+key, an unopenable blob and a missing connector each as a state on that
+connection rather than as a crash.
+
+**Still blocked:** a connector to a real venue needs that venue's API
+documentation and sandbox. Reported, not stubbed — see
+[broker-integration.md](./broker-integration.md).
+
+Fifty-seven new tests; six mutations caught. The seventh survived and found a
+real defect: **a nested Prisma `include` is not narrowed by the tenancy
+extension**, so a credential row misfiled under another firm was visible
+through its connection. Both services now name the tenant on the relation and
+[multi-tenancy.md](./multi-tenancy.md) §6 records the rule. Smoke 20, web smoke
+84 over 27 routes, pentest 45.
+
+## New plan, Phase 3 — broker accounts, external execution, outbox and inbox
+
+`Account.executionMode` decides where an order goes, and a database CHECK
+makes the meaningless combination impossible: an external account always
+carries a connection and an identity at the venue, and one venue account
+belongs to one platform account. `OrdersService` gains exactly one branch, and
+only after every refusal it already made — an external account is a different
+destination for a legal order, not a way around the rules.
+
+`ExternalExecutionService` writes the order row, with the `clientOrderId` it
+is about to send, **before** the request leaves. That ordering is the whole
+recovery story: a crash after sending leaves a row and a handle to ask about,
+where sending first would leave a position at a venue this platform cannot
+name. `OrderStatus.UNCONFIRMED` is what it records when the answer does not
+come back — including when the call threw, because a dropped connection is a
+fact about the connection and never about a trade. The state machine lets an
+order leave UNCONFIRMED only for a definite end, never back to ACCEPTED.
+
+`VenueRecoveryService` (in the API, beside the one definition of what a
+venue's answer does to these rows) asks each venue with the id that was sent,
+after a grace period, because the original request may still be in flight. It
+asks; it never resends. "The venue has no record of it" cancels the order —
+placing it again at today's price is the trader's decision, and a resend is
+how one intent becomes two positions. A venue that cannot be reached produces
+no decision at all. `/admin/venue-recovery` shows what is waiting and offers
+one verb: ask again.
+
+`BrokerInstrumentMapping` is explicit and audited. An unmapped instrument
+cannot be traded on that connection and the refusal names what is missing;
+suggestions stop at the first ambiguity; the venue's own lot terms are copied
+at map and re-read by a sync that **reports** what moved — including an
+instrument the venue has stopped listing — and repairs nothing.
+
+`OutboxEvent` is written in the same transaction as the change it describes
+and carries the id the socket frame carries, so one occurrence is never
+counted twice. The worker's relay keeps a failure rather than dropping it:
+attempts counted, backoff held in the row so a restart cannot lose it, and
+ABANDONED — not deleted — after the cap. `BrokerInboundEvent` records what a
+venue sent before it is acted on: unique per `(connection, external id)` so a
+redelivery is never a second fill, ordered by the venue's own sequence,
+immutable and undeletable, with only the handling status moving and a replay
+for what corrected code should re-apply.
+
+Forty-five new tests. Eleven mutations run, nine caught outright; two survived
+and both were real gaps in the tests rather than in the code — that the outbox
+row is written _inside_ the fill's transaction, and that a credential misfiled
+under another firm is not shown on its own connection. Both now have tests
+that fail when the guarantee is removed. `pnpm verify` green: 1955 tests.
+[external-execution.md](./external-execution.md).
+
+**Still blocked:** the connector to a real venue. Everything above is proved
+against `MockBrokerAdapter`.
 
 ## Phase 9 — API keys and service tokens
 

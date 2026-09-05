@@ -14,6 +14,7 @@
     "@nestjs/config": "catalog:",
     "@nestjs/core": "catalog:",
     "@prisma/client": "catalog:",
+    "@tp/broker-sdk": "workspace:*",
     "@tp/crypto-core": "workspace:*",
     "@tp/financial-core": "workspace:*",
     "@tp/market-core": "workspace:*",

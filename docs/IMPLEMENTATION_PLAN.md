@@ -93,7 +93,7 @@ what every account status allows. [brokers.md](./brokers.md),
 [security-events.md](./security-events.md), and the Phase 1 section of
 [COMPLETION_STATUS.md](./COMPLETION_STATUS.md).
 
-## Phase 2 — Broker connection and adapter SDK · ~2–3 weeks
+## Phase 2 — Broker connection and adapter SDK · **done, except the connector**
 
 `packages/broker-sdk`:
 
@@ -115,7 +115,16 @@ API documentation and sandbox credentials. The interface, mock, contract
 tests, credential abstraction, state machine and mapping layer will be ready;
 the connector is reported as blocked, not stubbed.
 
-## Phase 3 — Broker accounts and external account mapping · ~2 weeks
+Done as written. `@tp/broker-sdk` (port, capabilities, `ConnectionMonitor`,
+`MockBrokerAdapter` with the whole failure catalogue, `brokerAdapterContract`,
+credential envelope, registry that refuses an undocumented connector);
+`BrokerConnection` and `BrokerCredential` with RLS and immutability triggers;
+`/admin/broker-connections` and the Connections screen; the worker's
+per-minute health sweep. The connector to a venue remains blocked on that
+venue's documentation. [broker-adapter-sdk.md](./broker-adapter-sdk.md),
+[broker-integration.md](./broker-integration.md).
+
+## Phase 3 — Broker accounts and external account mapping · **done**
 
 - `externalAccountId` on `Account`; `externalOrderId` / `externalExecutionId`
   / `externalPositionId` on the trading rows; `BrokerInstrumentMapping`.
@@ -128,6 +137,21 @@ the connector is reported as blocked, not stubbed.
   worker) and inbox (`BrokerInboundEvent`, keyed by external id: dedupe, order,
   replay) (§42).
 - Reconnect recovery sequence (§43) against the mock.
+
+Done as written. `Account.executionMode` with a database CHECK that an
+external account carries a connection and an identity at the venue;
+`clientOrderId` / `externalOrderId` / `externalExecutionId` /
+`externalPositionId` on the trading rows; `BrokerInstrumentMapping` (explicit,
+audited, never inferred — an unmapped instrument is refused by name);
+`OrderStatus.UNCONFIRMED` and `ExternalExecutionService`, the one branch in
+the order path, which records the order row **before** the request leaves and
+never resends; `VenueRecoveryService`, the sweep that asks venues what became
+of orders whose answers were lost; `OutboxEvent` written inside the
+transaction that produced the change and relayed by the worker with a backoff
+held in the row; `BrokerInboundEvent`, unique on `(connection, external id)`,
+immutable, ordered by the venue's own sequence, replayable. Instruments,
+Inbox and "waiting on a venue" in the admin panel.
+[external-execution.md](./external-execution.md).
 
 ## Phase 4 — Master accounts and permission hierarchy · ~1–2 weeks
 

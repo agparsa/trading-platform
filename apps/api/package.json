@@ -23,6 +23,7 @@
     "@node-rs/argon2": "catalog:",
     "@prisma/client": "catalog:",
     "@tp/api-client": "workspace:*",
+    "@tp/broker-sdk": "workspace:*",
     "@tp/crypto-core": "workspace:*",
     "@tp/financial-core": "workspace:*",
     "@tp/integrity-core": "workspace:*",

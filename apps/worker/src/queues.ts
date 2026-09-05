@@ -17,6 +17,10 @@ export const QueueName = {
   IDEMPOTENCY_SWEEP: 'idempotency-sweep',
   /** Outbound notifications (email, in-app). */
   NOTIFICATIONS: 'notifications',
+  /** Asks every enabled venue connection how it is, and records the answer. */
+  BROKER_HEALTH: 'broker-health',
+  /** Hands on what the transactional outbox holds. */
+  OUTBOX_RELAY: 'outbox-relay',
 } as const;
 export type QueueName = (typeof QueueName)[keyof typeof QueueName];
 

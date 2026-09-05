@@ -10,6 +10,7 @@ import { OrdersService } from '../../src/trading/orders.service';
 import { PositionsService } from '../../src/trading/positions.service';
 import { TriggerEngineService } from '../../src/trading/trigger-engine.service';
 import { SnapshotService } from '../../src/trading/snapshot.service';
+import { VenueRecoveryService } from '../../src/trading/venue-recovery.service';
 import { TickBus } from '../../src/market/tick-bus';
 import { AccountAccessService } from '../../src/accounts/account-access.service';
 import { KillSwitchService } from '../../src/operations/kill-switch.service';
@@ -20,6 +21,12 @@ import { MetricsService } from '../../src/metrics/metrics.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 import type { RedisService } from '../../src/redis/redis.service';
 import { TradingThrottle } from '../../src/trading/trading-throttle.service';
+import { OutboxService } from '../../src/outbox/outbox.service';
+import { ExternalExecutionService } from '../../src/trading/external-execution.service';
+import { BrokerConnectionsService } from '../../src/broker-connections/broker-connections.service';
+import { BrokerMappingService } from '../../src/broker-connections/broker-mapping.service';
+import { BrokerAdapterRegistry } from '@tp/broker-sdk';
+import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import type { TenantResolver } from '../../src/tenancy/tenant-resolver.service';
 import { DEFAULT_TENANT_ID, DEFAULT_TENANT_SLUG } from './harness';
 
@@ -70,9 +77,16 @@ export interface TradingStack {
   ledger: LedgerService;
   triggers: TriggerEngineService;
   snapshots: SnapshotService;
+  /** The sweep that asks venues about orders whose answers were lost. */
+  recovery: VenueRecoveryService;
   /** Puts a price into the quote cache, as the market feed would. */
   conversion: ConversionService;
   publishQuote: (symbol: string, bid: string, ask: string, atMs?: number) => Promise<void>;
+  /** The external execution path and what it needs, for tests about venues. */
+  external: ExternalExecutionService;
+  connections: BrokerConnectionsService;
+  mappings: BrokerMappingService;
+  registry: BrokerAdapterRegistry;
 }
 
 /**
@@ -102,6 +116,11 @@ export async function buildTradingStack(
     TRADING_SERVER_TIMEZONE: 'UTC',
     // Snapshots are driven explicitly in tests, never on a timer.
     ACCOUNT_SNAPSHOT_INTERVAL_MS: 0,
+    // Recovery passes are driven explicitly too, and with no grace: a test
+    // that had to sleep five seconds to see a sweep would be a slow test
+    // proving something about `setTimeout`.
+    VENUE_RECOVERY_INTERVAL_MS: 0,
+    VENUE_RECOVERY_GRACE_MS: 0,
     TRIGGER_ENGINE_ENABLED: true,
     // No throttle in tests: every tick must be acted on, or a stop-out
     // assertion would depend on how fast the test machine is.
@@ -131,6 +150,28 @@ export async function buildTradingStack(
   const killSwitch = new KillSwitchService(prismaService, audit);
   const events = new EventsService(redis);
   const throttle = new TradingThrottle(redis, config as never);
+  const outbox = new OutboxService();
+  /**
+   * The external path, wired with a registry the test controls. Accounts in
+   * these tests are INTERNAL unless a test says otherwise, so this exists to
+   * be reachable rather than to be used by most of them.
+   */
+  const registry = new BrokerAdapterRegistry();
+  const connections = new BrokerConnectionsService(
+    prismaService,
+    audit,
+    new SecretBox(parseEncryptionKeys(generateEncryptionKey('test'))) as never,
+    registry,
+  );
+  const mappings = new BrokerMappingService(prismaService, audit, connections);
+  const external = new ExternalExecutionService(
+    prismaService,
+    connections,
+    mappings,
+    audit,
+    events,
+    outbox,
+  );
 
   const orders = new OrdersService(
     prismaService,
@@ -145,6 +186,8 @@ export async function buildTradingStack(
     metrics,
     audit,
     events,
+    outbox,
+    external,
     throttle,
     config as never,
   );
@@ -210,9 +253,14 @@ export async function buildTradingStack(
   };
 
   const snapshots = new SnapshotService(config as never, prismaService, accountState, tenants);
+  const recovery = new VenueRecoveryService(config as never, prismaService, external, tenants);
 
   return {
     redis: redis as unknown as { client: { del(key: string): Promise<number> } },
+    external,
+    connections,
+    mappings,
+    registry,
     access,
     killSwitch,
     symbols,
@@ -224,6 +272,7 @@ export async function buildTradingStack(
     ledger,
     triggers,
     snapshots,
+    recovery,
     publishQuote,
   };
 }

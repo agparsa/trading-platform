@@ -8,6 +8,9 @@ import { SwapAccrualService } from './jobs/swap-accrual.service';
 import { ReconciliationService } from './jobs/reconciliation.service';
 import { MaintenanceService } from './jobs/maintenance.service';
 import { NotificationsService } from './jobs/notifications.service';
+import { BrokerHealthService } from './jobs/broker-health.service';
+import { OutboxRelayService } from './jobs/outbox-relay.service';
+import { BrokerAdapterRegistry } from '@tp/broker-sdk';
 import { PushModule } from './push/push.module';
 
 @Module({
@@ -38,6 +41,9 @@ import { PushModule } from './push/push.module';
     ReconciliationService,
     MaintenanceService,
     NotificationsService,
+    BrokerHealthService,
+    OutboxRelayService,
+    { provide: BrokerAdapterRegistry, useFactory: () => new BrokerAdapterRegistry() },
     QueueRegistry,
   ],
 })

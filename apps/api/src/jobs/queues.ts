@@ -12,6 +12,15 @@ export const QueueName = {
   RECONCILIATION: 'reconciliation',
   IDEMPOTENCY_SWEEP: 'idempotency-sweep',
   NOTIFICATIONS: 'notifications',
+  /**
+   * The worker's venue-connection health sweep. Named here for the parity
+   * test rather than because the API enqueues it: nothing on a request path
+   * should be able to make the platform call a venue on demand except the
+   * connection test route, which does it inline and inside the breaker.
+   */
+  BROKER_HEALTH: 'broker-health',
+  /** The worker's outbox relay. Named here for the same parity test. */
+  OUTBOX_RELAY: 'outbox-relay',
 } as const;
 export type QueueName = (typeof QueueName)[keyof typeof QueueName];
 

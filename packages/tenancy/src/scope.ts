@@ -89,6 +89,11 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'ServiceToken',
   'CredentialUsage',
   'SecurityEvent',
+  'BrokerConnection',
+  'BrokerCredential',
+  'BrokerInstrumentMapping',
+  'OutboxEvent',
+  'BrokerInboundEvent',
 ]);
 
 /**

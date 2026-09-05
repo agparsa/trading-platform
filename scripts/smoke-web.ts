@@ -514,6 +514,138 @@ async function main(): Promise<void> {
       tokensBody.slice(0, 200),
     );
 
+    /**
+     * Connections: the screen exists, the mock connector is offered, and the
+     * credential form asks for the fields that connector declared. What it
+     * must never do is show a value back, so the form is filled, saved, and
+     * the page checked for the secret afterwards.
+     */
+    await visit(adminPage, '/admin/connections', {
+      url: '/admin/connections',
+      text: /Mock venue|No venue is connected/i,
+    });
+    /**
+     * A fresh name each run. The suite does not empty the database, and a
+     * fixed name meant the second run found the connection already made, with
+     * credentials already on it — so the flow below silently exercised a
+     * different screen than the one it claims to.
+     */
+    const venueName = `Smoke venue ${Date.now()}`;
+    await adminPage.getByPlaceholder('Primary liquidity').fill(venueName);
+    await adminPage.getByRole('button', { name: /Create connection/i }).click();
+    await adminPage
+      .getByRole('button', { name: /Set credentials/i })
+      .last()
+      .waitFor({ timeout: 10_000 });
+    await adminPage
+      .getByRole('button', { name: /Set credentials/i })
+      .last()
+      .click();
+    const credentialForm = adminPage.getByTestId('broker-credential-form');
+    await credentialForm.waitFor({ timeout: 10_000 });
+    const venueSecret = `web-smoke-secret-${Date.now()}`;
+    await credentialForm.locator('input[type="text"]').first().fill('1001');
+    await credentialForm.locator('input[type="password"]').first().fill(venueSecret);
+    await credentialForm.locator('input[type="text"]').nth(1).fill('Mock-Live');
+    await credentialForm.getByRole('button', { name: /Save credentials/i }).click();
+    await adminPage
+      .getByRole('button', { name: /^Test$/ })
+      .last()
+      .waitFor({ timeout: 10_000 });
+    await adminPage
+      .getByRole('button', { name: /^Test$/ })
+      .last()
+      .click();
+    const connected = await adminPage
+      .getByText(/Connected/i)
+      .first()
+      .waitFor({ timeout: 15_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    const connectionsBody = await adminPage.getByTestId('connections-panel').innerText();
+    ok(
+      connected && connectionsBody.includes(venueName) && !connectionsBody.includes(venueSecret),
+      'a venue connects from the console and the screen never shows the credential back',
+      connectionsBody.replace(/\s+/g, ' ').slice(0, 220),
+    );
+
+    /**
+     * Instruments: the mapping a person writes by hand, end to end.
+     *
+     * The point of clicking it rather than posting to the route is that this
+     * is the screen where a firm decides which contract at a venue its orders
+     * reach. If the catalogue does not arrive, or the mapping does not come
+     * back with the venue's own lot terms on it, the screen is lying about
+     * something that decides where money goes.
+     */
+    await adminPage
+      .getByRole('button', { name: /^Instruments$/ })
+      .last()
+      .click();
+    const mappings = adminPage.getByTestId('broker-mappings');
+    await mappings.waitFor({ timeout: 10_000 });
+    // `<option>` elements are never "visible" to Playwright, so the catalogue
+    // is read from the select's contents rather than waited on as an element.
+    let options: string[] = [];
+    for (let attempt = 0; attempt < 30 && !options.some((o) => o.includes('XAUUSD.m')); attempt++) {
+      options = await mappings.locator('select option').allTextContents();
+      if (options.some((o) => o.includes('XAUUSD.m'))) break;
+      await adminPage.waitForTimeout(500);
+    }
+    ok(
+      options.some((option) => option.includes('XAUUSD.m')),
+      "the venue's own instrument catalogue is read live into the mapping screen",
+      options.join(' | ').slice(0, 160),
+    );
+    await mappings.getByPlaceholder('XAUUSD').fill('XAUUSD');
+    await mappings.locator('select').selectOption('XAUUSD.m');
+    await mappings.getByRole('button', { name: /Map instrument/i }).click();
+    const mapped = await mappings
+      .getByText('XAUUSD.m')
+      .first()
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    const mappingsBody = await mappings.innerText();
+    ok(
+      mapped && /contract 100/.test(mappingsBody) && /step 0.01/.test(mappingsBody),
+      "an instrument maps to the venue's name for it, carrying the venue's own terms",
+      mappingsBody.replace(/\s+/g, ' ').slice(0, 200),
+    );
+
+    await adminPage
+      .getByRole('button', { name: /^Inbox$/ })
+      .last()
+      .click();
+    const inbox = adminPage.getByTestId('broker-inbox');
+    await inbox.waitFor({ timeout: 10_000 });
+    let inboxBody = '';
+    for (let attempt = 0; attempt < 30; attempt++) {
+      inboxBody = await inbox.innerText();
+      if (!/Loading…/.test(inboxBody)) break;
+      await adminPage.waitForTimeout(500);
+    }
+    ok(
+      /sent nothing yet|ORDER_|POSITION_/.test(inboxBody),
+      'the inbox screen reports what the venue has sent, and says so plainly when it is nothing',
+      inboxBody.replace(/\s+/g, ' ').slice(0, 160),
+    );
+
+    await visit(adminPage, '/admin/connections', {
+      url: '/admin/connections',
+      text: /Waiting on a venue/i,
+    });
+    const waiting = await adminPage.getByTestId('unconfirmed-orders-panel').innerText();
+    ok(
+      /Nothing is waiting on a venue/i.test(waiting),
+      'the venue-recovery console is on the connections page and reports an empty queue',
+      waiting.replace(/\s+/g, ' ').slice(0, 160),
+    );
+
     await visit(adminPage, '/admin/security', { url: '/admin/security', text: /SIGN_IN/ });
     const securityFeed = await adminPage.getByTestId('security-feed').innerText();
     ok(

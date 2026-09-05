@@ -238,6 +238,21 @@ export const Permission = {
   /** A firm's own settings and branding. The owner's, and the platform's. */
   TENANT_SETTINGS_MANAGE: 'tenant.settings.manage',
 
+  // --- broker connections ---
+  /**
+   * See a firm's venue connections: which connector, whether it is up, how
+   * late it is. Never a credential — those never leave the server in any
+   * form, for any capability.
+   */
+  BROKER_CONNECTIONS_READ: 'broker_connections.read',
+  /**
+   * Create a connection, change its settings, enable or disable it, and set
+   * or rotate the credentials it authenticates with. Person-only: a leaked
+   * key that could point a firm's execution at a venue of its holder's
+   * choosing is the worst thing on this list.
+   */
+  BROKER_CONNECTIONS_MANAGE: 'broker_connections.manage',
+
   // --- security ---
   /**
    * The security event feed: sign-ins, lockouts, second factors, sessions
@@ -347,6 +362,8 @@ const ADMIN_PERMISSIONS: readonly Permission[] = [
   Permission.RECONCILIATION_READ,
   Permission.RECONCILIATION_MANAGE,
   Permission.RECONCILIATION_RUN,
+  Permission.BROKER_CONNECTIONS_READ,
+  Permission.BROKER_CONNECTIONS_MANAGE,
   /**
    * Only ADMIN edits roles. `escalationsIn` already bounds what any editor can
    * grant, so this is not the safety mechanism — it is the smaller statement
@@ -399,6 +416,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.INTEGRITY_READ,
     Permission.INSTRUMENTS_READ,
     Permission.RECONCILIATION_READ,
+    Permission.BROKER_CONNECTIONS_READ,
     Permission.SYSTEM_OPERATIONS,
     Permission.API_KEYS_READ_ANY,
   ],
@@ -427,6 +445,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.INTEGRITY_MANAGE,
     Permission.INSTRUMENTS_READ,
     Permission.RECONCILIATION_READ,
+    Permission.BROKER_CONNECTIONS_READ,
     Permission.RECONCILIATION_MANAGE,
     Permission.RECONCILIATION_RUN,
     Permission.ROLES_READ,
@@ -486,6 +505,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.ROLES_READ,
     Permission.API_KEYS_READ_ANY,
     Permission.SECURITY_READ,
+    Permission.BROKER_CONNECTIONS_READ,
   ],
 
   /** The firm's integrations: keys, tokens, and what they need to read to be built. */
@@ -496,6 +516,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.API_KEYS_MANAGE,
     Permission.API_KEYS_READ_ANY,
     Permission.SERVICE_TOKENS_MANAGE,
+    Permission.BROKER_CONNECTIONS_READ,
   ],
 
   /**
@@ -526,6 +547,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.INTEGRITY_READ,
     Permission.INSTRUMENTS_READ,
     Permission.RECONCILIATION_READ,
+    Permission.BROKER_CONNECTIONS_READ,
     Permission.RECONCILIATION_RUN,
     Permission.ROLES_READ,
     Permission.API_KEYS_READ_ANY,
@@ -547,6 +569,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.MASTER_READ,
     Permission.API_KEYS_READ_ANY,
     Permission.SECURITY_READ,
+    Permission.BROKER_CONNECTIONS_READ,
   ],
 
   /** Reads everything, including the audit and security feeds, and changes nothing. */
@@ -566,6 +589,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.INTEGRITY_READ,
     Permission.INSTRUMENTS_READ,
     Permission.RECONCILIATION_READ,
+    Permission.BROKER_CONNECTIONS_READ,
     Permission.ROLES_READ,
     Permission.API_KEYS_READ_ANY,
     Permission.SECURITY_READ,
@@ -784,6 +808,12 @@ export const PERSON_ONLY_PERMISSIONS: readonly Permission[] = [
   Permission.SYSTEM_OPERATIONS,
   Permission.TENANTS_MANAGE,
   Permission.TENANT_SETTINGS_MANAGE,
+  /**
+   * A venue connection decides where a firm's orders go and holds the
+   * credentials that send them. A long-lived secret in a config file must not
+   * be able to repoint a firm's execution at a venue of its holder's choosing.
+   */
+  Permission.BROKER_CONNECTIONS_MANAGE,
 ];
 
 /** What an API key may carry: everything a person may hold that is not person-only. */

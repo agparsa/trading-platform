@@ -62,53 +62,58 @@ model Tenant {
   /// Where a new account under this tenant executes unless the account says otherwise.
   defaultExecutionMode ExecutionMode @default(INTERNAL) @map("default_execution_mode")
 
-  createdAt               DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt               DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
-  users                   User[]
-  totpRecoveryCodes       TotpRecoveryCode[]
-  refreshTokens           RefreshToken[]
-  accounts                Account[]
-  accountSettings         AccountSettings[]
-  orders                  Order[]
-  orderEvents             OrderEvent[]
-  positions               Position[]
-  positionEvents          PositionEvent[]
-  executions              Execution[]
-  trades                  Trade[]
-  balanceLedgers          BalanceLedger[]
-  accountSnapshots        AccountSnapshot[]
-  riskRuleConfigs         RiskRuleConfig[]
-  riskEvents              RiskEvent[]
-  auditLogs               AuditLog[]
-  securityEvents          SecurityEvent[]
-  idempotencyKeys         IdempotencyKey[]
-  masterAccounts          MasterAccount[]
-  masterAccountLinks      MasterAccountLink[]
-  integritySignals        IntegritySignal[]
-  integritySignalEvents   IntegritySignalEvent[]
-  systemSettings          SystemSetting[]
-  inviteCodes             InviteCode[]
-  inviteRedemptions       InviteRedemption[]
-  reconciliationRuns      ReconciliationRun[]
-  reconciliationFindings  ReconciliationFinding[]
-  notifications           Notification[]
-  tenantSymbolTerms       TenantSymbolTerms[]
-  devices                 Device[]
-  notificationPreferences NotificationPreference[]
-  notificationSettings    NotificationSetting[]
-  pushDeliveries          PushDelivery[]
-  roles                   Role[]
-  rolePermissions         RolePermission[]
-  wallets                 Wallet[]
-  walletTransactions      WalletTransaction[]
-  paymentIntents          PaymentIntent[]
-  paymentEvents           PaymentEvent[]
-  kycRecords              KycRecord[]
-  kycDocuments            KycDocument[]
-  withdrawalRequests      WithdrawalRequest[]
-  apiKeys                 ApiKey[]
-  serviceTokens           ServiceToken[]
-  credentialUsage         CredentialUsage[]
+  createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  users                    User[]
+  totpRecoveryCodes        TotpRecoveryCode[]
+  refreshTokens            RefreshToken[]
+  accounts                 Account[]
+  accountSettings          AccountSettings[]
+  orders                   Order[]
+  orderEvents              OrderEvent[]
+  positions                Position[]
+  positionEvents           PositionEvent[]
+  executions               Execution[]
+  trades                   Trade[]
+  balanceLedgers           BalanceLedger[]
+  accountSnapshots         AccountSnapshot[]
+  riskRuleConfigs          RiskRuleConfig[]
+  riskEvents               RiskEvent[]
+  auditLogs                AuditLog[]
+  securityEvents           SecurityEvent[]
+  brokerConnections        BrokerConnection[]
+  brokerCredentials        BrokerCredential[]
+  brokerInstrumentMappings BrokerInstrumentMapping[]
+  outboxEvents             OutboxEvent[]
+  brokerInboundEvents      BrokerInboundEvent[]
+  idempotencyKeys          IdempotencyKey[]
+  masterAccounts           MasterAccount[]
+  masterAccountLinks       MasterAccountLink[]
+  integritySignals         IntegritySignal[]
+  integritySignalEvents    IntegritySignalEvent[]
+  systemSettings           SystemSetting[]
+  inviteCodes              InviteCode[]
+  inviteRedemptions        InviteRedemption[]
+  reconciliationRuns       ReconciliationRun[]
+  reconciliationFindings   ReconciliationFinding[]
+  notifications            Notification[]
+  tenantSymbolTerms        TenantSymbolTerms[]
+  devices                  Device[]
+  notificationPreferences  NotificationPreference[]
+  notificationSettings     NotificationSetting[]
+  pushDeliveries           PushDelivery[]
+  roles                    Role[]
+  rolePermissions          RolePermission[]
+  wallets                  Wallet[]
+  walletTransactions       WalletTransaction[]
+  paymentIntents           PaymentIntent[]
+  paymentEvents            PaymentEvent[]
+  kycRecords               KycRecord[]
+  kycDocuments             KycDocument[]
+  withdrawalRequests       WithdrawalRequest[]
+  apiKeys                  ApiKey[]
+  serviceTokens            ServiceToken[]
+  credentialUsage          CredentialUsage[]
 
   @@map("tenants")
 }
@@ -206,14 +211,16 @@ model User {
   notificationPreferences NotificationPreference[]
   notificationSettings    NotificationSetting[]
 
-  paymentIntents      PaymentIntent[]
-  wallets             Wallet[]
-  kycRecord           KycRecord?
-  withdrawals         WithdrawalRequest[]
-  apiKeys             ApiKey[]
+  paymentIntents           PaymentIntent[]
+  wallets                  Wallet[]
+  kycRecord                KycRecord?
+  withdrawals              WithdrawalRequest[]
+  apiKeys                  ApiKey[]
   /// Tokens this person minted, for the audit trail; the tokens belong to the firm.
-  serviceTokensMinted ServiceToken[]
-  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  serviceTokensMinted      ServiceToken[]
+  brokerConnectionsCreated BrokerConnection[]  @relation("BrokerConnectionCreator")
+  brokerCredentialsCreated BrokerCredential[]  @relation("BrokerCredentialCreator")
+  tenant                   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   /// One address per tenant, not per platform: the same person may hold an account with two firms.
   @@unique([tenantId, email])
@@ -299,7 +306,20 @@ model Account {
   number   String
   type     AccountType   @default(DEMO)
   status   AccountStatus @default(ACTIVE)
-  currency String        @db.VarChar(3)
+
+  /// Where this account's orders execute. INTERNAL is the engine in this
+  /// repository against its own ledger; EXTERNAL_BROKER hands each order to a
+  /// venue through a connection and records what the venue did. An account is
+  /// created in its tenant's default and changed only deliberately.
+  executionMode      ExecutionMode @default(INTERNAL) @map("execution_mode")
+  /// The connection its orders go through. Required in EXTERNAL_BROKER mode
+  /// and refused otherwise, so an account cannot be half-migrated.
+  brokerConnectionId String?       @map("broker_connection_id") @db.Uuid
+  /// The venue's own identifier for this account. Unique per connection: two
+  /// platform accounts pointed at one venue account would each book the
+  /// other's fills.
+  externalAccountId  String?       @map("external_account_id")
+  currency           String        @db.VarChar(3)
 
   /// Authoritative cash balance. Derived from balance_ledger and reconciled
   /// against it by a scheduled job; the ledger is the source of truth.
@@ -311,6 +331,7 @@ model Account {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user                   User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  brokerConnection       BrokerConnection?       @relation(fields: [brokerConnectionId], references: [id], onDelete: Restrict)
   settings               AccountSettings?
   orders                 Order[]
   positions              Position[]
@@ -326,6 +347,7 @@ model Account {
 
   /// Account numbers are a tenant's own sequence, and two tenants may reach TP-100001.
   @@unique([tenantId, number])
+  @@unique([brokerConnectionId, externalAccountId])
   @@index([userId, status])
   @@index([tenantId])
   @@map("accounts")
@@ -376,7 +398,8 @@ model Symbol {
   positions Position[]
   trades    Trade[]
 
-  tenantTerms TenantSymbolTerms[]
+  tenantTerms    TenantSymbolTerms[]
+  brokerMappings BrokerInstrumentMapping[]
 
   @@map("symbols")
 }
@@ -499,6 +522,9 @@ enum OrderStatus {
   NEW
   PENDING
   ACCEPTED
+  /// Sent to a venue whose answer was lost. Resolved by asking the venue
+  /// again, never by resending. See docs/broker-integration.md.
+  UNCONFIRMED
   TRIGGERED
   PARTIALLY_FILLED
   FILLED
@@ -573,6 +599,12 @@ model Order {
   /// Populated only when the order was rejected; a code from TradingErrorCode.
   rejectionCode String? @map("rejection_code")
 
+  /// The id **we** minted for this order before it left, and the venue's own.
+  /// `clientOrderId` is the idempotency key at the venue and the key the
+  /// recovery query asks by; it exists only for externally executed orders.
+  clientOrderId   String? @unique @map("client_order_id")
+  externalOrderId String? @map("external_order_id")
+
   version   Int       @default(0)
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -623,6 +655,11 @@ model Position {
 
   side   OrderSide
   status PositionStatus @default(OPEN)
+
+  /// The venue's own id, when this position lives at a venue rather than only
+  /// here. Unique: two platform positions pointing at one venue position
+  /// would each close the other's.
+  externalPositionId String? @unique @map("external_position_id")
 
   volume        Decimal @db.Decimal(18, 8)
   initialVolume Decimal @map("initial_volume") @db.Decimal(18, 8)
@@ -693,6 +730,10 @@ model Execution {
   side   OrderSide
   volume Decimal   @db.Decimal(18, 8)
   price  Decimal   @db.Decimal(28, 10)
+
+  /// The venue's own id for this fill, when the venue executed it. Unique so
+  /// a redelivered event cannot book the same fill twice.
+  externalExecutionId String? @unique @map("external_execution_id")
 
   quoteBid Decimal  @map("quote_bid") @db.Decimal(28, 10)
   quoteAsk Decimal  @map("quote_ask") @db.Decimal(28, 10)
@@ -2205,6 +2246,235 @@ model ApiKey {
   @@index([userId, createdAt(sort: Desc)])
   @@index([tenantId])
   @@map("api_keys")
+}
+
+/// One instrument, as this venue names it.
+///
+/// The platform trades `XAUUSD`; a venue may call it `XAUUSD.m`, `GOLD` or
+/// `XAU/USD`, with its own lot step and price precision. Nothing guesses: an
+/// instrument with no mapping on a connection cannot be traded through it,
+/// and the refusal names what is missing.
+model BrokerInstrumentMapping {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+  symbolId     String @map("symbol_id") @db.Uuid
+
+  /// What the venue calls it.
+  externalSymbol String   @map("external_symbol")
+  /// The venue's own terms, as it reported them. Read to refuse an order the
+  /// venue would reject anyway, and to notice when the venue changes them.
+  contractSize   Decimal? @map("contract_size") @db.Decimal(28, 10)
+  volumeStep     Decimal? @map("volume_step") @db.Decimal(18, 8)
+  minVolume      Decimal? @map("min_volume") @db.Decimal(18, 8)
+  maxVolume      Decimal? @map("max_volume") @db.Decimal(18, 8)
+  priceDecimals  Int?     @map("price_decimals")
+
+  enabled Boolean @default(true)
+
+  /// When the venue's own catalogue was last read into this row.
+  syncedAt  DateTime? @map("synced_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  connection BrokerConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+  symbol     Symbol           @relation(fields: [symbolId], references: [id], onDelete: Restrict)
+
+  @@unique([connectionId, symbolId])
+  @@unique([connectionId, externalSymbol])
+  @@index([tenantId])
+  @@map("broker_instrument_mappings")
+}
+
+/// A domain event, written in the same transaction as the change it describes.
+///
+/// The transactional outbox: a subscriber is told about a fill if and only if
+/// the fill committed. Publishing inside the transaction would announce one a
+/// rollback is about to erase; publishing after it would lose the
+/// announcement if the process died in between. The row is the promise; the
+/// worker keeps it.
+///
+/// The envelope is v2 (docs/websocket.md), so the same shape reaches a socket,
+/// this table, and later a webhook.
+model OutboxEvent {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  /// The event's own id, as the envelope carries it. Unique: a relay that ran
+  /// twice must not produce two events.
+  eventId       String  @unique @map("event_id")
+  eventType     String  @map("event_type")
+  aggregateType String  @map("aggregate_type")
+  aggregateId   String  @map("aggregate_id")
+  accountId     String? @map("account_id") @db.Uuid
+  actorId       String? @map("actor_id") @db.Uuid
+  correlationId String? @map("correlation_id")
+  causationId   String? @map("causation_id")
+  payload       Json
+
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  lastError     String?      @map("last_error")
+  /// When the relay may next try. Backoff lives here rather than in a queue so
+  /// a restart cannot lose it.
+  nextAttemptAt DateTime?    @map("next_attempt_at") @db.Timestamptz(6)
+  relayedAt     DateTime?    @map("relayed_at") @db.Timestamptz(6)
+
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, occurredAt(sort: Desc)])
+  @@index([aggregateType, aggregateId])
+  @@map("outbox_events")
+}
+
+enum OutboxStatus {
+  PENDING
+  RELAYED
+  /// Tried enough times to stop trying. A person looks; nothing is discarded.
+  ABANDONED
+}
+
+/// Something a venue told us, recorded before it is acted on.
+///
+/// The inbox. A venue redelivers, delivers late, and delivers out of order —
+/// all three are normal, none is an error. `externalEventId` unique per
+/// connection is the dedupe; `sequence` is the ordering; the raw payload is
+/// kept so an event can be replayed against corrected code without asking the
+/// venue for it again.
+///
+/// Recording is separate from applying on purpose: an event that arrives
+/// while the platform cannot make sense of it is still evidence, and a
+/// discrepancy investigated a week later needs what the venue actually said.
+model BrokerInboundEvent {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+
+  externalEventId   String  @map("external_event_id")
+  sequence          BigInt?
+  kind              String
+  externalAccountId String? @map("external_account_id")
+  payload           Json
+
+  status     InboundStatus @default(PENDING)
+  attempts   Int           @default(0)
+  lastError  String?       @map("last_error")
+  appliedAt  DateTime?     @map("applied_at") @db.Timestamptz(6)
+  /// Why it was skipped, when it was: an event about an account we do not
+  /// map, a kind this build does not handle.
+  skipReason String?       @map("skip_reason")
+
+  /// When the venue says it happened, and when we heard.
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(6)
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  connection BrokerConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
+
+  @@unique([connectionId, externalEventId])
+  @@index([status, receivedAt])
+  @@index([connectionId, sequence])
+  @@index([tenantId])
+  @@map("broker_inbound_events")
+}
+
+enum InboundStatus {
+  PENDING
+  APPLIED
+  SKIPPED
+  FAILED
+}
+
+/// A firm's link to a venue: which connector, how it is doing, and what the
+/// venue said it can do. The credentials live beside it, sealed. The
+/// connector itself is code in `@tp/broker-sdk`'s registry; this row names it.
+/// See docs/broker-integration.md.
+model BrokerConnection {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  /// What the panel shows. Unique per tenant.
+  name        String
+  /// The connector's `kind` in the SDK registry, e.g. MOCK.
+  adapterKind String @map("adapter_kind")
+  /// Connector-specific, non-secret settings: endpoints, environment, account ids.
+  settings    Json   @default("{}")
+
+  enabled Boolean @default(true)
+
+  /// The monitor's last verdict and the figures it was made from.
+  status              BrokerConnectionStatus @default(UNKNOWN)
+  capabilities        Json?
+  lastHeartbeatAt     DateTime?              @map("last_heartbeat_at") @db.Timestamptz(6)
+  lastQuoteAt         DateTime?              @map("last_quote_at") @db.Timestamptz(6)
+  lastOrderEventAt    DateTime?              @map("last_order_event_at") @db.Timestamptz(6)
+  latencyMs           Int?                   @map("latency_ms")
+  lastError           String?                @map("last_error")
+  consecutiveFailures Int                    @default(0) @map("consecutive_failures")
+  circuitOpenings     Int                    @default(0) @map("circuit_openings")
+  circuitOpenUntil    DateTime?              @map("circuit_open_until") @db.Timestamptz(6)
+  statusChangedAt     DateTime?              @map("status_changed_at") @db.Timestamptz(6)
+
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant      Tenant                    @relation(fields: [tenantId], references: [id])
+  createdBy   User                      @relation("BrokerConnectionCreator", fields: [createdById], references: [id])
+  credentials BrokerCredential[]
+  accounts    Account[]
+  mappings    BrokerInstrumentMapping[]
+  inbound     BrokerInboundEvent[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, enabled])
+  @@map("broker_connections")
+}
+
+enum BrokerConnectionStatus {
+  UNKNOWN
+  CONNECTING
+  CONNECTED
+  DEGRADED
+  DISCONNECTED
+  AUTH_FAILED
+  RATE_LIMITED
+}
+
+/// A venue's credentials, sealed with SecretBox and bound to the connection.
+/// Nothing that leaves the server carries a field value: the list shows the
+/// kind, the fingerprint and the non-secret fields. Rotation is a new row
+/// and the old one revoked, so who-used-what-when survives.
+model BrokerCredential {
+  id           String @id @default(uuid()) @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+
+  kind        String
+  /// SecretBox output over the serialised payload; context is the connection id.
+  sealed      String
+  /// SHA-256 prefix over the payload. Identifies without revealing.
+  fingerprint String
+  /// The non-secret fields, for the panel: login, server, key id.
+  visible     Json   @default("{}")
+
+  createdById String    @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
+  revokedById String?   @map("revoked_by_id") @db.Uuid
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz(6)
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  connection BrokerConnection @relation(fields: [connectionId], references: [id])
+  createdBy  User             @relation("BrokerCredentialCreator", fields: [createdById], references: [id])
+
+  @@index([connectionId, revokedAt])
+  @@index([tenantId])
+  @@map("broker_credentials")
 }
 
 /// A machine identity that belongs to the firm rather than to a person, for an

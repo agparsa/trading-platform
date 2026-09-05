@@ -127,12 +127,15 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
    */
   await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs DISABLE TRIGGER USER`);
   await prisma.$executeRawUnsafe(`ALTER TABLE security_events DISABLE TRIGGER USER`);
+  await prisma.$executeRawUnsafe(`ALTER TABLE broker_inbound_events DISABLE TRIGGER USER`);
   try {
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
         tenants,
         integrity_signal_events, integrity_signals,
         master_account_links, master_accounts,
+        broker_inbound_events, outbox_events, broker_instrument_mappings,
+        broker_credentials, broker_connections,
         audit_logs, security_events, risk_events, account_snapshots, balance_ledger,
         trades, executions, position_events, positions,
         order_events, orders, account_settings,
@@ -148,6 +151,7 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
   } finally {
     await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs ENABLE TRIGGER USER`);
     await prisma.$executeRawUnsafe(`ALTER TABLE security_events ENABLE TRIGGER USER`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE broker_inbound_events ENABLE TRIGGER USER`);
   }
 
   /**
