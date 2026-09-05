@@ -1,0 +1,11 @@
+-- The preset a delegation was granted as.
+--
+-- Display and audit only: `capabilities` is what is enforced, and a preset is
+-- expanded once at grant time and never re-read. Widening a preset later must
+-- not widen a delegation someone already approved, so the two are stored
+-- separately and the list is authoritative.
+--
+-- Nullable, and null for every existing row: those links were granted
+-- capability by capability, and claiming otherwise afterwards would put a name
+-- on a decision nobody made.
+ALTER TABLE "master_account_links" ADD COLUMN "granted_as_role" TEXT;

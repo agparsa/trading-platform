@@ -6,6 +6,7 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { AdjustmentsService } from './adjustments.service';
 import { AuditQueryService } from './audit-query.service';
+import { RiskHierarchyService } from './risk-hierarchy.service';
 import { RiskConsoleService } from './risk-console.service';
 import { MarketModule } from '../market/market.module';
 import { AdminInstrumentsService } from './instruments.service';
@@ -18,8 +19,9 @@ import { AdminInstrumentsService } from './instruments.service';
     AdjustmentsService,
     AuditQueryService,
     RiskConsoleService,
+    RiskHierarchyService,
     AdminInstrumentsService,
   ],
-  exports: [AdminService, RiskConsoleService, AuditQueryService],
+  exports: [AdminService, RiskConsoleService, RiskHierarchyService, AuditQueryService],
 })
 export class AdminModule {}

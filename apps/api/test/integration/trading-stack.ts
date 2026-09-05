@@ -6,6 +6,7 @@ import { QuoteService } from '../../src/market/quote.service';
 import { ConversionService } from '../../src/market/conversion.service';
 import { AccountStateService } from '../../src/trading/account-state.service';
 import { RiskContextBuilder } from '../../src/trading/risk-context.builder';
+import { RiskLimitsService } from '../../src/trading/risk-limits.service';
 import { OrdersService } from '../../src/trading/orders.service';
 import { PositionsService } from '../../src/trading/positions.service';
 import { TriggerEngineService } from '../../src/trading/trigger-engine.service';
@@ -77,6 +78,8 @@ export interface TradingStack {
   ledger: LedgerService;
   triggers: TriggerEngineService;
   snapshots: SnapshotService;
+  /** The hierarchy resolver, for tests about ceilings above an account. */
+  riskLimits: RiskLimitsService;
   /** The sweep that asks venues about orders whose answers were lost. */
   recovery: VenueRecoveryService;
   /** Puts a price into the quote cache, as the market feed would. */
@@ -142,7 +145,8 @@ export async function buildTradingStack(
     conversion,
     config as never,
   );
-  const riskContext = new RiskContextBuilder(prismaService);
+  const riskLimits = new RiskLimitsService(prismaService);
+  const riskContext = new RiskContextBuilder(prismaService, riskLimits);
   const ledger = new LedgerService();
   const access = new AccountAccessService(prismaService);
   const metrics = new MetricsService();
@@ -272,6 +276,7 @@ export async function buildTradingStack(
     ledger,
     triggers,
     snapshots,
+    riskLimits,
     recovery,
     publishQuote,
   };

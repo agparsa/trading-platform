@@ -280,7 +280,7 @@ export class OrdersService {
     const instrument = this.symbols.require(symbolCode);
     const spec = instrument.spec;
 
-    const { account } = await this.access.resolve(
+    const { account, masterAccountId } = await this.access.resolve(
       userId,
       request.accountId,
       Permission.ORDERS_CREATE,
@@ -424,7 +424,13 @@ export class OrdersService {
        * nothing.
        */
       const valuation = await this.accountState.valuate(account.id, tx);
-      const context = await this.riskContext.build(valuation, now, tx);
+      /**
+       * The desk the order arrived through is passed in, so a ceiling the
+       * broker placed on that desk binds this order. An owner trading their
+       * own account passes null and is bound by the platform, the broker and
+       * their own settings — but not by a limit somebody set on an operator.
+       */
+      const context = await this.riskContext.build(valuation, now, tx, masterAccountId);
       const decision = this.risk.evaluate(proposed, context);
       if (!decision.allowed) throw new RiskRejection(decision.violations, valuation);
 
@@ -441,6 +447,7 @@ export class OrdersService {
           filledVolume: volume.toString(),
           stopLoss: request.stopLoss ?? null,
           takeProfit: request.takeProfit ?? null,
+          placedByMasterAccountId: masterAccountId,
         },
       });
 
@@ -673,7 +680,7 @@ export class OrdersService {
     const instrument = this.symbols.require(symbolCode);
     const spec = instrument.spec;
 
-    const { account } = await this.access.resolve(
+    const { account, masterAccountId } = await this.access.resolve(
       userId,
       request.accountId,
       Permission.ORDERS_CREATE,
@@ -734,6 +741,9 @@ export class OrdersService {
           stopLoss: request.stopLoss ?? null,
           takeProfit: request.takeProfit ?? null,
           expiresAt: expiresAt === null ? null : new Date(expiresAt),
+          // Carried on the row so the fill, which happens with no caller, is
+          // still bound by the desk ceiling that governed the placement.
+          placedByMasterAccountId: masterAccountId,
         },
       });
       await tx.orderEvent.createMany({
@@ -898,7 +908,17 @@ export class OrdersService {
            * manual order each see free margin the other was about to spend.
            */
           const valuation = await this.accountState.valuate(order.accountId, tx);
-          const context = await this.riskContext.build(valuation, Date.now(), tx);
+          /**
+           * The desk that placed it, not the desk of whoever is filling it —
+           * nobody is. A resting order carries its provenance so the ceiling
+           * that governed its placement still governs its fill.
+           */
+          const context = await this.riskContext.build(
+            valuation,
+            Date.now(),
+            tx,
+            order.placedByMasterAccountId,
+          );
           const decision = this.risk.evaluate(proposed, context);
           if (!decision.allowed) throw new RiskRejection(decision.violations, valuation);
 

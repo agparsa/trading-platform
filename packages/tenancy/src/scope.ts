@@ -61,6 +61,7 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'Execution',
   'Trade',
   'RiskRuleConfig',
+  'RiskLimitSet',
   'RiskEvent',
   'IntegritySignal',
   'IntegritySignalEvent',

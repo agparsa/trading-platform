@@ -16,6 +16,11 @@ import {
   SERVICE_GRANTABLE_PERMISSIONS,
   isKeyable,
   isServiceGrantable,
+  LINKABLE_CAPABILITIES,
+  MASTER_ROLE_CAPABILITIES,
+  MasterRole,
+  isMasterRole,
+  masterRoleOf,
 } from './permissions';
 
 /**
@@ -619,5 +624,111 @@ describe('role groups', () => {
     expect(ROLE_ALIASES['BROKER_ADMIN']).toBe(UserRole.ADMIN);
     expect(ROLE_ALIASES['TRADING_USER']).toBe(UserRole.USER);
     for (const key of Object.values(ROLE_ALIASES)) expect(Object.values(UserRole)).toContain(key);
+  });
+});
+
+describe('master-account role presets', () => {
+  it('never expands to anything the linkable ceiling refuses', () => {
+    for (const [role, capabilities] of Object.entries(MASTER_ROLE_CAPABILITIES)) {
+      for (const capability of capabilities) {
+        expect(
+          isLinkableCapability(capability),
+          `${role} would delegate ${capability}, which no link may carry`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('is a ladder: each preset contains the one below it', () => {
+    const ladder = [
+      MasterRole.MASTER_VIEWER,
+      MasterRole.MASTER_TRADER,
+      MasterRole.MASTER_MANAGER,
+      MasterRole.MASTER_OWNER,
+    ];
+    for (let i = 1; i < ladder.length; i += 1) {
+      const lower = new Set<string>(MASTER_ROLE_CAPABILITIES[ladder[i - 1]!]);
+      const higher = new Set<string>(MASTER_ROLE_CAPABILITIES[ladder[i]!]);
+      for (const capability of lower) {
+        expect(
+          higher.has(capability),
+          `${ladder[i]} does not contain ${capability}, which ${ladder[i - 1]} grants`,
+        ).toBe(true);
+      }
+      expect(higher.size).toBeGreaterThanOrEqual(lower.size);
+    }
+  });
+
+  /**
+   * Today the ceiling is exactly the manager set, so the top two presets
+   * coincide. That is a fact about the ceiling, not an alias: this test fails
+   * the moment they diverge, which is the moment someone should check that a
+   * newly linkable capability really belongs to an owner and not a manager.
+   */
+  it('has three distinct rungs today, with owner and manager coinciding', () => {
+    const sizes = [
+      MasterRole.MASTER_VIEWER,
+      MasterRole.MASTER_TRADER,
+      MasterRole.MASTER_MANAGER,
+      MasterRole.MASTER_OWNER,
+    ].map((role) => MASTER_ROLE_CAPABILITIES[role].length);
+    expect(sizes).toEqual([4, 9, 10, 10]);
+    // And they are separate definitions, not the same array: a capability
+    // added to the ceiling must reach the owner without reaching the manager.
+    expect(MASTER_ROLE_CAPABILITIES[MasterRole.MASTER_MANAGER]).not.toBe(
+      MASTER_ROLE_CAPABILITIES[MasterRole.MASTER_OWNER],
+    );
+  });
+
+  it('lets a viewer see and nothing else — the distinction the preset exists for', () => {
+    const viewer = new Set<string>(MASTER_ROLE_CAPABILITIES[MasterRole.MASTER_VIEWER]);
+    for (const capability of [
+      Permission.ORDERS_CREATE,
+      Permission.ORDERS_CANCEL,
+      Permission.ORDERS_MODIFY,
+      Permission.POSITIONS_CLOSE,
+      Permission.POSITIONS_MODIFY,
+      Permission.ACCOUNTS_MANAGE,
+    ]) {
+      expect(viewer.has(capability), `a viewer must not be able to ${capability}`).toBe(false);
+    }
+  });
+
+  it('lets a trader trade but not change the account it trades', () => {
+    const trader = new Set<string>(MASTER_ROLE_CAPABILITIES[MasterRole.MASTER_TRADER]);
+    expect(trader.has(Permission.ORDERS_CREATE)).toBe(true);
+    expect(trader.has(Permission.POSITIONS_CLOSE)).toBe(true);
+    // Changing an account's own settings is management, not trading.
+    expect(trader.has(Permission.ACCOUNTS_MANAGE)).toBe(false);
+  });
+
+  it('the top preset is the ceiling itself, so widening the ceiling cannot leave it behind', () => {
+    expect([...MASTER_ROLE_CAPABILITIES[MasterRole.MASTER_OWNER]].sort()).toEqual(
+      [...LINKABLE_CAPABILITIES].sort(),
+    );
+  });
+
+  it('names a capability list that is exactly a preset, and refuses to round one that is not', () => {
+    expect(masterRoleOf(MASTER_ROLE_CAPABILITIES[MasterRole.MASTER_TRADER])).toBe(
+      MasterRole.MASTER_TRADER,
+    );
+    expect(masterRoleOf([...MASTER_ROLE_CAPABILITIES[MasterRole.MASTER_VIEWER]].reverse())).toBe(
+      MasterRole.MASTER_VIEWER,
+    );
+    // One capability short of a trader is not a trader, and is not a viewer either.
+    expect(
+      masterRoleOf(
+        MASTER_ROLE_CAPABILITIES[MasterRole.MASTER_TRADER].filter(
+          (one) => one !== Permission.ORDERS_CANCEL,
+        ),
+      ),
+    ).toBe(null);
+    expect(masterRoleOf([])).toBe(null);
+  });
+
+  it('recognises its own names and nothing else', () => {
+    expect(isMasterRole('MASTER_TRADER')).toBe(true);
+    expect(isMasterRole('ADMIN')).toBe(false);
+    expect(isMasterRole('MASTER_SUPERUSER')).toBe(false);
   });
 });

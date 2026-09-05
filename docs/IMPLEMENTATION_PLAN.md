@@ -153,7 +153,7 @@ immutable, ordered by the venue's own sequence, replayable. Instruments,
 Inbox and "waiting on a venue" in the admin panel.
 [external-execution.md](./external-execution.md).
 
-## Phase 4 — Master accounts and permission hierarchy · ~1–2 weeks
+## Phase 4 — Master accounts and permission hierarchy · **done**
 
 - Master roles (`MASTER_OWNER`, `MASTER_MANAGER`, `MASTER_TRADER`,
   `MASTER_VIEWER`) as seeds over the existing `LINKABLE_CAPABILITIES`.
@@ -162,6 +162,30 @@ Inbox and "waiting on a venue" in the admin panel.
 - The desk layer in the risk hierarchy (§40): platform → broker → desk →
   account, each only stricter.
 - Master Accounts section in the broker panel; desk view in the terminal.
+
+Done, with one deliberate difference. The four master roles are **presets**
+rather than roles: they expand at grant time into the capabilities stored on
+the link, because widening `MASTER_TRADER` next quarter must not widen a
+delegation somebody approved last year. `MASTER_OWNER` and `MASTER_MANAGER`
+currently coincide — the linkable ceiling is exactly the manager set — and that
+is stated in code and asserted by a test rather than papered over.
+
+`DeskViewService` aggregates equity, balance, margin, open positions and net
+exposure by symbol across a desk's accounts, converted into the desk's
+currency, naming any account it could not price instead of adding it at par.
+`RiskLimitSet` gives the hierarchy platform → broker → desk → account: each may
+tighten what is above and none may loosen it, checked when a limit is written
+(so a person is told which layer refused them) and again when it is read (so a
+row that arrived another way cannot widen anything). The desk layer binds the
+**route** — an order placed through that desk — not the account, and
+`Order.placedByMasterAccountId` carries it so a resting order fills under the
+ceiling that governed its placement. Desks screen in the admin console; a
+Ceilings tab on the Risk console.
+[desks-and-risk-hierarchy.md](./desks-and-risk-hierarchy.md).
+
+The desk view in the _terminal_ is not built: it belongs with the Phase 6
+terminal work rather than beside an admin panel, and building it twice would be
+worse than building it once in its right place.
 
 ## Phase 5 — Broker management panel · ~3 weeks
 

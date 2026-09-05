@@ -9,6 +9,7 @@ import {
   UserRole,
   roleHasPermissions,
 } from '@tp/shared-types';
+import { RiskHierarchyService } from '../../src/admin/risk-hierarchy.service';
 import { AdminService } from '../../src/admin/admin.service';
 import { AdjustmentsService } from '../../src/admin/adjustments.service';
 import { AuditQueryService } from '../../src/admin/audit-query.service';
@@ -142,6 +143,7 @@ suite('Administration (integration)', () => {
       audit,
       sessions,
       new RolesService(prismaService, redisStub().service, audit),
+      new RiskHierarchyService(prismaService, audit),
     );
     adjustments = new AdjustmentsService(prismaService, new LedgerService(), audit, totp);
     auditQuery = new AuditQueryService(prismaService);

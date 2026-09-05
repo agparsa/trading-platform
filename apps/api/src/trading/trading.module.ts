@@ -6,6 +6,7 @@ import { AccountStateService } from './account-state.service';
 import { OrdersService } from './orders.service';
 import { PositionsService } from './positions.service';
 import { RiskContextBuilder } from './risk-context.builder';
+import { RiskLimitsService } from './risk-limits.service';
 import { TriggerEngineService } from './trigger-engine.service';
 import { TradingController } from './trading.controller';
 import { TradingThrottle } from './trading-throttle.service';
@@ -23,6 +24,7 @@ import { VenueRecoveryController } from './venue-recovery.controller';
     ConversionService,
     AccountStateService,
     RiskContextBuilder,
+    RiskLimitsService,
     OrdersService,
     PositionsService,
     TriggerEngineService,

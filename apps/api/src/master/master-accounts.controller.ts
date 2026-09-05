@@ -6,6 +6,7 @@ import { Permission } from '@tp/shared-types';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { MasterAccountsService } from './master-accounts.service';
+import { DeskViewService, type DeskView } from './desk-view.service';
 
 const createMasterSchema = z
   .object({
@@ -24,9 +25,18 @@ const createMasterSchema = z
 const grantLinkSchema = z
   .object({
     accountId: z.string().uuid(),
-    capabilities: z.array(z.string().trim().min(1).max(64)).min(1).max(32),
+    capabilities: z.array(z.string().trim().min(1).max(64)).min(1).max(32).optional(),
+    /**
+     * A preset name instead of a list. Expanded once, at grant, into the
+     * capabilities actually stored — so widening a preset later cannot widen
+     * a delegation someone already approved.
+     */
+    role: z.string().trim().min(1).max(32).optional(),
   })
-  .strict();
+  .strict()
+  .refine((body) => (body.capabilities === undefined) !== (body.role === undefined), {
+    message: 'Give exactly one of `role` or `capabilities`.',
+  });
 
 class CreateMasterDto extends createZodDto(createMasterSchema) {}
 class GrantLinkDto extends createZodDto(grantLinkSchema) {}
@@ -34,7 +44,10 @@ class GrantLinkDto extends createZodDto(grantLinkSchema) {}
 @ApiTags('master-accounts')
 @Controller('master-accounts')
 export class MasterAccountsController {
-  constructor(private readonly masters: MasterAccountsService) {}
+  constructor(
+    private readonly masters: MasterAccountsService,
+    private readonly desks: DeskViewService,
+  ) {}
 
   @RequirePermissions(Permission.MASTER_READ)
   @Get()
@@ -48,6 +61,15 @@ export class MasterAccountsController {
   @ApiOperation({ summary: 'Delegations held by one master account, revoked ones included' })
   links(@Param('id', ParseUUIDPipe) id: string) {
     return this.masters.links(id);
+  }
+
+  @RequirePermissions(Permission.MASTER_READ)
+  @Get(':id/desk')
+  @ApiOperation({
+    summary: "One desk's book: every account it reaches, its exposure, and the totals",
+  })
+  desk(@Param('id', ParseUUIDPipe) id: string): Promise<DeskView> {
+    return this.desks.view(id);
   }
 
   @RequirePermissions(Permission.MASTER_MANAGE)

@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import {
   DomainError,
   isLinkableCapability,
+  isMasterRole,
   LINKABLE_CAPABILITIES,
+  MASTER_ROLE_CAPABILITIES,
+  MasterRole,
+  masterRoleOf,
   Permission,
   TradingErrorCode,
 } from '@tp/shared-types';
@@ -24,6 +28,14 @@ export interface MasterLinkSummary {
   accountId: string;
   accountNumber: string;
   capabilities: string[];
+  /** The preset it was granted as, when it was granted as one. */
+  grantedAsRole: string | null;
+  /**
+   * The preset these capabilities amount to today, or null when they are
+   * their own thing. Derived on read, so a link whose capabilities were later
+   * edited one by one stops claiming to be the preset it started as.
+   */
+  role: string | null;
   status: string;
   grantedByUserId: string;
   grantedAt: string;
@@ -89,9 +101,9 @@ export class MasterAccountsService {
   async grantLink(
     actorUserId: string,
     masterAccountId: string,
-    input: { accountId: string; capabilities: readonly string[] },
+    input: { accountId: string; capabilities?: readonly string[]; role?: string },
   ): Promise<MasterLinkSummary> {
-    const capabilities = this.validateCapabilities(input.capabilities);
+    const { capabilities, grantedAsRole } = this.resolveGrant(input);
 
     const master = await this.prisma.masterAccount.findUnique({
       where: { id: masterAccountId },
@@ -133,10 +145,12 @@ export class MasterAccountsService {
         masterAccountId,
         accountId: input.accountId,
         capabilities: [...capabilities],
+        grantedAsRole,
         grantedByUserId: actorUserId,
       },
       update: {
         capabilities: [...capabilities],
+        grantedAsRole,
         status: 'ACTIVE',
         grantedByUserId: actorUserId,
         grantedAt: new Date(),
@@ -154,10 +168,19 @@ export class MasterAccountsService {
       resourceId: link.id,
       ...(existing === null
         ? {}
-        : { before: { capabilities: existing.capabilities, status: existing.status } }),
+        : {
+            before: {
+              capabilities: existing.capabilities,
+              grantedAsRole: existing.grantedAsRole,
+              status: existing.status,
+            },
+          }),
       after: {
         masterAccountId,
         accountId: input.accountId,
+        // Both: what was asked for, and what it became. A preset that widens
+        // next quarter must not make this row read as though more was granted.
+        grantedAsRole,
         capabilities: [...capabilities],
       },
     });
@@ -239,6 +262,52 @@ export class MasterAccountsService {
    * they do not have, which is how an operator ends up unable to act in the one
    * moment it matters.
    */
+  /**
+   * What this grant amounts to: a preset expanded, or an explicit list.
+   *
+   * Exactly one of the two must be given. Accepting both would raise the
+   * question of which wins on a disagreement, and every answer to that
+   * question is a way for someone to think they granted a viewer and to have
+   * granted a trader.
+   */
+  private resolveGrant(input: { capabilities?: readonly string[]; role?: string }): {
+    capabilities: readonly Permission[];
+    grantedAsRole: string | null;
+  } {
+    const hasRole = input.role !== undefined;
+    const hasList = input.capabilities !== undefined;
+    if (hasRole && hasList) {
+      throw new DomainError(
+        TradingErrorCode.VALIDATION_FAILED,
+        'Give a role or a list of capabilities, not both: which one won would be a guess.',
+      );
+    }
+    if (hasRole) {
+      const role = input.role as string;
+      if (!isMasterRole(role)) {
+        throw new DomainError(
+          TradingErrorCode.VALIDATION_FAILED,
+          `${role} is not a delegation role. The roles are: ${Object.keys(MASTER_ROLE_CAPABILITIES).join(', ')}`,
+          { role },
+        );
+      }
+      /**
+       * Expanded here and stored, never re-read. The name is kept beside the
+       * list so a screen can say "Trader" and an audit row can say what was
+       * asked for — but widening the preset next quarter must not widen a
+       * delegation that was approved under the old meaning.
+       */
+      return {
+        capabilities: this.validateCapabilities(MASTER_ROLE_CAPABILITIES[role as MasterRole]),
+        grantedAsRole: role,
+      };
+    }
+    return {
+      capabilities: this.validateCapabilities(input.capabilities ?? []),
+      grantedAsRole: null,
+    };
+  }
+
   private validateCapabilities(requested: readonly string[]): readonly Permission[] {
     if (requested.length === 0) {
       throw new DomainError(
@@ -287,6 +356,7 @@ export class MasterAccountsService {
       id: string;
       accountId: string;
       capabilities: string[];
+      grantedAsRole: string | null;
       status: string;
       grantedByUserId: string;
       grantedAt: Date;
@@ -299,6 +369,10 @@ export class MasterAccountsService {
       accountId: link.accountId,
       accountNumber,
       capabilities: link.capabilities,
+      grantedAsRole: link.grantedAsRole,
+      // Derived, not stored: a link whose capabilities were later edited one
+      // by one must stop claiming to be the preset it was granted as.
+      role: masterRoleOf(link.capabilities),
       status: link.status,
       grantedByUserId: link.grantedByUserId,
       grantedAt: link.grantedAt.toISOString(),

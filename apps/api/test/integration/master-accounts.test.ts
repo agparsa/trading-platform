@@ -1,6 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
-import { DomainError, Permission, TradingErrorCode } from '@tp/shared-types';
+import {
+  DomainError,
+  MASTER_ROLE_CAPABILITIES,
+  MasterRole,
+  Permission,
+  TradingErrorCode,
+} from '@tp/shared-types';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { MetricsService } from '../../src/metrics/metrics.service';
 import { RealtimeGateway } from '../../src/realtime/realtime.gateway';
@@ -412,5 +418,165 @@ suite('Master accounts (integration)', () => {
     );
     expect(grant.via).toBe('OWNER');
     expect(grant.linkId).toBeNull();
+  });
+
+  /**
+   * The presets, on the real path.
+   *
+   * What matters about a preset is not that it saves typing but that it is
+   * expanded **once**, at the moment someone approves it. These check the two
+   * halves of that: what a name actually confers today, and that the stored
+   * list — not the name — is what is enforced afterwards.
+   */
+  describe('delegation presets', () => {
+    it('grants a viewer exactly what a viewer may do, and refuses them the rest', async () => {
+      const { operator, alice, master } = await world();
+      const link = await masters.grantLink(operator.userId, master.id, {
+        accountId: alice.accountId,
+        role: MasterRole.MASTER_VIEWER,
+      });
+      expect(link.grantedAsRole).toBe(MasterRole.MASTER_VIEWER);
+      expect(link.role).toBe(MasterRole.MASTER_VIEWER);
+      expect([...link.capabilities].sort()).toEqual(
+        [...MASTER_ROLE_CAPABILITIES[MasterRole.MASTER_VIEWER]].sort(),
+      );
+
+      // Reading is allowed…
+      const read = await stack.access.resolve(
+        operator.userId,
+        alice.accountId,
+        Permission.POSITIONS_READ,
+      );
+      expect(read.via).toBe('MASTER_LINK');
+      // …and every way of moving money is not.
+      for (const capability of [
+        Permission.ORDERS_CREATE,
+        Permission.ORDERS_CANCEL,
+        Permission.POSITIONS_CLOSE,
+        Permission.ACCOUNTS_MANAGE,
+      ]) {
+        expect(
+          await codeOf(() => stack.access.resolve(operator.userId, alice.accountId, capability)),
+          `a viewer was allowed to ${capability}`,
+        ).toBe(TradingErrorCode.FORBIDDEN);
+      }
+    });
+
+    it('lets a trader actually trade the account, on the order path', async () => {
+      const { operator, alice, master } = await world();
+      await masters.grantLink(operator.userId, master.id, {
+        accountId: alice.accountId,
+        role: MasterRole.MASTER_TRADER,
+      });
+
+      const result = await stack.orders.openPosition(operator.userId, {
+        accountId: alice.accountId,
+        symbol: 'XAUUSD',
+        side: 'BUY',
+        volume: '0.10',
+      });
+      expect(result.status).toBe('FILLED');
+      // But a trader still may not change the account itself.
+      expect(
+        await codeOf(() =>
+          stack.access.resolve(operator.userId, alice.accountId, Permission.ACCOUNTS_MANAGE),
+        ),
+      ).toBe(TradingErrorCode.FORBIDDEN);
+    });
+
+    /**
+     * The reason presets expand at grant rather than being read live. A link
+     * approved as a trader must still be a trader tomorrow, whatever the word
+     * "trader" comes to mean.
+     */
+    it('stores what the preset meant on the day it was granted, not a reference to it', async () => {
+      const { operator, alice, master } = await world();
+      await masters.grantLink(operator.userId, master.id, {
+        accountId: alice.accountId,
+        role: MasterRole.MASTER_VIEWER,
+      });
+
+      const row = await prisma.masterAccountLink.findFirstOrThrow({
+        where: { masterAccountId: master.id, accountId: alice.accountId },
+      });
+      // The capabilities are on the row. Nothing has to resolve the name to
+      // know what this operator may do.
+      expect([...row.capabilities].sort()).toEqual(
+        [...MASTER_ROLE_CAPABILITIES[MasterRole.MASTER_VIEWER]].sort(),
+      );
+      expect(row.grantedAsRole).toBe(MasterRole.MASTER_VIEWER);
+    });
+
+    /**
+     * And the list, not the name, is what is enforced — so a link edited
+     * afterwards stops claiming to be the preset it started as rather than
+     * quietly conferring it.
+     */
+    it('stops calling itself a preset once its capabilities no longer match one', async () => {
+      const { operator, alice, master } = await world();
+      await masters.grantLink(operator.userId, master.id, {
+        accountId: alice.accountId,
+        role: MasterRole.MASTER_TRADER,
+      });
+      await prisma.masterAccountLink.updateMany({
+        where: { masterAccountId: master.id, accountId: alice.accountId },
+        data: { capabilities: [Permission.POSITIONS_READ] },
+      });
+
+      const [link] = await masters.links(master.id);
+      // Still records what was asked for…
+      expect(link?.grantedAsRole).toBe(MasterRole.MASTER_TRADER);
+      // …and no longer claims to be it.
+      expect(link?.role).toBe(null);
+      expect(
+        await codeOf(() =>
+          stack.access.resolve(operator.userId, alice.accountId, Permission.ORDERS_CREATE),
+        ),
+      ).toBe(TradingErrorCode.FORBIDDEN);
+    });
+
+    it('refuses a name it does not know, and refuses a name and a list together', async () => {
+      const { operator, alice, master } = await world();
+      expect(
+        await codeOf(() =>
+          masters.grantLink(operator.userId, master.id, {
+            accountId: alice.accountId,
+            role: 'MASTER_SUPERUSER',
+          }),
+        ),
+      ).toBe(TradingErrorCode.VALIDATION_FAILED);
+      expect(
+        await codeOf(() =>
+          masters.grantLink(operator.userId, master.id, {
+            accountId: alice.accountId,
+            role: MasterRole.MASTER_VIEWER,
+            capabilities: [Permission.ORDERS_CREATE],
+          }),
+        ),
+      ).toBe(TradingErrorCode.VALIDATION_FAILED);
+      // Neither attempt granted anything.
+      expect(await prisma.masterAccountLink.count()).toBe(0);
+    });
+
+    it('re-granting under a narrower preset takes the wider one away', async () => {
+      const { operator, alice, master } = await world();
+      await masters.grantLink(operator.userId, master.id, {
+        accountId: alice.accountId,
+        role: MasterRole.MASTER_TRADER,
+      });
+      await stack.access.resolve(operator.userId, alice.accountId, Permission.ORDERS_CREATE);
+
+      await masters.grantLink(operator.userId, master.id, {
+        accountId: alice.accountId,
+        role: MasterRole.MASTER_VIEWER,
+      });
+      expect(
+        await codeOf(() =>
+          stack.access.resolve(operator.userId, alice.accountId, Permission.ORDERS_CREATE),
+        ),
+      ).toBe(TradingErrorCode.FORBIDDEN);
+      // One link, narrowed — not a second one beside the first.
+      expect(await prisma.masterAccountLink.count()).toBe(1);
+    });
   });
 });

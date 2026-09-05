@@ -488,6 +488,93 @@ async function main(): Promise<void> {
       text: /In flight/i,
     });
     await visit(adminPage, '/admin/audit', { url: '/admin/audit' });
+
+    /**
+     * Desks: create one, delegate an account to it as a named preset, and
+     * check the screen shows what was actually stored.
+     *
+     * The grant is the sharp edge of this whole feature — one person given
+     * power over someone else's money — so what is checked is not that the
+     * form submits but that the delegation that came back confers what the
+     * preset says it confers, and that the desk book then reports the account.
+     */
+    await visit(adminPage, '/admin/desks', { url: '/admin/desks' });
+    const traderRow = await prisma.user.findFirstOrThrow({
+      where: { email: people.trader.email },
+    });
+    const traderAccount = await prisma.account.findFirstOrThrow({
+      where: { userId: traderRow.id },
+    });
+    const operatorRow = await prisma.user.findFirstOrThrow({
+      where: { email: people.admin.email },
+    });
+
+    await adminPage.getByPlaceholder('London desk').fill(`Smoke desk ${Date.now()}`);
+    await adminPage.getByPlaceholder('user id').fill(operatorRow.id);
+    await adminPage.getByRole('button', { name: /Create desk/i }).click();
+    const opened = await adminPage
+      .getByRole('button', { name: /^Open$/ })
+      .last()
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    ok(opened, 'a desk can be created from the console');
+    await adminPage.getByRole('button', { name: /^Open$/ }).last().click();
+
+    const detail = adminPage.getByTestId('desk-detail');
+    await detail.waitFor({ timeout: 10_000 });
+    await detail.getByPlaceholder('account id').fill(traderAccount.id);
+    await detail.locator('select').selectOption('MASTER_TRADER');
+    await detail.getByRole('button', { name: /^Grant$/ }).click();
+
+    let deskBody = '';
+    for (let attempt = 0; attempt < 30; attempt++) {
+      deskBody = await detail.innerText();
+      if (deskBody.includes(traderAccount.number)) break;
+      await adminPage.waitForTimeout(500);
+    }
+    ok(
+      deskBody.includes(traderAccount.number) && /Trader/.test(deskBody),
+      'an account is delegated to a desk as a named preset, and the desk shows it',
+      deskBody.replace(/\s+/g, ' ').slice(0, 200),
+    );
+
+    const link = await prisma.masterAccountLink.findFirstOrThrow({
+      where: { accountId: traderAccount.id },
+    });
+    ok(
+      link.grantedAsRole === 'MASTER_TRADER' &&
+        link.capabilities.includes('orders.create') &&
+        // A trader trades; a trader does not manage the account it trades.
+        !link.capabilities.includes('accounts.manage'),
+      'the preset was expanded and stored, so what is enforced is a list and not a name',
+      link.capabilities.join(','),
+    );
+
+    /**
+     * And the ceiling: a layer may tighten what is above it and never loosen
+     * it, which is the one rule the hierarchy exists to keep.
+     */
+    await visit(adminPage, '/admin/risk', { url: '/admin/risk' });
+    // The tabs render as role="tab", not role="button".
+    await adminPage.getByRole('tab', { name: /^Ceilings$/ }).click();
+    const ceilings = adminPage.getByTestId('risk-ceilings');
+    await ceilings.waitFor({ timeout: 10_000 });
+    await ceilings.getByPlaceholder('unset').first().fill('2.5');
+    await ceilings.getByRole('button', { name: /Set ceiling/i }).click();
+    let ceilingBody = '';
+    for (let attempt = 0; attempt < 30; attempt++) {
+      ceilingBody = await ceilings.innerText();
+      if (/BROKER/.test(ceilingBody)) break;
+      await adminPage.waitForTimeout(500);
+    }
+    ok(
+      /BROKER/.test(ceilingBody) && /2\.5/.test(ceilingBody),
+      'a firm ceiling can be set from the risk console and is shown back',
+      ceilingBody.replace(/\s+/g, ' ').slice(0, 200),
+    );
     await visit(adminPage, '/admin/roles', { url: '/admin/roles', text: /Administrator/i });
 
     /**

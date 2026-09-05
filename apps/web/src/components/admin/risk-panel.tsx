@@ -2,12 +2,20 @@
 
 import { useState } from 'react';
 import { cn } from '@tp/ui';
-import { Tabs } from '@/components/primitives';
-import { useAtRisk, useExposure, useIntegritySignals, useRiskEvents } from '@/lib/admin-queries';
+import { Button, Field, Tabs, inputClass } from '@/components/primitives';
+import {
+  useAtRisk,
+  useExposure,
+  useIntegritySignals,
+  useRiskEvents,
+  useRiskLimits,
+  useSetRiskLimits,
+} from '@/lib/admin-queries';
+import { usePermissions } from '@/lib/queries';
 import { money, percent, signedMoney, toneClass, toneOf, utcTime, volume } from '@/lib/format';
 import { ErrorLine, Head, Loading, SeverityPill, Table } from './shared';
 
-type RiskTab = 'at-risk' | 'exposure' | 'events' | 'integrity';
+type RiskTab = 'at-risk' | 'exposure' | 'events' | 'integrity' | 'ceilings';
 
 /** The risk manager's console. */
 export function RiskPanel() {
@@ -24,6 +32,7 @@ export function RiskPanel() {
             { id: 'exposure', label: 'Exposure' },
             { id: 'events', label: 'Events' },
             { id: 'integrity', label: 'Integrity' },
+            { id: 'ceilings', label: 'Ceilings' },
           ]}
         />
       </div>
@@ -31,6 +40,7 @@ export function RiskPanel() {
       {tab === 'exposure' ? <Exposure /> : null}
       {tab === 'events' ? <Events /> : null}
       {tab === 'integrity' ? <Signals /> : null}
+      {tab === 'ceilings' ? <Ceilings /> : null}
     </div>
   );
 }
@@ -323,5 +333,121 @@ function Signals() {
         worth looking at; what it means is for a person to decide.
       </p>
     </>
+  );
+}
+
+
+/**
+ * The layers above an account: platform → broker → desk → account.
+ *
+ * Each may tighten what the one above allows and none may loosen it, so a
+ * ceiling set here is refused by the server if it is looser than the layer
+ * above — and the refusal names the layer, because "saved" and then silently
+ * clamped is how an administrator ends up believing their traders can trade
+ * twice what they can.
+ *
+ * Desk ceilings are set on the desk itself, where the accounts it binds are
+ * visible. This screen is the two layers that apply to everybody.
+ */
+function Ceilings() {
+  const limits = useRiskLimits();
+  const save = useSetRiskLimits();
+  const permissions = usePermissions();
+  const mayManage = permissions.data?.permissions.includes('risk.manage') ?? false;
+
+  const [level, setLevel] = useState<'PLATFORM' | 'BROKER'>('BROKER');
+  const [volume, setVolume] = useState('');
+  const [positions, setPositions] = useState('');
+
+  const rows = (limits.data ?? []).filter((row) => row.masterAccountId === null);
+
+  return (
+    <div className="space-y-3 px-3 py-3" data-testid="risk-ceilings">
+      <p className="text-[11px] text-terminal-muted">
+        A layer may tighten what the layer above it allows and may never loosen it. A limit no
+        layer sets is not enforced — silence is not permission, it is silence.
+      </p>
+      <ErrorLine error={limits.error ?? save.error} />
+
+      {limits.isLoading ? (
+        <Loading />
+      ) : rows.length === 0 ? (
+        <Loading>No ceiling is set above the accounts. Each account&apos;s own limits apply.</Loading>
+      ) : (
+        <Table>
+          <Head columns={['Layer', 'Lots per position', 'Open positions', 'Gross notional', 'Changed']} />
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.level} className="border-t border-terminal-border/60">
+                <td className="px-3 py-1.5 text-terminal-text">{row.level}</td>
+                <td className="numeric px-3 py-1.5">{row.maxPositionVolume ?? '—'}</td>
+                <td className="numeric px-3 py-1.5">{row.maxOpenPositions ?? '—'}</td>
+                <td className="numeric px-3 py-1.5">{row.maxGrossNotional ?? '—'}</td>
+                <td className="numeric px-3 py-1.5 text-[10px] text-terminal-muted">
+                  {row.updatedAt === null ? '—' : utcTime(row.updatedAt)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      )}
+
+      {mayManage ? (
+        <div className="grid gap-3 md:grid-cols-4">
+          <Field label="Layer" hint="the platform layer is set from the platform only">
+            <select
+              className={cn(inputClass, 'py-1 text-xs')}
+              value={level}
+              onChange={(event) => setLevel(event.target.value as 'PLATFORM' | 'BROKER')}
+            >
+              <option value="BROKER">This firm</option>
+              <option value="PLATFORM">The platform</option>
+            </select>
+          </Field>
+          <Field label="Max lots per position">
+            <input
+              className={cn(inputClass, 'py-1 text-xs')}
+              value={volume}
+              onChange={(event) => setVolume(event.target.value)}
+              placeholder="unset"
+            />
+          </Field>
+          <Field label="Max open positions">
+            <input
+              className={cn(inputClass, 'py-1 text-xs')}
+              value={positions}
+              onChange={(event) => setPositions(event.target.value)}
+              placeholder="unset"
+            />
+          </Field>
+          <div className="flex items-end">
+            <Button
+              onClick={() =>
+                save.mutate(
+                  {
+                    level,
+                    limits: {
+                      ...(volume.trim() === '' ? {} : { maxPositionVolume: volume.trim() }),
+                      ...(positions.trim() === ''
+                        ? {}
+                        : { maxOpenPositions: Number(positions.trim()) }),
+                    },
+                  },
+                  {
+                    onSuccess: () => {
+                      setVolume('');
+                      setPositions('');
+                    },
+                  },
+                )
+              }
+              disabled={(volume.trim() === '' && positions.trim() === '') || save.isPending}
+            >
+              {save.isPending ? 'Saving…' : 'Set ceiling'}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }

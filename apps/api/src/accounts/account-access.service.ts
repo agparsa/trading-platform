@@ -38,6 +38,16 @@ export interface AccountGrant {
    * than by re-deriving who could have done it at the time.
    */
   readonly linkId: string | null;
+  /**
+   * The desk the caller came through, when they came through one.
+   *
+   * Carried because the risk hierarchy has a desk layer: a ceiling a broker
+   * puts on a desk binds orders that desk's operators place, and does not bind
+   * the account's own owner, who never agreed to it. Knowing *which* desk an
+   * order arrived through is the only way to apply that correctly, and the
+   * resolver is the one place that already knows.
+   */
+  readonly masterAccountId: string | null;
   readonly capabilities: ReadonlySet<Permission>;
 }
 
@@ -111,7 +121,7 @@ export class AccountAccessService {
     if (account === null) throw this.notFound(accountId);
 
     if (account.userId === userId) {
-      return this.grant(account, AccountAccessRoute.OWNER, null, OWNER_CAPABILITIES, needs);
+      return this.grant(account, AccountAccessRoute.OWNER, null, OWNER_CAPABILITIES, needs, null);
     }
 
     /**
@@ -131,7 +141,7 @@ export class AccountAccessService {
         status: 'ACTIVE',
         master: { userId, status: 'ACTIVE' },
       },
-      select: { id: true, capabilities: true },
+      select: { id: true, capabilities: true, masterAccountId: true },
     });
     if (link === null) throw this.notFound(accountId);
 
@@ -147,6 +157,7 @@ export class AccountAccessService {
       link.id,
       link.capabilities.filter(isLinkableCapability),
       needs,
+      link.masterAccountId,
     );
   }
 
@@ -156,6 +167,7 @@ export class AccountAccessService {
     linkId: string | null,
     granted: readonly Permission[],
     needs: Permission,
+    masterAccountId: string | null,
   ): AccountGrant {
     const capabilities: ReadonlySet<Permission> = new Set(granted);
     if (!capabilities.has(needs)) {
@@ -170,7 +182,7 @@ export class AccountAccessService {
         { accountId: account.id, missing: needs },
       );
     }
-    return { account, via, linkId, capabilities };
+    return { account, via, linkId, masterAccountId, capabilities };
   }
 
   /**

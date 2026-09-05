@@ -55,31 +55,35 @@ handler is responsible for scoping the result to that user — which for
 
 ### `admin/admin.controller.ts` — base `/admin`
 
-| Verb   | Path                               | Handler                | Requires           |
-| ------ | ---------------------------------- | ---------------------- | ------------------ |
-| `GET`  | `/admin/users`                     | `users`                | USERS_READ_ANY     |
-| `GET`  | `/admin/users/:id`                 | `user`                 | USERS_READ_ANY     |
-| `POST` | `/admin/users/:id/suspend`         | `suspend`              | USERS_MANAGE       |
-| `POST` | `/admin/users/:id/reinstate`       | `reinstate`            | USERS_MANAGE       |
-| `POST` | `/admin/users/:id/sign-out`        | `signOut`              | USERS_MANAGE       |
-| `POST` | `/admin/users/:id/role`            | `assignRole`           | ROLES_ASSIGN       |
-| `POST` | `/admin/users/:id/unlock`          | `unlock`               | USERS_MANAGE       |
-| `GET`  | `/admin/accounts`                  | `accounts`             | ACCOUNTS_READ_ANY  |
-| `GET`  | `/admin/accounts/:id`              | `account`              | ACCOUNTS_READ_ANY  |
-| `POST` | `/admin/accounts/:id/status`       | `accountStatus`        | ACCOUNTS_MANAGE    |
-| `POST` | `/admin/accounts/:id/limits`       | `limits`               | RISK_MANAGE        |
-| `POST` | `/admin/accounts/:id/adjustments`  | `adjust`               | ACCOUNTS_ADJUST    |
-| `GET`  | `/admin/risk/at-risk`              | `atRisk`               | RISK_READ          |
-| `GET`  | `/admin/risk/exposure`             | `exposure`             | RISK_READ          |
-| `GET`  | `/admin/risk/events`               | `riskEvents`           | RISK_READ          |
-| `GET`  | `/admin/audit`                     | `audit`                | AUDIT_READ         |
-| `GET`  | `/admin/audit/actions`             | `auditActions`         | AUDIT_READ         |
-| `GET`  | `/admin/instruments`               | `listInstruments`      | INSTRUMENTS_READ   |
-| `POST` | `/admin/instruments/:code/enabled` | `setInstrumentEnabled` | INSTRUMENTS_MANAGE |
-| `POST` | `/admin/instruments/:code/terms`   | `setInstrumentTerms`   | INSTRUMENTS_MANAGE |
-| `POST` | `/admin/invites`                   | `mintInvite`           | INVITES_MANAGE     |
-| `GET`  | `/admin/invites`                   | `listInvites`          | INVITES_MANAGE     |
-| `POST` | `/admin/invites/:id/revoke`        | `revokeInvite`         | INVITES_MANAGE     |
+| Verb   | Path                                       | Handler                | Requires           |
+| ------ | ------------------------------------------ | ---------------------- | ------------------ |
+| `GET`  | `/admin/users`                             | `users`                | USERS_READ_ANY     |
+| `GET`  | `/admin/users/:id`                         | `user`                 | USERS_READ_ANY     |
+| `POST` | `/admin/users/:id/suspend`                 | `suspend`              | USERS_MANAGE       |
+| `POST` | `/admin/users/:id/reinstate`               | `reinstate`            | USERS_MANAGE       |
+| `POST` | `/admin/users/:id/sign-out`                | `signOut`              | USERS_MANAGE       |
+| `POST` | `/admin/users/:id/role`                    | `assignRole`           | ROLES_ASSIGN       |
+| `POST` | `/admin/users/:id/unlock`                  | `unlock`               | USERS_MANAGE       |
+| `GET`  | `/admin/accounts`                          | `accounts`             | ACCOUNTS_READ_ANY  |
+| `GET`  | `/admin/accounts/:id`                      | `account`              | ACCOUNTS_READ_ANY  |
+| `POST` | `/admin/accounts/:id/status`               | `accountStatus`        | ACCOUNTS_MANAGE    |
+| `GET`  | `/admin/risk/limits`                       | `riskLimits`           | RISK_READ          |
+| `POST` | `/admin/risk/limits/broker`                | `setBrokerLimits`      | RISK_MANAGE        |
+| `POST` | `/admin/risk/limits/desk/:masterAccountId` | `setDeskLimits`        | RISK_MANAGE        |
+| `POST` | `/admin/risk/limits/platform`              | `setPlatformLimits`    | RISK_MANAGE        |
+| `POST` | `/admin/accounts/:id/limits`               | `limits`               | RISK_MANAGE        |
+| `POST` | `/admin/accounts/:id/adjustments`          | `adjust`               | ACCOUNTS_ADJUST    |
+| `GET`  | `/admin/risk/at-risk`                      | `atRisk`               | RISK_READ          |
+| `GET`  | `/admin/risk/exposure`                     | `exposure`             | RISK_READ          |
+| `GET`  | `/admin/risk/events`                       | `riskEvents`           | RISK_READ          |
+| `GET`  | `/admin/audit`                             | `audit`                | AUDIT_READ         |
+| `GET`  | `/admin/audit/actions`                     | `auditActions`         | AUDIT_READ         |
+| `GET`  | `/admin/instruments`                       | `listInstruments`      | INSTRUMENTS_READ   |
+| `POST` | `/admin/instruments/:code/enabled`         | `setInstrumentEnabled` | INSTRUMENTS_MANAGE |
+| `POST` | `/admin/instruments/:code/terms`           | `setInstrumentTerms`   | INSTRUMENTS_MANAGE |
+| `POST` | `/admin/invites`                           | `mintInvite`           | INVITES_MANAGE     |
+| `GET`  | `/admin/invites`                           | `listInvites`          | INVITES_MANAGE     |
+| `POST` | `/admin/invites/:id/revoke`                | `revokeInvite`         | INVITES_MANAGE     |
 
 ### `auth/auth.controller.ts` — base `/auth`
 
@@ -209,6 +213,7 @@ handler is responsible for scoping the result to that user — which for
 | -------- | --------------------------------------- | -------- | ------------- |
 | `GET`    | `/master-accounts`                      | `list`   | MASTER_READ   |
 | `GET`    | `/master-accounts/:id/links`            | `links`  | MASTER_READ   |
+| `GET`    | `/master-accounts/:id/desk`             | `desk`   | MASTER_READ   |
 | `POST`   | `/master-accounts`                      | `create` | MASTER_MANAGE |
 | `POST`   | `/master-accounts/:id/links`            | `grant`  | MASTER_MANAGE |
 | `DELETE` | `/master-accounts/:id/links/:accountId` | `revoke` | MASTER_MANAGE |
@@ -376,7 +381,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**172 routes:** 85 `GET`, 76 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
+**177 routes:** 87 `GET`, 79 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

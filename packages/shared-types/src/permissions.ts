@@ -759,6 +759,113 @@ export function isLinkableCapability(value: string): value is Permission {
 }
 
 /**
+ * The four shapes a delegation usually takes.
+ *
+ * ## Why these are presets and not roles
+ *
+ * A role is a live reference: change what `RISK_MANAGER` may do and every
+ * risk manager's powers move with it, which is exactly what a role is for.
+ * A delegation must not work that way. "Hossein may trade this account" is a
+ * decision someone made about one person and one account on one day, and
+ * widening `MASTER_TRADER` next quarter must not silently widen every
+ * delegation ever made under that name — a desk manager would find their
+ * operators able to do things nobody granted them.
+ *
+ * So these expand **at grant time** into the explicit capability list stored
+ * on the link, and the link is what is enforced. The name is kept beside it
+ * so a screen can say "Trader" instead of listing eight strings, and so an
+ * audit row records what was asked for as well as what it became — but if the
+ * two ever disagree, the stored capabilities win, because they are what the
+ * granter actually approved.
+ *
+ * The ladder is nested: each preset contains the one below it, so "more than a
+ * viewer, less than a manager" has an unambiguous answer.
+ *
+ * **`MASTER_OWNER` and `MASTER_MANAGER` presently expand to the same ten
+ * capabilities**, because the linkable ceiling currently *is* the manager set.
+ * Both names are kept, and they are not an alias for one another: `OWNER` is
+ * defined as the ceiling and `MANAGER` as an explicit list, so the next
+ * capability added to the ceiling reaches an owner and does not reach a
+ * manager. Naming the coincidence here rather than deleting a preset means
+ * the day it stops being true is a day nothing has to change.
+ */
+export const MasterRole = {
+  /** Watches. Cannot move a position or an order. */
+  MASTER_VIEWER: 'MASTER_VIEWER',
+  /** Trades the account: opens, closes, modifies. Cannot change the account. */
+  MASTER_TRADER: 'MASTER_TRADER',
+  /** Trades, and may change the account's own settings. */
+  MASTER_MANAGER: 'MASTER_MANAGER',
+  /** Everything a delegation is permitted to carry. */
+  MASTER_OWNER: 'MASTER_OWNER',
+} as const;
+export type MasterRole = (typeof MasterRole)[keyof typeof MasterRole];
+
+const MASTER_VIEWER_CAPS: readonly Permission[] = [
+  Permission.ACCOUNTS_READ,
+  Permission.ORDERS_READ,
+  Permission.POSITIONS_READ,
+  Permission.RISK_READ,
+];
+const MASTER_TRADER_CAPS: readonly Permission[] = [
+  ...MASTER_VIEWER_CAPS,
+  Permission.ORDERS_CREATE,
+  Permission.ORDERS_CANCEL,
+  Permission.ORDERS_MODIFY,
+  Permission.POSITIONS_CLOSE,
+  Permission.POSITIONS_MODIFY,
+];
+const MASTER_MANAGER_CAPS: readonly Permission[] = [...MASTER_TRADER_CAPS, Permission.ACCOUNTS_MANAGE];
+
+/**
+ * What each preset expands to.
+ *
+ * `MASTER_OWNER` is `LINKABLE_CAPABILITIES` itself rather than a copy of it,
+ * so a capability added to the ceiling reaches the top preset without a second
+ * edit — and a capability the ceiling refuses cannot appear here at all. The
+ * test below the definition asserts every preset stays inside the ceiling.
+ */
+export const MASTER_ROLE_CAPABILITIES: Readonly<Record<MasterRole, readonly Permission[]>> = {
+  [MasterRole.MASTER_VIEWER]: MASTER_VIEWER_CAPS,
+  [MasterRole.MASTER_TRADER]: MASTER_TRADER_CAPS,
+  [MasterRole.MASTER_MANAGER]: MASTER_MANAGER_CAPS,
+  [MasterRole.MASTER_OWNER]: LINKABLE_CAPABILITIES,
+};
+
+const MASTER_ROLES = new Set<string>(Object.keys(MASTER_ROLE_CAPABILITIES));
+
+export function isMasterRole(value: string): value is MasterRole {
+  return MASTER_ROLES.has(value);
+}
+
+/**
+ * The preset a capability list amounts to, or `null` when it is its own thing.
+ *
+ * Used only for display: a link granted as a preset keeps the name it was
+ * granted under, and this answers for links written before presets existed,
+ * or assembled capability by capability. A list that is not exactly a preset
+ * is shown as what it is rather than rounded to the nearest name.
+ *
+ * While the ceiling equals the manager set, an owner's list and a manager's
+ * are indistinguishable and this answers `MASTER_OWNER` — the widest name for
+ * the widest grant, which is the reading that cannot understate what someone
+ * was given.
+ */
+export function masterRoleOf(capabilities: readonly string[]): MasterRole | null {
+  const held = new Set(capabilities);
+  for (const role of [
+    MasterRole.MASTER_OWNER,
+    MasterRole.MASTER_MANAGER,
+    MasterRole.MASTER_TRADER,
+    MasterRole.MASTER_VIEWER,
+  ]) {
+    const wanted = MASTER_ROLE_CAPABILITIES[role];
+    if (wanted.length === held.size && wanted.every((one) => held.has(one))) return role;
+  }
+  return null;
+}
+
+/**
  * What an API key may **not** carry, whatever its holder holds.
  *
  * A key acts as the person who minted it, so the question is not "may this

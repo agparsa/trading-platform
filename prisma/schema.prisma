@@ -78,6 +78,7 @@ model Tenant {
   balanceLedgers           BalanceLedger[]
   accountSnapshots         AccountSnapshot[]
   riskRuleConfigs          RiskRuleConfig[]
+  riskLimitSets            RiskLimitSet[]
   riskEvents               RiskEvent[]
   auditLogs                AuditLog[]
   securityEvents           SecurityEvent[]
@@ -599,6 +600,17 @@ model Order {
   /// Populated only when the order was rejected; a code from TradingErrorCode.
   rejectionCode String? @map("rejection_code")
 
+  /// The desk this order was placed through, when an operator placed it.
+  ///
+  /// Recorded because a resting order fills later, from the tick loop, with no
+  /// caller and no route — and the desk ceiling that governed its placement
+  /// must still govern its fill. Without this, an operator under a two-position
+  /// desk cap could place five pending orders and have all five fill.
+  ///
+  /// It is also the honest answer to "who placed this", which a link id alone
+  /// does not give once the link has been revoked.
+  placedByMasterAccountId String? @map("placed_by_master_account_id") @db.Uuid
+
   /// The id **we** minted for this order before it left, and the venue's own.
   /// `clientOrderId` is the idempotency key at the venue and the key the
   /// recovery query asks by; it exists only for externally executed orders.
@@ -883,6 +895,57 @@ model AccountSnapshot {
 // ---------------------------------------------------------------------------
 
 /// Named, versioned risk rule configuration. Rules are data, never constants.
+/// Which layer of the hierarchy a limit set belongs to.
+enum RiskLimitLevel {
+  PLATFORM
+  BROKER
+  DESK
+}
+
+/// One layer's risk ceilings.
+///
+/// The hierarchy is platform → broker → desk → account, and it only ever
+/// tightens: a lower layer may set a limit stricter than the one above it and
+/// may never set one looser. That is checked when a limit is written, and the
+/// resolver takes the tightest value across every layer anyway — because a row
+/// that reached this table some other way must not be able to widen what an
+/// account may do.
+///
+/// Every field is optional and null means "this layer sets no opinion", not
+/// "unlimited": a layer that says nothing simply passes the layer above
+/// through. No limit is ever defaulted in code.
+///
+/// The account layer is not here. It is `AccountSettings`, where it has always
+/// been, because it is one row per account and belongs beside the account's
+/// other settings — this table holds the layers *above* an account.
+model RiskLimitSet {
+  id              String         @id @default(uuid()) @db.Uuid
+  level           RiskLimitLevel
+  /// Always set, including for PLATFORM — the platform is a tenant of kind
+  /// PLATFORM, so one shape covers every layer and RLS covers every row.
+  /// A broker reading the platform's ceiling does so deliberately and out of
+  /// scope, which is the only cross-tenant read this table permits.
+  tenantId        String         @map("tenant_id") @db.Uuid
+  /// Set only at DESK level.
+  masterAccountId String?        @map("master_account_id") @db.Uuid
+
+  maxPositionVolume  Decimal? @map("max_position_volume") @db.Decimal(18, 8)
+  maxOpenPositions   Int?     @map("max_open_positions")
+  maxGrossNotional   Decimal? @map("max_gross_notional") @db.Decimal(28, 10)
+  maxSymbolNetVolume Decimal? @map("max_symbol_net_volume") @db.Decimal(18, 8)
+
+  /// Who last set it, and when. A ceiling nobody can attribute is a ceiling
+  /// nobody can question.
+  updatedByUserId String?  @map("updated_by_user_id") @db.Uuid
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  masterAccount MasterAccount? @relation(fields: [masterAccountId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, level])
+  @@map("risk_limit_sets")
+}
+
 model RiskRuleConfig {
   id         String   @id @default(uuid()) @db.Uuid
   tenantId   String   @map("tenant_id") @db.Uuid
@@ -1013,8 +1076,9 @@ model MasterAccount {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user  User                @relation(fields: [userId], references: [id], onDelete: Restrict)
-  links MasterAccountLink[]
+  user   User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  links  MasterAccountLink[]
+  limits RiskLimitSet[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
@@ -1039,6 +1103,14 @@ model MasterAccountLink {
   /// specific grant to a specific person over a specific account, and a role
   /// would make every such grant move whenever the role did.
   capabilities String[]
+
+  /// The preset this was granted as, when it was granted as one.
+  ///
+  /// Display and audit only — `capabilities` is what is enforced. A preset is
+  /// expanded at grant time and never re-read, so widening a preset later
+  /// cannot widen a delegation someone already approved. Null means the
+  /// capabilities were chosen individually, or the link predates presets.
+  grantedAsRole String? @map("granted_as_role")
 
   status MasterLinkStatus @default(ACTIVE)
 

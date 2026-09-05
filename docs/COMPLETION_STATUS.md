@@ -276,6 +276,56 @@ that fail when the guarantee is removed. `pnpm verify` green: 1955 tests.
 **Still blocked:** the connector to a real venue. Everything above is proved
 against `MockBrokerAdapter`.
 
+## New plan, Phase 4 — desks, delegation presets, and the risk hierarchy
+
+Four delegation presets — viewer, trader, manager, owner — that **expand at
+grant time** into the capabilities stored on the link. A role is a live
+reference and a delegation must not be one: "Hossein may trade this account" is
+a decision made about one person on one day, and widening `MASTER_TRADER` next
+quarter must not silently widen every delegation granted under that name. The
+name is kept beside the list for the screen and the audit row; the list is what
+is enforced, and a link edited afterwards stops claiming to be the preset it
+started as. `MASTER_OWNER` and `MASTER_MANAGER` presently expand to the same ten
+capabilities because the linkable ceiling is exactly the manager set — said in
+the code and asserted by a test, so the day they diverge is a day someone looks.
+
+`DeskViewService` is what a desk adds up to: every account it may **read**, its
+exposure netted by symbol, and the totals. A link granting `orders.create` is a
+delegation to trade, not a licence to read a balance, so such an account is not
+in the book. Equity comes from `AccountStateService` rather than being
+recomputed, so a desk total and an account's own screen cannot disagree. An
+account that cannot be converted into the desk's currency is **named**, and no
+total is printed at all — a total that quietly dropped it would read as a
+smaller book than the desk actually runs.
+
+`RiskLimitSet` gives the hierarchy platform → broker → desk → account. Each
+layer may tighten what is above it and none may loosen it, enforced twice on
+purpose: a looser value is **refused when written**, naming the layer and what
+it allows, because an administrator told their ceiling was saved will believe
+it; and the resolver takes the tightest value across every layer **when read**,
+so a row that arrived by a restored backup still cannot widen anything.
+Comparisons are numeric, never lexical. A null layer is silence, not permission.
+
+The desk layer binds the **route**, not the account: a ceiling on a desk binds
+orders its operators place and does not bind the account holder, who never
+agreed to it. `Order.placedByMasterAccountId` carries that provenance so a
+resting order fills under the ceiling that governed its placement — without it
+an operator under a two-position cap could place five pending orders and have
+all five fill. The database keeps one limit set per layer by partial unique
+index, and refuses a row claiming to be a firm ceiling while naming one desk.
+
+Margin-call and stop-out levels are deliberately **not** in the hierarchy:
+"stricter" runs the other way for them, and minimising them would give every
+account the loosest stop-out on the platform. Stated rather than got backwards.
+
+Fifty-one new tests. Ten mutations run, ten caught. Screens: Desks in the admin
+console, a Ceilings tab on the Risk console. The desk view in the _terminal_ is
+left to Phase 6, where the terminal is being rebuilt anyway.
+
+`pnpm verify` 1998 tests over 149 files; smoke 20; web smoke 100 over 29 routes;
+pentest 47 attacks refused.
+[desks-and-risk-hierarchy.md](./desks-and-risk-hierarchy.md).
+
 ## Phase 9 — API keys and service tokens
 
 `ApiKey` and `ServiceToken`, tenant-scoped, with per-credential permissions,

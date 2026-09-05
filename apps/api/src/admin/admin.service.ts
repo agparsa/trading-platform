@@ -5,6 +5,7 @@ import { DomainError, TradingErrorCode, type UserRole } from '@tp/shared-types';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionsService } from '../auth/sessions.service';
+import { RiskHierarchyService } from './risk-hierarchy.service';
 import { RolesService } from '../permissions/roles.service';
 import { requireTenantId } from '@tp/tenancy';
 
@@ -31,6 +32,7 @@ export class AdminService {
     private readonly audit: AuditService,
     private readonly sessions: SessionsService,
     private readonly roles: RolesService,
+    private readonly hierarchy: RiskHierarchyService,
   ) {}
 
   /**
@@ -469,6 +471,16 @@ export class AdminService {
         );
       }
     }
+
+    /**
+     * And an account may not be configured looser than the layers above it.
+     *
+     * The resolver would clamp it anyway — it takes the tightest value across
+     * platform, broker, desk and account — but clamping silently would leave
+     * an administrator looking at a 100-lot ceiling they saved while their
+     * traders are refused at 50. Better to refuse the save and name the layer.
+     */
+    await this.hierarchy.assertWithinCeiling(limits);
 
     const data = {
       ...(limits.marginCallLevelPercent === undefined

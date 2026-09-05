@@ -8,6 +8,7 @@ import { IdempotencyKey } from '../common/decorators/idempotency-key.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { AdminService } from './admin.service';
 import { AdjustmentsService } from './adjustments.service';
+import { RiskHierarchyService, type LimitSetView } from './risk-hierarchy.service';
 import { RiskConsoleService } from './risk-console.service';
 import { AuditQueryService } from './audit-query.service';
 import { AdminInstrumentsService } from './instruments.service';
@@ -95,6 +96,21 @@ const limitsSchema = z
   })
   .strict();
 
+/**
+ * A layer's ceiling. The margin-call and stop-out levels are deliberately not
+ * here: they are not caps, "stricter" runs the other way for them, and a
+ * hierarchy that minimised them would give every account the loosest stop-out
+ * on the platform. They stay account-only until they have their own direction.
+ */
+const riskLimitsSchema = z
+  .object({
+    maxPositionVolume: decimal.nullable().optional(),
+    maxOpenPositions: z.number().int().min(1).max(10_000).nullable().optional(),
+    maxGrossNotional: decimal.nullable().optional(),
+    maxSymbolNetVolume: decimal.nullable().optional(),
+  })
+  .strict();
+
 const adjustmentSchema = z
   .object({
     amount: decimal,
@@ -147,6 +163,7 @@ class ReasonDto extends createZodDto(reasonSchema) {}
 class AssignRoleDto extends createZodDto(assignRoleSchema) {}
 class AccountStatusDto extends createZodDto(accountStatusSchema) {}
 class LimitsDto extends createZodDto(limitsSchema) {}
+class RiskLimitsDto extends createZodDto(riskLimitsSchema) {}
 class AdjustmentDto extends createZodDto(adjustmentSchema) {}
 class RiskEventQueryDto extends createZodDto(riskEventQuerySchema) {}
 class AtRiskQueryDto extends createZodDto(atRiskQuerySchema) {}
@@ -174,6 +191,7 @@ export class AdminController {
     private readonly risk: RiskConsoleService,
     private readonly auditQuery: AuditQueryService,
     private readonly instruments: AdminInstrumentsService,
+    private readonly hierarchy: RiskHierarchyService,
     // Provided by AuthModule, which AdminModule imports. A service that is not
     // reachable from this module's imports crashes the container at boot, not
     // at the first request — which is why `pnpm smoke` and not `pnpm verify`
@@ -289,6 +307,56 @@ export class AdminController {
     @Body() body: AccountStatusDto,
   ) {
     return this.admin.setAccountStatus(actor.id, id, body.status, body.reason);
+  }
+
+  // ---- The risk hierarchy: platform → broker → desk → account -------------
+
+  @RequirePermissions(Permission.RISK_READ)
+  @Get('risk/limits')
+  @ApiOperation({
+    summary: 'The ceilings above an account: the platform layer, this firm’s, and each desk’s',
+  })
+  riskLimits(): Promise<readonly LimitSetView[]> {
+    return this.hierarchy.list();
+  }
+
+  @RequirePermissions(Permission.RISK_MANAGE)
+  @Post('risk/limits/broker')
+  @ApiOperation({
+    summary: 'Set this firm’s ceiling. May tighten the platform’s, never loosen it.',
+  })
+  setBrokerLimits(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() body: RiskLimitsDto,
+  ): Promise<LimitSetView> {
+    return this.hierarchy.setBroker(actor.id, body);
+  }
+
+  @RequirePermissions(Permission.RISK_MANAGE)
+  @Post('risk/limits/desk/:masterAccountId')
+  @ApiOperation({
+    summary: 'Set one desk’s ceiling. Binds orders its operators place, not the account owner.',
+  })
+  setDeskLimits(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('masterAccountId', ParseUUIDPipe) masterAccountId: string,
+    @Body() body: RiskLimitsDto,
+  ): Promise<LimitSetView> {
+    return this.hierarchy.setDesk(actor.id, masterAccountId, body);
+  }
+
+  /**
+   * The platform's own ceiling. Refused from a broker, whatever they hold:
+   * `risk.manage` is authority over your own firm, not over everyone's.
+   */
+  @RequirePermissions(Permission.RISK_MANAGE)
+  @Post('risk/limits/platform')
+  @ApiOperation({ summary: 'Set the ceiling every firm trades under. Platform tenant only.' })
+  setPlatformLimits(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Body() body: RiskLimitsDto,
+  ): Promise<LimitSetView> {
+    return this.hierarchy.setPlatform(actor.id, body);
   }
 
   @RequirePermissions(Permission.RISK_MANAGE)

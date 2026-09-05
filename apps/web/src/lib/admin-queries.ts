@@ -145,6 +145,10 @@ const adminKeys = {
   brokerCatalogue: (id: string) => ['admin', 'broker-catalogue', id] as const,
   brokerInbox: (id: string) => ['admin', 'broker-inbox', id] as const,
   unconfirmedOrders: ['admin', 'unconfirmed-orders'] as const,
+  masterAccounts: ['admin', 'master-accounts'] as const,
+  masterLinks: (id: string) => ['admin', 'master-links', id] as const,
+  desk: (id: string) => ['admin', 'desk', id] as const,
+  riskLimits: ['admin', 'risk-limits'] as const,
   securityFeed: (filter: string) => ['admin', 'security-feed', filter] as const,
   user: (id: string) => ['admin', 'user', id] as const,
   accounts: (search: string) => ['admin', 'accounts', search] as const,
@@ -1505,6 +1509,197 @@ export function useResolveUnconfirmed() {
       ),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: adminKeys.unconfirmedOrders });
+    },
+  });
+}
+
+
+// ---- Master accounts, desks, and the risk hierarchy ------------------------
+
+export interface MasterAccountRow {
+  id: string;
+  name: string;
+  status: string;
+  operatorUserId: string;
+  activeLinks: number;
+  createdAt: string;
+}
+
+export interface MasterLinkRow {
+  id: string;
+  accountId: string;
+  accountNumber: string;
+  capabilities: string[];
+  /** The preset it was granted as, when it was granted as one. */
+  grantedAsRole: string | null;
+  /** What its capabilities amount to today. Null when they are their own thing. */
+  role: string | null;
+  status: string;
+  grantedByUserId: string;
+  grantedAt: string;
+  revokedAt: string | null;
+}
+
+export interface DeskAccountRow {
+  accountId: string;
+  accountNumber: string;
+  currency: string;
+  capabilities: string[];
+  balance: string;
+  equity: string;
+  usedMargin: string;
+  freeMargin: string;
+  floatingPnl: string;
+  marginLevel: string | null;
+  openPositions: number;
+  rateToDesk: string | null;
+  equityInDeskCurrency: string | null;
+}
+
+export interface DeskExposureRow {
+  symbol: string;
+  netVolume: string;
+  grossNotional: string | null;
+  accounts: number;
+}
+
+export interface DeskViewRow {
+  masterAccountId: string;
+  name: string;
+  currency: string;
+  accounts: DeskAccountRow[];
+  exposure: DeskExposureRow[];
+  totals: {
+    accounts: number;
+    balance: string | null;
+    equity: string | null;
+    usedMargin: string | null;
+    floatingPnl: string | null;
+    openPositions: number;
+    grossNotional: string | null;
+  };
+  /** Accounts that could not be priced into the desk's currency. Named, never dropped. */
+  unpriced: string[];
+}
+
+export interface RiskLimitSetRow {
+  level: 'PLATFORM' | 'BROKER' | 'DESK';
+  masterAccountId: string | null;
+  maxPositionVolume: string | null;
+  maxOpenPositions: number | null;
+  maxGrossNotional: string | null;
+  maxSymbolNetVolume: string | null;
+  updatedByUserId: string | null;
+  updatedAt: string | null;
+}
+
+export type RiskLimitInput = {
+  maxPositionVolume?: string | null;
+  maxOpenPositions?: number | null;
+  maxGrossNotional?: string | null;
+  maxSymbolNetVolume?: string | null;
+};
+
+export function useMasterAccounts() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.masterAccounts,
+    queryFn: () => api.get<MasterAccountRow[]>('/master-accounts'),
+  });
+}
+
+export function useMasterLinks(id: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.masterLinks(id ?? ''),
+    queryFn: () => api.get<MasterLinkRow[]>(`/master-accounts/${id}/links`),
+    enabled: id !== null,
+  });
+}
+
+export function useDeskView(id: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.desk(id ?? ''),
+    queryFn: () => api.get<DeskViewRow>(`/master-accounts/${id}/desk`),
+    enabled: id !== null,
+    // A book moves with the market.
+    refetchInterval: 10_000,
+  });
+}
+
+export function useCreateMasterAccount() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { operatorUserId: string; name: string }) =>
+      api.post<MasterAccountRow>('/master-accounts', input, key()),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: adminKeys.masterAccounts });
+    },
+  });
+}
+
+export function useGrantMasterLink() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, accountId, role }: { id: string; accountId: string; role: string }) =>
+      api.post<MasterLinkRow>(`/master-accounts/${id}/links`, { accountId, role }, key()),
+    onSuccess: (_row, variables) => {
+      void client.invalidateQueries({ queryKey: adminKeys.masterLinks(variables.id) });
+      void client.invalidateQueries({ queryKey: adminKeys.desk(variables.id) });
+      void client.invalidateQueries({ queryKey: adminKeys.masterAccounts });
+    },
+  });
+}
+
+export function useRevokeMasterLink() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, accountId }: { id: string; accountId: string }) =>
+      api.delete<MasterLinkRow>(`/master-accounts/${id}/links/${accountId}`, key()),
+    onSuccess: (_row, variables) => {
+      void client.invalidateQueries({ queryKey: adminKeys.masterLinks(variables.id) });
+      void client.invalidateQueries({ queryKey: adminKeys.desk(variables.id) });
+      void client.invalidateQueries({ queryKey: adminKeys.masterAccounts });
+    },
+  });
+}
+
+export function useRiskLimits() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.riskLimits,
+    queryFn: () => api.get<RiskLimitSetRow[]>('/admin/risk/limits'),
+  });
+}
+
+/** Refused by the server when it would be looser than the layer above. */
+export function useSetRiskLimits() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      level,
+      masterAccountId,
+      limits,
+    }: {
+      level: 'PLATFORM' | 'BROKER' | 'DESK';
+      masterAccountId?: string;
+      limits: RiskLimitInput;
+    }) =>
+      api.post<RiskLimitSetRow>(
+        level === 'DESK'
+          ? `/admin/risk/limits/desk/${masterAccountId}`
+          : `/admin/risk/limits/${level.toLowerCase()}`,
+        limits,
+        key(),
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: adminKeys.riskLimits });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
     },
   });
 }
