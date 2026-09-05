@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { BrokerConnectionStatus, Prisma } from '@prisma/client';
 import {
@@ -62,7 +62,21 @@ export class BrokerHealthService {
     private readonly prisma: PrismaService,
     private readonly registry: BrokerAdapterRegistry,
     @Inject(ConfigService) private readonly config: ConfigService<WorkerEnv, true>,
-    secrets?: SecretBox,
+    /**
+     * `@Optional()`, and it has to be the decorator rather than TypeScript's
+     * `?`.
+     *
+     * A `?` is erased: Nest reads `design:paramtypes`, sees `SecretBox` at
+     * this position, finds no provider for it in `WorkerModule` and refuses to
+     * construct the service — which took the whole worker down in production
+     * on the first deploy that included this class, while every test passed,
+     * because the tests build this service by hand and never ask Nest to.
+     *
+     * The decorator is what tells the container "inject it if it exists".
+     * When it does not, `secrets()` below builds one from the configured keys
+     * on first need.
+     */
+    @Optional() secrets?: SecretBox,
   ) {
     this.box = secrets ?? null;
   }
