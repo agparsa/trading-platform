@@ -14,6 +14,7 @@ import {
 } from '@/lib/format';
 import { shortRefs } from '@/lib/refs';
 import {
+  useCloseAllPositions,
   useClosePosition,
   useModifyPosition,
   useReversePosition,
@@ -55,6 +56,7 @@ export function PositionsPanel({
   const [editing, setEditing] = useState<string | null>(null);
   const livePnl = useRealtime((state) => state.pnl);
   const closeOne = useClosePosition(accountId);
+  const closeAll = useCloseAllPositions(accountId);
   const [prompt, setPrompt] = useState<ClosePrompt | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const handledAt = useRef<number>(0);
@@ -139,16 +141,38 @@ export function PositionsPanel({
 
   const runPrompt = async () => {
     if (prompt === null) return;
-    const targets = prompt.kind === 'ALL' ? positions : [prompt.position];
     setPrompt(null);
-    for (const target of targets) {
-      try {
-        await closeOne.mutateAsync({ positionId: target.id, volume: null });
-      } catch {
-        // Each position is closed on its own request, so one refusal does not
-        // strand the rest. Whatever is left is still on screen, still closable.
-        setNotice('At least one position could not be closed. Check the list.');
+
+    if (prompt.kind === 'ONE') {
+      await closeOne.mutateAsync({ positionId: prompt.position.id, volume: null }).catch(() => {
+        setNotice('The close request failed. The position is unchanged.');
+      });
+      return;
+    }
+
+    /**
+     * One command, not a loop.
+     *
+     * The loop this replaced sent a request per position and swallowed partial
+     * failure: a dropped connection halfway through left the rest open under a
+     * screen that said the button had been pressed, and nothing recorded that
+     * "close everything" had been asked for at all. The server states the
+     * intent once and reports each position — including the ones it could not
+     * close, and why — which is what the notice below says.
+     */
+    if (accountId === null) return;
+    try {
+      const result = await closeAll.mutateAsync({ accountId });
+      if (result.refused.length > 0) {
+        const [first] = result.refused;
+        setNotice(
+          result.refused.length === 1
+            ? `${result.closed.length} closed. One is still open: ${first?.message ?? ''}`
+            : `${result.closed.length} closed. ${result.refused.length} are still open — the list shows which.`,
+        );
       }
+    } catch {
+      setNotice('Close all failed. Nothing was closed; the list is unchanged.');
     }
   };
 

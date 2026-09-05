@@ -4,7 +4,7 @@ import { cn } from '@tp/ui';
 import { Stat } from '@/components/primitives';
 import { useHaltTrading, useOperationsSummary } from '@/lib/admin-queries';
 import { utcTime } from '@/lib/format';
-import { ErrorLine, Loading, ReasonedAction } from './shared';
+import { ErrorLine, Head, Loading, ReasonedAction, Table } from './shared';
 
 /**
  * Is the platform all right?
@@ -94,6 +94,58 @@ export function OverviewPanel() {
             .join(' · ')}
         />
       </section>
+
+      {/*
+        The money, by currency and never summed across them. A firm holding
+        dollars and euros has two numbers; one number made by adding them
+        looks authoritative and reconciles with nothing.
+      */}
+      {data.money.byCurrency.length === 0 ? null : (
+        <section className="space-y-2">
+          <p className="text-[10px] uppercase tracking-wider text-terminal-muted">
+            Money · last 24 hours
+          </p>
+          <Table>
+            <Head
+              columns={[
+                'Currency',
+                'Held',
+                'In',
+                'Out',
+                'Commission',
+                'Swap',
+                'Trader net P&L',
+                'Closed',
+                'Volume',
+              ]}
+            />
+            <tbody>
+              {data.money.byCurrency.map((row) => (
+                <tr key={row.currency} className="border-t border-terminal-border/60">
+                  <td className="px-3 py-1.5 text-terminal-text">{row.currency}</td>
+                  <td className="numeric px-3 py-1.5">{row.balance}</td>
+                  <td className="numeric px-3 py-1.5 text-terminal-long">{row.depositedLastDay}</td>
+                  <td className="numeric px-3 py-1.5 text-terminal-short">
+                    {row.withdrawnLastDay}
+                  </td>
+                  <td className="numeric px-3 py-1.5">{row.commissionLastDay}</td>
+                  <td className="numeric px-3 py-1.5">{row.swapLastDay}</td>
+                  <td
+                    className={cn(
+                      'numeric px-3 py-1.5',
+                      Number(row.netPnlLastDay) < 0 ? 'text-terminal-short' : 'text-terminal-long',
+                    )}
+                  >
+                    {row.netPnlLastDay}
+                  </td>
+                  <td className="numeric px-3 py-1.5">{row.closedTradesLastDay}</td>
+                  <td className="numeric px-3 py-1.5">{row.volumeLastDay}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </section>
+      )}
 
       <p className="text-[10px] text-terminal-muted">
         Taken {utcTime(data.takenAt)} UTC · reconciliation findings in the last day{' '}

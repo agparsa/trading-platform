@@ -187,7 +187,7 @@ The desk view in the _terminal_ is not built: it belongs with the Phase 6
 terminal work rather than beside an admin panel, and building it twice would be
 worse than building it once in its right place.
 
-## Phase 5 — Broker management panel · ~3 weeks
+## Phase 5 — Broker management panel · **partly done**
 
 The §13 navigation on the existing admin console: dashboard cards from real
 figures (§14), Users, Trading Accounts, Master Accounts, Orders / Positions /
@@ -197,7 +197,35 @@ Reports, Alerts, Audit, Security (Sessions, Devices, IP rules), Branding,
 Developer (API keys — exists; Webhooks — Phase 12; API documentation). Every
 table on a real query; every action on a real command.
 
-## Phase 6 — Trading terminal UX upgrade · ~3–4 weeks
+Three gaps closed, and the rest named rather than stubbed.
+
+**The firm's book** (`/admin/book`): orders, positions and closed trades across
+the tenant, with an order's own event history — the answer to "why was that
+rejected". Guarded by `accounts.read_any`, not `orders.read`, which every
+trader holds. Keyset paging with the row id in the cursor, because orders share
+milliseconds and offset paging over a moving book drops rows.
+
+**The trading week**: `MarketSession` had no writer but the seed. It is edited
+on the Instruments screen now — replaced whole, overlaps refused rather than
+merged, timezone checked against the system's own database, platform-only, and
+the engine's cached copy refreshed on save.
+
+**Money on the dashboard**: balance held, deposits and withdrawals, commission
+and swap earned, traders' net P&L, closed trades and volume — **by currency,
+never summed across them**.
+
+**Not built, and stated as such:** Fees as a section (commission and swap are
+edited per instrument; there is no schedule, override or rebate model, and
+spread comes from the feed); Reports (no server-side export — a job queue, a
+file store and a retention policy, which is a phase of its own); Alerts (price
+alerts are Phase 8; admin threshold rules are not designed); admin device
+management and IP rules (no allow/deny concept exists anywhere — it belongs
+with Phase 10, and carries real lock-out risk); Branding (the `Tenant` model
+has no visual field; Phase 14 flags a feature nobody has written); Webhooks
+(Phase 12); and API documentation, which is mounted only outside production.
+[broker-panel.md](./broker-panel.md).
+
+## Phase 6 — Trading terminal UX upgrade · **partly done**
 
 The screenshots, as behaviour, on an original brand:
 
@@ -223,6 +251,37 @@ The screenshots, as behaviour, on an original brand:
   large-order confirmation (§86); design tokens (§52, §83); responsive
   compositions for tablet and mobile browser (§57); keyboard and screen-reader
   paths (§61); `docs/uiux.md`.
+
+Four defects fixed; the presentation deferred, and named.
+
+**One calculator, shared** (§31): `@tp/trading-core/levels.ts` — distance in
+price and points, price at a distance, outcome, reward:risk, percent of equity,
+and sizing from a risk. The arithmetic lived in three places in the web app and
+a fourth on the phone, free to disagree; the disagreement was only ever visible
+to the person who dragged a stop on the chart and read a different number in
+the ticket. Direction is derived rather than asked for, no rate is ever
+assumed, and sizing rounds **down**.
+
+**`POST /positions/close-all`** (§25): the intent stated once, the outcome
+reported per position. Deliberately not atomic — one unpriceable instrument
+must not roll back closes that already happened at real prices — and the result
+says so instead of a boolean that would have to lie. Largest margin first, so a
+near-stop-out account releases the most margin soonest.
+
+**Risk as a share of equity** in the ticket, and **large-order confirmation**
+(§86) measured against the account rather than a lot count, forced even in
+one-click mode. **An account selector**: the terminal used `accounts[0]` and
+never exposed a way to change it, so a trader with two accounts could reach
+only the first.
+
+**Not delivered:** the inline quick ticket, categories and top movers;
+stop-limit (an engine change, not a form control); trailing and expiry at
+entry; estimated swap; Finance/Alerts/Logs tabs; multi-select "Close (n)"; the
+edit dialog's other entry modes; spacing and typography scales; a light theme;
+a documented accessibility pass. [uiux.md](./uiux.md) says why for each. The
+parts built are the ones where the alternative was a defect; the rest is
+presentation, and presentation without the screenshots it is meant to match
+would be invention.
 
 ## Phase 7 — Chart, overlays, SL/TP drag · ~2 weeks
 

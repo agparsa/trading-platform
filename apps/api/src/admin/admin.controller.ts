@@ -9,8 +9,17 @@ import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { AdminService } from './admin.service';
 import { AdjustmentsService } from './adjustments.service';
 import { RiskHierarchyService, type LimitSetView } from './risk-hierarchy.service';
+import {
+  BlotterService,
+  type OrderRow,
+  type Page,
+  type PositionRow,
+  type TradeRow,
+  type BlotterQuery,
+} from './blotter.service';
 import { RiskConsoleService } from './risk-console.service';
 import { AuditQueryService } from './audit-query.service';
+import type { SessionView } from './instruments.service';
 import { AdminInstrumentsService } from './instruments.service';
 import { InvitesService } from '../auth/invites.service';
 
@@ -111,6 +120,43 @@ const riskLimitsSchema = z
   })
   .strict();
 
+/**
+ * Query strings arrive as strings. Parsed at the boundary and never coerced by
+ * Zod itself: `z.coerce` in a DTO breaks the OpenAPI document and, with it,
+ * the API's boot — caught once by `pnpm smoke` and not by any test.
+ */
+const blotterQuerySchema = z
+  .object({
+    accountId: z.string().uuid().optional(),
+    accountNumber: z.string().trim().min(1).max(32).optional(),
+    symbol: z.string().trim().min(1).max(32).optional(),
+    side: z.enum(['BUY', 'SELL']).optional(),
+    status: z.string().trim().min(1).max(32).optional(),
+    since: z.string().datetime({ offset: true }).optional(),
+    until: z.string().datetime({ offset: true }).optional(),
+    limit: z.string().regex(/^\d{1,4}$/).optional(),
+    cursor: z.string().min(1).max(512).optional(),
+  })
+  .strict();
+
+const sessionsSchema = z
+  .object({
+    timezone: z.string().trim().min(1).max(64),
+    windows: z
+      .array(
+        z
+          .object({
+            dayOfWeek: z.number().int().min(0).max(6),
+            openMinute: z.number().int().min(0).max(1440),
+            closeMinute: z.number().int().min(0).max(1440),
+          })
+          .strict(),
+      )
+      .max(50),
+    reason: z.string().min(8).max(500),
+  })
+  .strict();
+
 const adjustmentSchema = z
   .object({
     amount: decimal,
@@ -164,6 +210,8 @@ class AssignRoleDto extends createZodDto(assignRoleSchema) {}
 class AccountStatusDto extends createZodDto(accountStatusSchema) {}
 class LimitsDto extends createZodDto(limitsSchema) {}
 class RiskLimitsDto extends createZodDto(riskLimitsSchema) {}
+class BlotterQueryDto extends createZodDto(blotterQuerySchema) {}
+class SessionsDto extends createZodDto(sessionsSchema) {}
 class AdjustmentDto extends createZodDto(adjustmentSchema) {}
 class RiskEventQueryDto extends createZodDto(riskEventQuerySchema) {}
 class AtRiskQueryDto extends createZodDto(atRiskQuerySchema) {}
@@ -192,6 +240,7 @@ export class AdminController {
     private readonly auditQuery: AuditQueryService,
     private readonly instruments: AdminInstrumentsService,
     private readonly hierarchy: RiskHierarchyService,
+    private readonly blotter: BlotterService,
     // Provided by AuthModule, which AdminModule imports. A service that is not
     // reachable from this module's imports crashes the container at boot, not
     // at the first request — which is why `pnpm smoke` and not `pnpm verify`
@@ -307,6 +356,47 @@ export class AdminController {
     @Body() body: AccountStatusDto,
   ) {
     return this.admin.setAccountStatus(actor.id, id, body.status, body.reason);
+  }
+
+  // ---- The firm's book ----------------------------------------------------
+
+  /**
+   * `ACCOUNTS_READ_ANY`, not `ORDERS_READ`.
+   *
+   * Every trader holds `ORDERS_READ` — it is what lets them see their own
+   * orders. These read across every account in the firm, so they take the
+   * permission that means exactly that. The same mistake on the
+   * venue-recovery console showed one trader everybody's order ids, and was
+   * caught by the pentest rather than by the suite.
+   */
+  @RequirePermissions(Permission.ACCOUNTS_READ_ANY)
+  @Get('orders')
+  @ApiOperation({ summary: 'Every order in the firm, newest first' })
+  blotterOrders(@Query() query: BlotterQueryDto): Promise<Page<OrderRow>> {
+    return this.blotter.orders(toBlotterQuery(query));
+  }
+
+  @RequirePermissions(Permission.ACCOUNTS_READ_ANY)
+  @Get('positions')
+  @ApiOperation({ summary: 'Positions across the firm. Open unless a status is named.' })
+  blotterPositions(@Query() query: BlotterQueryDto): Promise<Page<PositionRow>> {
+    return this.blotter.positions(toBlotterQuery(query));
+  }
+
+  @RequirePermissions(Permission.ACCOUNTS_READ_ANY)
+  @Get('trades')
+  @ApiOperation({ summary: 'Closed round trips across the firm, with what each one cost' })
+  blotterTrades(@Query() query: BlotterQueryDto): Promise<Page<TradeRow>> {
+    return this.blotter.trades(toBlotterQuery(query));
+  }
+
+  @RequirePermissions(Permission.ACCOUNTS_READ_ANY)
+  @Get('orders/:id/history')
+  @ApiOperation({
+    summary: 'Everything that happened to one order — the answer to "why was that rejected"',
+  })
+  orderHistory(@Param('id', ParseUUIDPipe) id: string) {
+    return this.blotter.orderHistory(id);
   }
 
   // ---- The risk hierarchy: platform → broker → desk → account -------------
@@ -500,6 +590,33 @@ export class AdminController {
     return this.instruments.setTerms(actor.id, code.toUpperCase(), terms, reason);
   }
 
+  @RequirePermissions(Permission.INSTRUMENTS_READ)
+  @Get('instruments/:code/sessions')
+  @ApiOperation({ summary: 'The week an instrument trades, in its own timezone' })
+  instrumentSessions(@Param('code') code: string): Promise<SessionView> {
+    return this.instruments.sessions(code);
+  }
+
+  /**
+   * Replace the whole trading week.
+   *
+   * Wholesale rather than window by window: a half-saved week is a market that
+   * is open when it should be shut. Sessions are when the *venue* trades, so
+   * this is a platform act and is refused from a broker — a firm that wants an
+   * instrument shut disables it for itself.
+   */
+  @RequirePermissions(Permission.INSTRUMENTS_MANAGE)
+  @Post('instruments/:code/sessions')
+  @ApiOperation({ summary: "Replace an instrument's trading week. Platform only." })
+  setInstrumentSessions(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('code') code: string,
+    @Body() body: SessionsDto,
+  ): Promise<SessionView> {
+    const { reason, ...rest } = body;
+    return this.instruments.setSessions(actor.id, code.toUpperCase(), rest, reason);
+  }
+
   /**
    * Mint an invitation. The response carries the code, once.
    *
@@ -532,4 +649,29 @@ export class AdminController {
     await this.invites.revoke(actor.id, id);
     return { status: 'revoked' };
   }
+}
+
+/** The query string as the service wants it: dates as instants, limit as a number. */
+function toBlotterQuery(query: {
+  accountId?: string;
+  accountNumber?: string;
+  symbol?: string;
+  side?: 'BUY' | 'SELL';
+  status?: string;
+  since?: string;
+  until?: string;
+  limit?: string;
+  cursor?: string;
+}): BlotterQuery {
+  return {
+    ...(query.accountId === undefined ? {} : { accountId: query.accountId }),
+    ...(query.accountNumber === undefined ? {} : { accountNumber: query.accountNumber }),
+    ...(query.symbol === undefined ? {} : { symbol: query.symbol }),
+    ...(query.side === undefined ? {} : { side: query.side }),
+    ...(query.status === undefined ? {} : { status: query.status }),
+    ...(query.since === undefined ? {} : { sinceMs: new Date(query.since).getTime() }),
+    ...(query.until === undefined ? {} : { untilMs: new Date(query.until).getTime() }),
+    ...(query.limit === undefined ? {} : { limit: Number(query.limit) }),
+    ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+  };
 }

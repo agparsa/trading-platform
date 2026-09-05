@@ -66,7 +66,11 @@ export const listQuerySchema = z
   })
   .strict();
 
+/** Close-all names only the account: closing "everything" takes no options. */
+const closeAllSchema = z.object({ accountId: z.string().uuid() }).strict();
+
 export class OpenPositionDto extends createZodDto(openPositionSchema) {}
+export class CloseAllDto extends createZodDto(closeAllSchema) {}
 export class ClosePositionDto extends createZodDto(closePositionSchema) {}
 export class ModifyPositionDto extends createZodDto(modifyPositionSchema) {}
 export class ListQueryDto extends createZodDto(listQuerySchema) {}

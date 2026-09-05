@@ -35,6 +35,21 @@ export interface OrderResult {
   executedAt: string;
 }
 
+/**
+ * What a close-all actually did.
+ *
+ * Not atomic, and the shape says so: each close takes its own lock, quote and
+ * ledger entry, so some can succeed while others do not. Reporting per
+ * position is the honest alternative to a boolean that would have to lie.
+ */
+export interface CloseAllResult {
+  /** How many were open when the command was accepted. */
+  asked: number;
+  closed: CloseResult[];
+  /** The ones still open, each with the reason it could not be closed. */
+  refused: { positionId: string; code: string; message: string }[];
+}
+
 export interface CloseResult {
   positionId: string;
   closedVolume: string;

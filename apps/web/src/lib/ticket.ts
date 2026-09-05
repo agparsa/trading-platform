@@ -1,12 +1,17 @@
 import {
   checkVolume,
-  grossPnl,
   requiredMargin,
   toDecimal,
   type SymbolSpec,
 } from '@tp/financial-core';
 import { DomainError } from '@tp/shared-types';
-import { validatePendingPrice, validateProtectiveLevels } from '@tp/trading-core';
+import {
+  outcomeAt,
+  percentOfEquity,
+  rewardToRisk as sharedRewardToRisk,
+  validatePendingPrice,
+  validateProtectiveLevels,
+} from '@tp/trading-core';
 import { money } from './format';
 import type { AccountSummary, SymbolRow } from './queries';
 
@@ -110,8 +115,8 @@ export function estimateCosts(
   volume: string,
   executable: string | null,
   volumeOk: boolean,
-): { margin: string; commission: string } {
-  const blank = { margin: '—', commission: '—' };
+): { margin: string; commission: string; marginAmount: string | null } {
+  const blank = { margin: '—', commission: '—', marginAmount: null };
   if (spec === undefined || account === undefined || executable === null || !volumeOk) return blank;
   if (spec.quoteCurrency !== account.currency) return blank;
 
@@ -128,6 +133,9 @@ export function estimateCosts(
     return {
       margin: money(margin.toString(), account.currency),
       commission: money(commission.toFixed(2), account.currency),
+      // The same figure unformatted, for the checks that compare it against
+      // the account rather than print it.
+      marginAmount: margin.toString(),
     };
   } catch {
     // A spec the browser cannot price is a display problem, not a trading one.
@@ -171,27 +179,18 @@ export function validateRestingPrice(
 }
 
 /**
- * What the stop and the target on *this* ticket would be worth.
+ * What a position would be worth if it closed at `exitPrice`.
  *
- * A projection of an order that does not exist yet, which makes it two steps
- * removed from a fact: the entry has not happened, and neither has the exit. It
- * is still worth showing, because "risking 180 to make 240" is the question
- * every trader is actually answering when they type a stop, and making them do
- * that arithmetic in their head is how position sizes go wrong.
+ * A thin adapter over `outcomeAt` in `@tp/trading-core`, which is the one
+ * implementation of this arithmetic on the platform. It used to live here, and
+ * separately in the chart's drag handler, and separately again on the phone —
+ * three chances to disagree about a number a trader reads in two places at
+ * once while deciding where to put a stop.
  *
- * Three rules keep it honest:
- *
- *  - it runs `grossPnl` from `@tp/financial-core`, the engine's own formula, so
- *    the browser cannot invent an arithmetic the server does not have;
- *  - it returns `null`, not zero, whenever an input is missing — a dash says
- *    "not known", a zero says "costs you nothing", and only one of those is
- *    true;
- *  - it refuses to convert. When the instrument is quoted in a currency other
- *    than the account's it returns `null` rather than applying an FX rate this
- *    browser does not hold, exactly as `estimateCosts` does.
- *
- * Gross, not net: commission is shown on its own line above and swap depends on
- * how long the position is held, which nobody knows at the moment of entry.
+ * What stays here is the browser's own rule: when the instrument is quoted in
+ * a currency other than the account's, this returns `null` rather than
+ * applying an FX rate the browser does not hold. The server has one and will
+ * apply it; a wrong number here is worse than no number.
  */
 export function projectedOutcome(
   spec: SymbolRow | undefined,
@@ -202,38 +201,35 @@ export function projectedOutcome(
   exitPrice: string,
 ): string | null {
   if (spec === undefined || account === undefined || entryPrice === null) return null;
-  if (spec.quoteCurrency !== account.currency) return null;
-  const exit = exitPrice.trim();
-  if (exit === '' || !isDecimalString(exit) || !isDecimalString(volume)) return null;
-
-  try {
-    return grossPnl({
-      spec: spec as SymbolSpec,
-      side,
-      volume,
-      entryPrice,
-      exitPrice: exit,
-      accountCurrency: account.currency,
-      quoteToAccountRate: '1',
-    }).toString();
-  } catch {
-    // A half-typed level is the normal state of an input being filled in.
-    return null;
-  }
+  return outcomeAt({
+    spec: spec as SymbolSpec,
+    side,
+    volume,
+    entryPrice,
+    exitPrice: exitPrice.trim(),
+    accountCurrency: account.currency,
+    // The browser holds no rate. Same currency means one; anything else means
+    // no answer rather than a guessed one.
+    quoteToAccountRate: spec.quoteCurrency === account.currency ? '1' : null,
+  });
 }
 
 /**
- * Reward divided by risk, as a plain ratio.
- *
- * `null` unless both projections exist and the risk side is actually a loss —
- * a "risk" that is positive means the stop is on the wrong side of the entry,
- * and dividing by it would print a confident, meaningless number.
+ * Reward divided by risk. `@tp/trading-core` again — see `projectedOutcome`.
  */
-export function rewardToRisk(profit: string | null, loss: string | null): string | null {
-  if (profit === null || loss === null) return null;
-  const reward = Number(profit);
-  const risk = Number(loss);
-  if (!Number.isFinite(reward) || !Number.isFinite(risk)) return null;
-  if (risk >= 0 || reward <= 0) return null;
-  return (reward / Math.abs(risk)).toFixed(2);
+export const rewardToRisk = sharedRewardToRisk;
+
+/**
+ * A projected loss or gain as a percentage of the account's equity.
+ *
+ * The number a trader actually manages by: "two percent" is a rule people
+ * follow, and "eighty-four dollars" is not.
+ */
+export function riskPercent(
+  amount: string | null,
+  account: AccountSummary | undefined,
+  equity: string | null | undefined,
+): string | null {
+  if (account === undefined || equity === null || equity === undefined) return null;
+  return percentOfEquity(amount, equity);
 }

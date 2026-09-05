@@ -131,6 +131,9 @@ describe('estimateCosts', () => {
     expect(estimateCosts(XAUUSD, eurAccount, '0.10', '2000.00', true)).toEqual({
       margin: '—',
       commission: '—',
+      // And no raw figure either: the checks that compare margin against the
+      // account must not be handed a number computed at an assumed rate.
+      marginAmount: null,
     });
   });
 

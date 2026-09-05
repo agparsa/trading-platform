@@ -11,6 +11,7 @@ const SECTIONS = [
   { href: '/admin/overview', label: 'Overview' },
   { href: '/admin/people', label: 'People' },
   { href: '/admin/accounts', label: 'Accounts' },
+  { href: '/admin/book', label: 'Book' },
   { href: '/admin/instruments', label: 'Instruments' },
   { href: '/admin/risk', label: 'Risk' },
   { href: '/admin/desks', label: 'Desks' },

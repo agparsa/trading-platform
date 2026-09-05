@@ -55,35 +55,41 @@ handler is responsible for scoping the result to that user — which for
 
 ### `admin/admin.controller.ts` — base `/admin`
 
-| Verb   | Path                                       | Handler                | Requires           |
-| ------ | ------------------------------------------ | ---------------------- | ------------------ |
-| `GET`  | `/admin/users`                             | `users`                | USERS_READ_ANY     |
-| `GET`  | `/admin/users/:id`                         | `user`                 | USERS_READ_ANY     |
-| `POST` | `/admin/users/:id/suspend`                 | `suspend`              | USERS_MANAGE       |
-| `POST` | `/admin/users/:id/reinstate`               | `reinstate`            | USERS_MANAGE       |
-| `POST` | `/admin/users/:id/sign-out`                | `signOut`              | USERS_MANAGE       |
-| `POST` | `/admin/users/:id/role`                    | `assignRole`           | ROLES_ASSIGN       |
-| `POST` | `/admin/users/:id/unlock`                  | `unlock`               | USERS_MANAGE       |
-| `GET`  | `/admin/accounts`                          | `accounts`             | ACCOUNTS_READ_ANY  |
-| `GET`  | `/admin/accounts/:id`                      | `account`              | ACCOUNTS_READ_ANY  |
-| `POST` | `/admin/accounts/:id/status`               | `accountStatus`        | ACCOUNTS_MANAGE    |
-| `GET`  | `/admin/risk/limits`                       | `riskLimits`           | RISK_READ          |
-| `POST` | `/admin/risk/limits/broker`                | `setBrokerLimits`      | RISK_MANAGE        |
-| `POST` | `/admin/risk/limits/desk/:masterAccountId` | `setDeskLimits`        | RISK_MANAGE        |
-| `POST` | `/admin/risk/limits/platform`              | `setPlatformLimits`    | RISK_MANAGE        |
-| `POST` | `/admin/accounts/:id/limits`               | `limits`               | RISK_MANAGE        |
-| `POST` | `/admin/accounts/:id/adjustments`          | `adjust`               | ACCOUNTS_ADJUST    |
-| `GET`  | `/admin/risk/at-risk`                      | `atRisk`               | RISK_READ          |
-| `GET`  | `/admin/risk/exposure`                     | `exposure`             | RISK_READ          |
-| `GET`  | `/admin/risk/events`                       | `riskEvents`           | RISK_READ          |
-| `GET`  | `/admin/audit`                             | `audit`                | AUDIT_READ         |
-| `GET`  | `/admin/audit/actions`                     | `auditActions`         | AUDIT_READ         |
-| `GET`  | `/admin/instruments`                       | `listInstruments`      | INSTRUMENTS_READ   |
-| `POST` | `/admin/instruments/:code/enabled`         | `setInstrumentEnabled` | INSTRUMENTS_MANAGE |
-| `POST` | `/admin/instruments/:code/terms`           | `setInstrumentTerms`   | INSTRUMENTS_MANAGE |
-| `POST` | `/admin/invites`                           | `mintInvite`           | INVITES_MANAGE     |
-| `GET`  | `/admin/invites`                           | `listInvites`          | INVITES_MANAGE     |
-| `POST` | `/admin/invites/:id/revoke`                | `revokeInvite`         | INVITES_MANAGE     |
+| Verb   | Path                                       | Handler                 | Requires           |
+| ------ | ------------------------------------------ | ----------------------- | ------------------ |
+| `GET`  | `/admin/users`                             | `users`                 | USERS_READ_ANY     |
+| `GET`  | `/admin/users/:id`                         | `user`                  | USERS_READ_ANY     |
+| `POST` | `/admin/users/:id/suspend`                 | `suspend`               | USERS_MANAGE       |
+| `POST` | `/admin/users/:id/reinstate`               | `reinstate`             | USERS_MANAGE       |
+| `POST` | `/admin/users/:id/sign-out`                | `signOut`               | USERS_MANAGE       |
+| `POST` | `/admin/users/:id/role`                    | `assignRole`            | ROLES_ASSIGN       |
+| `POST` | `/admin/users/:id/unlock`                  | `unlock`                | USERS_MANAGE       |
+| `GET`  | `/admin/accounts`                          | `accounts`              | ACCOUNTS_READ_ANY  |
+| `GET`  | `/admin/accounts/:id`                      | `account`               | ACCOUNTS_READ_ANY  |
+| `POST` | `/admin/accounts/:id/status`               | `accountStatus`         | ACCOUNTS_MANAGE    |
+| `GET`  | `/admin/orders`                            | `blotterOrders`         | ACCOUNTS_READ_ANY  |
+| `GET`  | `/admin/positions`                         | `blotterPositions`      | ACCOUNTS_READ_ANY  |
+| `GET`  | `/admin/trades`                            | `blotterTrades`         | ACCOUNTS_READ_ANY  |
+| `GET`  | `/admin/orders/:id/history`                | `orderHistory`          | ACCOUNTS_READ_ANY  |
+| `GET`  | `/admin/risk/limits`                       | `riskLimits`            | RISK_READ          |
+| `POST` | `/admin/risk/limits/broker`                | `setBrokerLimits`       | RISK_MANAGE        |
+| `POST` | `/admin/risk/limits/desk/:masterAccountId` | `setDeskLimits`         | RISK_MANAGE        |
+| `POST` | `/admin/risk/limits/platform`              | `setPlatformLimits`     | RISK_MANAGE        |
+| `POST` | `/admin/accounts/:id/limits`               | `limits`                | RISK_MANAGE        |
+| `POST` | `/admin/accounts/:id/adjustments`          | `adjust`                | ACCOUNTS_ADJUST    |
+| `GET`  | `/admin/risk/at-risk`                      | `atRisk`                | RISK_READ          |
+| `GET`  | `/admin/risk/exposure`                     | `exposure`              | RISK_READ          |
+| `GET`  | `/admin/risk/events`                       | `riskEvents`            | RISK_READ          |
+| `GET`  | `/admin/audit`                             | `audit`                 | AUDIT_READ         |
+| `GET`  | `/admin/audit/actions`                     | `auditActions`          | AUDIT_READ         |
+| `GET`  | `/admin/instruments`                       | `listInstruments`       | INSTRUMENTS_READ   |
+| `POST` | `/admin/instruments/:code/enabled`         | `setInstrumentEnabled`  | INSTRUMENTS_MANAGE |
+| `POST` | `/admin/instruments/:code/terms`           | `setInstrumentTerms`    | INSTRUMENTS_MANAGE |
+| `GET`  | `/admin/instruments/:code/sessions`        | `instrumentSessions`    | INSTRUMENTS_READ   |
+| `POST` | `/admin/instruments/:code/sessions`        | `setInstrumentSessions` | INSTRUMENTS_MANAGE |
+| `POST` | `/admin/invites`                           | `mintInvite`            | INVITES_MANAGE     |
+| `GET`  | `/admin/invites`                           | `listInvites`           | INVITES_MANAGE     |
+| `POST` | `/admin/invites/:id/revoke`                | `revokeInvite`          | INVITES_MANAGE     |
 
 ### `auth/auth.controller.ts` — base `/auth`
 
@@ -321,6 +327,7 @@ handler is responsible for scoping the result to that user — which for
 | `GET`    | `/orders/:id/events`     | `events`        | ORDERS_READ                               |
 | `GET`    | `/positions`             | `positionsFor`  | POSITIONS_READ                            |
 | `POST`   | `/positions/:id/close`   | `close`         | throttled, POSITIONS_CLOSE                |
+| `POST`   | `/positions/close-all`   | `closeAll`      | throttled, POSITIONS_CLOSE                |
 | `PATCH`  | `/positions/:id`         | `modify`        | throttled, POSITIONS_MODIFY               |
 | `POST`   | `/positions/:id/reverse` | `reverse`       | throttled, POSITIONS_CLOSE, ORDERS_CREATE |
 | `GET`    | `/trades`                | `trades`        | POSITIONS_READ                            |
@@ -381,7 +388,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**177 routes:** 87 `GET`, 79 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
+**184 routes:** 92 `GET`, 81 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

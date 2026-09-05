@@ -8,6 +8,7 @@ import {
   estimateCosts,
   projectedOutcome,
   rewardToRisk,
+  riskPercent,
   stepVolume,
   validateTicket,
 } from '@/lib/ticket';
@@ -19,6 +20,7 @@ import {
   type OrderCommand,
 } from '@/lib/order-commands';
 import {
+  useAccountState,
   useOpenPosition,
   usePermissions,
   usePlacePending,
@@ -77,6 +79,7 @@ export function OrderTicket({
     symbol === undefined ? undefined : state.quotes[symbol.code],
   );
   const commands = useRealtime((state) => state.commands);
+  const state = useAccountState(accountId);
   const open = useOpenPosition(accountId);
   const place = usePlacePending(accountId);
 
@@ -141,6 +144,15 @@ export function OrderTicket({
     [symbol, account, side, volume, entryReference, takeProfit],
   );
   const ratio = useMemo(() => rewardToRisk(ifTargeted, ifStopped), [ifTargeted, ifStopped]);
+  /**
+   * The projected loss as a share of equity — the number a trader actually
+   * manages by. "Two percent" is a rule people follow; "eighty-four dollars"
+   * is not, and cannot be compared between two accounts of different sizes.
+   */
+  const riskShare = useMemo(
+    () => riskPercent(ifStopped, account, state.data?.equity),
+    [ifStopped, account, state.data?.equity],
+  );
 
   const busy = open.isPending || place.isPending;
 
@@ -348,13 +360,52 @@ export function OrderTicket({
     void send(requested);
   }, [shortcut, preferences.confirm, send, onShortcutHandled, pendingConfirm]);
 
+  /**
+   * An order large enough to be worth pausing over (§86).
+   *
+   * "Large" is measured against the account, not against a number somebody
+   * typed into a config file: an order that would commit more than
+   * `LARGE_ORDER_MARGIN_SHARE` of free margin, or risk more than
+   * `LARGE_ORDER_RISK_SHARE` of equity at its own stop, is one the trader is
+   * asked to confirm — whatever their one-click setting says.
+   *
+   * Measuring it in the account's own terms is what makes it useful on both a
+   * five-hundred-dollar account and a five-million-dollar one. A fixed lot
+   * threshold would fire constantly on one and never on the other.
+   */
+  const largeOrder = useMemo(() => {
+    const freeMargin = state.data?.freeMargin;
+    const marginNeeded = estimate.marginAmount;
+    if (freeMargin != null && marginNeeded !== null && Number(freeMargin) > 0) {
+      if (Number(marginNeeded) / Number(freeMargin) >= LARGE_ORDER_MARGIN_SHARE) {
+        return `This order commits about ${Math.round(
+          (Number(marginNeeded) / Number(freeMargin)) * 100,
+        )}% of your free margin.`;
+      }
+    }
+    if (riskShare !== null && Number(riskShare) >= LARGE_ORDER_RISK_SHARE * 100) {
+      return `This order risks ${riskShare}% of your equity at its stop.`;
+    }
+    return null;
+  }, [state.data?.freeMargin, estimate.marginAmount, riskShare]);
+
   if (symbol === undefined) {
     return <EmptyState>Select an instrument to trade.</EmptyState>;
   }
 
   const canSubmit = blockedReason === null && !busy;
 
-  const submit = () => void send(side);
+
+  const submit = () => {
+    // A large order is confirmed even in one-click mode. One-click is a
+    // convenience for ordinary size; it was never a request to skip the one
+    // order that could take the account down.
+    if (largeOrder !== null && pendingConfirm === null) {
+      setPendingConfirm(side);
+      return;
+    }
+    void send(side);
+  };
 
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -558,6 +609,14 @@ export function OrderTicket({
             title="Gross, at this target, from this entry."
           />
         )}
+        {riskShare === null ? null : (
+          <EstimateRow
+            label="Risk"
+            value={`${riskShare}% of equity`}
+            tone={Number(riskShare) >= 5 ? 'text-terminal-warning' : undefined}
+            title="What this stop would cost, as a share of the account's equity"
+          />
+        )}
         {ratio === null ? null : (
           <EstimateRow
             label="Reward : risk"
@@ -618,6 +677,9 @@ export function OrderTicket({
             </span>
             ?
           </p>
+          {largeOrder === null ? null : (
+            <p className="mb-2 text-[11px] text-terminal-warning">{largeOrder}</p>
+          )}
           <div className="flex gap-2">
             <Button
               variant={pendingConfirm === 'BUY' ? 'long' : 'short'}
@@ -656,6 +718,15 @@ export function OrderTicket({
 }
 
 type OrderType = 'MARKET' | 'LIMIT' | 'STOP';
+/**
+ * When an order is large enough to be worth a pause.
+ *
+ * Shares of the account, not absolute sizes: a fixed lot threshold would fire
+ * constantly on a small account and never on a large one.
+ */
+const LARGE_ORDER_MARGIN_SHARE = 0.5;
+const LARGE_ORDER_RISK_SHARE = 0.1;
+
 const ORDER_TYPES: readonly OrderType[] = ['MARKET', 'LIMIT', 'STOP'];
 
 function EstimateRow({

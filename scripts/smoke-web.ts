@@ -155,10 +155,18 @@ async function seedPeople(prisma: PrismaClient): Promise<{
    * there without one, the withdraw form is not, and the walk asserts on
    * both. Created the way the platform creates one: an empty row, no money.
    */
-  const tenant = await prisma.tenant.findFirstOrThrow({ select: { id: true } });
+  /**
+   * The trader's own tenant, not `findFirstOrThrow()`.
+   *
+   * That is what this was, and it was wrong the moment the deployment held
+   * more than one tenant — which it does as soon as a broker has been created,
+   * as this very walk does. An unordered "first" tenant filed the wallet under
+   * a firm the trader does not belong to, so the wallet page found none and
+   * the withdrawal assertions described an empty screen.
+   */
   await prisma.wallet.upsert({
     where: { userId_currency: { userId: traderRow.id, currency: 'USD' } },
-    create: { tenantId: tenant.id, userId: traderRow.id, currency: 'USD' },
+    create: { tenantId: traderRow.tenantId, userId: traderRow.id, currency: 'USD' },
     update: {},
   });
 
@@ -298,6 +306,110 @@ function prepareStandalone(): void {
   }
 }
 
+/**
+ * Signs in over HTTP and places one market order.
+ *
+ * Through the API rather than by inserting a row, because a row inserted by a
+ * script is not an order — it has no events, no fill, and nothing for the
+ * order-history screen to show. The point of the check that follows is that
+ * the console can explain a real order.
+ */
+async function placeOneOrder(email: string): Promise<void> {
+
+  const signedIn = await fetch(`${API}/api/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password: PASSWORD }),
+  });
+  if (!signedIn.ok) throw new Error(`signing ${email} in answered ${signedIn.status}`);
+  const body = (await signedIn.json()) as { data?: { accessToken?: string } };
+  const token = body.data?.accessToken;
+  if (token === undefined) throw new Error('no access token to place an order with');
+
+  const accounts = await fetch(`${API}/api/v1/accounts`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const list = (await accounts.json()) as { data?: { id: string }[] };
+  const accountId = list.data?.[0]?.id;
+  if (accountId === undefined) throw new Error('the trader has no account to trade');
+
+  /**
+   * The feed only ticks while the session is open, so a market that was shut a
+   * moment ago has no price yet. Waiting for one is the honest thing: the
+   * order must be placed against a real quote, not a made-up one.
+   */
+  let last = '';
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const placed = await fetch(`${API}/api/v1/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'Idempotency-Key': crypto.randomUUID(),
+      },
+      body: JSON.stringify({ accountId, symbol: 'XAUUSD', side: 'BUY', volume: '0.01' }),
+    });
+    if (placed.status === 201 || placed.status === 200) return;
+    last = `${placed.status}: ${await placed.text()}`;
+    if (!last.includes('NO_QUOTE_AVAILABLE')) break;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`placing the order answered ${last}`);
+}
+
+/**
+ * Make sure the instrument is open right now, through the console's own route.
+ *
+ * XAUUSD keeps real hours, so on a Saturday this walk could not place an order
+ * at all — and a check that skips itself at weekends is a check that is not
+ * run when somebody most needs it. Using the sessions endpoint rather than
+ * writing the row means the API's cached week is refreshed too, which writing
+ * the row directly would not do.
+ */
+async function openMarketToday(adminEmail: string): Promise<void> {
+  const token = await tokenFor(adminEmail);
+  const current = await fetch(`${API}/api/v1/admin/instruments/XAUUSD/sessions`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const week = (await current.json()) as {
+    data?: { timezone: string; windows: { dayOfWeek: number }[] };
+  };
+  const today = new Date().getUTCDay();
+  const windows = week.data?.windows ?? [];
+  if (windows.some((window) => window.dayOfWeek === today)) return;
+
+  const response = await fetch(`${API}/api/v1/admin/instruments/XAUUSD/sessions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      'Idempotency-Key': crypto.randomUUID(),
+    },
+    body: JSON.stringify({
+      timezone: week.data?.timezone ?? 'UTC',
+      windows: [...windows, { dayOfWeek: today, openMinute: 0, closeMinute: 1440 }],
+      reason: 'web smoke needs a market that is open to place a real order',
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`opening the market answered ${response.status}: ${await response.text()}`);
+  }
+}
+
+/** An access token for an email, over HTTP, the way anything else signs in. */
+async function tokenFor(email: string): Promise<string> {
+  const signedIn = await fetch(`${API}/api/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password: PASSWORD }),
+  });
+  if (!signedIn.ok) throw new Error(`signing ${email} in answered ${signedIn.status}`);
+  const body = (await signedIn.json()) as { data?: { accessToken?: string } };
+  const token = body.data?.accessToken;
+  if (token === undefined) throw new Error(`no access token for ${email}`);
+  return token;
+}
+
 async function main(): Promise<void> {
   const prisma = new PrismaClient();
   let api: ChildProcess | undefined;
@@ -367,7 +479,21 @@ async function main(): Promise<void> {
      * the client. A build that shipped card logos against a deployment with only
      * a bank transfer would render fine and fail on submit.
      */
-    const walletBody = await page.locator('body').innerText();
+    /**
+     * Waited for, not read once.
+     *
+     * The visit above waits for the word "Wallet", which is in the navigation
+     * and therefore present immediately — so a single read can happen before
+     * the wallet's own queries have resolved, and the assertions below then
+     * describe an empty page. Earlier runs passed on timing rather than on
+     * the page being right, which is the least useful kind of green.
+     */
+    let walletBody = '';
+    for (let attempt = 0; attempt < 40; attempt++) {
+      walletBody = await page.locator('body').innerText();
+      if (/leaves your wallet balance the moment you ask/i.test(walletBody)) break;
+      await page.waitForTimeout(500);
+    }
     ok(
       /Add money/i.test(walletBody) && /Bank transfer/i.test(walletBody),
       'the wallet page offers the deposit method this deployment actually has',
@@ -487,6 +613,75 @@ async function main(): Promise<void> {
       url: '/admin/withdrawals',
       text: /In flight/i,
     });
+    /**
+     * The firm's book. What is checked is not that a table renders but that it
+     * shows *another* account's order — the whole point of the screen is that
+     * it is not account-scoped, and a blotter that quietly showed only the
+     * reader's own orders would look identical.
+     */
+    /**
+     * One real order, placed by the trader over the real path, so the book has
+     * something in it that is not the reader's own.
+     */
+    await openMarketToday(people.admin.email);
+    await placeOneOrder(people.trader.email);
+
+    await visit(adminPage, '/admin/book', { url: '/admin/book' });
+    const book = adminPage.getByTestId('book-panel');
+    await book.waitFor({ timeout: 10_000 });
+    let bookBody = '';
+    for (let attempt = 0; attempt < 30; attempt++) {
+      bookBody = await book.innerText();
+      if (bookBody.includes(people.trader.email)) break;
+      await adminPage.waitForTimeout(500);
+    }
+    ok(
+      bookBody.includes(people.trader.email) && /XAUUSD/.test(bookBody),
+      "the firm's book shows another account's orders, with whose account they are",
+      bookBody.replace(/\s+/g, ' ').slice(0, 200),
+    );
+
+    await book.getByRole('button', { name: /^History$/ }).first().click();
+    const history = adminPage.getByTestId('order-history');
+    await history.waitFor({ timeout: 10_000 });
+    let historyBody = '';
+    for (let attempt = 0; attempt < 30; attempt++) {
+      historyBody = await history.innerText();
+      if (/CREATED/.test(historyBody)) break;
+      await adminPage.waitForTimeout(500);
+    }
+    ok(
+      /CREATED/.test(historyBody),
+      'one order\u2019s own events answer what happened to it',
+      historyBody.replace(/\s+/g, ' ').slice(0, 160),
+    );
+
+    /**
+     * The trading week: the model has existed since the beginning and nothing
+     * could edit it. Saved whole, and the reason is mandatory.
+     */
+    await visit(adminPage, '/admin/instruments', { url: '/admin/instruments' });
+    await adminPage.getByRole('button', { name: /^Edit$/ }).first().click();
+    const week = adminPage.getByTestId('session-editor');
+    await week.waitFor({ timeout: 10_000 });
+    await week.getByLabel('Friday closes').fill('21:00');
+    await week.getByPlaceholder('the venue moved its Friday close').fill(
+      'the venue moved its Friday close',
+    );
+    await week.getByRole('button', { name: /Save the week/i }).click();
+
+    let sessions: { dayOfWeek: number; closeMinute: number }[] = [];
+    for (let attempt = 0; attempt < 30; attempt++) {
+      sessions = await prisma.marketSession.findMany({ where: { dayOfWeek: 5 } });
+      if (sessions[0]?.closeMinute === 1260) break;
+      await adminPage.waitForTimeout(500);
+    }
+    ok(
+      sessions[0]?.closeMinute === 1260,
+      'an instrument\u2019s trading week can be changed from the console, and it lands',
+      String(sessions[0]?.closeMinute),
+    );
+
     await visit(adminPage, '/admin/audit', { url: '/admin/audit' });
 
     /**

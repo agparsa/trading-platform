@@ -24,6 +24,7 @@ import { OrdersService } from './orders.service';
 import { PositionsService } from './positions.service';
 import {
   AccountQueryDto,
+  CloseAllDto,
   ClosePositionDto,
   ListQueryDto,
   ModifyPendingDto,
@@ -31,7 +32,12 @@ import {
   OpenPositionDto,
   PlacePendingDto,
 } from './dto/trading.dto';
-import type { CloseResult, OrderPreview, OrderResult } from './trading.types';
+import type {
+  CloseAllResult,
+  CloseResult,
+  OrderPreview,
+  OrderResult,
+} from './trading.types';
 
 /**
  * Runs an operation under an idempotency key.
@@ -221,6 +227,32 @@ export class TradingController {
   ): Promise<CloseResult> {
     return idempotent(this.idempotency, `close:${user.id}`, key, { id, ...body }, () =>
       this.positions.close(user.id, id, body.volume ?? null),
+    );
+  }
+
+  /**
+   * Close everything on one account.
+   *
+   * One stated intent instead of a burst of unrelated closes, and one audit
+   * row that records what was asked for as well as what happened.
+   *
+   * Deliberately **not atomic**, and the result says so per position: each
+   * close takes its own lock, quote and ledger entry, so one unpriceable
+   * instrument must not roll back closes that already happened at real prices.
+   * A 200 here means the command ran, not that everything shut — read
+   * `refused`.
+   */
+  @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
+  @RequirePermissions(Permission.POSITIONS_CLOSE)
+  @Post('positions/close-all')
+  @ApiOperation({ summary: 'Close every open position on an account. Reports each one.' })
+  async closeAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: CloseAllDto,
+    @IdempotencyKey() key: string,
+  ): Promise<CloseAllResult> {
+    return idempotent(this.idempotency, `close-all:${user.id}`, key, body, () =>
+      this.positions.closeAll(user.id, body.accountId),
     );
   }
 

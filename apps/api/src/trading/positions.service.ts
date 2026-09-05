@@ -32,7 +32,12 @@ import { EventsService } from '../realtime/events.service';
 import { TradingThrottle } from './trading-throttle.service';
 import { AccountStateService } from './account-state.service';
 import { OrdersService } from './orders.service';
-import type { CloseResult, ModifyPositionRequest, OrderResult } from './trading.types';
+import type {
+  CloseAllResult,
+  CloseResult,
+  ModifyPositionRequest,
+  OrderResult,
+} from './trading.types';
 import { requireTenantId } from '@tp/tenancy';
 
 interface LoadedPosition {
@@ -80,6 +85,99 @@ export class PositionsService {
     private readonly accountState: AccountStateService,
     private readonly throttle: TradingThrottle,
   ) {}
+
+  /**
+   * Closes every open position on an account.
+   *
+   * ## Why this is a server command and not a loop in the browser
+   *
+   * "Close all" was a loop in the client, one request per position, tolerating
+   * partial failure silently. Three things are wrong with that. A trader who
+   * pressed it during a fast market got some positions closed and some not,
+   * with no record of what they had asked for. A dropped connection halfway
+   * through left the rest open while the screen said the button had been
+   * pressed. And the platform had no idea the request had ever been made — the
+   * audit trail showed a burst of unrelated closes.
+   *
+   * So the intent is stated once, here, and the outcome is reported per
+   * position: what closed, what did not, and why.
+   *
+   * ## It is not one transaction, and must not be
+   *
+   * Each close takes its own lock, its own quote and its own ledger entry.
+   * Wrapping them in one transaction would hold a lock on every account row
+   * for the duration and deadlock against the tick loop closing a stop on the
+   * same position — and, worse, would mean one unpriceable instrument rolled
+   * back closes that had already happened at real prices.
+   *
+   * So this is deliberately **not atomic**, and says so in its result rather
+   * than pretending. A close that fails is reported with its reason, the
+   * others stand, and the trader sees exactly where they are.
+   *
+   * ## Ordering
+   *
+   * Largest margin first. If the account is close to a stop-out, closing the
+   * heaviest position first releases the most margin soonest, which makes it
+   * more likely the rest can be closed at all rather than being liquidated
+   * mid-way through by the engine.
+   */
+  async closeAll(
+    userId: string,
+    accountId: string,
+    reason: CloseReason = CloseReason.MANUAL,
+  ): Promise<CloseAllResult> {
+    // The same access check every single close makes, made once up front so a
+    // caller with no right to the account is refused before anything moves.
+    await this.access.resolve(userId, accountId, Permission.POSITIONS_CLOSE);
+
+    const open = await this.prisma.position.findMany({
+      where: { accountId, status: 'OPEN' },
+      orderBy: [{ margin: 'desc' }, { openedAt: 'asc' }],
+      select: { id: true },
+    });
+
+    const closed: CloseResult[] = [];
+    const refused: { positionId: string; code: string; message: string }[] = [];
+
+    for (const position of open) {
+      try {
+        closed.push(await this.close(userId, position.id, null, reason));
+      } catch (error) {
+        /**
+         * Kept, not thrown. One position that cannot be closed — a stale
+         * quote, a market that shut a second ago, a stop that got there first
+         * — must not stop the others, and must not be silent either.
+         */
+        const domain = error instanceof DomainError ? error : null;
+        refused.push({
+          positionId: position.id,
+          code: domain?.code ?? TradingErrorCode.INTERNAL_ERROR,
+          message: domain?.message ?? 'This position could not be closed.',
+        });
+      }
+    }
+
+    if (refused.length > 0) {
+      this.logger.warn(
+        { accountId, userId, closed: closed.length, refused },
+        'A close-all left positions open',
+      );
+    }
+    await this.audit.record({
+      actorId: userId,
+      actorType: 'USER',
+      action: 'POSITION_CLOSE_ALL',
+      resourceType: 'Account',
+      resourceId: accountId,
+      after: {
+        asked: open.length,
+        closed: closed.length,
+        refused: refused.map((one) => `${one.positionId}: ${one.code}`),
+      },
+    });
+
+    return { asked: open.length, closed, refused };
+  }
 
   /**
    * Closes a position, in whole or in part.

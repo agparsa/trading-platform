@@ -120,6 +120,20 @@ export interface OperationsSummary {
   orders: { resting: number; lastHour: number; rejectedLastHour: number };
   risk: { eventsLastDay: number; criticalLastDay: number };
   integrity: { open: number; bySeverity: Record<string, number> };
+  /** By currency, never summed across them — there is no rate here to do it with. */
+  money: {
+    byCurrency: {
+      currency: string;
+      balance: string;
+      depositedLastDay: string;
+      withdrawnLastDay: string;
+      commissionLastDay: string;
+      swapLastDay: string;
+      netPnlLastDay: string;
+      closedTradesLastDay: number;
+      volumeLastDay: string;
+    }[];
+  };
   reconciliation: { openFindings: number; lastRunAt: string | null };
   takenAt: string;
 }
@@ -149,6 +163,9 @@ const adminKeys = {
   masterLinks: (id: string) => ['admin', 'master-links', id] as const,
   desk: (id: string) => ['admin', 'desk', id] as const,
   riskLimits: ['admin', 'risk-limits'] as const,
+  blotter: (kind: string, query: string) => ['admin', 'blotter', kind, query] as const,
+  orderHistory: (id: string) => ['admin', 'order-history', id] as const,
+  sessions: (code: string) => ['admin', 'sessions', code] as const,
   securityFeed: (filter: string) => ['admin', 'security-feed', filter] as const,
   user: (id: string) => ['admin', 'user', id] as const,
   accounts: (search: string) => ['admin', 'accounts', search] as const,
@@ -1699,6 +1716,183 @@ export function useSetRiskLimits() {
       ),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: adminKeys.riskLimits });
+      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+    },
+  });
+}
+
+
+// ---- The firm's book, and the trading week ---------------------------------
+
+export interface BlotterFilters {
+  accountNumber?: string;
+  symbol?: string;
+  side?: 'BUY' | 'SELL';
+  status?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface BlotterPage<T> {
+  rows: T[];
+  /** Null on the last page. Opaque; hand it back verbatim. */
+  nextCursor: string | null;
+}
+
+export interface BlotterOrderRow {
+  id: string;
+  accountId: string;
+  accountNumber: string;
+  ownerEmail: string;
+  symbol: string;
+  side: string;
+  type: string;
+  status: string;
+  volume: string;
+  filledVolume: string;
+  price: string | null;
+  stopPrice: string | null;
+  stopLoss: string | null;
+  takeProfit: string | null;
+  rejectionCode: string | null;
+  placedByMasterAccountId: string | null;
+  clientOrderId: string | null;
+  externalOrderId: string | null;
+  createdAt: string;
+}
+
+export interface BlotterPositionRow {
+  id: string;
+  accountId: string;
+  accountNumber: string;
+  ownerEmail: string;
+  symbol: string;
+  side: string;
+  status: string;
+  volume: string;
+  entryPrice: string;
+  currentPrice: string | null;
+  stopLoss: string | null;
+  takeProfit: string | null;
+  margin: string;
+  commission: string;
+  swap: string;
+  openedAt: string;
+  closedAt: string | null;
+}
+
+export interface BlotterTradeRow {
+  id: string;
+  accountId: string;
+  accountNumber: string;
+  ownerEmail: string;
+  symbol: string;
+  side: string;
+  volume: string;
+  entryPrice: string;
+  exitPrice: string;
+  grossPnl: string;
+  commission: string;
+  swap: string;
+  netPnl: string;
+  entryTime: string;
+  exitTime: string;
+}
+
+export interface OrderEventRow {
+  id: string;
+  type: string;
+  fromStatus: string | null;
+  toStatus: string | null;
+  payload: unknown;
+  createdAt: string;
+}
+
+function blotterSearch(filters: BlotterFilters): string {
+  const params = new URLSearchParams();
+  for (const [name, value] of Object.entries(filters)) {
+    if (value === undefined || value === '') continue;
+    params.set(name, String(value));
+  }
+  const query = params.toString();
+  return query === '' ? '' : `?${query}`;
+}
+
+function useBlotter<T>(kind: 'orders' | 'positions' | 'trades', filters: BlotterFilters) {
+  const { api } = useSession();
+  const search = blotterSearch(filters);
+  return useQuery({
+    queryKey: adminKeys.blotter(kind, search),
+    queryFn: () => api.get<BlotterPage<T>>(`/admin/${kind}${search}`),
+    // A book moves; a page of it should not be stale while someone reads it.
+    refetchInterval: 15_000,
+  });
+}
+
+export const useBlotterOrders = (filters: BlotterFilters) =>
+  useBlotter<BlotterOrderRow>('orders', filters);
+export const useBlotterPositions = (filters: BlotterFilters) =>
+  useBlotter<BlotterPositionRow>('positions', filters);
+export const useBlotterTrades = (filters: BlotterFilters) =>
+  useBlotter<BlotterTradeRow>('trades', filters);
+
+export function useOrderHistory(id: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.orderHistory(id ?? ''),
+    queryFn: () =>
+      api.get<{ order: BlotterOrderRow; events: OrderEventRow[] }>(
+        `/admin/orders/${id}/history`,
+      ),
+    enabled: id !== null,
+  });
+}
+
+export interface SessionWindowRow {
+  dayOfWeek: number;
+  openMinute: number;
+  closeMinute: number;
+}
+
+export interface SessionsRow {
+  code: string;
+  timezone: string;
+  windows: SessionWindowRow[];
+}
+
+export function useInstrumentSessions(code: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.sessions(code ?? ''),
+    queryFn: () => api.get<SessionsRow>(`/admin/instruments/${code}/sessions`),
+    enabled: code !== null,
+  });
+}
+
+/** Replaces the whole week. Refused from a broker: sessions are the venue's. */
+export function useSetInstrumentSessions() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      code,
+      timezone,
+      windows,
+      reason,
+    }: {
+      code: string;
+      timezone: string;
+      windows: SessionWindowRow[];
+      reason: string;
+    }) =>
+      api.post<SessionsRow>(
+        `/admin/instruments/${code}/sessions`,
+        { timezone, windows, reason },
+        key(),
+      ),
+    onSuccess: (_row, variables) => {
+      void client.invalidateQueries({ queryKey: adminKeys.sessions(variables.code) });
+      void client.invalidateQueries({ queryKey: adminKeys.instruments });
       void client.invalidateQueries({ queryKey: adminKeys.audit('') });
     },
   });

@@ -3,7 +3,13 @@
 import { cn } from '@tp/ui';
 import { accountView } from '@/lib/account-view';
 import { money, percent, signedMoney, toneClass, toneOf } from '@/lib/format';
-import { useAccountSettings, useAccountState, type AccountSummary } from '@/lib/queries';
+import {
+  useAccounts,
+  useAccountSettings,
+  useAccountState,
+  type AccountSummary,
+} from '@/lib/queries';
+import { useSession } from '@/lib/session';
 import { useRealtime } from '@/lib/realtime-store';
 import { Stat } from './primitives';
 
@@ -27,6 +33,8 @@ export function AccountHeader({
   openPositions: number | undefined;
   openOrders: number | undefined;
 }) {
+  const { selectAccount } = useSession();
+  const accounts = useAccounts().data ?? [];
   const snapshot = useAccountState(accountId);
   const live = useRealtime((state) => state.account);
   const settings = useAccountSettings(accountId);
@@ -45,11 +53,32 @@ export function AccountHeader({
 
   return (
     <div className="grid grid-cols-2 gap-x-6 gap-y-3 px-4 py-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-10">
+      {/*
+        A selector when there is a choice, and a label when there is not.
+        A dropdown with one option in it is a control that suggests something
+        can be done and then cannot; a trader with two accounts could reach
+        only the first until this existed.
+      */}
       <div className="min-w-0">
         <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Account</p>
-        <p className="numeric mt-0.5 truncate text-sm text-terminal-text">
-          {account === undefined ? '—' : `#${account.number}`}
-        </p>
+        {accounts.length > 1 ? (
+          <select
+            className="numeric mt-0.5 w-full truncate bg-transparent text-sm text-terminal-text outline-none"
+            value={account?.id ?? ''}
+            onChange={(event) => selectAccount(event.target.value)}
+            aria-label="Account"
+          >
+            {accounts.map((one) => (
+              <option key={one.id} value={one.id}>
+                #{one.number} · {one.currency}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <p className="numeric mt-0.5 truncate text-sm text-terminal-text">
+            {account === undefined ? '—' : `#${account.number}`}
+          </p>
+        )}
       </div>
       <Stat label="Balance" value={money(state?.balance, currency)} />
       <Stat label="Equity" value={money(state?.equity, currency)} />

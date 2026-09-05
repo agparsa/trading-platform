@@ -455,6 +455,43 @@ export function useClosePosition(accountId: string | null) {
   });
 }
 
+export interface CloseAllOutcome {
+  asked: number;
+  closed: { positionId: string }[];
+  /** Still open, each with the reason. Not atomic, and the shape says so. */
+  refused: { positionId: string; code: string; message: string }[];
+}
+
+/**
+ * Close everything on the account, as one server command.
+ *
+ * It used to be a loop here: one request per position, partial failure
+ * swallowed by the browser. A dropped connection halfway through left the rest
+ * open under a screen that said the button had been pressed, and the platform
+ * had no record that "close everything" had ever been asked for.
+ *
+ * The command is deliberately not atomic — each close takes its own lock,
+ * quote and ledger entry — so the caller reads `refused` rather than a boolean.
+ */
+export function useCloseAllPositions(accountId: string | null) {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: mutate<CommandInput & { accountId: string }, CloseAllOutcome>(
+      api,
+      (client_, input, key) =>
+        client_.post<CloseAllOutcome>(
+          '/positions/close-all',
+          { accountId: input.accountId },
+          { idempotencyKey: key },
+        ),
+    ),
+    onSuccess: () => {
+      if (accountId !== null) invalidateTradingState(client, accountId);
+    },
+  });
+}
+
 export interface ModifyInput extends CommandInput {
   positionId: string;
   stopLoss?: string | null;

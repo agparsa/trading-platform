@@ -326,6 +326,104 @@ left to Phase 6, where the terminal is being rebuilt anyway.
 pentest 47 attacks refused.
 [desks-and-risk-hierarchy.md](./desks-and-risk-hierarchy.md).
 
+## New plan, Phase 5 — the broker panel
+
+Three things a firm could not do, and a plain list of what still cannot be
+done.
+
+**The firm's own book.** Every trading listing on this platform is
+account-scoped and ownership-checked — right for a trader, useless for the
+person running the firm, who had to answer "what is open across the book" and
+"why was that order rejected at 14:32" from a database console. `/admin/book`
+is orders, positions and closed trades across the tenant, each row carrying the
+account number and the owner, with an order's own events one click away. It
+takes `accounts.read_any` and deliberately not `orders.read`, which every
+trader holds; the pentest attacks exactly that. Paging is keyset with the row
+id in the cursor, because a book is read while orders are arriving and several
+share a millisecond — offset paging would repeat some rows and drop others, and
+a dropped row is the one somebody is looking for. An unknown account number
+matches nothing rather than everything. Export is of the page and says so.
+
+**The trading week.** `MarketSession` had existed since the beginning with no
+writer but the seed, so a firm needing Friday to close an hour early needed a
+database console. It is editable on the Instruments screen now, and the rules
+are the interesting part: the week is replaced **whole** (a half-saved week is
+a market open when it should be shut), overlapping windows are refused rather
+than merged (a union hides which of two disagreeing descriptions was meant), a
+window may not cross midnight and the refusal says how to express one that
+does, the timezone is checked against the system's own tz database, it is a
+platform act because sessions are when the _venue_ trades, and the engine's
+cached copy is refreshed on save so the change does not wait for a restart.
+
+**Money on the dashboard.** It was counts only: how many orders were rejected
+last hour, and nothing about what the firm held or earned. Now balance,
+deposits, withdrawals, commission, swap, traders' net P&L, closed trades and
+volume — **by currency, never summed across them**, because one number made by
+adding dollars to euros looks authoritative and reconciles with nothing.
+
+Forty-eight new tests. Eight mutations run, seven caught outright; the survivor
+was a real gap — nothing tested the case the cursor's id half exists for, so a
+test now pages through six orders sharing one timestamp and fails without it.
+
+**Not built, named rather than stubbed:** Fees as a section, Reports,
+Alerts, admin device management, IP rules, Branding, outbound webhooks, and API
+documentation in production. Each is listed in
+[broker-panel.md](./broker-panel.md) with where it belongs.
+
+`pnpm verify` 2029 tests over 152 files; smoke 20; smoke:worker 3; web smoke
+107 over 30 routes; pentest 48 attacks refused.
+
+## New plan, Phase 6 — the terminal, where it was wrong rather than plain
+
+Four defects, and a written account of the presentation work not done.
+
+**One calculator, shared.** A stop can be expressed as a price, a distance, a
+number of points or the money it would cost, and a trader moves between them
+freely. That arithmetic lived in three places in the web app and a fourth on
+the phone — four chances to disagree about a number visible in two places at
+once. `@tp/trading-core/levels.ts` is the one implementation now, framework-free
+and on decimal arithmetic, with three rules: direction is derived from the
+position's side and the level's kind rather than asked for (a caller that works
+it out is a caller that can get it wrong); no exchange rate is ever assumed, so
+a browser without one gets `null` rather than a confident wrong number; and
+sizing from a risk rounds **down** to the volume step, because a size that
+rounded up would risk more than was asked for.
+
+**Close-all is a server command.** It was a loop in the browser: one request
+per position, partial failure swallowed, and no record anywhere that "close
+everything" had been asked for. `POST /positions/close-all` states the intent
+once and reports each position. It is deliberately **not atomic** and its
+result says so — one transaction would hold the account lock throughout,
+deadlock against the tick loop closing a stop, and let one unpriceable
+instrument roll back closes that already happened at real prices. Largest
+margin first, so an account near a stop-out releases the most margin soonest.
+
+**Risk as a share of equity** in the ticket, because "two percent" is a rule
+people follow and "eighty-four dollars" is not. **Large-order confirmation**
+measured against the account — half of free margin, or a tenth of equity at the
+stop — forced even in one-click mode, since one-click was a convenience for
+ordinary size and never a request to skip the order that could take the account
+down. **An account selector**: the terminal set `accounts[0]` at sign-in and
+never exposed a way to change it, so a trader with two accounts could reach
+only the first; the remembered choice is validated against the account list on
+every sign-in.
+
+Thirty-two new tests. Six mutations run, five caught; the sixth is an equivalent
+mutant — removing the explicit null-rate guard leaves the exception path
+returning the same `null`, verified directly rather than assumed, and the guard
+stays as defence against `grossPnl` ever coercing a null.
+
+**Not delivered, and named:** the watchlist's inline quick ticket, categories
+and top movers; stop-limit orders (an engine change, not a form control);
+trailing and expiry at entry; estimated swap; Finance/Alerts/Logs tabs;
+multi-select "Close (n)"; the edit dialog's other entry modes; spacing and
+typography scales; a light theme; a documented accessibility pass.
+[uiux.md](./uiux.md) gives the reason for each. What was built is where the
+alternative was a defect; the rest is presentation, and presentation without
+the screenshots it is meant to match would be invention.
+
+`pnpm verify` 2062 tests over 154 files; pentest 49 attacks refused.
+
 ## Phase 9 — API keys and service tokens
 
 `ApiKey` and `ServiceToken`, tenant-scoped, with per-credential permissions,

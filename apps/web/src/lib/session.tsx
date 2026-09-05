@@ -53,6 +53,15 @@ export interface SessionUser {
 interface SessionValue {
   user: SessionUser | null;
   accountId: string | null;
+  /**
+   * Switch which account the terminal is looking at.
+   *
+   * A trader with two accounts could reach only the first until this existed:
+   * the id was set to `accounts[0]` at sign-in and never exposed. The choice
+   * is remembered per browser so a reload does not silently put them back on
+   * a different account than the one they were trading.
+   */
+  selectAccount: (id: string) => void;
   ready: boolean;
   api: ApiClient;
   accessToken: string | null;
@@ -118,11 +127,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [tokenHolder],
   );
 
+  const selectAccount = useCallback((id: string) => {
+    setAccountId(id);
+    rememberAccount(id);
+  }, []);
+
   const loadProfile = useCallback(async () => {
     const profile = await api.get<SessionUser>('/users/me');
     setUser(profile);
     const accounts = await api.get<Array<{ id: string }>>('/accounts');
-    setAccountId(accounts[0]?.id ?? null);
+    /**
+     * The remembered choice, if it is still one of theirs.
+     *
+     * Checked against the list rather than trusted: an account that was
+     * closed, or a device someone else signed in on, must not leave the
+     * terminal pointed at an id this login cannot reach.
+     */
+    const remembered = readRememberedAccount();
+    const known = accounts.some((account) => account.id === remembered);
+    setAccountId(known ? remembered : (accounts[0]?.id ?? null));
   }, [api]);
 
   // Restore a session on load. There is nothing to read first: if the cookie is
@@ -213,6 +236,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     () => ({
       user,
       accountId,
+      selectAccount,
       ready,
       api,
       accessToken,
@@ -221,7 +245,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       register,
       signOut,
     }),
-    [user, accountId, ready, api, accessToken, signIn, completeTwoFactor, register, signOut],
+    [
+      user,
+      accountId,
+      selectAccount,
+      ready,
+      api,
+      accessToken,
+      signIn,
+      completeTwoFactor,
+      register,
+      signOut,
+    ],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
@@ -231,4 +266,31 @@ export function useSession(): SessionValue {
   const value = useContext(SessionContext);
   if (value === null) throw new Error('useSession must be used inside a SessionProvider');
   return value;
+}
+
+
+/**
+ * The last account this browser was looking at.
+ *
+ * A convenience, and treated as one: it is validated against the account list
+ * on every sign-in, and any failure to read it simply means "no preference".
+ * Storage can be unavailable — a private window, cleared site data, a browser
+ * set to block it — and the terminal must open regardless.
+ */
+const ACCOUNT_KEY = 'tp.account';
+
+function readRememberedAccount(): string | null {
+  try {
+    return window.localStorage.getItem(ACCOUNT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function rememberAccount(id: string): void {
+  try {
+    window.localStorage.setItem(ACCOUNT_KEY, id);
+  } catch {
+    // Nothing to do and nothing to say: the choice simply is not remembered.
+  }
 }
