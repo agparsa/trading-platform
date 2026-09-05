@@ -142,6 +142,22 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/admin/brokers`            | `create`    | SESSION-ONLY (class), TENANTS_MANAGE |
 | `POST` | `/admin/brokers/:id/status` | `setStatus` | SESSION-ONLY (class), TENANTS_MANAGE |
 
+### `charts/charts.controller.ts` — base `/charts`
+
+| Verb     | Path                       | Handler          | Requires             |
+| -------- | -------------------------- | ---------------- | -------------------- |
+| `GET`    | `/charts/layouts`          | `layouts`        | _authenticated only_ |
+| `GET`    | `/charts/layouts/default`  | `defaultLayout`  | _authenticated only_ |
+| `GET`    | `/charts/layouts/:id`      | `layout`         | _authenticated only_ |
+| `POST`   | `/charts/layouts`          | `saveLayout`     | SELF-SERVICE         |
+| `DELETE` | `/charts/layouts/:id`      | `deleteLayout`   | SELF-SERVICE         |
+| `GET`    | `/charts/templates`        | `templates`      | _authenticated only_ |
+| `GET`    | `/charts/templates/:name`  | `template`       | _authenticated only_ |
+| `POST`   | `/charts/templates`        | `saveTemplate`   | SELF-SERVICE         |
+| `DELETE` | `/charts/templates/:name`  | `deleteTemplate` | SELF-SERVICE         |
+| `GET`    | `/charts/drawings/:symbol` | `drawings`       | _authenticated only_ |
+| `POST`   | `/charts/drawings/:symbol` | `saveDrawings`   | SELF-SERVICE         |
+
 ### `credentials/admin-credentials.controller.ts` — base `/admin`
 
 | Verb   | Path                               | Handler       | Requires                                    |
@@ -388,7 +404,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**184 routes:** 92 `GET`, 81 `POST`, 5 `PATCH`, 4 `DELETE`, 2 `PUT`.
+**195 routes:** 98 `GET`, 84 `POST`, 6 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

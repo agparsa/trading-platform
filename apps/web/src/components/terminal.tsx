@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useSession } from '@/lib/session';
@@ -10,6 +10,8 @@ import {
   invalidateTradingState,
   useAccounts,
   useAccountState,
+  useDefaultChartLayout,
+  useSaveChartLayout,
   usePendingOrders,
   usePositions,
   useSymbols,
@@ -55,7 +57,63 @@ export function Terminal() {
 
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [resolution, setResolution] = useState('1');
+  /**
+   * The chart the trader last had open, restored once.
+   *
+   * The instrument and the timeframe were client state until now, so a reload
+   * put everybody back on the first instrument at one minute — which is a
+   * small thing that makes a terminal feel like it is not theirs. The saved
+   * layout is the server's answer to "what was I looking at"; `restored`
+   * guards it so a later save cannot yank the screen back mid-session.
+   */
+  const savedLayout = useDefaultChartLayout(accountId);
+  const saveLayout = useSaveChartLayout();
+  const restored = useRef(false);
   const [bottomTab, setBottomTab] = useState<BottomTab>('open');
+
+  useEffect(() => {
+    if (restored.current) return;
+    const layout = savedLayout.data;
+    if (savedLayout.isPending || layout === undefined) return;
+    restored.current = true;
+    if (layout === null) return;
+    setResolution(layout.resolution);
+    setSelectedSymbol(layout.symbol);
+  }, [savedLayout.data, savedLayout.isPending]);
+
+  /**
+   * And saved back, after the trader has stopped fiddling.
+   *
+   * Debounced because clicking along a row of timeframes would otherwise be a
+   * write per click, and none of the intermediate ones is what they meant. Two
+   * seconds is long enough to be past a decision and short enough that closing
+   * the tab keeps it.
+   *
+   * Only after the restore has run: saving before it would overwrite the
+   * layout with the default state on every page load, which is the failure
+   * that turns "remembered" into "reset".
+   */
+  useEffect(() => {
+    if (!restored.current || selectedSymbol === null) return;
+    const timer = setTimeout(() => {
+      saveLayout.mutate({
+        name: 'Last used',
+        symbol: selectedSymbol,
+        resolution,
+        accountId,
+        // The arrangement itself is the renderer's, and this renderer has none
+        // to give yet — see docs/uiux.md. The columns are what is restored.
+        content: {},
+        isDefault: true,
+      });
+    }, 2_000);
+    return () => clearTimeout(timer);
+    /**
+     * `saveLayout` is deliberately not a dependency. It is a new object on
+     * every render, so listing it would re-arm the timer each time and the
+     * save would never fire.
+     */
+  }, [selectedSymbol, resolution, accountId, saveLayout.mutate]);
 
   const symbols = useSymbols();
   const accounts = useAccounts();

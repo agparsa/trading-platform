@@ -28,6 +28,7 @@ import { BrokersModule } from './brokers/brokers.module';
 import { SecurityModule } from './security/security.module';
 import { BrokerConnectionsModule } from './broker-connections/broker-connections.module';
 import { OutboxModule } from './outbox/outbox.module';
+import { ChartsModule } from './charts/charts.module';
 import { MasterModule } from './master/master.module';
 import { IntegrityModule } from './integrity/integrity.module';
 import { OperationsModule } from './operations/operations.module';
@@ -111,6 +112,7 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
     SecurityModule,
     BrokerConnectionsModule,
     OutboxModule,
+    ChartsModule,
     MasterModule,
     IntegrityModule,
     OperationsModule,

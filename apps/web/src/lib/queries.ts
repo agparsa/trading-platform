@@ -1072,3 +1072,62 @@ export function useSecurityEvents(limit = 50) {
     refetchInterval: 60_000,
   });
 }
+
+
+// ---- Chart arrangements ----------------------------------------------------
+
+export interface ChartLayoutSummary {
+  id: string;
+  name: string;
+  symbol: string;
+  resolution: string;
+  accountId: string | null;
+  isDefault: boolean;
+  updatedAt: string;
+}
+
+export interface ChartLayoutView extends ChartLayoutSummary {
+  /** The renderer's own description. Never parsed here or on the server. */
+  content: unknown;
+}
+
+/**
+ * The layout to open, or `null` when this person has never saved one.
+ *
+ * `null` rather than an invented default: a chart the platform made up and
+ * called the trader's own is a small lie noticed the first time it opens the
+ * wrong instrument.
+ */
+export function useDefaultChartLayout(accountId: string | null) {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['charts', 'default', accountId],
+    queryFn: () =>
+      api.get<ChartLayoutView | null>(
+        accountId === null ? '/charts/layouts/default' : `/charts/layouts/default?accountId=${accountId}`,
+      ),
+    enabled: accessToken !== null,
+    // A layout changes when this person changes it, and nobody else can.
+    staleTime: Infinity,
+  });
+}
+
+export function useSaveChartLayout() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      name: string;
+      symbol: string;
+      resolution: string;
+      accountId: string | null;
+      content: unknown;
+      isDefault?: boolean;
+    }) => api.post<ChartLayoutSummary>('/charts/layouts', input, {
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    onSuccess: (_row, variables) => {
+      void client.invalidateQueries({ queryKey: ['charts', 'default', variables.accountId] });
+    },
+  });
+}

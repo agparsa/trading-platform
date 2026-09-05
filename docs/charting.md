@@ -160,3 +160,72 @@ for them to drift.
 
 Steps 1–3 are the day's work the adapter exists to make small. Step 4 is the
 part that needs care, and `chart-levels.ts` already holds the rules it needs.
+
+---
+
+## Persistence (Phase 7)
+
+Chart state was client-local: a reload lost the resolution, and nothing a
+trader arranged survived closing the tab. Three tables hold it now, and the
+shape of them is the interesting part.
+
+### The arrangement is a blob this platform never parses
+
+`content` is JSON that is stored, returned and replaced verbatim. A chart's
+arrangement is the renderer's own description of itself — which studies at
+which settings, on which panes, with what drawings and where the viewport was
+— and every renderer describes that differently.
+
+That matters here more than usual, because **this platform is going to change
+renderer**. Parsing the blob would mean holding an opinion about a format we do
+not own and being wrong about it the first time the licensed library ships its
+own shape. What lives in columns is only what can be answered without parsing —
+whose layout, which instrument, which resolution, which one to open — and that
+is exactly the part that survives the swap. A layout the new library cannot
+read still says what it was of.
+
+The one thing enforced about the blob is its **size**: 256 KB, roughly two
+orders of magnitude more than a busy real layout. The refusal names both the
+size given and the limit, so it is actionable rather than a wall.
+
+### Three tables, because the three things have different lifetimes
+
+| Table           | Keyed by              | Why separate                                                                                                                                                                                                                                                                        |
+| --------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ChartLayout`   | user + account + name | One arrangement of one instrument. Bound to an account, because the levels on it are that account's positions.                                                                                                                                                                      |
+| `ChartTemplate` | user + name           | A set of studies with no instrument at all — built once, applied to whatever is opened next. Folding it into a layout would mean copying it into every chart.                                                                                                                       |
+| `UserDrawing`   | user + symbol         | **Drawings belong to the instrument.** A trendline drawn on gold is about gold, and a trader who switches layout expects their lines to still be there — which is how every terminal they have used behaves. Storing drawings inside a layout would silently lose them on a switch. |
+
+### One default, enforced by the database
+
+"Which chart do I get when I open the terminal" must not depend on row order,
+so a partial unique index allows one default per person per account. Two
+indexes, because `account_id` is nullable and Postgres treats NULLs as
+distinct — without the second, a person could hold any number of
+account-agnostic defaults.
+
+Setting a new default clears the old one **in the same transaction**. Without
+that the index would refuse the second — correctly, and confusingly.
+
+A person who has saved nothing gets `null`, never an invented default: a chart
+the platform made up and called theirs is a small lie noticed the first time it
+opens the wrong instrument.
+
+### What the web app persists today
+
+The instrument and the resolution, under the name `Last used`, debounced by two
+seconds — clicking along a row of timeframes would otherwise be a write per
+click, and none of the intermediate ones is what the trader meant. It is
+restored once on load, and the save is armed only after that restore has run:
+saving first would overwrite the layout with the default state on every page
+load, which is the failure that turns "remembered" into "reset".
+
+`content` is `{}` from this renderer, because `lightweight-charts` has no
+arrangement to give — no studies, no drawings. The storage is ready for one.
+
+### Still blocked
+
+Indicators and the drawing set are what the licensed library is _for_. Building
+them on `lightweight-charts` primitives would be writing a second charting
+library and throwing it away when the licence arrives. They wait; the storage
+that will hold them does not.

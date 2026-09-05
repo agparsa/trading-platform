@@ -1,3 +1,105 @@
+/// A saved chart, as the trader arranged it.
+///
+/// ## Why the arrangement is an opaque blob
+///
+/// `content` is JSON this platform does not read. A chart layout is the
+/// renderer's own description of itself — which studies at which settings, on
+/// which panes, with what drawings and what the viewport was — and every
+/// renderer describes that differently. Parsing it would mean this platform
+/// having an opinion about a format it does not own, and being wrong about it
+/// the first time the renderer version changes.
+///
+/// So it is stored, returned and replaced verbatim. What the platform *does*
+/// keep in columns is what it needs to answer without parsing: whose layout,
+/// which instrument, which resolution, and which one to open.
+///
+/// The columns are also what survives a change of renderer. A layout saved by
+/// one and unreadable by the next still says what it was of.
+model ChartLayout {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @map("tenant_id") @db.Uuid
+  userId    String  @map("user_id") @db.Uuid
+  /// The account this layout belongs to, when it belongs to one. Levels drawn
+  /// on a chart are about an account's positions, so a trader running two
+  /// accounts wants two arrangements.
+  accountId String? @map("account_id") @db.Uuid
+
+  name       String
+  symbol     String
+  resolution String
+  /// The renderer's own description. Never parsed here.
+  content    Json    @default("{}")
+  /// The one to open. At most one per user and account — enforced by a partial
+  /// unique index, because "which chart do I get" cannot depend on row order.
+  isDefault  Boolean @default(false) @map("is_default")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  /// One name per person per account: saving over a name replaces it, which is
+  /// what "save" means to the person pressing it.
+  @@unique([userId, accountId, name])
+  @@index([tenantId, userId])
+  @@map("chart_layouts")
+}
+
+/// A named set of studies, independent of any instrument.
+///
+/// The thing a trader builds once — a moving average, an oscillator, the
+/// settings they like — and applies to whatever they open next. Kept apart
+/// from `ChartLayout` because it is reusable across instruments by definition,
+/// and folding it into a layout would mean copying it into every chart.
+model ChartTemplate {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+
+  name    String
+  /// The renderer's own description of the studies. Never parsed here.
+  content Json   @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, name])
+  @@index([tenantId, userId])
+  @@map("chart_templates")
+}
+
+/// What a trader has drawn on one instrument.
+///
+/// Per person and per instrument rather than per layout: a trendline drawn on
+/// gold is about gold, and a trader who opens a second layout expects their
+/// lines to still be there. That is how every terminal they have used behaves,
+/// and storing drawings inside a layout would silently lose them on a layout
+/// switch.
+model UserDrawing {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+
+  symbol  String
+  /// The renderer's own description of the drawings. Never parsed here.
+  content Json   @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, symbol])
+  @@index([tenantId, userId])
+  @@map("user_drawings")
+}
+
 // ---------------------------------------------------------------------------
 // Trading Platform — PostgreSQL schema
 //
@@ -100,6 +202,9 @@ model Tenant {
   notifications            Notification[]
   tenantSymbolTerms        TenantSymbolTerms[]
   devices                  Device[]
+  chartLayouts             ChartLayout[]
+  chartTemplates           ChartTemplate[]
+  userDrawings             UserDrawing[]
   notificationPreferences  NotificationPreference[]
   notificationSettings     NotificationSetting[]
   pushDeliveries           PushDelivery[]
@@ -209,6 +314,9 @@ model User {
   invitesCreated          InviteCode[]             @relation("InviteCreator")
   invitesUsed             InviteRedemption[]
   devices                 Device[]
+  chartLayouts            ChartLayout[]
+  chartTemplates          ChartTemplate[]
+  userDrawings            UserDrawing[]
   notificationPreferences NotificationPreference[]
   notificationSettings    NotificationSetting[]
 
@@ -336,6 +444,7 @@ model Account {
   settings               AccountSettings?
   orders                 Order[]
   positions              Position[]
+  chartLayouts           ChartLayout[]
   trades                 Trade[]
   ledger                 BalanceLedger[]
   snapshots              AccountSnapshot[]

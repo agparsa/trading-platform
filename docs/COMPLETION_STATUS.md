@@ -424,6 +424,50 @@ the screenshots it is meant to match would be invention.
 
 `pnpm verify` 2062 tests over 154 files; pentest 49 attacks refused.
 
+## New plan, Phase 7 — chart persistence (the rest blocked)
+
+Chart state was client-local: a reload lost the resolution, and nothing a
+trader arranged survived closing the tab. `ChartLayout`, `ChartTemplate` and
+`UserDrawing` hold it now, per user and per account, with RLS.
+
+The shape is the argument. `content` is a blob this platform **never parses** —
+a chart's arrangement is the renderer's own description of itself, and this
+platform is going to change renderer when the licensed library arrives. Parsing
+it would mean holding an opinion about a format we do not own and being wrong
+the first time it moves. Columns carry only what can be answered without
+parsing — whose layout, which instrument, which resolution, which to open — and
+that is exactly the part that survives the swap: a layout the new library
+cannot read still says what it was of. Size is capped at 256 KB, with a refusal
+naming both the size given and the limit.
+
+Three tables because the three things have different lifetimes: a layout is one
+arrangement of one instrument and belongs to an account, since the levels on it
+are that account's positions; a template is a set of studies with no instrument
+at all; and **drawings belong to the instrument**, because a trendline drawn on
+gold is about gold and a trader who switches layout expects their lines to
+still be there. Folding drawings into a layout would silently lose them.
+
+One default per person per account, enforced by a partial unique index — two
+indexes, because `account_id` is nullable and Postgres treats NULLs as
+distinct. Setting a new default clears the old one in the same transaction.
+Someone who has saved nothing gets `null`, never an invented default.
+
+The web app persists and restores the instrument and resolution, debounced by
+two seconds, and arms the save only after the restore has run — saving first
+would overwrite the layout on every page load, which is the failure that turns
+"remembered" into "reset".
+
+Sixteen new tests. Four mutations run, four caught. The tenancy scope list was
+missing the three new models, and the cross-firm test caught it.
+
+**BLOCKED:** indicators, the drawing set and bid/ask axis labels are what the
+TradingView Advanced Charts licence is _for_. Building them on
+`lightweight-charts` primitives would be writing a second charting library and
+throwing it away when the licence arrives. P&L on the SL/TP labels already
+shipped with the existing drag work.
+
+`pnpm verify` 2078 tests over 155 files; pentest 50 attacks refused.
+
 ## Phase 9 — API keys and service tokens
 
 `ApiKey` and `ServiceToken`, tenant-scoped, with per-credential permissions,

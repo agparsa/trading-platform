@@ -283,13 +283,36 @@ parts built are the ones where the alternative was a defect; the rest is
 presentation, and presentation without the screenshots it is meant to match
 would be invention.
 
-## Phase 7 — Chart, overlays, SL/TP drag · ~2 weeks
+## Phase 7 — Chart, overlays, SL/TP drag · **persistence done, the rest BLOCKED**
 
 The draggable levels exist; this phase adds indicators, the drawing set
 (cursor, crosshair, horizontal/vertical, trendline, ray, rectangle, text,
 measurement), the full timeframe list, bid/ask axis labels, P&L on the level
 labels, and **persistence**: `ChartLayout`, `ChartTemplate`, `UserDrawing`,
 indicator settings, viewport state — per user, per account.
+
+**Persistence is built.** `ChartLayout`, `ChartTemplate` and `UserDrawing`,
+per user and per account, with RLS and a partial unique index that allows one
+default per person per account — "which chart do I get" must not depend on row
+order. The arrangement is a blob this platform **never parses**: it is the
+renderer's own description of itself, this platform is going to change
+renderer, and holding an opinion about a format we do not own means being wrong
+the first time it moves. Columns carry only what can be answered without
+parsing — whose, which instrument, which resolution, which to open — which is
+also the part that survives the swap. Size is capped at 256 KB with a refusal
+that names both numbers. Drawings are keyed by instrument rather than by
+layout, because a trendline drawn on gold is about gold and a layout switch
+must not lose it. The web app persists and restores the instrument and
+resolution, debounced, armed only after the restore.
+
+**Indicators, the drawing set, bid/ask axis labels: BLOCKED** on the TradingView
+Advanced Charts licence, which is what they are for. Building them on
+`lightweight-charts` primitives would be writing a second charting library and
+throwing it away when the licence arrives. P&L on the SL/TP level labels
+already shipped in the existing drag work. The timeframe list is 6 of the 7
+resolutions the server knows; `30` is orphaned in `market-core` and off by
+default in `CANDLE_RESOLUTIONS`.
+[charting.md](./charting.md).
 
 ## Phase 8 — Realtime and notification hardening · ~1–2 weeks
 
