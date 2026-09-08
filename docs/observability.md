@@ -193,8 +193,13 @@ fleet of clients whose skew moves together is a real signal, and
 ### Not yet measured
 
 **Queue lag has no Prometheus surface.** It is recorded — every completed job
-logs `lagMs`, the time it waited between being enqueued (for a scheduled job,
-the moment the cron fired) and being picked up. But the worker serves no HTTP
+logs `lagMs`, the time it waited between being **due** and being picked up.
+"Due" is `job.timestamp + delay`, not `job.timestamp`: BullMQ creates a
+scheduled job the moment the previous one fires and holds it with a delay until
+its slot, so measuring from creation reports the cron interval. The first
+version did exactly that and read 60,016 ms on a sixty-second cron — a worker
+apparently a minute behind, with the real sixteen milliseconds hidden at the
+end of the number. But the worker serves no HTTP
 and so has no `/metrics` endpoint to scrape. Giving it one is a deployment
 change — a port, an Nginx route, a scrape target — and belongs with that work
 rather than being half-done here. Until then, queue lag is a log query.

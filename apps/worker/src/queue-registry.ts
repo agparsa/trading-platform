@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { Queue, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { ALL_QUEUES, DEFAULT_JOB_OPTIONS, QueueName } from './queues';
+import { queueLagMs } from './queue-lag';
 import type { WorkerEnv } from './env';
 import { SwapAccrualService } from './jobs/swap-accrual.service';
 import { ReconciliationService } from './jobs/reconciliation.service';
@@ -113,17 +114,16 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
       async (job) => {
         const startedAt = Date.now();
         /**
-         * How long the job sat in the queue before this worker picked it up.
+         * How long the job sat between being *due* and being picked up.
          *
          * Distinct from how long it then took, and the more useful of the two
          * during an incident: a reconciliation run that takes four minutes is a
          * big database, while one that waited four minutes to start is a worker
          * that is behind — and only the second gets worse on its own.
          *
-         * `job.timestamp` is when it was enqueued; for a scheduled job that is
-         * when the cron fired, which is exactly the moment it was due.
+         * See `queueLagMs` for why "due" is not "created".
          */
-        const lagMs = Math.max(0, startedAt - job.timestamp);
+        const lagMs = queueLagMs(job, startedAt);
         const result = await run(job);
         this.logger.log(
           { queue: name, lagMs, ms: Date.now() - startedAt, result },
