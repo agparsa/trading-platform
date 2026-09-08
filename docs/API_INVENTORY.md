@@ -91,6 +91,14 @@ handler is responsible for scoping the result to that user — which for
 | `GET`  | `/admin/invites`                           | `listInvites`           | INVITES_MANAGE     |
 | `POST` | `/admin/invites/:id/revoke`                | `revokeInvite`          | INVITES_MANAGE     |
 
+### `alerts/price-alerts.controller.ts` — base `/alerts`
+
+| Verb     | Path          | Handler  | Requires     |
+| -------- | ------------- | -------- | ------------ |
+| `GET`    | `/alerts`     | `list`   | SELF-SERVICE |
+| `POST`   | `/alerts`     | `create` | SELF-SERVICE |
+| `DELETE` | `/alerts/:id` | `cancel` | SELF-SERVICE |
+
 ### `auth/auth.controller.ts` — base `/auth`
 
 | Verb     | Path                           | Handler                   | Requires                |
@@ -220,6 +228,12 @@ handler is responsible for scoping the result to that user — which for
 | `GET`  | `/kyc`                 | `mine`   | KYC_READ   |
 | `PUT`  | `/kyc/documents/:kind` | `upload` | KYC_SUBMIT |
 | `POST` | `/kyc/submit`          | `submit` | KYC_SUBMIT |
+
+### `leadership/leadership.controller.ts` — base `/admin/leadership`
+
+| Verb  | Path                | Handler  | Requires                                |
+| ----- | ------------------- | -------- | --------------------------------------- |
+| `GET` | `/admin/leadership` | `leases` | SESSION-ONLY (class), SYSTEM_OPERATIONS |
 
 ### `market/market.controller.ts` — base `/market`
 
@@ -404,7 +418,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**195 routes:** 98 `GET`, 84 `POST`, 6 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**199 routes:** 100 `GET`, 85 `POST`, 7 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

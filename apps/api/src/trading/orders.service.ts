@@ -22,6 +22,7 @@ import {
   accountStatusPolicy,
 } from '@tp/shared-types';
 import { Prisma } from '@prisma/client';
+import { OrderTimeline } from './order-timeline';
 import { PrismaService } from '../prisma/prisma.service';
 import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from '../market/quote.service';
@@ -271,11 +272,47 @@ export class OrdersService {
     };
   }
 
+  /**
+   * §50's timeline wraps the whole submission, refusals included.
+   *
+   * A refused order's timings are the interesting ones: a refusal usually
+   * happens *after* the risk valuation rather than before it, so the path that
+   * ends in "no" is often the slower of the two. Recording only successes would
+   * leave the expensive half of the traffic unmeasured — and the half a trader
+   * is most likely to complain about.
+   */
   async openPosition(userId: string, request: OpenPositionRequest): Promise<OrderResult> {
+    const timeline = new OrderTimeline();
+    try {
+      return await this.submit(userId, request, timeline);
+    } finally {
+      this.recordTimeline(timeline);
+    }
+  }
+
+  /**
+   * What each stage cost, into the metrics and into one log line.
+   *
+   * Unmarked stages are absent rather than zero. An order refused at validation
+   * never priced anything, and reporting a zero for it would put a spike of
+   * zeros into the `priced` histogram and quietly move its median.
+   */
+  private recordTimeline(timeline: OrderTimeline): void {
+    for (const { stage, ms } of timeline.spans()) {
+      this.metrics.orderStage.observe({ stage }, ms / 1000);
+    }
+    this.logger.debug({ ...timeline.toLog(), totalMs: timeline.totalMs() }, 'Order timeline');
+  }
+
+  private async submit(
+    userId: string,
+    request: OpenPositionRequest,
+    timeline: OrderTimeline,
+  ): Promise<OrderResult> {
     // Opening a position takes on risk, so the halt applies. Closing one does
     // not, and deliberately does not consult this.
     this.killSwitch.assertMayOpenRisk();
-    const now = Date.now();
+    const now = timeline.startedAt;
     const symbolCode = request.symbol.toUpperCase();
     const instrument = this.symbols.require(symbolCode);
     const spec = instrument.spec;
@@ -306,6 +343,7 @@ export class OrdersService {
 
     // Snap the requested volume down to the lot grid, then validate. Rounding
     // up would hand the trader more risk than they asked for.
+    timeline.mark('received');
     const volume = normalizeVolume(spec, request.volume);
     const volumeCheck = checkVolume(spec, volume);
     if (!volumeCheck.ok) {
@@ -366,6 +404,7 @@ export class OrdersService {
       } as OrderResult;
     }
 
+    timeline.mark('validated');
     const tick = await this.quotes.requireFresh(symbolCode, now);
     const entryPrice = normalizePrice(spec, entryPriceFor(request.side, tick));
 
@@ -401,6 +440,7 @@ export class OrdersService {
 
     const symbolId = this.symbols.requireId(symbolCode);
 
+    timeline.mark('priced');
     const result = await this.runGuarded(account.id, symbolCode, 'MARKET', async (tx) => {
       // First statement, deliberately. Inserting the order takes a share lock on
       // this account row and the ledger post later wants it exclusively; two
@@ -553,6 +593,7 @@ export class OrdersService {
     await this.events.publish(DomainEvent.POSITION_OPENED, account.id, result.opened, {
       eventId: result.recordedOpen.eventId,
     });
+    timeline.mark('executed');
     await this.audit.record({
       actorId: userId,
       actorType: 'USER',

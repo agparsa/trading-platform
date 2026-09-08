@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Tick } from '@tp/market-core';
 import { QuoteService } from './quote.service';
 import type { RedisService } from '../redis/redis.service';
+import { MetricsService } from '../metrics/metrics.service';
 
 /**
  * The newest tick wins.
@@ -58,7 +59,7 @@ describe('QuoteService ordering', () => {
     const config = new ConfigService<Record<string, unknown>, true>({
       QUOTE_MAX_AGE_MS: 5_000,
     } as never);
-    quotes = new QuoteService(fake.service, config as never);
+    quotes = new QuoteService(fake.service, config as never, new MetricsService());
   });
 
   it('accepts a newer tick', async () => {

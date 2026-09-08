@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { NotificationCategory, type TradingSound } from '@tp/shared-types';
 import { TradingEventHandler, type IncomingTradingEvent } from './trading-events';
 import type { SoundPlayerPort } from './sound-player';
+import { SeenEvents } from './seen-events';
 
 class RecordingPlayer implements SoundPlayerPort {
   readonly played: Array<{ sound: TradingSound; volume: number }> = [];
@@ -158,5 +159,107 @@ describe('handling a trading event on the device', () => {
     // The next person on this phone starts clean.
     expect(afterSignIn.duplicate).toBe(false);
     expect(player.played).toHaveLength(2);
+  });
+});
+
+describe('haptics alongside sound', () => {
+  const buzzed: string[] = [];
+  const haptics = {
+    vibrate: (pattern: string) => {
+      buzzed.push(pattern);
+    },
+  };
+
+  beforeEach(() => {
+    buzzed.length = 0;
+  });
+
+  const event = (over: Partial<IncomingTradingEvent> = {}): IncomingTradingEvent => ({
+    eventId: `e${Math.random()}`,
+    kind: 'order.filled',
+    title: 'Filled',
+    body: '1.00 XAUUSD',
+    accountId: null,
+    playSound: true,
+    source: 'socket',
+    ...over,
+  });
+
+  it('vibrates for an event that matters', () => {
+    const handler = new TradingEventHandler(
+      { play: () => undefined, dispose: () => undefined },
+      new SeenEvents(),
+      haptics as never,
+    );
+    const result = handler.handle(event(), true);
+    expect(result.vibrated).toBe('success');
+    expect(buzzed).toEqual(['success']);
+  });
+
+  /**
+   * The point of deciding the two separately. A trader with sound off in a
+   * meeting still wants to feel a fill; deriving the buzz from the sound would
+   * silently take that away.
+   */
+  it('still vibrates when sound is off', () => {
+    const handler = new TradingEventHandler(
+      { play: () => undefined, dispose: () => undefined },
+      new SeenEvents(),
+      haptics as never,
+    );
+    handler.setPreferences({ soundEnabled: false, soundVolume: 0, perCategory: {} });
+
+    const result = handler.handle(event(), true);
+    expect(result.playedSound).toBeNull();
+    expect(result.vibrated).toBe('success');
+    // The device, not just the report: the two decisions are independent all
+    // the way to the hardware, not only in what the handler says it did.
+    expect(buzzed).toEqual(['success']);
+  });
+
+  /** One switch per category, shared with sound. */
+  it('stays still for a category the trader muted', () => {
+    const handler = new TradingEventHandler(
+      { play: () => undefined, dispose: () => undefined },
+      new SeenEvents(),
+      haptics as never,
+    );
+    handler.setPreferences({
+      soundEnabled: true,
+      soundVolume: 80,
+      perCategory: { ORDER_FILLED: false },
+    });
+
+    expect(handler.handle(event(), true).vibrated).toBeNull();
+    expect(buzzed).toEqual([]);
+  });
+
+  it('has its own master switch', () => {
+    const handler = new TradingEventHandler(
+      { play: () => undefined, dispose: () => undefined },
+      new SeenEvents(),
+      haptics as never,
+    );
+    handler.setPreferences({
+      soundEnabled: true,
+      soundVolume: 80,
+      perCategory: {},
+      hapticsEnabled: false,
+    });
+
+    expect(handler.handle(event(), true).vibrated).toBeNull();
+  });
+
+  /**
+   * The OS already buzzed when the push arrived and the trader is holding the
+   * phone. Buzzing again tells them nothing they are not already doing.
+   */
+  it('stays still for a notification the trader tapped', () => {
+    const handler = new TradingEventHandler(
+      { play: () => undefined, dispose: () => undefined },
+      new SeenEvents(),
+      haptics as never,
+    );
+    expect(handler.handle(event({ source: 'push-tapped' }), true).vibrated).toBeNull();
   });
 });

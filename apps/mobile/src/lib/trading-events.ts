@@ -2,6 +2,7 @@ import { categoryForKind } from '@tp/shared-types';
 import type { NotificationCategory } from '@tp/shared-types';
 import { SeenEvents } from './seen-events';
 import { decideSound, type SoundPreferences } from './sound-decision';
+import { decideHaptic, silentHaptics, type HapticPort } from './haptics';
 import type { SoundPlayerPort } from './sound-player';
 
 /**
@@ -36,6 +37,8 @@ export interface HandledEvent {
   readonly eventId: string;
   readonly category: NotificationCategory;
   readonly playedSound: string | null;
+  /** The pattern the device was asked for, or null if it stayed still. */
+  readonly vibrated: string | null;
   readonly duplicate: boolean;
 }
 
@@ -43,6 +46,12 @@ export class TradingEventHandler {
   constructor(
     private readonly sounds: SoundPlayerPort,
     private readonly seen: SeenEvents = new SeenEvents(),
+    /**
+     * Defaulted, so every existing caller keeps working and a build without the
+     * native module behaves like a device with haptics turned off — a state the
+     * app already handles.
+     */
+    private readonly haptics: HapticPort = silentHaptics,
   ) {}
 
   private preferences: SoundPreferences = {
@@ -51,9 +60,21 @@ export class TradingEventHandler {
     perCategory: {},
   };
 
+  /**
+   * Its own switch, sharing the per-category ones.
+   *
+   * A trader in a meeting turns sound off and wants to keep feeling fills;
+   * a trader who muted "modifications" meant it in both senses. So the master
+   * switches are separate and the category switches are not.
+   */
+  private hapticsEnabled = true;
+
   /** Called when the settings screen loads or the user changes something. */
-  setPreferences(preferences: SoundPreferences): void {
+  setPreferences(preferences: SoundPreferences & { hapticsEnabled?: boolean }): void {
     this.preferences = preferences;
+    if (preferences.hapticsEnabled !== undefined) {
+      this.hapticsEnabled = preferences.hapticsEnabled;
+    }
   }
 
   /**
@@ -66,7 +87,13 @@ export class TradingEventHandler {
     const category = categoryForKind(event.kind);
 
     if (!this.seen.claim(event.eventId)) {
-      return { eventId: event.eventId, category, playedSound: null, duplicate: true };
+      return {
+        eventId: event.eventId,
+        category,
+        playedSound: null,
+        vibrated: null,
+        duplicate: true,
+      };
     }
 
     /**
@@ -89,10 +116,30 @@ export class TradingEventHandler {
       this.sounds.play(decision.sound, decision.volume);
     }
 
+    /**
+     * Decided separately from the sound, on the same inputs.
+     *
+     * Not derived from whether a sound played: a trader with sound off in a
+     * meeting still wants to feel a fill, and deriving one from the other would
+     * silently take that away.
+     */
+    const feel = decideHaptic(
+      {
+        category,
+        appActive: appActive && event.source !== 'push-tapped',
+        serverSaysNotify: event.playSound,
+      },
+      { hapticsEnabled: this.hapticsEnabled, perCategory: this.preferences.perCategory },
+    );
+    if (feel.haptic !== null) {
+      this.haptics.vibrate(feel.haptic);
+    }
+
     return {
       eventId: event.eventId,
       category,
       playedSound: decision.sound,
+      vibrated: feel.haptic,
       duplicate: false,
     };
   }

@@ -40,6 +40,27 @@ export class MetricsService {
   readonly openFindings: Gauge<'severity'>;
   readonly openSignals: Gauge<'severity'>;
   readonly marketFeedAge: Gauge<string>;
+  /** 1 when this instance leads the loop, 0 when it does not. */
+  readonly leaderLease: Gauge<'loop'>;
+  readonly leaderTransitions: Counter<'loop' | 'transition'>;
+
+  /**
+   * Latency, measured end to end rather than per hop (§34).
+   *
+   * The number a trader experiences is "the market moved, and how long until my
+   * screen said so". Every per-hop timing on the way there can look healthy
+   * while that number is four seconds, because the hops are not the whole path
+   * — the queueing between them is. So these are all measured from the tick's
+   * own timestamp, and the gaps between them say which stage is responsible.
+   */
+  readonly tickToPnl: Histogram<string>;
+  readonly tickToSocket: Histogram<string>;
+  readonly quoteAge: Histogram<'symbol' | 'purpose'>;
+  readonly orderAck: Histogram<'outcome'>;
+  readonly realtimePassLag: Histogram<string>;
+  readonly leaseWait: Histogram<'loop'>;
+  readonly orderStage: Histogram<'stage'>;
+  readonly clientClockSkew: Histogram<string>;
 
   constructor() {
     collectDefaultMetrics({ register: this.registry, prefix: 'tp_' });
@@ -99,6 +120,88 @@ export class MetricsService {
       name: 'tp_market_ticks_reanchored_total',
       help: 'Ticks accepted only because the integrity gate re-anchored after a run of rejections. Each one means the platform followed a move it first refused.',
       labelNames: ['symbol', 'reason'] as const,
+      registers: [this.registry],
+    });
+
+    /**
+     * Buckets chosen against what a person notices, not against round numbers.
+     * Under 100ms is indistinguishable from instant; a second is a visible
+     * lag; five seconds is a screen somebody does not trust. Spending
+     * resolution below 10ms would measure the process's own scheduler.
+     */
+    const LATENCY_BUCKETS = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];
+
+    this.tickToPnl = new Histogram({
+      name: 'tp_tick_to_pnl_seconds',
+      help: 'From the tick’s own timestamp to the account valuation it produced. The trader-visible number: how long after the market moved the platform knew what it meant.',
+      buckets: LATENCY_BUCKETS,
+      registers: [this.registry],
+    });
+
+    this.tickToSocket = new Histogram({
+      name: 'tp_tick_to_socket_seconds',
+      help: 'From the tick’s own timestamp to the frames being handed to the sockets. Its gap over tp_tick_to_pnl_seconds is what fan-out costs.',
+      buckets: LATENCY_BUCKETS,
+      registers: [this.registry],
+    });
+
+    this.quoteAge = new Histogram({
+      name: 'tp_quote_age_seconds',
+      help: 'Age of the price at the moment it was used to decide something, by what it was used for. Not feed health — the age of the number a decision was actually made on.',
+      labelNames: ['symbol', 'purpose'] as const,
+      buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+      registers: [this.registry],
+    });
+
+    this.orderAck = new Histogram({
+      name: 'tp_order_ack_seconds',
+      help: 'From an order arriving to the platform answering it, refusals included. A refusal that takes two seconds is still a trader waiting two seconds.',
+      labelNames: ['outcome'] as const,
+      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
+      registers: [this.registry],
+    });
+
+    this.realtimePassLag = new Histogram({
+      name: 'tp_realtime_pass_lag_seconds',
+      help: 'How much later than intended each realtime valuation pass started. Rising means the pass is taking longer than its own cadence, which is the loop falling behind rather than any one query being slow.',
+      buckets: [0.005, 0.01, 0.05, 0.1, 0.5, 1, 5],
+      registers: [this.registry],
+    });
+
+    this.leaseWait = new Histogram({
+      name: 'tp_lease_wait_seconds',
+      help: 'How long an acquire-or-renew of a leadership lease took. This is the round trip a stalled leader is waiting on, so it is the leading indicator of a lease about to lapse.',
+      labelNames: ['loop'] as const,
+      buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5],
+      registers: [this.registry],
+    });
+
+    this.orderStage = new Histogram({
+      name: 'tp_order_stage_seconds',
+      help: 'Where an order spent its time (§50). tp_order_ack_seconds says a submission took 300ms; this says whether that was the risk valuation, the venue or a row lock — three incidents with three different fixes.',
+      labelNames: ['stage'] as const,
+      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
+      registers: [this.registry],
+    });
+
+    this.clientClockSkew = new Histogram({
+      name: 'tp_client_clock_skew_seconds',
+      help: 'How far behind the server a client believed it was when it sent an order. Recorded, never trusted: a browser clock is whatever the person set it to. A population whose skew moves together is the signal.',
+      buckets: [-60, -5, -1, -0.25, 0, 0.25, 1, 5, 60],
+      registers: [this.registry],
+    });
+
+    this.leaderLease = new Gauge({
+      name: 'tp_leader_lease',
+      help: 'Whether this instance holds the lease for a singleton loop. Summed across instances it must be 1: 0 means nothing is running the loop, 2 means two are.',
+      labelNames: ['loop'] as const,
+      registers: [this.registry],
+    });
+
+    this.leaderTransitions = new Counter({
+      name: 'tp_leader_transitions_total',
+      help: 'Leadership changes observed by this instance. A steady rate means the lease is flapping, which is worse than one instance holding it badly.',
+      labelNames: ['loop', 'transition'] as const,
       registers: [this.registry],
     });
 

@@ -1,0 +1,12 @@
+-- A notification category of its own for price alerts.
+--
+-- Separate from the migration that created the table, because `ALTER TYPE ...
+-- ADD VALUE` and a use of the new value cannot share a transaction on
+-- PostgreSQL. Nothing here uses it yet, so it would in fact have been legal in
+-- the same file — but the next person adding an enum value will copy whichever
+-- of these they find, and this is the one that is always safe.
+--
+-- Mutable, unlike RISK_ALERT: a trader who no longer wants to hear about levels
+-- is entitled to that, because nothing happens to the account if a level is
+-- missed. A margin call is not a matter of taste; a level is.
+ALTER TYPE "NotificationCategory" ADD VALUE IF NOT EXISTS 'PRICE_ALERT';

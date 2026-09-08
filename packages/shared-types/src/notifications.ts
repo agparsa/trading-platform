@@ -31,6 +31,13 @@ export const NotificationCategory = {
   TAKE_PROFIT: 'TAKE_PROFIT',
   RISK_ALERT: 'RISK_ALERT',
   SECURITY_ALERT: 'SECURITY_ALERT',
+  /**
+   * A level the trader asked to be told about. Its own category, and a mutable
+   * one: unlike a margin call, nothing happens to the account if it is missed,
+   * and a trader who has decided they no longer want to hear about levels is
+   * entitled to that.
+   */
+  PRICE_ALERT: 'PRICE_ALERT',
   SYSTEM: 'SYSTEM',
 } as const;
 export type NotificationCategory = (typeof NotificationCategory)[keyof typeof NotificationCategory];
@@ -74,6 +81,7 @@ export const TradingSound = {
   STOP_LOSS: 'stop_loss',
   TAKE_PROFIT: 'take_profit',
   RISK_WARNING: 'risk_warning',
+  PRICE_ALERT: 'price_alert',
 } as const;
 export type TradingSound = (typeof TradingSound)[keyof typeof TradingSound];
 
@@ -88,6 +96,7 @@ export const SOUND_FOR_CATEGORY: Readonly<Record<NotificationCategory, TradingSo
   TAKE_PROFIT: TradingSound.TAKE_PROFIT,
   RISK_ALERT: TradingSound.RISK_WARNING,
   SECURITY_ALERT: TradingSound.RISK_WARNING,
+  PRICE_ALERT: TradingSound.PRICE_ALERT,
   SYSTEM: null,
 };
 
@@ -109,6 +118,7 @@ export const CATEGORY_FOR_KIND: Readonly<Record<string, NotificationCategory>> =
   'order.filled': NotificationCategory.ORDER_FILLED,
   'order.cancelled': NotificationCategory.ORDER_CANCELLED,
   'order.modified': NotificationCategory.TRADE_MODIFIED,
+  'price.alert': NotificationCategory.PRICE_ALERT,
   'risk.margin_call': NotificationCategory.RISK_ALERT,
   'risk.stop_out': NotificationCategory.RISK_ALERT,
   'risk.drawdown_warning': NotificationCategory.RISK_ALERT,
@@ -179,3 +189,52 @@ export interface NotificationSettingsDto {
   quietHoursTimezone: string | null;
   categories: NotificationPreferenceDto[];
 }
+
+/**
+ * The physical feedback a client gives for an event.
+ *
+ * Deliberately a much shorter list than the sounds. A phone can render three or
+ * four distinguishable taps and no more — beyond that a trader feels "something
+ * buzzed", which is worse than one clear pattern, not better. So haptics answer
+ * a coarser question than sound does: did something happen, did something go
+ * against you, or is this urgent.
+ */
+export const TradingHaptic = {
+  /** A light tap: something happened and it was routine. */
+  LIGHT: 'light',
+  /** A firmer tap: money moved. */
+  MEDIUM: 'medium',
+  /** The platform's "success" pattern: an intention completed. */
+  SUCCESS: 'success',
+  /** The platform's "warning" pattern: attention, now. */
+  WARNING: 'warning',
+} as const;
+export type TradingHaptic = (typeof TradingHaptic)[keyof typeof TradingHaptic];
+
+/**
+ * Which pattern a category vibrates.
+ *
+ * `null` means the device stays still. Most notices are in that group on
+ * purpose: a phone that buzzes at everything is a phone whose owner turns
+ * haptics off, which costs them the two that were worth feeling.
+ *
+ * A stop-out and a margin call share WARNING with a security alert. That is not
+ * laziness — all three mean "look at this now", and giving each its own pattern
+ * would ask a trader to distinguish by feel three things they must in any case
+ * look at.
+ */
+export const HAPTIC_FOR_CATEGORY: Readonly<Record<NotificationCategory, TradingHaptic | null>> = {
+  TRADE_OPENED: TradingHaptic.LIGHT,
+  TRADE_CLOSED: TradingHaptic.MEDIUM,
+  TRADE_MODIFIED: TradingHaptic.LIGHT,
+  ORDER_FILLED: TradingHaptic.SUCCESS,
+  ORDER_CANCELLED: TradingHaptic.LIGHT,
+  // A protective level firing is money moving without the trader asking, which
+  // is the case they most want to feel in a pocket rather than read later.
+  STOP_LOSS: TradingHaptic.WARNING,
+  TAKE_PROFIT: TradingHaptic.SUCCESS,
+  RISK_ALERT: TradingHaptic.WARNING,
+  SECURITY_ALERT: TradingHaptic.WARNING,
+  PRICE_ALERT: TradingHaptic.MEDIUM,
+  SYSTEM: null,
+};

@@ -1,17 +1,9 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  ParseUUIDPipe,
-  Patch,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IDEMPOTENCY_HEADER } from '@tp/shared-types';
+import { MetricsService } from '../metrics/metrics.service';
+import { clientSkewMs } from './order-timeline';
 import { Permission } from '@tp/shared-types';
 import { rateLimits, RATE_LIMIT_WINDOW_MS } from '../config/env.schema';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -74,7 +66,56 @@ export class TradingController {
     private readonly positions: PositionsService,
     private readonly accountState: AccountStateService,
     private readonly idempotency: IdempotencyService,
+    private readonly metrics: MetricsService,
   ) {}
+
+  /**
+   * Time an order submission and record how it ended.
+   *
+   * Measured here rather than inside `OrdersService`, because the number this
+   * is about is a person waiting for an answer. The service is also called by
+   * the trigger engine and by the external execution path, and neither of those
+   * has anybody watching a spinner; folding them in would move the median
+   * towards work nobody is waiting on.
+   *
+   * Refusals are timed too. A rejection that takes two seconds is still two
+   * seconds of a trader not knowing, and it is the case most likely to be slow
+   * — a refusal usually happens after the risk checks, not before them.
+   */
+  /**
+   * How far behind the server the client believed it was when it sent this.
+   *
+   * Read from a header, recorded, and never used to decide anything. A
+   * browser's clock is whatever the person set it to, so it cannot be allowed
+   * near a fill price or a session check. What it is good for is the
+   * population: a fleet of clients whose skew moves together is a real signal,
+   * and `docs/anti-fraud.md` names it as one.
+   *
+   * Bounded before it is recorded. An unbounded value from a client would let
+   * anybody push a histogram's sum wherever they liked, which is a metric
+   * nobody can read afterwards.
+   */
+  private recordClientSkew(header: string | undefined): void {
+    if (header === undefined) return;
+    const sentAt = Number(header);
+    const skew = clientSkewMs(Number.isFinite(sentAt) ? sentAt : null, Date.now());
+    if (skew === null) return;
+    const bounded = Math.max(-MAX_CLIENT_SKEW_MS, Math.min(MAX_CLIENT_SKEW_MS, skew));
+    this.metrics.clientClockSkew.observe(bounded / 1000);
+  }
+
+  private async timed<T>(run: () => Promise<T>): Promise<T> {
+    const startedAt = Date.now();
+    let outcome = 'accepted';
+    try {
+      return await run();
+    } catch (error) {
+      outcome = 'refused';
+      throw error;
+    } finally {
+      this.metrics.orderAck.observe({ outcome }, (Date.now() - startedAt) / 1000);
+    }
+  }
 
   @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
   @RequirePermissions(Permission.ORDERS_CREATE)
@@ -84,16 +125,20 @@ export class TradingController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: OpenPositionDto,
     @IdempotencyKey() key: string,
+    @Headers('x-client-sent-at') clientSentAt?: string,
   ): Promise<OrderResult> {
-    return idempotent(this.idempotency, `orders:${user.id}`, key, body, () =>
-      this.orders.openPosition(user.id, {
-        accountId: body.accountId,
-        symbol: body.symbol,
-        side: body.side,
-        volume: body.volume,
-        stopLoss: body.stopLoss ?? null,
-        takeProfit: body.takeProfit ?? null,
-      }),
+    this.recordClientSkew(clientSentAt);
+    return this.timed(() =>
+      idempotent(this.idempotency, `orders:${user.id}`, key, body, () =>
+        this.orders.openPosition(user.id, {
+          accountId: body.accountId,
+          symbol: body.symbol,
+          side: body.side,
+          volume: body.volume,
+          stopLoss: body.stopLoss ?? null,
+          takeProfit: body.takeProfit ?? null,
+        }),
+      ),
     );
   }
 
@@ -337,3 +382,10 @@ export class TradingController {
     };
   }
 }
+
+/**
+ * A client may be an hour out and still be honest — a laptop that woke up, a
+ * phone in the wrong timezone. Beyond a day it is not a clock, it is noise or
+ * somebody testing what the histogram will accept.
+ */
+const MAX_CLIENT_SKEW_MS = 24 * 60 * 60 * 1000;

@@ -94,6 +94,77 @@ suite('Trigger engine (integration)', () => {
    * burst simply superseded the others and everything between was never
    * evaluated.
    */
+  /**
+   * The engine must not act when this instance does not hold the lease.
+   *
+   * Detaching from the tick stream is not enough on its own: a tick already in
+   * flight, or a sweep whose timer was armed a moment before the lease lapsed,
+   * would still arrive. Both entry points ask before they decide anything, so
+   * the answer is "nothing happened" rather than "one extra close".
+   */
+  describe('without the lease', () => {
+    it('leaves a stop-loss alone when this instance is not the leader', async () => {
+      const { positionId } = await openLong('4550.00');
+      stack.setLeading(false);
+
+      await tick('4540.00', '4540.14');
+
+      const position = await prisma.position.findUniqueOrThrow({ where: { id: positionId } });
+      expect(position.status).toBe('OPEN');
+      expect(position.closedAt).toBeNull();
+    });
+
+    /**
+     * The sweep is armed by a timer, so it can arrive after the lease has gone
+     * — and unlike a stop-loss it liquidates *whole accounts*. It asks for
+     * itself rather than trusting that the timer was cancelled in time.
+     */
+    it('liquidates nothing when this instance is not the leader', async () => {
+      const { userId, accountId } = await createAccount(prisma, { balance: '6000' });
+      const opened = await stack.orders.openPosition(userId, {
+        accountId,
+        symbol: 'XAUUSD',
+        side: 'BUY',
+        volume: '1.00',
+      });
+      // A tick while still the leader queues the symbol for a sweep. `onTick`
+      // directly, not the `tick` helper, because the helper sweeps as well and
+      // would drain the queue this test needs to still be full.
+      await stack.triggers.onTick({
+        symbol: 'XAUUSD',
+        bid: '4583.58',
+        ask: '4583.72',
+        timestamp: Date.now(),
+        volume: '1',
+      });
+
+      // Then the lease goes, and the market moves through the stop-out level.
+      stack.setLeading(false);
+      await stack.publishQuote('XAUUSD', '3900.00', '3900.14');
+
+      // The sweep arrives on its own, as a timer armed before the lease went.
+      await stack.triggers.sweepStopOuts();
+
+      const position = await prisma.position.findUniqueOrThrow({
+        where: { id: opened.positionId! },
+      });
+      expect(position.status).toBe('OPEN');
+      expect(await prisma.riskEvent.count({ where: { accountId, rule: 'stop-out' } })).toBe(0);
+    });
+
+    it('fires it as soon as the lease comes back', async () => {
+      const { positionId } = await openLong('4550.00');
+      stack.setLeading(false);
+      await tick('4540.00', '4540.14');
+      stack.setLeading(true);
+
+      await tick('4540.00', '4540.14');
+
+      const position = await prisma.position.findUniqueOrThrow({ where: { id: positionId } });
+      expect(position.status).toBe('CLOSED');
+    });
+  });
+
   describe('a burst of ticks', () => {
     const burst = async (prices: ReadonlyArray<[string, string]>) => {
       const at = Date.now();

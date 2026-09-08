@@ -314,13 +314,40 @@ resolutions the server knows; `30` is orphaned in `market-core` and off by
 default in `CANDLE_RESOLUTIONS`.
 [charting.md](./charting.md).
 
-## Phase 8 — Realtime and notification hardening · ~1–2 weeks
+## Phase 8 — Realtime and notification hardening · **done**
 
-Envelope v2 on the wire; leader election or a distributed lock for ingest,
-trigger engine and scheduled reconciliation (§64); latency metrics named in
-§34 (tick-to-P&L, tick-to-socket, order acknowledgement, socket lag, quote
-age, queue lag, lock wait); `Alert` (price alerts) with the notification
-channels; the §50 event set complete; haptics hooks for mobile.
+- **Envelope v2** was already on the wire (`DomainEventEnvelope`), added
+  additively in an earlier phase. Nothing to do.
+- **Leadership.** A lease in `leader_leases`, decided by the _database's_ clock,
+  for the trigger engine, market ingest and price alerts.
+  `TRIGGER_ENGINE_ENABLED` now means "this instance may contend" rather than
+  "this instance runs it", and the market feed relays from its first second and
+  switches to ingesting when it wins — so a rolling deploy never leaves the feed
+  unattended. What a lease _cannot_ do is stated in the service rather than
+  glossed over. [observability.md](./observability.md).
+- Scheduled work in the worker needed no lock: BullMQ's job scheduler already
+  produces one job per cron tick however many replicas are running. Checked
+  rather than assumed, and left alone.
+- **Latency (§34).** `tp_tick_to_pnl_seconds`, `tp_tick_to_socket_seconds`,
+  `tp_quote_age_seconds`, `tp_order_ack_seconds`,
+  `tp_realtime_pass_lag_seconds`, `tp_lease_wait_seconds` — every one measured
+  from the tick's own timestamp, and tick-to-P&L against the _oldest_ unanswered
+  tick, because a backlog makes the newest one younger.
+- **Order timeline (§50).** `tp_order_stage_seconds` over received → validated →
+  priced → executed, refusals included, plus a per-order log line. Client clock
+  skew is recorded from an optional header, bounded, and never used to decide
+  anything.
+- **Price alerts.** Table, evaluation loop under its own lease, API, a terminal
+  tab, a notification category and a sound. [price-alerts.md](./price-alerts.md).
+- **Haptics.** `HAPTIC_FOR_CATEGORY` and a decision layer beside the sound one,
+  decided on the same inputs and never derived from it — a trader with sound off
+  still wants to feel a fill.
+
+**Not done, and why:** queue lag has no Prometheus surface. It is recorded — the
+worker logs `lagMs` on every completed job — but the worker serves no HTTP and
+has nothing to scrape. Giving it an endpoint is a port, an Nginx route and a
+scrape target, and belongs with that deployment change rather than being
+half-done here.
 
 ## Phase 9 — Reconciliation · ~1–2 weeks
 

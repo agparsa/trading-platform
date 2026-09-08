@@ -13,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TickBus } from '../market/tick-bus';
 import { AccountStateService } from '../trading/account-state.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MetricsService } from '../metrics/metrics.service';
 import { ExposureIndex } from './exposure-index';
 import { RealtimeGateway } from './realtime.gateway';
 import type { Env } from '../config/env.schema';
@@ -76,8 +77,15 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
   /** Last risk state announced per account, so only transitions are sent. */
   private readonly lastRiskState = new Map<string, RiskState>();
   private readonly thresholds = new Map<string, RiskThresholds>();
-  /** Instruments that have moved since the last valuation pass. */
-  private readonly dirtySymbols = new Set<string>();
+  /**
+   * Instruments that have moved since the last valuation pass, against the
+   * timestamp of the *oldest* tick not yet reflected in a frame.
+   *
+   * Oldest rather than newest, deliberately. The question the latency metric
+   * answers is "how long has the trader's screen been wrong", and that clock
+   * starts at the first move nobody has been told about, not the last one.
+   */
+  private readonly dirtySymbols = new Map<string, number>();
   private drainTimer: NodeJS.Timeout | null = null;
   private stopped = false;
 
@@ -89,6 +97,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     private readonly ticks: TickBus,
     private readonly exposure: ExposureIndex,
     private readonly notifications: NotificationsService,
+    private readonly metrics: MetricsService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -137,7 +146,10 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
    * *prices* stay current, rather than the other way round.
    */
   onTick(tick: Tick): void {
-    this.dirtySymbols.add(tick.symbol);
+    const pending = this.dirtySymbols.get(tick.symbol);
+    if (pending === undefined || tick.timestamp < pending) {
+      this.dirtySymbols.set(tick.symbol, tick.timestamp);
+    }
   }
 
   /**
@@ -148,9 +160,19 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
    * the frames.
    */
   async drain(nowMs: number = Date.now()): Promise<void> {
-    const symbols = [...this.dirtySymbols];
+    const symbols = [...this.dirtySymbols.keys()];
+    if (symbols.length === 0) {
+      this.dirtySymbols.clear();
+      return;
+    }
+    /**
+     * The oldest tick this pass is answering for. Every frame it produces is
+     * measured against this rather than against the newest price, so a pass
+     * that has been waiting on a slow database reports the delay it caused
+     * instead of the microsecond since the last tick arrived.
+     */
+    const oldestTickAt = Math.min(...this.dirtySymbols.values());
     this.dirtySymbols.clear();
-    if (symbols.length === 0) return;
 
     /**
      * Grouped by tenant, and this loop runs on a timer rather than in a request.
@@ -220,7 +242,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
           try {
             // The valuation reads positions and writes a frame for one account.
             // It runs in that account's tenant, exactly as a request would.
-            await withTenant(tenant, () => this.pushValuation(accountId));
+            await withTenant(tenant, () => this.pushValuation(accountId, oldestTickAt));
           } catch (error) {
             this.logger.error({ err: error, accountId }, 'Realtime valuation failed');
           } finally {
@@ -245,7 +267,15 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     const interval = this.config.getOrThrow('REALTIME_VALUATION_INTERVAL_MS', { infer: true });
     const delay = Math.max(50, Math.min(interval === 0 ? 50 : interval, 1_000));
 
+    const dueAt = Date.now() + delay;
     this.drainTimer = setTimeout(() => {
+      /**
+       * How late this pass is starting. `setTimeout` fires when the event loop
+       * gets to it, so this is the loop's own back-pressure — a number no
+       * per-query timing can show, because every query in a late pass can be
+       * fast and the pass still be a second behind.
+       */
+      this.metrics.realtimePassLag.observe(Math.max(0, Date.now() - dueAt) / 1000);
       void this.drain()
         .catch((error: unknown) => {
           this.logger.error({ err: error }, 'Realtime valuation pass failed');
@@ -258,8 +288,11 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     this.drainTimer.unref?.();
   }
 
-  private async pushValuation(accountId: string): Promise<void> {
+  private async pushValuation(accountId: string, sinceTickAt?: number): Promise<void> {
     const valuation = await this.accountState.valuate(accountId);
+    if (sinceTickAt !== undefined) {
+      this.metrics.tickToPnl.observe(Math.max(0, Date.now() - sinceTickAt) / 1000);
+    }
 
     this.gateway.sendToAccount(
       accountId,
@@ -281,6 +314,15 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
         currentPrice: position.currentPrice,
         stale: position.stale,
       });
+    }
+
+    /**
+     * Observed after the frames are handed to the sockets, before the risk
+     * announcement — which is throttled to transitions and would make the
+     * measurement depend on whether anything changed.
+     */
+    if (sinceTickAt !== undefined) {
+      this.metrics.tickToSocket.observe(Math.max(0, Date.now() - sinceTickAt) / 1000);
     }
 
     await this.announceRiskState(accountId, valuation.state.marginLevel);

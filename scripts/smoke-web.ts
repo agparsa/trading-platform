@@ -372,11 +372,31 @@ async function openMarketToday(adminEmail: string): Promise<void> {
     headers: { Authorization: `Bearer ${token}` },
   });
   const week = (await current.json()) as {
-    data?: { timezone: string; windows: { dayOfWeek: number }[] };
+    data?: {
+      timezone: string;
+      windows: { dayOfWeek: number; openMinute: number; closeMinute: number }[];
+    };
   };
   const today = new Date().getUTCDay();
   const windows = week.data?.windows ?? [];
-  if (windows.some((window) => window.dayOfWeek === today)) return;
+  /**
+   * A window *covering right now*, not merely a window today.
+   *
+   * Gold trades on a Sunday — from 22:00 UTC. A check for "is there any window
+   * today" was satisfied by that one at half past four in the afternoon and
+   * returned early, and the order that followed was refused MARKET_CLOSED with
+   * nothing in the output to say why. "There is a session today" and "the
+   * market is open" are different questions and only one of them is the one
+   * this script is asking.
+   */
+  const nowMinute = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
+  const open = windows.some(
+    (window) =>
+      window.dayOfWeek === today &&
+      window.openMinute <= nowMinute &&
+      nowMinute < window.closeMinute,
+  );
+  if (open) return;
 
   const response = await fetch(`${API}/api/v1/admin/instruments/XAUUSD/sessions`, {
     method: 'POST',
@@ -387,7 +407,16 @@ async function openMarketToday(adminEmail: string): Promise<void> {
     },
     body: JSON.stringify({
       timezone: week.data?.timezone ?? 'UTC',
-      windows: [...windows, { dayOfWeek: today, openMinute: 0, closeMinute: 1440 }],
+      /**
+       * Today is replaced rather than added to. Appending a second window for a
+       * day that already has a narrow one is how the same instrument ends up
+       * with two overlapping sessions, and the next reader has to work out
+       * which of them the platform believes.
+       */
+      windows: [
+        ...windows.filter((window) => window.dayOfWeek !== today),
+        { dayOfWeek: today, openMinute: 0, closeMinute: 1440 },
+      ],
       reason: 'web smoke needs a market that is open to place a real order',
     }),
   });
@@ -472,6 +501,51 @@ async function main(): Promise<void> {
     await signIn(page, people.trader.email);
     await visit(page, '/', { url: '/terminal' });
     await visit(page, '/terminal', { url: '/terminal' });
+    /**
+     * Price alerts, set through the browser and read back from the database.
+     *
+     * Checked end to end rather than "the tab renders": a panel that posts to
+     * the wrong path, or posts a number where the API wants a string, looks
+     * exactly the same on screen as one that works. The assertion is that a row
+     * exists afterwards carrying the level the trader typed, unrounded.
+     *
+     * The level is far above any price on purpose. The first version used a
+     * level near the market and the alert fired between being set and being
+     * read — which was the engine working, and made the check depend on which
+     * instrument happened to be selected.
+     */
+    await page.getByRole('tab', { name: /^Alerts$/ }).click();
+    const alertLevel = '99999999.5';
+    await page.getByLabel('Level').fill(alertLevel);
+    await page.getByRole('button', { name: /Set alert/i }).click();
+
+    let alertRow: { price: unknown; symbol: string; status: string } | null = null;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      alertRow = await prisma.priceAlert.findFirst({
+        where: { user: { email: people.trader.email } },
+        select: { price: true, symbol: true, status: true },
+      });
+      if (alertRow !== null) break;
+      await page.waitForTimeout(500);
+    }
+    ok(
+      alertRow !== null &&
+        String(alertRow.price) === alertLevel &&
+        alertRow.status === 'ACTIVE',
+      'an alert set in the browser reaches the database with the level as typed',
+      alertRow === null
+        ? 'no alert row'
+        : `${alertRow.symbol} @ ${String(alertRow.price)} (${alertRow.status})`,
+    );
+
+    /** And the trader can see their own alert on the screen that set it. */
+    const alertsPanel = await page.getByTestId('alerts-panel').innerText();
+    ok(
+      alertsPanel.includes('99,999,999.5') || alertsPanel.includes(alertLevel),
+      'the alert the trader set is listed back to them',
+      alertsPanel.replace(/\s+/g, ' ').slice(0, 200),
+    );
+
     await visit(page, '/account', { url: '/account', text: /Account/i });
     await visit(page, '/wallet', { url: '/wallet', text: /Wallet/i });
     /**

@@ -665,3 +665,71 @@ Every link of the chain the prompt draws exists in code: user → app → API �
 → notification service → in-app notice, push, and the right sound.
 
 What has not happened is anyone walking that chain on a phone.
+
+## Phase 8 — realtime and notification hardening
+
+Four things, and one deliberate gap.
+
+**Leadership.** The trigger engine and market ingest had to run in exactly one
+process, and what arranged that was `TRIGGER_ENGINE_ENABLED=true` on one
+container — a convention held up by whoever last edited the compose file. A
+rolling deploy overlaps old and new for as long as the old one takes to drain;
+`--scale api-ingest=2` typed once does it permanently. Two engines on one tick
+is one position stopped out twice and one resting order filled twice, because
+both read `OPEN` before either wrote.
+
+A lease in `leader_leases` now decides it, from the database's clock, so
+contenders are never compared against each other's. The flag means "may
+contend". The market feed relays from its first second and switches to ingesting
+when it wins, so a container coming up during a deploy serves correct prices
+while it waits rather than stale ones.
+
+What a lease cannot do is written down in the service: a stalled leader can wake
+past its expiry believing it still leads. Three things narrow the window — a
+renewal at a third of the TTL, a local deadline the holder refuses to act past
+without asking the database, and loss delivered to the loop — and none closes
+it. Which is why the writes underneath stay conditional on the row's state
+inside their own transaction. Leadership reduces contention; it is not what
+makes those writes safe.
+
+The worker's scheduled jobs needed nothing: BullMQ's job scheduler already
+produces one job per cron tick however many replicas run. That was checked
+rather than assumed, and then left alone.
+
+**Latency.** Six histograms, all measured from the tick's own timestamp rather
+than from the start of the stage reporting them, plus a four-stage order
+timeline. Queue lag is the gap: it is recorded in the worker's job log but has
+no Prometheus surface, because the worker serves no HTTP. Saying so is better
+than inventing an endpoint nobody scrapes.
+
+**Price alerts.** End to end, and kept away from pending orders everywhere —
+different table, different tab, different sound. They look alike on screen and a
+pending order _does_ something when the price gets there.
+
+**Haptics.** Decided beside the sound, never from it.
+
+### What the gate found that the tests did not
+
+Three defects, none of which 2,144 passing tests could have caught:
+
+1. **`z.coerce.date()` in a DTO took the API down at boot.** The OpenAPI
+   document is generated from the Zod schemas, and a `Date` has no JSON Schema
+   representation, so the process threw before it listened. Found by `pnpm
+smoke`, which spawns its own API — the same guard that caught this once
+   before, and the reason it exists.
+2. **The web smoke's market-opening helper asked the wrong question.** It
+   checked "is there a session today", which gold satisfies on a Sunday from
+   22:00, and then placed an order at half past four in the afternoon. "There is
+   a session today" and "the market is open" are different questions.
+3. **A flaky assertion in the APNs test.** It asserted the signature's first
+   byte was not DER's `0x30` tag. That byte is the top of `r`, which is random,
+   so it failed one run in 256 — while carrying nothing, since the length check
+   beside it already excludes DER and the verification below it proves the
+   encoding positively. A flaky test in the gate is worse than no test: it
+   teaches people to re-run rather than to look.
+
+A fourth thing the gate found was not a defect: a hard-killed leader leaves its
+lease to lapse, and for up to ten seconds nothing ingests prices. An order in
+that window is refused `STALE_QUOTE`, which is the platform correctly declining
+to fill on a price it knows is old. That is the cost of the lease, and the
+alternative is not "no window" but "two engines during the window".

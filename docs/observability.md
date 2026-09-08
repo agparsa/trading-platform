@@ -50,3 +50,142 @@ driver messages contain connection strings.
 
 Failed jobs are retained deliberately (`removeOnFail: false`): a failed financial
 job must stay visible until someone has looked at it.
+
+## Leadership (Phase 8)
+
+Some loops must run in exactly one process: the trigger engine, which closes
+positions from price movement, and market ingestion, which writes candles. Two
+of either is not a doubled workload — it is one position stopped out twice and
+one minute's volume counted twice.
+
+Until Phase 8 that was arranged by setting `TRIGGER_ENGINE_ENABLED=true` on one
+container. Nothing enforced it: a rolling deploy overlaps old and new, and
+`--scale api-ingest=2` typed once makes it permanent. Now the flag means "this
+instance may contend", and a lease in `leader_leases` decides which contender
+acts.
+
+| Metric                        | Type    | Labels           |
+| ----------------------------- | ------- | ---------------- |
+| `tp_leader_lease`             | gauge   | loop             |
+| `tp_leader_transitions_total` | counter | loop, transition |
+
+`sum(tp_leader_lease) by (loop)` is the alert worth having, and it is worth
+having in both directions:
+
+| Reading | Meaning                                                                                                                                            |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `1`     | Normal.                                                                                                                                            |
+| `0`     | Nothing is running the loop. For `trigger-engine` that means stop-losses are not firing, which is an incident from the first second.               |
+| `> 1`   | Two instances believe they lead. Should be impossible outside the stall window described in `LeadershipService`; treat a sustained reading as one. |
+
+### After an unclean stop
+
+A leader that is stopped politely hands its lease back, so a successor takes
+over within one renewal interval. A leader that is _killed_ — SIGKILL, a lost
+machine, a container OOM — cannot, and the lease has to lapse on its own. Until
+it does, nothing ingests prices and nothing evaluates stop-losses: up to
+`LEADER_LEASE_TTL_MS`, ten seconds by default.
+
+This is visible and it is meant to be. It shows up as quotes that stop
+advancing and then resume, and — if anything tries to trade in that window — as
+`STALE_QUOTE`, which is the platform correctly refusing to fill on a price it
+knows is old. It is the price of the lease, and the alternative is not "no
+window" but "two engines during the window", which is worse.
+
+If ten seconds is too long for a deployment, `LEADER_LEASE_TTL_MS` is the knob —
+but lowering it makes renewals less tolerant of a slow database, and a lease
+that flaps under load is worse than one that takes a moment to move.
+
+A rising `tp_leader_transitions_total` with no deploy means the lease is
+flapping — usually a database slow enough that renewals miss twice. That is
+worse than one instance holding it badly, because each handover re-warms an
+empty tick window.
+
+`GET /admin/leadership` (`system.operations`) shows the current holders, their
+terms, and whether the instance answering is one of them. It is read-only: the
+way to move leadership is to stop the instance holding it. Anything else is a
+person and a lease disagreeing about who is in charge.
+
+## Latency (Phase 8, §34)
+
+| Metric                         | Type      | Labels          |
+| ------------------------------ | --------- | --------------- |
+| `tp_tick_to_pnl_seconds`       | histogram | —               |
+| `tp_tick_to_socket_seconds`    | histogram | —               |
+| `tp_quote_age_seconds`         | histogram | symbol, purpose |
+| `tp_order_ack_seconds`         | histogram | outcome         |
+| `tp_realtime_pass_lag_seconds` | histogram | —               |
+| `tp_lease_wait_seconds`        | histogram | loop            |
+
+Every one of these is measured from the **tick's own timestamp**, not from the
+start of the stage reporting it. That is the point: per-hop timings can all look
+healthy while a trader's screen is four seconds behind, because what puts it
+four seconds behind is the queueing _between_ the hops, which no hop measures.
+
+`tp_tick_to_pnl_seconds` is measured against the **oldest** tick the pass has
+not yet answered for, never the newest. A backlog makes the newest tick
+_younger_, so measuring against it would report a healthy platform exactly when
+it is furthest behind.
+
+`tp_quote_age_seconds` is not feed health. `tp_market_feed_age_seconds` says
+whether prices are arriving; this says how old the price was at the moment
+something was decided on it. They come apart precisely when it matters: a feed
+that is healthy overall while one instrument has not printed for a minute reads
+as fine on the first and badly on the second, and it is the second that
+describes the fill.
+
+`tp_order_ack_seconds` counts refusals as well as fills, under an `outcome`
+label. A rejection that takes two seconds is still two seconds of a trader not
+knowing, and refusals are the case most likely to be slow — a refusal usually
+lands _after_ the risk checks, not before them.
+
+| Reading                                                               | Meaning                                                          |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `tp_tick_to_socket_seconds` p99 rising, `tp_tick_to_pnl_seconds` flat | Fan-out, not valuation. Too many sockets on one instance.        |
+| Both rising together                                                  | Valuation. The database, or too many exposed accounts per pass.  |
+| `tp_realtime_pass_lag_seconds` rising                                 | The loop itself is behind; passes are overrunning their cadence. |
+| `tp_lease_wait_seconds` p99 approaching `LEADER_RENEW_INTERVAL_MS`    | Leases are about to start flapping.                              |
+
+### The order timeline (§50)
+
+`tp_order_ack_seconds` says a submission took 300ms. `tp_order_stage_seconds`
+says whether that was the risk valuation, the venue, or a row lock — three
+incidents with three different fixes.
+
+| Stage       | Ends when                                                      |
+| ----------- | -------------------------------------------------------------- |
+| `received`  | The request reached the order path.                            |
+| `validated` | Instrument, session, account status, throttle and volume pass. |
+| `priced`    | A fresh quote, the conversion rate and the margin are known.   |
+| `executed`  | The fill — or the refusal — is written.                        |
+
+There is deliberately no `responded` stage. The time between the last write and
+the bytes leaving the process is `tp_http_request_duration_seconds` already, and
+adding it here would be the same milliseconds under two names.
+
+Refusals are recorded, and only for the stages they reached. A refusal usually
+happens _after_ the risk valuation rather than before it, so the path ending in
+"no" is often the slower of the two, and recording only successes would leave
+the expensive half of the traffic unmeasured. An unmarked stage is absent rather
+than zero — a spike of zeros would quietly move that stage's median.
+
+The full per-order breakdown is also written to one `Order timeline` log line at
+`debug`, so a specific slow order can be looked up rather than inferred from a
+percentile.
+
+`tp_client_clock_skew_seconds` is recorded from an optional `x-client-sent-at`
+header and **never used to decide anything**. A browser's clock is whatever the
+person set it to, so it cannot go near a fill price or a session check. The
+value is bounded at ±24 hours before it is recorded, so nobody can push the
+histogram's sum wherever they like. What it is good for is the population: a
+fleet of clients whose skew moves together is a real signal, and
+[anti-fraud.md](./anti-fraud.md) names it as one.
+
+### Not yet measured
+
+**Queue lag has no Prometheus surface.** It is recorded — every completed job
+logs `lagMs`, the time it waited between being enqueued (for a scheduled job,
+the moment the cron fired) and being picked up. But the worker serves no HTTP
+and so has no `/metrics` endpoint to scrape. Giving it one is a deployment
+change — a port, an Nginx route, a scrape target — and belongs with that work
+rather than being half-done here. Until then, queue lag is a log query.

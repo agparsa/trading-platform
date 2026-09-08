@@ -54,8 +54,18 @@ describe('the APNs provider token', () => {
      * this length check is the whole point of the test.
      */
     expect(raw.length).toBe(64);
-    expect(raw[0]).not.toBe(0x30);
 
+    /**
+     * There used to be a third assertion here: that the first byte was not
+     * 0x30, DER's SEQUENCE tag. That byte is the top of `r`, which is random,
+     * so it failed about one run in 256 — and a flaky test in the gate is worse
+     * than no test, because it teaches people to re-run rather than to look.
+     *
+     * It was also carrying nothing. The length above excludes DER on its own —
+     * a P-256 DER signature is 70 to 72 bytes and can never be 64 — and the
+     * verification below proves the encoding positively, which is the actual
+     * guarantee rather than a proxy for it.
+     */
     const verifier = createVerify('SHA256');
     verifier.update(`${header}.${claims}`);
     verifier.end();

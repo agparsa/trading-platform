@@ -26,6 +26,7 @@ import { HistoryPanel, type HistoryTab } from './history-panel';
 import { PendingPanel } from './pending-panel';
 import { OrderTicket } from './order-ticket';
 import { PositionsPanel } from './positions-panel';
+import { AlertsPanel } from './alerts-panel';
 import { TradingSettings } from './trading-settings';
 import { SecuritySettings } from './security-settings';
 import { NotificationBell } from './notification-bell';
@@ -34,7 +35,7 @@ import { Toasts } from './toasts';
 import { Button, Panel, Tabs } from './primitives';
 import { Watchlist } from './watchlist';
 
-type BottomTab = 'open' | 'pending' | HistoryTab;
+type BottomTab = 'open' | 'pending' | 'alerts' | HistoryTab;
 
 /**
  * The trading terminal.
@@ -365,11 +366,21 @@ export function Terminal() {
                   { id: 'trades', label: 'Trades' },
                   { id: 'closed', label: 'Closed' },
                   { id: 'orders', label: 'Orders' },
+                  { id: 'alerts', label: 'Alerts' },
                 ]}
               />
             }
           >
-            {bottomTab === 'pending' ? (
+            {bottomTab === 'alerts' ? (
+              /*
+               * A tab of its own, next to pending orders rather than inside
+               * them. They look alike on screen and are not alike at all: a
+               * pending order *does* something when the price gets there, an
+               * alert only says so. One list would invite a trader to read a
+               * line as an instruction they had given.
+               */
+              <AlertsPanel symbols={tradeableSymbols} activeSymbol={activeSymbol?.code ?? null} />
+            ) : bottomTab === 'pending' ? (
               <PendingPanel orders={pending} symbols={tradeableSymbols} accountId={accountId} />
             ) : bottomTab === 'open' ? (
               <PositionsPanel

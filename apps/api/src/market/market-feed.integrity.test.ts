@@ -5,6 +5,7 @@ import { MarketFeedService } from './market-feed.service';
 import { MarketIntegrityService } from './market-integrity.service';
 import { QuoteService } from './quote.service';
 import { TickBus } from './tick-bus';
+import type { LeadershipService } from '../leadership/leadership.service';
 import { CandleBus } from './candle-bus';
 import { MetricsService } from '../metrics/metrics.service';
 import type { SymbolsService } from '../symbols/symbols.service';
@@ -81,8 +82,8 @@ function build() {
     CANDLE_RESOLUTIONS: '1',
   } as never);
 
-  const quotes = new QuoteService(redis, config as never);
   const metrics = new MetricsService();
+  const quotes = new QuoteService(redis, config as never, metrics);
   const integrity = new MarketIntegrityService(config as never, metrics);
   const ticks = new TickBus();
   const candles = new CandleBus();
@@ -99,6 +100,12 @@ function build() {
     metrics,
     ticks,
     candles,
+    /**
+     * This suite drives `ingest` directly to assert what the integrity gate
+     * does with a tick. Whether this process is the one allowed to pull ticks
+     * from a provider is a different question, answered in `leadership.test.ts`.
+     */
+    { campaign: () => undefined, isLeading: () => true } as unknown as LeadershipService,
   );
 
   return { feed, quotes, ticks, published, integrity };

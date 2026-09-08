@@ -68,7 +68,7 @@ export class ConversionService {
   private async midOf(code: string): Promise<Decimal | null> {
     if (this.symbols.find(code) === undefined) return null;
     try {
-      const tick = await this.quotes.requireFresh(code);
+      const tick = await this.quotes.requireFresh(code, Date.now(), 'conversion');
       return toDecimal(tick.bid).plus(toDecimal(tick.ask)).div(2);
     } catch {
       return null;

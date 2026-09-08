@@ -24,6 +24,7 @@ import { SymbolsService } from '../symbols/symbols.service';
 import { MarketIntegrityService } from './market-integrity.service';
 import { QuoteService } from './quote.service';
 import { TickBus } from './tick-bus';
+import { LeadershipService, LeaderLoop } from '../leadership/leadership.service';
 import { CandleBus } from './candle-bus';
 import { isSessionOpen } from './session';
 import type { Env } from '../config/env.schema';
@@ -51,6 +52,13 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
   private readonly aggregators = new Map<string, CandleAggregator>();
   private resolutions: Resolution[] = [];
   private relaying = false;
+  /**
+   * Registered once, whatever happens afterwards. The relay is switched on and
+   * off many times over a process's life — every time leadership changes hands
+   * — and re-adding the listener each time would stack duplicates on the Redis
+   * client until one tick arrived N times.
+   */
+  private relayListenerBound = false;
 
   constructor(
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
@@ -62,6 +70,7 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
     private readonly metrics: MetricsService,
     private readonly ticks: TickBus,
     private readonly candles: CandleBus,
+    private readonly leadership: LeadershipService,
   ) {}
 
   /**
@@ -78,22 +87,25 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
       .map((value) => value.trim())
       .filter((value): value is Resolution => isResolution(value));
 
+    /**
+     * Every instance relays to begin with — including the one that will end up
+     * ingesting.
+     *
+     * An instance that does not pull from the provider still has to *know the
+     * price*: it runs valuations, serves `GET /market/quotes` and pushes
+     * account frames to its own sockets, and without prices it would do all
+     * three against whatever it last read out of Redis. So the ingesting
+     * instance publishes each tick on `market:ticks` and everyone else listens.
+     *
+     * Starting here rather than after losing an election matters during a
+     * deploy: a new container that comes up while the old one still holds the
+     * lease serves correct prices from its first second instead of serving
+     * stale ones until it wins.
+     */
+    await this.startRelay();
+
     if (!this.config.getOrThrow('MARKET_INGEST_ENABLED', { infer: true })) {
-      /**
-       * This instance does not ingest — but it still has to *know the price*.
-       *
-       * Exactly one process may pull from the provider, or candle volume is
-       * counted twice. Every other process still runs valuations, serves
-       * `GET /market/quotes` and pushes account frames to its own sockets, and
-       * without prices it would do all three against whatever it last read out
-       * of Redis. So it relays: the ingesting instance publishes each tick on
-       * `market:ticks`, and this listens.
-       *
-       * The channel was being published to and nothing was listening. That was
-       * survivable only because nothing had been scaled past one instance yet;
-       * the moment it was, half the traders would have watched a dead terminal.
-       */
-      await this.startRelay();
+      this.logger.log('Market ingestion is disabled on this instance; relaying only');
       return;
     }
 
@@ -106,13 +118,59 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
       );
     }
 
-    this.provider = this.buildSimulator();
+    /**
+     * Exactly one process may pull from the provider, or candle volume is
+     * counted twice — the same minute's volume written once by each ingester.
+     * Which process that is was an environment variable until the lease
+     * existed; now it is decided, and it can change hands without a deploy.
+     */
+    this.leadership.campaign(LeaderLoop.MARKET_INGEST, {
+      onAcquired: () => this.startIngesting(),
+      onLost: () => this.stopIngesting(),
+    });
+  }
+
+  /**
+   * Become the source of prices rather than a consumer of them.
+   *
+   * The relay is stopped *first*. Running both would put every tick on this
+   * instance's bus twice — once from the provider and once from its own Redis
+   * publication — and the integrity gate would then reject the echo as
+   * out-of-order, which looks exactly like a broken feed.
+   */
+  private async startIngesting(): Promise<void> {
+    if (this.running) return;
+    await this.stopRelay();
+    this.provider ??= this.buildSimulator();
     await this.provider.start();
     this.running = true;
     this.scheduleNextPump();
     this.logger.log(
       `Market feed started: ${this.provider.name}, ${this.symbols.codes().length} instrument(s), resolutions ${this.resolutions.join(',')}`,
     );
+  }
+
+  /**
+   * Stop being the source and go back to listening.
+   *
+   * The partial candles are flushed on the way out. They were aggregated from
+   * ticks this instance saw and nobody else did; dropping them would leave a
+   * gap in the minute during which leadership changed, which is precisely the
+   * minute somebody will later want to look at.
+   */
+  private async stopIngesting(): Promise<void> {
+    if (!this.running) return;
+    this.running = false;
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    await this.provider?.stop();
+    for (const aggregator of this.aggregators.values()) {
+      const candle = aggregator.flush();
+      if (candle !== null) await this.persistCandle(candle);
+    }
+    this.aggregators.clear();
+    await this.startRelay();
+    this.logger.warn('No longer ingesting market data; relaying instead');
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -180,25 +238,34 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
    * be two upserts racing for the same bucket).
    */
   private async startRelay(): Promise<void> {
+    if (this.relaying) return;
     this.relaying = true;
-    this.redis.subscriber.on('message', (channel: string, payload: string) => {
-      if (channel !== TICK_CHANNEL || !this.relaying) return;
-      let tick: Tick;
-      try {
-        tick = JSON.parse(payload) as Tick;
-      } catch {
-        // Malformed payloads are a transport fault, not a market event. The
-        // gate would refuse it anyway; parsing failure just refuses it sooner.
-        return;
-      }
-      void this.ingest(tick, { relayed: true }).catch((error: unknown) => {
-        this.logger.error({ err: error }, 'Relayed tick failed');
+    if (!this.relayListenerBound) {
+      this.relayListenerBound = true;
+      this.redis.subscriber.on('message', (channel: string, payload: string) => {
+        if (channel !== TICK_CHANNEL || !this.relaying) return;
+        let tick: Tick;
+        try {
+          tick = JSON.parse(payload) as Tick;
+        } catch {
+          // Malformed payloads are a transport fault, not a market event. The
+          // gate would refuse it anyway; parsing failure just refuses it sooner.
+          return;
+        }
+        void this.ingest(tick, { relayed: true }).catch((error: unknown) => {
+          this.logger.error({ err: error }, 'Relayed tick failed');
+        });
       });
-    });
+    }
     await this.redis.subscriber.subscribe(TICK_CHANNEL);
-    this.logger.log(
-      'Market ingestion is disabled on this instance; relaying ticks from market:ticks instead',
-    );
+    this.logger.log('Relaying ticks from market:ticks');
+  }
+
+  /** Stop consuming the relay, so this instance can become the source of it. */
+  private async stopRelay(): Promise<void> {
+    if (!this.relaying) return;
+    this.relaying = false;
+    await this.redis.subscriber.unsubscribe(TICK_CHANNEL);
   }
 
   /**

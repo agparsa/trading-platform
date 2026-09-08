@@ -112,8 +112,23 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
       name,
       async (job) => {
         const startedAt = Date.now();
+        /**
+         * How long the job sat in the queue before this worker picked it up.
+         *
+         * Distinct from how long it then took, and the more useful of the two
+         * during an incident: a reconciliation run that takes four minutes is a
+         * big database, while one that waited four minutes to start is a worker
+         * that is behind — and only the second gets worse on its own.
+         *
+         * `job.timestamp` is when it was enqueued; for a scheduled job that is
+         * when the cron fired, which is exactly the moment it was due.
+         */
+        const lagMs = Math.max(0, startedAt - job.timestamp);
         const result = await run(job);
-        this.logger.log({ queue: name, ms: Date.now() - startedAt, result }, 'Job completed');
+        this.logger.log(
+          { queue: name, lagMs, ms: Date.now() - startedAt, result },
+          'Job completed',
+        );
         return result;
       },
       {

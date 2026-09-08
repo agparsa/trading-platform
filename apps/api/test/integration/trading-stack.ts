@@ -28,6 +28,7 @@ import { BrokerConnectionsService } from '../../src/broker-connections/broker-co
 import { BrokerMappingService } from '../../src/broker-connections/broker-mapping.service';
 import { BrokerAdapterRegistry } from '@tp/broker-sdk';
 import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
+import type { LeadershipService } from '../../src/leadership/leadership.service';
 import type { TenantResolver } from '../../src/tenancy/tenant-resolver.service';
 import { DEFAULT_TENANT_ID, DEFAULT_TENANT_SLUG } from './harness';
 
@@ -76,7 +77,15 @@ export interface TradingStack {
   positions: PositionsService;
   accountState: AccountStateService;
   ledger: LedgerService;
+  /** The registry these services record into, for tests about what they record. */
+  metrics: MetricsService;
   triggers: TriggerEngineService;
+  /**
+   * Turn this instance's leadership of the trigger engine off, as a lapsed
+   * lease would. Lets a test assert that the engine stops *deciding* rather
+   * than merely stops being scheduled.
+   */
+  setLeading: (leading: boolean) => void;
   snapshots: SnapshotService;
   /** The hierarchy resolver, for tests about ceilings above an account. */
   riskLimits: RiskLimitsService;
@@ -136,7 +145,8 @@ export async function buildTradingStack(
   const symbols = new SymbolsService(prismaService);
   await symbols.reload();
 
-  const quotes = new QuoteService(redis, config as never);
+  const metrics = new MetricsService();
+  const quotes = new QuoteService(redis, config as never, metrics);
   const conversion = new ConversionService(symbols, quotes);
   const accountState = new AccountStateService(
     prismaService,
@@ -149,7 +159,6 @@ export async function buildTradingStack(
   const riskContext = new RiskContextBuilder(prismaService, riskLimits);
   const ledger = new LedgerService();
   const access = new AccountAccessService(prismaService);
-  const metrics = new MetricsService();
   const audit = new AuditService(prismaService);
   const killSwitch = new KillSwitchService(prismaService, audit);
   const events = new EventsService(redis);
@@ -225,6 +234,22 @@ export async function buildTradingStack(
       ),
   } as unknown as TenantResolver;
 
+  /**
+   * A stand-in that always leads.
+   *
+   * The tests here drive `onTick` directly to assert what the engine *decides*;
+   * whether this process is the one allowed to decide is a separate question,
+   * answered by `leadership.test.ts` and by the case below that turns leading
+   * off. Wiring a real lease in would make every trading test depend on a table
+   * none of them are about.
+   */
+  const leadershipState = { leading: true };
+  const leadership = {
+    isLeading: () => leadershipState.leading,
+    campaign: () => undefined,
+    term: () => 1n,
+  } as unknown as LeadershipService;
+
   const triggers = new TriggerEngineService(
     config as never,
     prismaService,
@@ -235,6 +260,7 @@ export async function buildTradingStack(
     new TickBus(),
     metrics,
     tenants,
+    leadership,
   );
 
   /**
@@ -274,7 +300,11 @@ export async function buildTradingStack(
     positions,
     accountState,
     ledger,
+    metrics,
     triggers,
+    setLeading: (leading: boolean) => {
+      leadershipState.leading = leading;
+    },
     snapshots,
     riskLimits,
     recovery,

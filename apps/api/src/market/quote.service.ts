@@ -4,6 +4,7 @@ import { isBookSane, isTickFresh, type Tick } from '@tp/market-core';
 import { spreadOf } from '@tp/financial-core';
 import { DomainError, type QuoteDto, TradingErrorCode } from '@tp/shared-types';
 import { RedisService } from '../redis/redis.service';
+import { MetricsService } from '../metrics/metrics.service';
 import type { Env } from '../config/env.schema';
 
 const QUOTE_KEY = (symbol: string) => `quote:${symbol}`;
@@ -25,6 +26,7 @@ export class QuoteService {
   constructor(
     private readonly redis: RedisService,
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
+    private readonly metrics: MetricsService,
   ) {}
 
   /**
@@ -104,7 +106,17 @@ export class QuoteService {
    * old", because they mean different things operationally: the first is a
    * configuration or startup problem, the second is a feed outage.
    */
-  async requireFresh(symbol: string, nowMs: number = Date.now()): Promise<Tick> {
+  async requireFresh(
+    symbol: string,
+    nowMs: number = Date.now(),
+    /**
+     * What the price is about to be used for. Only a metric label — it changes
+     * nothing about the answer — but "the price we filled on was 900ms old" and
+     * "the rate we converted at was 900ms old" are different conversations, and
+     * one histogram covering both can hide either.
+     */
+    purpose: 'trade' | 'conversion' = 'trade',
+  ): Promise<Tick> {
     const tick = await this.latest(symbol);
     if (tick === null) {
       throw new DomainError(
@@ -113,6 +125,17 @@ export class QuoteService {
         { symbol },
       );
     }
+    /**
+     * The age of the price *at the moment something was decided on it*.
+     *
+     * `tp_market_feed_age_seconds` says whether the feed is alive; this says
+     * how old the number was that a fill, a valuation or a margin check
+     * actually used. They come apart exactly when it matters: a feed that is
+     * healthy overall while one instrument has not printed for a minute reads
+     * as fine on the first and badly on the second.
+     */
+    this.metrics.quoteAge.observe({ symbol, purpose }, Math.max(0, nowMs - tick.timestamp) / 1000);
+
     if (!isTickFresh(tick, nowMs, { maxAgeMs: this.maxAgeMs() })) {
       throw new DomainError(
         TradingErrorCode.STALE_QUOTE,

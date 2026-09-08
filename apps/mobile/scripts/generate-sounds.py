@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generates the eight notification sounds.
+Generates the nine notification sounds.
 
 These are placeholders in quality, not in function. §19 asks for sounds that are
 "short, professional, distinguishable, low latency", and the one property a
@@ -38,6 +38,11 @@ SOUNDS = {
     "take_profit": ([587.33, 880.00], 0.10, "triangle"),
     # Three urgent repeats: attention.
     "risk_warning": ([880.00, 880.00, 880.00], 0.07, "square"),
+    # Two rising notes an octave apart, quiet and unhurried: a level the trader
+    # asked about was reached. Deliberately unlike risk_warning — nothing has
+    # happened to the account, and a chime that sounds like a margin call would
+    # teach traders to dread a message they asked for.
+    "price_alert": ([523.25, 1046.50], 0.08, "sine"),
 }
 
 

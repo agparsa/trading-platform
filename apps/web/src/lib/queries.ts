@@ -1131,3 +1131,73 @@ export function useSaveChartLayout() {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Price alerts
+// ---------------------------------------------------------------------------
+
+export interface PriceAlertView {
+  id: string;
+  symbol: string;
+  condition: 'ABOVE' | 'BELOW';
+  source: 'BID' | 'ASK' | 'MID';
+  price: string;
+  status: 'ACTIVE' | 'TRIGGERED' | 'CANCELLED' | 'EXPIRED';
+  note: string | null;
+  expiresAt: string | null;
+  triggeredAt: string | null;
+  triggeredPrice: string | null;
+  createdAt: string;
+}
+
+/**
+ * A person's own alerts.
+ *
+ * Polled rather than pushed. An alert firing already reaches the client as a
+ * notification; this list is the record of what is being watched, and a socket
+ * event for it would be a second path to keep in step with the first for the
+ * sake of a list nobody is staring at.
+ */
+export function usePriceAlerts() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['alerts'],
+    queryFn: () => api.get<{ alerts: PriceAlertView[] }>('/alerts'),
+    enabled: accessToken !== null,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useCreatePriceAlert() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      symbol: string;
+      condition: 'ABOVE' | 'BELOW';
+      source?: 'BID' | 'ASK' | 'MID';
+      /**
+       * A string all the way down. A level a trader typed has to be compared as
+       * they typed it; putting it through a JavaScript number on the way to a
+       * NUMERIC column is how an alert set at 4600 fires at 4599.9999.
+       */
+      price: string;
+      note?: string | null;
+    }) => api.post<PriceAlertView>('/alerts', input, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['alerts'] });
+    },
+  });
+}
+
+export function useCancelPriceAlert() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.delete<PriceAlertView>(`/alerts/${id}`, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['alerts'] });
+    },
+  });
+}

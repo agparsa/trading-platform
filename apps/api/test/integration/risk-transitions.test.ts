@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { PrismaClient } from '@prisma/client';
 import type { Tick } from '@tp/market-core';
 import { RiskState, WsChannel } from '@tp/shared-types';
+import { MetricsService } from '../../src/metrics/metrics.service';
 import { EventsService } from '../../src/realtime/events.service';
 import { NotificationsService } from '../../src/notifications/notifications.service';
 import { ExposureIndex } from '../../src/realtime/exposure-index';
@@ -55,6 +56,7 @@ suite('Risk state transitions (integration)', () => {
   let prisma: PrismaClient;
   let stack: TradingStack;
   let realtime: RealtimeService;
+  let metrics: MetricsService;
   let sent: SentFrame[];
   let listening: Set<string>;
   let raised: Array<Record<string, unknown>>;
@@ -123,6 +125,7 @@ suite('Risk state transitions (integration)', () => {
       },
     } as unknown as NotificationsService;
 
+    metrics = new MetricsService();
     realtime = new RealtimeService(
       config as never,
       prismaService,
@@ -131,6 +134,7 @@ suite('Risk state transitions (integration)', () => {
       new TickBus(),
       new ExposureIndex(prismaService, new EventsService(fakeRedis), 30_000),
       notifications,
+      metrics,
     );
   });
 

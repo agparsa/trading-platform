@@ -24,6 +24,7 @@ import { SymbolsService } from '../symbols/symbols.service';
 import { TickBus } from '../market/tick-bus';
 import { MetricsService } from '../metrics/metrics.service';
 import { TenantResolver } from '../tenancy/tenant-resolver.service';
+import { LeadershipService, LeaderLoop } from '../leadership/leadership.service';
 import { AccountStateService } from './account-state.service';
 import { PositionsService } from './positions.service';
 import { OrdersService } from './orders.service';
@@ -101,32 +102,77 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
     private readonly ticks: TickBus,
     private readonly metrics: MetricsService,
     private readonly tenants: TenantResolver,
+    private readonly leadership: LeadershipService,
   ) {}
 
   onApplicationBootstrap(): void {
     if (!this.config.getOrThrow('TRIGGER_ENGINE_ENABLED', { infer: true })) {
       this.logger.warn(
-        'Trigger engine is disabled — stop-loss and take-profit will NOT fire on this instance',
+        'Trigger engine is disabled on this instance — it will not contend for the lease',
       );
       return;
     }
-    this.unsubscribe = this.ticks.subscribe((tick) => this.onTick(tick));
+    /**
+     * Attaching is conditional on holding the lease, not on the flag.
+     *
+     * Two engines on one tick is not a doubled workload, it is a doubled
+     * *decision*: the same position stopped out twice and the same resting
+     * order filled twice, because both engines read `OPEN` before either wrote.
+     * The flag says this instance may contend; the lease says it may act.
+     */
+    this.leadership.campaign(LeaderLoop.TRIGGER_ENGINE, {
+      onAcquired: () => this.attach(),
+      onLost: (reason) => this.detach(reason),
+    });
+  }
+
+  onApplicationShutdown(): void {
+    this.detach('SHUTDOWN');
+  }
+
+  private attach(): void {
+    if (this.unsubscribe !== null) return;
     this.stopped = false;
+    this.unsubscribe = this.ticks.subscribe((tick) => this.onTick(tick));
     this.scheduleSweep();
     this.logger.log('Trigger engine attached to the tick stream');
   }
 
-  onApplicationShutdown(): void {
+  private detach(reason: string): void {
     this.stopped = true;
     if (this.sweepTimer !== null) clearTimeout(this.sweepTimer);
     this.sweepTimer = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
+    if (reason !== 'SHUTDOWN') {
+      this.logger.warn(
+        { reason },
+        'Trigger engine detached — stop-loss and take-profit are another instance\'s job now',
+      );
+    }
+  }
+
+  /**
+   * Whether this pass may act.
+   *
+   * Asked at the top of every pass rather than trusted from attach time. The
+   * lease can lapse between one tick and the next, and the check is local — it
+   * reads a deadline this process recorded at its last successful renewal — so
+   * it still answers correctly when the database is exactly what is
+   * unreachable.
+   */
+  private mayAct(): boolean {
+    return !this.stopped && this.leadership.isLeading(LeaderLoop.TRIGGER_ENGINE);
   }
 
   /** Exposed so tests can drive the engine without a live feed. */
   async onTick(tick: Tick): Promise<void> {
     this.window.observe(tick);
+    // Recorded either way: the window is this instance's view of the market and
+    // stays current whether or not it is the instance allowed to act on it. A
+    // successor that has just taken the lease then starts with real history
+    // rather than a single tick's worth.
+    if (!this.mayAct()) return;
     // A pass is already running for this symbol. The tick is recorded, not lost,
     // and the running pass will pick it up when it drains again.
     if (this.inFlight.has(tick.symbol)) return;
@@ -223,6 +269,13 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
    * Exposed so tests can drive one sweep without waiting for the loop.
    */
   async sweepStopOuts(nowMs: number = Date.now()): Promise<void> {
+    /**
+     * Asked again here, not only before the timer was set. A sweep liquidates
+     * positions; the lease can lapse between the timer being armed and its
+     * callback running, and a liquidation decided by an instance that is no
+     * longer the leader is a second engine's worth of closes.
+     */
+    if (!this.mayAct()) return;
     const symbols = [...this.pendingStopOutChecks];
     this.pendingStopOutChecks.clear();
     if (symbols.length === 0) return;

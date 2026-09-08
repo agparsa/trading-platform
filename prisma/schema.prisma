@@ -220,6 +220,7 @@ model Tenant {
   apiKeys                  ApiKey[]
   serviceTokens            ServiceToken[]
   credentialUsage          CredentialUsage[]
+  priceAlerts              PriceAlert[]
 
   @@map("tenants")
 }
@@ -330,6 +331,7 @@ model User {
   brokerConnectionsCreated BrokerConnection[]  @relation("BrokerConnectionCreator")
   brokerCredentialsCreated BrokerCredential[]  @relation("BrokerCredentialCreator")
   tenant                   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  priceAlerts              PriceAlert[]
 
   /// One address per tenant, not per platform: the same person may hold an account with two firms.
   @@unique([tenantId, email])
@@ -1585,6 +1587,9 @@ enum NotificationCategory {
   TAKE_PROFIT
   RISK_ALERT
   SECURITY_ALERT
+  /// A level the trader asked to be told about. Mutable, unlike RISK_ALERT:
+  /// nothing happens to the account if it is missed.
+  PRICE_ALERT
   SYSTEM
 }
 
@@ -2715,4 +2720,112 @@ model CredentialUsage {
   @@unique([kind, credentialId, day])
   @@index([tenantId])
   @@map("credential_usage")
+}
+
+/// Which process is allowed to run a singleton loop right now.
+///
+/// The trigger engine and the market feed must run in exactly one place. Until
+/// now that was arranged by setting `TRIGGER_ENGINE_ENABLED` on one container
+/// and hoping nobody scaled it — a convention, not a mechanism. Two engines
+/// evaluating the same tick is not a performance problem: it is two stop-outs
+/// on one position, and two fills for one resting order.
+///
+/// A row is a lease, not a flag. `expires_at` is written from the *database's*
+/// clock, so every contender is judged against one clock rather than its own;
+/// that removes the entire class of bug where a container with a skewed clock
+/// believes it is still the leader. `term` increases on every takeover and
+/// stays put across renewals, so a log line can tell "the same process has held
+/// this for an hour" from "it has changed hands forty times".
+///
+/// Not tenant-scoped: leadership is a property of the deployment, not of a
+/// tenant's data, and a tenant must never be able to see or take it.
+model LeaderLease {
+  /// The singleton being led, e.g. `trigger-engine`.
+  name       String   @id
+  /// Instance id of the holder — random per process boot, never reused.
+  holder     String
+  /// Fencing token. Bumped on takeover, unchanged by a renewal.
+  term       BigInt   @default(1)
+  acquiredAt DateTime @default(now()) @map("acquired_at") @db.Timestamptz(6)
+  renewedAt  DateTime @default(now()) @map("renewed_at") @db.Timestamptz(6)
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@map("leader_leases")
+}
+
+/// Which way the market has to move for a price alert to be worth sending.
+enum PriceAlertCondition {
+  ABOVE
+  BELOW
+}
+
+/// Which half of the book an alert watches.
+///
+/// There is no single "price" for an instrument, and picking one silently is
+/// how an alert fires at a number the trader never saw. `MID` is offered
+/// because it is what most charts draw, but it is never a price anyone can deal
+/// at — which is why `BID` is the default.
+enum PriceAlertSource {
+  BID
+  ASK
+  MID
+}
+
+enum PriceAlertStatus {
+  ACTIVE
+  TRIGGERED
+  CANCELLED
+  EXPIRED
+}
+
+/// "Tell me when gold reaches 4600."
+///
+/// Belongs to a person, not an account: a trader watching a level is watching
+/// the market, and wants to hear about it whether or not they happen to hold a
+/// position. An account may be named so the notification can say which one it
+/// is about, and so it can be scoped in the console.
+///
+/// One alert fires once. A level crossed back and forth in a volatile minute
+/// would otherwise produce a notification per oscillation, which is how a
+/// trader learns to ignore them. Re-arming is the trader's decision, taken
+/// deliberately, and the row records that it already fired.
+model PriceAlert {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+
+  symbol    String
+  condition PriceAlertCondition
+  source    PriceAlertSource    @default(BID)
+  /// The level. NUMERIC, like every other price on the platform: a level a
+  /// trader typed must be compared as they typed it, not as a float near it.
+  price     Decimal             @db.Decimal(24, 10)
+
+  status PriceAlertStatus @default(ACTIVE)
+  /// Optional free text the trader wrote for themselves — "add here".
+  note   String?
+
+  /// After this, the alert stops watching. Null means it waits indefinitely.
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  triggeredAt    DateTime? @map("triggered_at") @db.Timestamptz(6)
+  /// The price as it stood when the alert fired — not the extreme that
+  /// triggered it, which has already gone.
+  triggeredPrice Decimal?  @map("triggered_price") @db.Decimal(24, 10)
+  /// The notification this produced, so the two can be shown together.
+  notificationId String?   @map("notification_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  /// The evaluation sweep's only query: the active alerts on an instrument.
+  /// Partial, because triggered alerts accumulate for ever and none of them is
+  /// ever read by the thing that runs on every tick.
+  @@index([symbol, status])
+  @@index([userId, status, createdAt(sort: Desc)])
+  @@index([tenantId])
+  @@map("price_alerts")
 }

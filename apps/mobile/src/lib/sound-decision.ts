@@ -88,4 +88,5 @@ export const SOUND_ASSETS: Readonly<Record<TradingSound, string>> = {
   stop_loss: 'stop_loss.wav',
   take_profit: 'take_profit.wav',
   risk_warning: 'risk_warning.wav',
+  price_alert: 'price_alert.wav',
 };

@@ -69,6 +69,8 @@ const EXEMPT: Record<string, string> = {
     'reconciles roles at boot and does open a scope per tenant; the call is in a helper this regex does not see as background',
   'operations/kill-switch.service.ts':
     'reads only SystemSetting, which is in DELIBERATELY_UNSCOPED_MODELS — its tenant_id is nullable and null means the platform, so a halt has to be read across tenants to be read at all',
+  'leadership/leadership.service.ts':
+    'writes only LeaderLease, which has no tenant_id: which process runs the trigger engine is a property of the deployment, and a tenant must never be able to see or take it',
   'prisma/prisma.service.ts': 'is the scoping mechanism, not a user of it',
 };
 

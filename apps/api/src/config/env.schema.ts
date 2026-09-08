@@ -299,19 +299,75 @@ export const envSchema = z
     MARKET_REANCHOR_AFTER: z.coerce.number().int().min(1).max(1_000).default(5),
     // Resolutions the platform aggregates and persists.
     CANDLE_RESOLUTIONS: z.string().default('1,5,15,60,240,1D'),
-    // Exactly one process may ingest market data: two would double-count candle
-    // volume. Disable it on additional API replicas.
+    /**
+     * Whether this instance may *contend* to ingest market data.
+     *
+     * It used to mean "this instance ingests", and exactly one container was
+     * given it. Since the lease was added it means "this instance is allowed to
+     * try": a second container with the flag set will contend, lose, and sit
+     * ready to take over — which is what makes a rolling deploy not leave the
+     * feed unattended. Set it to false only to keep an instance out entirely.
+     */
     MARKET_INGEST_ENABLED: z
       .union([z.boolean(), z.enum(['true', 'false'])])
       .default(true)
       .transform((value) => value === true || value === 'true'),
 
-    // Closes positions from price movement. Disabling it means stop-loss and
-    // take-profit never fire on that instance — it is not a performance knob.
+    /**
+     * Whether this instance may contend to run the trigger engine. As above:
+     * setting it does not mean this instance runs the engine, it means it is
+     * eligible to. Clearing it on *every* instance means stop-loss and
+     * take-profit never fire anywhere — it is not a performance knob.
+     */
     TRIGGER_ENGINE_ENABLED: z
       .union([z.boolean(), z.enum(['true', 'false'])])
       .default(true)
       .transform((value) => value === true || value === 'true'),
+    /**
+     * How long a leadership lease is good for once granted.
+     *
+     * This is the worst-case time a singleton loop is unled after its leader
+     * dies without releasing — a killed container, a lost machine. Lower means
+     * a faster takeover and less tolerance for a slow database; higher means
+     * the opposite. Ten seconds is chosen against the trigger engine: ten
+     * seconds without stop-losses is survivable, and a renewal that has to
+     * complete inside three seconds is not demanding of a healthy database.
+     */
+    /**
+     * Whether this instance may contend to evaluate price alerts. Its own loop
+     * and its own lease: an alert that arrives twice is a duplicate
+     * notification, while a stop-loss that fires twice closes a position the
+     * trader still holds, and tying the two together would mean no alerts at
+     * all during any incident that costs the trigger engine its lease.
+     */
+    PRICE_ALERTS_ENABLED: z
+      .union([z.boolean(), z.enum(['true', 'false'])])
+      .default(true)
+      .transform((value) => value === true || value === 'true'),
+    /**
+     * How often alerts are evaluated. Not per tick: a level reached is worth
+     * knowing within a second, and evaluating on the tick path would put a
+     * database read behind the feed.
+     */
+    PRICE_ALERT_SWEEP_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1_000),
+
+    LEADER_LEASE_TTL_MS: z.coerce.number().int().min(2_000).max(300_000).default(10_000),
+    /**
+     * How often the holder renews. A third of the TTL, so two consecutive
+     * renewals must fail before the lease lapses — one slow query does not
+     * hand the engine to another container.
+     */
+    LEADER_RENEW_INTERVAL_MS: z.coerce.number().int().min(500).max(100_000).default(3_000),
+    /**
+     * How close to expiry the holder stops acting.
+     *
+     * A leader that has stalled cannot ask the database whether it still leads
+     * — the stall is usually why. So it stands down on its own clock, this far
+     * before the lease it last saw runs out, leaving the successor a margin in
+     * which the old leader has already stopped.
+     */
+    LEADER_GUARD_MS: z.coerce.number().int().min(0).max(60_000).default(1_000),
+
     // Lower bound between margin-level evaluations for one account.
     STOP_OUT_CHECK_INTERVAL_MS: z.coerce.number().int().min(0).default(1_000),
 
