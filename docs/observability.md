@@ -78,6 +78,15 @@ having in both directions:
 | `0`     | Nothing is running the loop. For `trigger-engine` that means stop-losses are not firing, which is an incident from the first second.               |
 | `> 1`   | Two instances believe they lead. Should be impossible outside the stall window described in `LeadershipService`; treat a sustained reading as one. |
 
+### Which container contends
+
+`MARKET_INGEST_ENABLED`, `TRIGGER_ENGINE_ENABLED` and `PRICE_ALERTS_ENABLED` are
+set to `true` on `api-ingest` and `false` on `api` (`docker-compose.prod.yml`).
+That is a placement decision, not a safety one — the lease is what makes a
+second instance safe. The flags keep the per-tick work off the containers
+answering traders, and leave `api-ingest` free to be scaled to two for handover
+without either replica having to be told which of them is in charge.
+
 ### After an unclean stop
 
 A leader that is stopped politely hands its lease back, so a successor takes

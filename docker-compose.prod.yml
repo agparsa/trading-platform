@@ -99,8 +99,14 @@ services:
     env_file: [.env.production]
     environment:
       <<: *api-env
+      # These three say "may contend", not "does it". Which instance actually
+      # runs each loop is decided by a lease (see docs/observability.md); the
+      # flags decide who is eligible, and eligibility is what makes a rolling
+      # deploy hand over rather than gap. Set on this service alone so the
+      # per-tick work stays off the containers serving traders.
       MARKET_INGEST_ENABLED: 'true'
       TRIGGER_ENGINE_ENABLED: 'true'
+      PRICE_ALERTS_ENABLED: 'true'
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -118,10 +124,17 @@ services:
     env_file: [.env.production]
     environment:
       <<: *api-env
-      # Prices arrive over market:ticks from api-ingest. Stops are fired there
-      # too — a replica that fired them as well would race it for the same rows.
+      # Prices arrive over market:ticks from api-ingest, and the loops that
+      # decide things run there. Not because a second one would be unsafe — the
+      # lease settles that now — but because this service is the one answering
+      # traders, and a per-tick sweep does not belong behind their requests.
+      #
+      # Price alerts are here too, and deliberately: their sweep is a query per
+      # moved instrument per second, which is small but is still a second job
+      # per second on a container whose whole purpose is latency.
       MARKET_INGEST_ENABLED: 'false'
       TRIGGER_ENGINE_ENABLED: 'false'
+      PRICE_ALERTS_ENABLED: 'false'
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
