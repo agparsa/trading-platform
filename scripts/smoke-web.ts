@@ -678,6 +678,27 @@ async function main(): Promise<void> {
     await visit(adminPage, '/admin/instruments', { url: '/admin/instruments' });
     await visit(adminPage, '/admin/risk', { url: '/admin/risk' });
     await visit(adminPage, '/admin/reconciliation', { url: '/admin/reconciliation' });
+    /**
+     * The venue tab renders and says the honest thing when there is nothing.
+     *
+     * Checked for its *wording* rather than merely that it loads: an empty list
+     * here means the last run found nothing, which is not the same as anybody
+     * having looked recently — and a screen that implies otherwise is the whole
+     * failure this feature exists to avoid.
+     */
+    await adminPage.getByRole('tab', { name: /Against the venue/i }).click();
+    let venueBody = '';
+    for (let attempt = 0; attempt < 30; attempt++) {
+      venueBody = await adminPage.locator('body').innerText();
+      if (/disagreement|Runs tab/i.test(venueBody)) break;
+      await adminPage.waitForTimeout(500);
+    }
+    ok(
+      /Runs tab says when that was\s+last checked/i.test(venueBody.replace(/\s+/g, ' ')) ||
+        /disagreement\(s\)/i.test(venueBody),
+      'the venue tab distinguishes "nothing disagrees" from "nobody has looked"',
+      venueBody.replace(/\s+/g, ' ').slice(0, 220),
+    );
     await visit(adminPage, '/admin/payments', {
       url: '/admin/payments',
       text: /Awaiting confirmation/i,

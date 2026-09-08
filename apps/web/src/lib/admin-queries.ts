@@ -1897,3 +1897,73 @@ export function useSetInstrumentSessions() {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// External reconciliation (§44)
+// ---------------------------------------------------------------------------
+
+export interface ReconciliationItemRow {
+  id: string;
+  runId: string;
+  accountId: string;
+  accountNumber: string;
+  subject: 'BALANCE' | 'ORDER' | 'POSITION' | 'EXECUTION';
+  key: string;
+  status: string;
+  field: string | null;
+  internal: string | null;
+  external: string | null;
+  difference: string | null;
+  tolerance: string | null;
+  message: string;
+  createdAt: string;
+  /** Whether anybody has said anything about it yet. */
+  resolutionCount: number;
+}
+
+export interface ResolutionRow {
+  id: string;
+  decision: string;
+  note: string;
+  decidedAt: string;
+  decidedBy: { id: string; email: string; displayName: string | null };
+}
+
+export function useReconciliationItems(status: string) {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'reconciliation-items', status],
+    queryFn: () =>
+      api.get<ReconciliationItemRow[]>('/reconciliation/items', {
+        query: status === '' ? { limit: 200 } : { status, limit: 200 },
+      }),
+    enabled: accessToken !== null,
+  });
+}
+
+/**
+ * The decisions recorded about one discrepancy, oldest first — a history, not
+ * a current value. Fetched only when somebody opens it: most items have none,
+ * and asking for every item's history to render a list would be a query per row.
+ */
+export function useResolutions(itemId: string | null) {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'resolutions', itemId],
+    queryFn: () =>
+      api.get<ResolutionRow[]>('/reconciliation/resolutions', {
+        query: { itemId: itemId ?? '' },
+      }),
+    enabled: accessToken !== null && itemId !== null,
+  });
+}
+
+export function useRecordResolution() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { itemId: string; decision: string; note: string }) =>
+      api.post('/reconciliation/resolutions', input, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['admin'] }),
+  });
+}

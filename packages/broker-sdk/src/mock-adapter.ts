@@ -164,6 +164,41 @@ export class MockBrokerAdapter implements BrokerAdapter {
 
   // ---- Scripting ---------------------------------------------------------
 
+  /**
+   * Give the venue an account, or change one it already has.
+   *
+   * Reconciliation is the reason this exists. Every other test reaches the
+   * venue's state by placing an order *through* the platform, which by
+   * construction leaves both sides agreeing — and a reconciliation test that
+   * can only produce agreement proves nothing. This is how a test says "the
+   * venue thinks the balance is 99,999.99" without the platform being told.
+   */
+  seedAccount(account: { externalAccountId: string; currency: string; balance: string }): this {
+    this.accounts.set(account.externalAccountId, {
+      currency: account.currency,
+      balance: account.balance,
+    });
+    return this;
+  }
+
+  /**
+   * Give the venue a position the platform has never heard of.
+   *
+   * The case worth being able to write a test for: a trade booked at the venue
+   * and not here. It is the discrepancy that costs the most and the one a
+   * platform is least able to notice on its own.
+   */
+  seedPosition(position: MockPosition): this {
+    this.positions.set(position.externalPositionId, position);
+    return this;
+  }
+
+  /** Give the venue a fill the platform never booked. */
+  seedFill(externalAccountId: string, fill: BrokerFill): this {
+    this.fills.push({ accountId: externalAccountId, fill });
+    return this;
+  }
+
   script(...behaviours: MockBehaviour[]): this {
     this.queue.push(...behaviours);
     return this;

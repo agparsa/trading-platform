@@ -316,12 +316,16 @@ handler is responsible for scoping the result to that user — which for
 
 ### `reconciliation/reconciliation.controller.ts` — base `/reconciliation`
 
-| Verb   | Path                                  | Handler     | Requires              |
-| ------ | ------------------------------------- | ----------- | --------------------- |
-| `GET`  | `/reconciliation/runs`                | `runs`      | RECONCILIATION_READ   |
-| `GET`  | `/reconciliation/findings`            | `findings`  | RECONCILIATION_READ   |
-| `POST` | `/reconciliation/findings/:id/status` | `setStatus` | RECONCILIATION_MANAGE |
-| `POST` | `/reconciliation/runs`                | `run`       | RECONCILIATION_RUN    |
+| Verb   | Path                                  | Handler       | Requires              |
+| ------ | ------------------------------------- | ------------- | --------------------- |
+| `GET`  | `/reconciliation/runs`                | `runs`        | RECONCILIATION_READ   |
+| `GET`  | `/reconciliation/findings`            | `findings`    | RECONCILIATION_READ   |
+| `POST` | `/reconciliation/findings/:id/status` | `setStatus`   | RECONCILIATION_MANAGE |
+| `POST` | `/reconciliation/runs`                | `run`         | RECONCILIATION_RUN    |
+| `GET`  | `/reconciliation/items`               | `items`       | RECONCILIATION_READ   |
+| `POST` | `/reconciliation/external-runs`       | `runExternal` | RECONCILIATION_RUN    |
+| `POST` | `/reconciliation/resolutions`         | `resolve`     | RECONCILIATION_MANAGE |
+| `GET`  | `/reconciliation/resolutions`         | `resolutions` | RECONCILIATION_READ   |
 
 ### `security/admin-security.controller.ts` — base `/admin/security`
 
@@ -418,7 +422,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**199 routes:** 100 `GET`, 85 `POST`, 7 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**203 routes:** 102 `GET`, 87 `POST`, 7 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

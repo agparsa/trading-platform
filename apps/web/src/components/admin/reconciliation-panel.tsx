@@ -1,18 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { cn } from '@tp/ui';
 import { Button, Tabs } from '@/components/primitives';
 import {
+  useRecordResolution,
   useReconciliationFindings,
+  useReconciliationItems,
   useReconciliationRuns,
   useRequestReconciliation,
+  useResolutions,
   useSetFindingStatus,
 } from '@/lib/admin-queries';
 import { utcTime } from '@/lib/format';
 import { ErrorLine, Head, Loading, ReasonedAction, SeverityPill, Table } from './shared';
 
-type Tab = 'findings' | 'runs';
+type Tab = 'findings' | 'venue' | 'runs';
 
 const CLOSING = new Set(['RESOLVED', 'FALSE_POSITIVE']);
 
@@ -41,6 +44,7 @@ export function ReconciliationPanel() {
           onChange={setTab}
           tabs={[
             { id: 'findings', label: 'Findings' },
+            { id: 'venue', label: 'Against the venue' },
             { id: 'runs', label: 'Runs' },
           ]}
         />
@@ -62,7 +66,7 @@ export function ReconciliationPanel() {
       </div>
 
       <ErrorLine error={request.error} />
-      {tab === 'findings' ? <Findings /> : <Runs />}
+      {tab === 'findings' ? <Findings /> : tab === 'venue' ? <VenueItems /> : <Runs />}
     </div>
   );
 }
@@ -306,5 +310,210 @@ function Runs() {
         run since Tuesday&rdquo; look identical without them, and only one of those is reassuring.
       </p>
     </>
+  );
+}
+
+/** The statuses §44 names, in the order an operator cares about them. */
+const ITEM_STATUSES = [
+  'MISSING_INTERNAL',
+  'MISSING_EXTERNAL',
+  'BALANCE_MISMATCH',
+  'QUANTITY_MISMATCH',
+  'PRICE_MISMATCH',
+  'FEE_MISMATCH',
+  'UNKNOWN',
+] as const;
+
+const STATUS_LABEL: Readonly<Record<string, string>> = {
+  MISSING_INTERNAL: 'Venue has it, we do not',
+  MISSING_EXTERNAL: 'We have it, the venue does not',
+  BALANCE_MISMATCH: 'Balance differs',
+  QUANTITY_MISMATCH: 'Quantity differs',
+  PRICE_MISMATCH: 'Price differs',
+  FEE_MISMATCH: 'Commission differs',
+  UNKNOWN: 'Could not be compared',
+  MATCHED: 'Agrees',
+};
+
+const DECISIONS = [
+  ['UNDER_INVESTIGATION', 'Investigating'],
+  ['FALSE_POSITIVE', 'False positive'],
+  ['ACCEPTED_DIFFERENCE', 'Accepted difference'],
+  ['CORRECTED_MANUALLY', 'Corrected by hand'],
+  ['ESCALATED', 'Escalated'],
+] as const;
+
+/**
+ * Where this platform and a venue disagree.
+ *
+ * Every row is a disagreement — a matched order is not stored, because it is a
+ * row the platform would write on every run for the life of the account. How
+ * many matched is on the Runs tab.
+ *
+ * Nothing here repairs anything. Recording a decision writes a *separate*
+ * record beside the observation and leaves the observation exactly as the
+ * machine made it, so the evidence and the conclusion cannot overwrite each
+ * other.
+ */
+function VenueItems() {
+  const [status, setStatus] = useState('');
+  const items = useReconciliationItems(status);
+  const record = useRecordResolution();
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  return (
+    <>
+      <div className="flex items-center gap-2 border-b border-terminal-border px-3 py-2">
+        <select
+          className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-[11px] text-terminal-text"
+          value={status}
+          onChange={(event) => setStatus(event.target.value)}
+          aria-label="Discrepancy kind"
+        >
+          <option value="">Every kind</option>
+          {ITEM_STATUSES.map((value) => (
+            <option key={value} value={value}>
+              {STATUS_LABEL[value]}
+            </option>
+          ))}
+        </select>
+        <span className="text-[10px] text-terminal-muted">
+          {items.data === undefined ? '' : `${items.data.length} disagreement(s)`}
+        </span>
+      </div>
+
+      <ErrorLine error={items.error ?? record.error} />
+
+      {items.isLoading ? (
+        <Loading />
+      ) : (items.data ?? []).length === 0 ? (
+        <Loading>
+          {/*
+            Said carefully. An empty list means the last run found nothing —
+            not that anybody has looked recently, which is the Runs tab's
+            question and a different one.
+          */}
+          Nothing disagrees in the runs on record. The Runs tab says when that was
+          last checked, and whether any account could not be reached.
+        </Loading>
+      ) : (
+        <Table>
+          <Head
+            columns={[
+              'Account',
+              'What',
+              'Kind',
+              'Ours',
+              'Theirs',
+              { label: 'Difference', right: true },
+              'Seen',
+              { label: 'Actions', right: true },
+            ]}
+          />
+          <tbody>
+            {(items.data ?? []).map((row) => (
+              <Fragment key={row.id}>
+                <tr className="border-t border-terminal-border/60 align-top">
+                  <td className="numeric px-2 py-1.5 text-terminal-text">{row.accountNumber}</td>
+                  <td className="px-2 py-1.5 text-terminal-muted">
+                    <button
+                      type="button"
+                      className="text-left hover:underline"
+                      onClick={() => setExpanded(expanded === row.id ? null : row.id)}
+                    >
+                      {row.subject.toLowerCase()}
+                      {row.field === null ? '' : ` · ${row.field}`}
+                    </button>
+                  </td>
+                  <td
+                    className={cn(
+                      'px-2 py-1.5',
+                      row.status === 'UNKNOWN' ? 'text-terminal-warning' : 'text-terminal-text',
+                    )}
+                  >
+                    {STATUS_LABEL[row.status] ?? row.status}
+                  </td>
+                  <td className="numeric px-2 py-1.5">{row.internal ?? '—'}</td>
+                  <td className="numeric px-2 py-1.5">{row.external ?? '—'}</td>
+                  <td className="numeric px-2 py-1.5 text-right">
+                    {row.difference ?? '—'}
+                    {/*
+                      A tolerance is shown wherever one was applied, so a reader
+                      can tell "these agreed" from "these were close enough by a
+                      rule somebody set".
+                    */}
+                    {row.tolerance === null ? null : (
+                      <span className="ml-1 text-[10px] text-terminal-muted">
+                        ±{row.tolerance}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 text-terminal-muted">{utcTime(row.createdAt)}</td>
+                  <td className="px-3 py-1.5 text-right">
+                    <ReasonedAction
+                      label={row.resolutionCount === 0 ? 'Record a decision' : 'Add a decision'}
+                      title="What did you conclude, and why? This is read months from now."
+                      minLength={8}
+                      busy={record.isPending}
+                      onConfirm={(note) =>
+                        record.mutate({ itemId: row.id, decision: 'UNDER_INVESTIGATION', note })
+                      }
+                    />
+                  </td>
+                </tr>
+                {expanded === row.id ? (
+                  <tr className="border-t border-terminal-border/30">
+                    <td colSpan={8} className="px-4 py-2">
+                      <p className="text-[11px] text-terminal-muted">{row.message}</p>
+                      <p className="mt-1 text-[10px] text-terminal-muted">
+                        Reference <span className="numeric">{row.key}</span>
+                      </p>
+                      <Decisions itemId={row.id} />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            ))}
+          </tbody>
+        </Table>
+      )}
+    </>
+  );
+}
+
+/**
+ * Every decision recorded about one discrepancy, oldest first.
+ *
+ * Oldest first because this is a history: "accepted, then escalated when it
+ * grew" only makes sense in the order it happened. Newest-first would show the
+ * conclusion before the reasoning.
+ */
+function Decisions({ itemId }: { itemId: string }) {
+  const resolutions = useResolutions(itemId);
+  const rows = resolutions.data ?? [];
+
+  if (resolutions.isLoading) return <Loading />;
+  if (rows.length === 0) {
+    return (
+      <p className="mt-2 text-[10px] text-terminal-muted">
+        Nobody has recorded a decision about this yet.
+      </p>
+    );
+  }
+
+  return (
+    <ol className="mt-2 flex flex-col gap-1">
+      {rows.map((row) => (
+        <li key={row.id} className="text-[11px]">
+          <span className="text-terminal-text">
+            {DECISIONS.find(([value]) => value === row.decision)?.[1] ?? row.decision}
+          </span>
+          <span className="ml-2 text-[10px] text-terminal-muted">
+            {row.decidedBy.displayName ?? row.decidedBy.email} · {utcTime(row.decidedAt)}
+          </span>
+          <p className="text-terminal-muted">{row.note}</p>
+        </li>
+      ))}
+    </ol>
   );
 }

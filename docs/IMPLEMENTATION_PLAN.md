@@ -349,15 +349,39 @@ has nothing to scrape. Giving it an endpoint is a port, an Nginx route and a
 scrape target, and belongs with that deployment change rather than being
 half-done here.
 
-## Phase 9 — Reconciliation · ~1–2 weeks
+## Phase 9 — Reconciliation · **partly done**
 
-External reconciliation against the adapter (mock, then real): balances,
-equity, orders, executions, positions, fees, swaps, cash movements; the §44
-statuses (`MATCHED`, `MISSING_INTERNAL`, `MISSING_EXTERNAL`,
-`QUANTITY_MISMATCH`, `PRICE_MISMATCH`, `FEE_MISMATCH`, `BALANCE_MISMATCH`,
-`UNKNOWN`); `ReconciliationItem` beside the existing findings;
-`ResolutionRecord` for every decision; on-demand and scheduled runs; nothing
-repaired silently (§112).
+Against the mock adapter, which is the half that does not need a venue.
+
+- **The comparison** (`@tp/reconciliation-core/external.ts`): balances, equity,
+  orders, executions, positions and commission, producing every §44 status. An
+  `UNKNOWN` is deliberately not a `MATCHED` — an item nobody could compare is
+  not an item that agrees, and calling it one is how a report comes back clean
+  on the day the venue starts returning empty fields.
+- **`ReconciliationItem`** beside the existing findings, per run rather than
+  deduplicated: a finding is the standing view of a problem, an item is one
+  comparison at one moment. Only disagreements are rows; the run carries the
+  counts.
+- **`ResolutionRecord`** for every decision, append-only in the database rather
+  than by convention, with a required reason. There is no `REPAIRED` decision
+  because nothing here repairs anything (§112).
+- **The rule the component exists for:** an unreachable venue concludes nothing.
+  A failure to reach it aborts that account's comparison and is counted as
+  unreachable; it never becomes a `MISSING_EXTERNAL`. §26 applied to the other
+  end of the system.
+- On-demand runs, synchronous so the caller learns whether the venue answered.
+
+[external-reconciliation.md](./external-reconciliation.md).
+
+**Not done, and why:** no _scheduled_ external run — which connections to sweep
+and how often is a decision that belongs with the first real venue rather than
+being guessed against a mock. Order and position _status_ are not compared
+either: mapping a venue's status vocabulary onto this platform's is
+provider-specific, and a mapping invented against the mock fails the moment a
+real venue arrives. Swaps and cash movements are not compared because the
+adapter interface exposes neither, and inventing the calls would be fabricating
+an API. All three wait on **a broker's API documentation and sandbox
+credentials**.
 
 ## Phase 10 — Security and anti-abuse · ~2 weeks
 

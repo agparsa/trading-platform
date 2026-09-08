@@ -205,6 +205,88 @@ export class ReconciliationReadService {
     this.logger.log({ runId: run.id, actorId }, 'Reconciliation run requested');
     return { runId: run.id, alreadyRunning: false };
   }
+
+  /**
+   * Where this platform and a venue disagreed (§44).
+   *
+   * Only disagreements exist as rows. A caller asking for `MATCHED` gets an
+   * empty list, and that is correct rather than surprising: the run's
+   * `itemsMatched` is where that number lives.
+   */
+  async items(query: {
+    runId?: string;
+    accountId?: string;
+    status?: string;
+    subject?: string;
+    limit?: number;
+  }) {
+    const rows = await this.prisma.reconciliationItem.findMany({
+      where: {
+        ...(query.runId === undefined ? {} : { runId: query.runId }),
+        ...(query.accountId === undefined ? {} : { accountId: query.accountId }),
+        ...(query.status === undefined
+          ? {}
+          : { status: query.status as Prisma.EnumReconciliationItemStatusFilter['equals'] }),
+        ...(query.subject === undefined
+          ? {}
+          : { subject: query.subject as Prisma.EnumReconciliationSubjectFilter['equals'] }),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(query.limit ?? 200, 500),
+      select: {
+        id: true,
+        runId: true,
+        accountId: true,
+        subject: true,
+        key: true,
+        status: true,
+        field: true,
+        internal: true,
+        external: true,
+        difference: true,
+        tolerance: true,
+        message: true,
+        createdAt: true,
+        account: { select: { number: true } },
+        /**
+         * Whether anybody has said anything about it yet. The decisions
+         * themselves are a separate call — a list view needs to know "has this
+         * been looked at", not the whole history of what people concluded.
+         */
+        _count: { select: { resolutions: true } },
+      },
+    });
+    return rows.map(({ _count, account, ...row }) => ({
+      ...row,
+      accountNumber: account.number,
+      resolutionCount: _count.resolutions,
+    }));
+  }
+
+  /**
+   * Every decision recorded about one discrepancy, oldest first.
+   *
+   * Oldest first on purpose: this is a history, and reading it in the order it
+   * happened is the only way "accepted, then escalated when it grew" makes
+   * sense. Newest-first would show the conclusion before the reasoning.
+   */
+  async resolutions(query: { itemId?: string; findingId?: string }) {
+    if (query.itemId === undefined && query.findingId === undefined) return [];
+    return this.prisma.resolutionRecord.findMany({
+      where: {
+        ...(query.itemId === undefined ? {} : { itemId: query.itemId }),
+        ...(query.findingId === undefined ? {} : { findingId: query.findingId }),
+      },
+      orderBy: { decidedAt: 'asc' },
+      select: {
+        id: true,
+        decision: true,
+        note: true,
+        decidedAt: true,
+        decidedBy: { select: { id: true, email: true, displayName: true } },
+      },
+    });
+  }
 }
 
 export interface RunRow {
@@ -241,4 +323,5 @@ export interface FindingRow {
   lastSeenAt: string;
   resolvedAt: string | null;
   resolutionNote: string | null;
+
 }

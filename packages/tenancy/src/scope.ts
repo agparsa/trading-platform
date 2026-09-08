@@ -66,6 +66,8 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'ChartTemplate',
   'UserDrawing',
   'PriceAlert',
+  'ReconciliationItem',
+  'ResolutionRecord',
   'RiskEvent',
   'IntegritySignal',
   'IntegritySignalEvent',

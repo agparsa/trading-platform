@@ -221,6 +221,8 @@ model Tenant {
   serviceTokens            ServiceToken[]
   credentialUsage          CredentialUsage[]
   priceAlerts              PriceAlert[]
+  reconciliationItems      ReconciliationItem[]
+  resolutionRecords        ResolutionRecord[]
 
   @@map("tenants")
 }
@@ -332,6 +334,7 @@ model User {
   brokerCredentialsCreated BrokerCredential[]  @relation("BrokerCredentialCreator")
   tenant                   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   priceAlerts              PriceAlert[]
+  resolutions              ResolutionRecord[]
 
   /// One address per tenant, not per platform: the same person may hold an account with two firms.
   @@unique([tenantId, email])
@@ -455,7 +458,8 @@ model Account {
   integritySignals       IntegritySignal[]
   reconciliationFindings ReconciliationFinding[]
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  reconciliationItems ReconciliationItem[]
 
   /// Account numbers are a tenant's own sequence, and two tenants may reach TP-100001.
   @@unique([tenantId, number])
@@ -1437,6 +1441,38 @@ model InviteRedemption {
 // Reconciliation
 // ---------------------------------------------------------------------------
 
+/// What a run compared.
+///
+/// `INTERNAL` is the platform's records against each other — orders, positions,
+/// trades and the ledger, each written by its own code path inside the same
+/// transaction, so a disagreement means exactly one of them is wrong.
+/// `EXTERNAL` is the platform against a venue, where a disagreement can also
+/// mean the venue is right and we are behind.
+enum ReconciliationKind {
+  INTERNAL
+  EXTERNAL
+}
+
+/// The statuses §44 names.
+enum ReconciliationItemStatus {
+  MATCHED
+  MISSING_INTERNAL
+  MISSING_EXTERNAL
+  QUANTITY_MISMATCH
+  PRICE_MISMATCH
+  FEE_MISMATCH
+  BALANCE_MISMATCH
+  /// Both sides had it and it could not be compared. Deliberately not MATCHED.
+  UNKNOWN
+}
+
+enum ReconciliationSubject {
+  BALANCE
+  ORDER
+  POSITION
+  EXECUTION
+}
+
 enum ReconciliationRunStatus {
   /// Requested and not yet picked up, or picked up and still working.
   RUNNING
@@ -1473,6 +1509,23 @@ model ReconciliationRun {
   findingsRecurred Int @default(0) @map("findings_recurred")
   criticalCount    Int @default(0) @map("critical_count")
 
+  kind               ReconciliationKind @default(INTERNAL)
+  /// The venue this run compared against. Null for an internal run.
+  brokerConnectionId String?            @map("broker_connection_id") @db.Uuid
+
+  /// How many things were compared, and how they came out.
+  ///
+  /// Counted rather than stored row by row. A matched order is a row the
+  /// platform would write on every run for the life of the account, and
+  /// hundreds of thousands of them say exactly what this one integer says.
+  /// Everything that did *not* match is a row — see `ReconciliationItem`.
+  itemsCompared   Int @default(0) @map("items_compared")
+  itemsMatched    Int @default(0) @map("items_matched")
+  itemsMismatched Int @default(0) @map("items_mismatched")
+  itemsMissing    Int @default(0) @map("items_missing")
+  /// Items nobody could compare. A run with these is not a clean run.
+  itemsUnknown    Int @default(0) @map("items_unknown")
+
   /// Why the run itself failed. Never a finding — a finding is a successful run.
   error String?
 
@@ -1481,9 +1534,11 @@ model ReconciliationRun {
   durationMs Int?      @map("duration_ms")
 
   findings ReconciliationFinding[]
+  items    ReconciliationItem[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
+  @@index([kind, startedAt(sort: Desc)])
   @@index([startedAt(sort: Desc)])
   @@index([status, startedAt(sort: Desc)])
   @@index([tenantId])
@@ -1539,7 +1594,8 @@ model ReconciliationFinding {
   run     ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Restrict)
   account Account           @relation(fields: [accountId], references: [id], onDelete: Restrict)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  resolutions ResolutionRecord[]
 
   @@unique([accountId, code, subjectKey])
   @@index([status, severity])
@@ -2828,4 +2884,119 @@ model PriceAlert {
   @@index([userId, status, createdAt(sort: Desc)])
   @@index([tenantId])
   @@map("price_alerts")
+}
+
+/// One thing this platform and a venue disagreed about (§44).
+///
+/// Only disagreements are stored. A matched order is a row the platform would
+/// write on every run for the life of the account, and a hundred thousand of
+/// them say exactly what `ReconciliationRun.itemsMatched` says in one integer.
+/// So `MATCHED` is a status this column can hold and in practice never does —
+/// kept in the enum because the comparison produces it and truncating the
+/// vocabulary at the database boundary is how a status quietly becomes a lie.
+///
+/// Rows are per run, not deduplicated. A finding is deduplicated because it is
+/// the *standing* view of a problem; an item is the record of one comparison at
+/// one moment, and "the same order disagreed on Monday and again on Tuesday" is
+/// two observations, which is precisely what an investigator wants to see.
+///
+/// **Nothing here repairs anything** (§112). A discrepancy is recorded and
+/// alerted; correcting it is a deliberate, separate, audited act by a person,
+/// and the act is a `ResolutionRecord`.
+model ReconciliationItem {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  runId    String @map("run_id") @db.Uuid
+
+  accountId          String  @map("account_id") @db.Uuid
+  /// The venue this was compared against.
+  brokerConnectionId String? @map("broker_connection_id") @db.Uuid
+
+  subject ReconciliationSubject
+  /// What both sides call this thing: a client order id, a position id, or the
+  /// account number when the item is about the account's money.
+  key     String
+  status  ReconciliationItemStatus
+  /// The field that disagreed. Null when the whole thing is missing on a side.
+  field   String?
+
+  /// Decimal strings, kept as text: these are evidence, not operands. Storing
+  /// them as NUMERIC would invite arithmetic on a record of an inconsistency.
+  internal   String?
+  external   String?
+  difference String?
+  /// The tolerance applied, when one was — so a reader can tell "these agreed"
+  /// from "these were close enough by a rule somebody set".
+  tolerance  String?
+
+  message String
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  run         ReconciliationRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  account     Account            @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  resolutions ResolutionRecord[]
+
+  @@index([runId, status])
+  @@index([accountId, subject, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([tenantId])
+  @@map("reconciliation_items")
+}
+
+/// What somebody decided about a discrepancy, and why.
+///
+/// Append-only, and separate from the item on purpose. An item's `status` is
+/// what the machine observed; a resolution is what a person concluded, and the
+/// two must not be able to overwrite each other. A discrepancy that was
+/// investigated and found to be a venue rounding rule, and the same one
+/// reopened a month later, are two records — not one field changing its mind.
+///
+/// There is no route that edits or deletes one. The correction of a mistaken
+/// resolution is another resolution saying so.
+model ResolutionRecord {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  /// Exactly one of these. An item is one observation; a finding is a standing
+  /// internal inconsistency. Both get resolved, and by the same people.
+  itemId    String? @map("item_id") @db.Uuid
+  findingId String? @map("finding_id") @db.Uuid
+
+  /// What was decided. Deliberately not an enum of outcomes that includes
+  /// "repaired": nothing in this system repairs a discrepancy, so there is no
+  /// value here that could claim it did.
+  decision ResolutionDecision
+  /// The person's own words. Required — a decision with no reason is a decision
+  /// nobody can review, and these are read months later by people who were not
+  /// there.
+  note     String
+
+  decidedByUserId String   @map("decided_by_user_id") @db.Uuid
+  decidedAt       DateTime @default(now()) @map("decided_at") @db.Timestamptz(6)
+
+  item      ReconciliationItem?    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  finding   ReconciliationFinding? @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  decidedBy User                   @relation(fields: [decidedByUserId], references: [id], onDelete: Restrict)
+  tenant    Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([itemId, decidedAt(sort: Desc)])
+  @@index([findingId, decidedAt(sort: Desc)])
+  @@index([tenantId])
+  @@map("resolution_records")
+}
+
+enum ResolutionDecision {
+  /// Looked at, and the records were right after all.
+  FALSE_POSITIVE
+  /// Real, understood, and expected to stay — a venue that rounds differently.
+  ACCEPTED_DIFFERENCE
+  /// Real, and a correcting entry was made elsewhere by hand. This records the
+  /// decision; the correction itself is a ledger entry with its own audit.
+  CORRECTED_MANUALLY
+  /// Real, and the cause is being chased. Not a conclusion, a state.
+  UNDER_INVESTIGATION
+  /// Escalated beyond the desk — to the venue, or to whoever owns the money.
+  ESCALATED
 }
