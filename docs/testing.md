@@ -206,14 +206,14 @@ a stale binary is the worst failure mode there is.
   spent — a skip there would hide the whole path.
 - `pnpm smoke:ws` — 8 checks: quote and candle streaming, gapless sequencing,
   private-channel refusal, cross-account isolation.
-- `pnpm smoke:web` — 69 checks across 24 routes, in a real browser: every screen
+- `pnpm smoke:web` — 115 checks across 26 routes, in a real browser: every screen
   signed into, landed on, and read for console errors, plus checks about
   content — that the roles screen shows real grants, that the wallet page
   offers the deposit method this deployment actually has, and that a key
   minted from the security page is shown once and never again. Set
   `PLAYWRIGHT_CHROMIUM_PATH` where Chromium is provisioned outside Playwright's
   own download.
-- `pnpm pentest` — 59 attacks attempted against the compiled binary; an attack
+- `pnpm pentest` — 60 attacks attempted against the compiled binary; an attack
   that succeeds fails the run. It was itself tested by breaking the API four
   times to see whether the probes noticed — two did not, and both gaps are now
   closed. Three of the attacks aim at the money path: confirming your own

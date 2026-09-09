@@ -19,7 +19,7 @@ who knows what the system is supposed to refuse.
 
 ## What is attempted
 
-Fifty-nine attacks, grouped by what the attacker is trying to be. The number is
+Sixty attacks, grouped by what the attacker is trying to be. The number is
 held equal to the script's own `attack:` labels by
 `scripts/pentest-checklist.test.ts`, so adding a probe without saying so here
 fails the gate.
@@ -81,6 +81,10 @@ fails the gate.
   break-glass session with no reason, or on yourself.
 - Read or rewrite the firm's IP rules as a trader, or with a machine credential.
 - Choose your own source address with `X-Forwarded-For`.
+- Register a webhook as a trader, with a machine credential, or pointed inside
+  the network — loopback, link-local, the cloud metadata address, a local name,
+  plain HTTP, a URL carrying credentials — and read the secret back from any
+  later response.
 
 **Making the money move**
 

@@ -15,6 +15,7 @@ import { SwapAccrualService } from './jobs/swap-accrual.service';
 import { ReconciliationService } from './jobs/reconciliation.service';
 import { BrokerHealthService } from './jobs/broker-health.service';
 import { OutboxRelayService } from './jobs/outbox-relay.service';
+import { WebhookDeliveryService } from './jobs/webhook-delivery.service';
 import { MaintenanceService } from './jobs/maintenance.service';
 import { NotificationsService } from './jobs/notifications.service';
 
@@ -41,6 +42,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly notifications: NotificationsService,
     private readonly brokerHealth: BrokerHealthService,
     private readonly outbox: OutboxRelayService,
+    private readonly webhooks: WebhookDeliveryService,
   ) {
     this.connection = new IORedis(config.getOrThrow('REDIS_URL', { infer: true }), {
       // BullMQ requires this to be null: its blocking commands must not time out.
@@ -83,6 +85,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     this.attach(QueueName.NOTIFICATIONS, async (job) => this.notifications.deliver(job.data));
     this.attach(QueueName.BROKER_HEALTH, async () => this.brokerHealth.sweep());
     this.attach(QueueName.OUTBOX_RELAY, async () => this.outbox.relay());
+    this.attach(QueueName.WEBHOOK_DELIVERY, async () => this.webhooks.deliverDue());
 
     await this.schedule();
 
@@ -165,6 +168,10 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
       [QueueName.IDEMPOTENCY_SWEEP, this.config.getOrThrow('MAINTENANCE_CRON', { infer: true })],
       [QueueName.BROKER_HEALTH, this.config.getOrThrow('BROKER_HEALTH_CRON', { infer: true })],
       [QueueName.OUTBOX_RELAY, this.config.getOrThrow('OUTBOX_RELAY_CRON', { infer: true })],
+      [
+        QueueName.WEBHOOK_DELIVERY,
+        this.config.getOrThrow('WEBHOOK_DELIVERY_CRON', { infer: true }),
+      ],
     ];
 
     for (const [name, pattern] of schedules) {

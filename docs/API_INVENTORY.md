@@ -418,6 +418,19 @@ handler is responsible for scoping the result to that user — which for
 | `GET`  | `/wallet/:id/transactions` | `transactions` | WALLET_READ     |
 | `POST` | `/wallet/transfer`         | `transfer`     | WALLET_TRANSFER |
 
+### `webhooks/webhooks.controller.ts` — base `/admin/webhooks`
+
+| Verb     | Path                                    | Handler        | Requires                                            |
+| -------- | --------------------------------------- | -------------- | --------------------------------------------------- |
+| `GET`    | `/admin/webhooks/events`                | `eventTypes`   | SESSION-ONLY (class), SESSION-ONLY, WEBHOOKS_MANAGE |
+| `GET`    | `/admin/webhooks`                       | `list`         | SESSION-ONLY (class), SESSION-ONLY, WEBHOOKS_MANAGE |
+| `POST`   | `/admin/webhooks`                       | `create`       | SESSION-ONLY (class), SESSION-ONLY, WEBHOOKS_MANAGE |
+| `POST`   | `/admin/webhooks/:id/enabled`           | `setEnabled`   | SESSION-ONLY (class), SESSION-ONLY, WEBHOOKS_MANAGE |
+| `POST`   | `/admin/webhooks/:id/rotate-secret`     | `rotateSecret` | SESSION-ONLY (class), SESSION-ONLY, WEBHOOKS_MANAGE |
+| `DELETE` | `/admin/webhooks/:id`                   | `remove`       | SESSION-ONLY (class), SESSION-ONLY, WEBHOOKS_MANAGE |
+| `GET`    | `/admin/webhooks/:id/deliveries`        | `deliveries`   | SESSION-ONLY (class), SESSION-ONLY, WEBHOOKS_MANAGE |
+| `POST`   | `/admin/webhooks/deliveries/:id/replay` | `replay`       | SESSION-ONLY (class), SESSION-ONLY, WEBHOOKS_MANAGE |
+
 ### `withdrawals/admin-withdrawals.controller.ts` — base `/admin/withdrawals`
 
 | Verb   | Path                                 | Handler       | Requires             |
@@ -441,7 +454,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**212 routes:** 106 `GET`, 90 `POST`, 9 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**220 routes:** 109 `GET`, 94 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

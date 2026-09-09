@@ -70,6 +70,8 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'ResolutionRecord',
   'BreakGlassGrant',
   'TenantIpRule',
+  'WebhookEndpoint',
+  'WebhookDelivery',
   'RiskEvent',
   'IntegritySignal',
   'IntegritySignalEvent',

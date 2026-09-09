@@ -10,6 +10,7 @@ import { MaintenanceService } from './jobs/maintenance.service';
 import { NotificationsService } from './jobs/notifications.service';
 import { BrokerHealthService } from './jobs/broker-health.service';
 import { OutboxRelayService } from './jobs/outbox-relay.service';
+import { WebhookDeliveryService } from './jobs/webhook-delivery.service';
 import { BrokerAdapterRegistry } from '@tp/broker-sdk';
 import { PushModule } from './push/push.module';
 
@@ -43,6 +44,7 @@ import { PushModule } from './push/push.module';
     NotificationsService,
     BrokerHealthService,
     OutboxRelayService,
+    WebhookDeliveryService,
     { provide: BrokerAdapterRegistry, useFactory: () => new BrokerAdapterRegistry() },
     QueueRegistry,
   ],

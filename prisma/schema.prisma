@@ -225,6 +225,8 @@ model Tenant {
   resolutionRecords        ResolutionRecord[]
   breakGlassGrants         BreakGlassGrant[]
   ipRules                  TenantIpRule[]
+  webhookEndpoints         WebhookEndpoint[]
+  webhookDeliveries        WebhookDelivery[]
 
   @@map("tenants")
 }
@@ -340,6 +342,7 @@ model User {
   breakGlassAsActor        BreakGlassGrant[]   @relation("BreakGlassActor")
   breakGlassAsSubject      BreakGlassGrant[]   @relation("BreakGlassSubject")
   ipRules                  TenantIpRule[]
+  webhookEndpoints         WebhookEndpoint[]
 
   /// One address per tenant, not per platform: the same person may hold an account with two firms.
   @@unique([tenantId, email])
@@ -2578,7 +2581,8 @@ model OutboxEvent {
 
   occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant     Tenant            @relation(fields: [tenantId], references: [id])
+  deliveries WebhookDelivery[]
 
   @@index([status, nextAttemptAt])
   @@index([tenantId, occurredAt(sort: Desc)])
@@ -2591,6 +2595,113 @@ enum OutboxStatus {
   RELAYED
   /// Tried enough times to stop trying. A person looks; nothing is discarded.
   ABANDONED
+}
+
+/// Somewhere a firm has asked to be told about its own events (§49).
+///
+/// The secret is sealed with the platform's key list and shown to the person
+/// who created the endpoint exactly once. `secretHint` is its last four
+/// characters, so a receiver's configuration can be matched to an endpoint
+/// without either side revealing the whole thing.
+///
+/// `previousSecretSealed` exists for rotation: for as long as it is set and
+/// unexpired, every delivery is signed with both, so a receiver can switch
+/// over at its own pace and nothing is dropped in between.
+model WebhookEndpoint {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  url         String
+  description String
+
+  secretSealed            String    @map("secret_sealed")
+  secretHint              String    @map("secret_hint")
+  previousSecretSealed    String?   @map("previous_secret_sealed")
+  previousSecretExpiresAt DateTime? @map("previous_secret_expires_at") @db.Timestamptz(6)
+
+  /// Event types this endpoint wants. Empty means every event the outbox
+  /// carries, including ones added after the endpoint was registered.
+  events String[]
+
+  enabled        Boolean   @default(true)
+  disabledAt     DateTime? @map("disabled_at") @db.Timestamptz(6)
+  /// Why it is off: a person switched it off, or the platform did after a
+  /// streak of failed deliveries. The log says which.
+  disabledReason String?   @map("disabled_reason")
+
+  /// Failed deliveries in a row. Reset by any success; the auto-disable
+  /// threshold reads it.
+  consecutiveFailures Int @default(0) @map("consecutive_failures")
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  createdBy  User              @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  deliveries WebhookDelivery[]
+
+  @@index([tenantId, enabled])
+  @@map("webhook_endpoints")
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  DELIVERED
+  /// Tried, failed, will try again at `nextAttemptAt`.
+  FAILED
+  /// Tried every time the schedule allowed. A person looks; nothing is deleted.
+  EXHAUSTED
+}
+
+/// One event, to one endpoint. The delivery log.
+///
+/// A row per (endpoint, event), created when the outbox relay hands the event
+/// on; each attempt updates it. A **replay** — a person asking for the event to
+/// be sent again — is a new row pointing at the one it repeats, so the log
+/// shows both what happened and that somebody asked for it to happen again.
+model WebhookDelivery {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
+  endpointId String @map("endpoint_id") @db.Uuid
+
+  /// The outbox row this repeats. The event's own id is copied so the log can
+  /// be read without joining, and the type so it can be filtered.
+  outboxEventId String @map("outbox_event_id") @db.Uuid
+  eventId       String @map("event_id")
+  eventType     String @map("event_type")
+
+  status   WebhookDeliveryStatus @default(PENDING)
+  attempts Int                   @default(0)
+
+  nextAttemptAt DateTime? @map("next_attempt_at") @db.Timestamptz(6)
+  lastAttemptAt DateTime? @map("last_attempt_at") @db.Timestamptz(6)
+  deliveredAt   DateTime? @map("delivered_at") @db.Timestamptz(6)
+
+  /// What the receiver said, last time. The body is a snippet, never the
+  /// whole thing: a receiver that answers with a megabyte is not going to be
+  /// debugged from this column.
+  responseStatus Int?    @map("response_status")
+  responseBody   String? @map("response_body")
+  lastError      String? @map("last_error")
+  durationMs     Int?    @map("duration_ms")
+
+  replayOfId        String? @map("replay_of_id") @db.Uuid
+  requestedByUserId String? @map("requested_by_user_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  endpoint    WebhookEndpoint   @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  outboxEvent OutboxEvent       @relation(fields: [outboxEventId], references: [id], onDelete: Restrict)
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  replayOf    WebhookDelivery?  @relation("WebhookReplay", fields: [replayOfId], references: [id], onDelete: SetNull)
+  replays     WebhookDelivery[] @relation("WebhookReplay")
+
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, endpointId, createdAt(sort: Desc)])
+  @@index([tenantId, eventId])
+  @@map("webhook_deliveries")
 }
 
 /// Something a venue told us, recorded before it is acted on.

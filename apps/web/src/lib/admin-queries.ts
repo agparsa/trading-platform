@@ -168,6 +168,9 @@ const adminKeys = {
   sessions: (code: string) => ['admin', 'sessions', code] as const,
   securityFeed: (filter: string) => ['admin', 'security-feed', filter] as const,
   ipRules: ['admin', 'ip-rules'] as const,
+  webhooks: ['admin', 'webhooks'] as const,
+  webhookEvents: ['admin', 'webhook-events'] as const,
+  webhookDeliveries: (id: string) => ['admin', 'webhook-deliveries', id] as const,
   user: (id: string) => ['admin', 'user', id] as const,
   accounts: (search: string) => ['admin', 'accounts', search] as const,
   account: (id: string) => ['admin', 'account', id] as const,
@@ -1263,6 +1266,145 @@ export function useDeleteIpRule() {
   return useMutation({
     mutationFn: (input: { id: string }) =>
       api.delete(`/security/ip-rules/${input.id}`, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: invalidate,
+  });
+}
+
+// ---- Webhooks (§49) --------------------------------------------------------
+
+export interface WebhookEndpointRow {
+  id: string;
+  url: string;
+  description: string;
+  events: string[];
+  enabled: boolean;
+  disabledAt: string | null;
+  disabledReason: string | null;
+  consecutiveFailures: number;
+  secretHint: string;
+  previousSecretExpiresAt: string | null;
+  createdAt: string;
+  createdBy: { id: string; email: string; displayName: string | null } | null;
+}
+
+export interface WebhookDeliveryRow {
+  id: string;
+  eventId: string;
+  eventType: string;
+  status: 'PENDING' | 'DELIVERED' | 'FAILED' | 'EXHAUSTED';
+  attempts: number;
+  nextAttemptAt: string | null;
+  lastAttemptAt: string | null;
+  deliveredAt: string | null;
+  responseStatus: number | null;
+  responseBody: string | null;
+  lastError: string | null;
+  durationMs: number | null;
+  replayOfId: string | null;
+  createdAt: string;
+}
+
+export function useWebhooks() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.webhooks,
+    queryFn: () => api.get<WebhookEndpointRow[]>('/admin/webhooks'),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useWebhookEventTypes() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.webhookEvents,
+    queryFn: () => api.get<{ events: string[] }>('/admin/webhooks/events'),
+    staleTime: 60 * 60_000,
+  });
+}
+
+export function useWebhookDeliveries(endpointId: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.webhookDeliveries(endpointId ?? ''),
+    queryFn: () =>
+      api.get<WebhookDeliveryRow[]>(`/admin/webhooks/${endpointId}/deliveries?limit=100`),
+    enabled: endpointId !== null,
+    refetchInterval: 15_000,
+  });
+}
+
+function useWebhooksInvalidate() {
+  const client = useQueryClient();
+  return () => {
+    void client.invalidateQueries({ queryKey: adminKeys.webhooks });
+    void client.invalidateQueries({ queryKey: ['admin', 'webhook-deliveries'] });
+  };
+}
+
+export function useCreateWebhook() {
+  const { api } = useSession();
+  const invalidate = useWebhooksInvalidate();
+  return useMutation({
+    mutationFn: (input: { url: string; description: string; events: string[] }) =>
+      api.post<{ endpoint: { id: string; url: string }; secret: string }>(
+        '/admin/webhooks',
+        input,
+        {
+          idempotencyKey: crypto.randomUUID(),
+        },
+      ),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSetWebhookEnabled() {
+  const { api } = useSession();
+  const invalidate = useWebhooksInvalidate();
+  return useMutation({
+    mutationFn: (input: { id: string; enabled: boolean }) =>
+      api.post(
+        `/admin/webhooks/${input.id}/enabled`,
+        { enabled: input.enabled },
+        { idempotencyKey: crypto.randomUUID() },
+      ),
+    onSuccess: invalidate,
+  });
+}
+
+export function useRotateWebhookSecret() {
+  const { api } = useSession();
+  const invalidate = useWebhooksInvalidate();
+  return useMutation({
+    mutationFn: (input: { id: string }) =>
+      api.post<{ id: string; secret: string; previousSecretValidUntil: string }>(
+        `/admin/webhooks/${input.id}/rotate-secret`,
+        {},
+        { idempotencyKey: crypto.randomUUID() },
+      ),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteWebhook() {
+  const { api } = useSession();
+  const invalidate = useWebhooksInvalidate();
+  return useMutation({
+    mutationFn: (input: { id: string }) =>
+      api.delete(`/admin/webhooks/${input.id}`, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useReplayWebhookDelivery() {
+  const { api } = useSession();
+  const invalidate = useWebhooksInvalidate();
+  return useMutation({
+    mutationFn: (input: { id: string }) =>
+      api.post(
+        `/admin/webhooks/deliveries/${input.id}/replay`,
+        {},
+        { idempotencyKey: crypto.randomUUID() },
+      ),
     onSuccess: invalidate,
   });
 }

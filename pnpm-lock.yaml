@@ -309,6 +309,9 @@ importers:
       '@tp/trading-core':
         specifier: workspace:*
         version: link:../../packages/trading-core
+      '@tp/webhooks-core':
+        specifier: workspace:*
+        version: link:../../packages/webhooks-core
       '@tp/withdrawals-core':
         specifier: workspace:*
         version: link:../../packages/withdrawals-core
@@ -582,6 +585,9 @@ importers:
       '@tp/trading-core':
         specifier: workspace:*
         version: link:../../packages/trading-core
+      '@tp/webhooks-core':
+        specifier: workspace:*
+        version: link:../../packages/webhooks-core
       bullmq:
         specifier: 'catalog:'
         version: 5.81.3
@@ -907,6 +913,18 @@ importers:
       react:
         specifier: 'catalog:'
         version: 19.2.8
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.3
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.12)(yaml@2.9.0)
+
+  packages/webhooks-core:
+    devDependencies:
       rimraf:
         specifier: 'catalog:'
         version: 6.1.3

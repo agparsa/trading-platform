@@ -448,14 +448,27 @@ states, biometric unlock (Keychain / Keystore), haptics, confirmations (§56).
 **BLOCKED for acceptance (§105)** on a physical device; iOS additionally on
 macOS, Xcode and a signing key — none of which this environment has.
 
-## Phase 12 — Broker API, webhooks, developer portal · ~2 weeks
+## Phase 12 — Broker API, webhooks, developer portal · **in progress**
 
-Webhooks (§49): `Webhook`, `WebhookDelivery`, signed payloads
-(`t=…,v1=hmac-sha256`), retry schedule with backoff, delivery log, replay,
-auto-disable after a failure streak, the event list including
-`reconciliation.mismatch` and `security.alert`; delivery by the worker;
-`/admin/webhooks`. API documentation page from the OpenAPI the API already
-serves. Service tokens gain writes once the audit model has a service actor.
+**Webhooks (§49) — done.** `WebhookEndpoint` and `WebhookDelivery`; payloads
+signed `t=…,v1=hmac-sha256` over the timestamp and the raw bytes, so a captured
+delivery cannot be replayed and a receiver verifies the body it was sent
+rather than the one it re-serialised; rotation signs with both secrets for a
+day. Delivery is two steps — the outbox relay records what is owed, a job pays
+it — so one receiver being down never holds up another firm's relay. The claim
+is a lease (`FOR UPDATE SKIP LOCKED`, next attempt pushed out, attempt counted),
+retries widen to six hours over eight attempts, an exhausted delivery is kept,
+and an endpoint that exhausts deliveries in a row is switched off with a reason
+and an audit row. The destination is checked when registered and again at
+delivery against every address the name then resolves to, with the socket
+pinned to the one that passed — DNS rebinding defeated, redirects never
+followed. `/admin/webhooks` with the secret shown once. Person-only
+`webhooks.manage`. [webhooks.md](./webhooks.md).
+
+**Still to do:** the API documentation page from the OpenAPI the API already
+serves; `reconciliation.mismatch` and `security.alert` once their producers
+write outbox rows; service-token writes once the audit model has a service
+actor.
 
 ## Phase 13 — Observability, load, failure injection · ~2 weeks
 

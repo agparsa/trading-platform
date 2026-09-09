@@ -211,7 +211,11 @@ suite('Outbox (integration)', () => {
       side: 'BUY',
       volume: '0.10',
     });
-    const row = await prisma.outboxEvent.findFirstOrThrow({ where: { accountId } });
+    // The fill, by name: a position.opened row commits in the same
+    // transaction and carries no price, and `findFirst` has no order.
+    const row = await prisma.outboxEvent.findFirstOrThrow({
+      where: { accountId, eventType: 'order.filled' },
+    });
     await expect(
       prisma.$executeRawUnsafe(
         `UPDATE outbox_events SET payload = '{"price":"1.00"}'::jsonb WHERE id = $1`,

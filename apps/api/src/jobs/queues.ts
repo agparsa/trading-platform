@@ -21,6 +21,8 @@ export const QueueName = {
   BROKER_HEALTH: 'broker-health',
   /** The worker's outbox relay. Named here for the same parity test. */
   OUTBOX_RELAY: 'outbox-relay',
+  /** The worker's webhook deliveries. Named here for the same parity test. */
+  WEBHOOK_DELIVERY: 'webhook-delivery',
 } as const;
 export type QueueName = (typeof QueueName)[keyof typeof QueueName];
 

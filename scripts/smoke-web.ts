@@ -315,7 +315,6 @@ function prepareStandalone(): void {
  * the console can explain a real order.
  */
 async function placeOneOrder(email: string): Promise<void> {
-
   const signedIn = await fetch(`${API}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -529,17 +528,24 @@ async function main(): Promise<void> {
       await page.waitForTimeout(500);
     }
     ok(
-      alertRow !== null &&
-        String(alertRow.price) === alertLevel &&
-        alertRow.status === 'ACTIVE',
+      alertRow !== null && String(alertRow.price) === alertLevel && alertRow.status === 'ACTIVE',
       'an alert set in the browser reaches the database with the level as typed',
       alertRow === null
         ? 'no alert row'
         : `${alertRow.symbol} @ ${String(alertRow.price)} (${alertRow.status})`,
     );
 
-    /** And the trader can see their own alert on the screen that set it. */
-    const alertsPanel = await page.getByTestId('alerts-panel').innerText();
+    /**
+     * And the trader can see their own alert on the screen that set it. The
+     * list refetches after the mutation; give it a moment rather than reading
+     * the instant before it arrives.
+     */
+    let alertsPanel = '';
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      alertsPanel = await page.getByTestId('alerts-panel').innerText();
+      if (alertsPanel.includes('99,999,999.5') || alertsPanel.includes(alertLevel)) break;
+      await page.waitForTimeout(500);
+    }
     ok(
       alertsPanel.includes('99,999,999.5') || alertsPanel.includes(alertLevel),
       'the alert the trader set is listed back to them',
@@ -736,7 +742,10 @@ async function main(): Promise<void> {
       bookBody.replace(/\s+/g, ' ').slice(0, 200),
     );
 
-    await book.getByRole('button', { name: /^History$/ }).first().click();
+    await book
+      .getByRole('button', { name: /^History$/ })
+      .first()
+      .click();
     const history = adminPage.getByTestId('order-history');
     await history.waitFor({ timeout: 10_000 });
     let historyBody = '';
@@ -756,13 +765,16 @@ async function main(): Promise<void> {
      * could edit it. Saved whole, and the reason is mandatory.
      */
     await visit(adminPage, '/admin/instruments', { url: '/admin/instruments' });
-    await adminPage.getByRole('button', { name: /^Edit$/ }).first().click();
+    await adminPage
+      .getByRole('button', { name: /^Edit$/ })
+      .first()
+      .click();
     const week = adminPage.getByTestId('session-editor');
     await week.waitFor({ timeout: 10_000 });
     await week.getByLabel('Friday closes').fill('21:00');
-    await week.getByPlaceholder('the venue moved its Friday close').fill(
-      'the venue moved its Friday close',
-    );
+    await week
+      .getByPlaceholder('the venue moved its Friday close')
+      .fill('the venue moved its Friday close');
     await week.getByRole('button', { name: /Save the week/i }).click();
 
     let sessions: { dayOfWeek: number; closeMinute: number }[] = [];
@@ -811,7 +823,10 @@ async function main(): Promise<void> {
         () => false,
       );
     ok(opened, 'a desk can be created from the console');
-    await adminPage.getByRole('button', { name: /^Open$/ }).last().click();
+    await adminPage
+      .getByRole('button', { name: /^Open$/ })
+      .last()
+      .click();
 
     const detail = adminPage.getByTestId('desk-detail');
     await detail.waitFor({ timeout: 10_000 });
@@ -1030,6 +1045,35 @@ async function main(): Promise<void> {
         /API_KEY_MINTED/.test(securityFeed),
       "the firm's security feed shows the trader's sign-in and minted key",
       securityFeed.replace(/\s+/g, ' ').slice(0, 200),
+    );
+
+    /**
+     * The IP rules tab says plainly whether rules would be enforced, and the
+     * webhooks page opens with nothing registered. Neither is a control; both
+     * are screens that must not reassure anybody about something that is off.
+     */
+    await adminPage.getByRole('tab', { name: /Where we can be reached from/i }).click();
+    let ipRules = '';
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      ipRules = await adminPage.getByTestId('ip-rules').innerText();
+      if (/You are calling from/i.test(ipRules)) break;
+      await adminPage.waitForTimeout(500);
+    }
+    ok(
+      /You are calling from/i.test(ipRules),
+      'the IP rules screen leads with the address the caller is coming from',
+      ipRules.replace(/\s+/g, ' ').slice(0, 160),
+    );
+
+    await visit(adminPage, '/admin/webhooks', {
+      url: '/admin/webhooks',
+      text: /Register endpoint/i,
+    });
+    const webhooks = await adminPage.getByTestId('webhooks').innerText();
+    ok(
+      /No endpoints/i.test(webhooks),
+      'the webhooks page opens with nothing registered and says so',
+      webhooks.replace(/\s+/g, ' ').slice(0, 160),
     );
 
     /**

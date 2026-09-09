@@ -41,6 +41,25 @@ export const workerEnvSchema = z.object({
   OUTBOX_RELAY_CRON: z.string().default('* * * * *'),
   OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(5000).default(200),
   OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(100).default(10),
+
+  // Webhook deliveries (§49). Every minute like the relay; the backoff between
+  // attempts lives on the row. See docs/webhooks.md.
+  WEBHOOK_DELIVERY_CRON: z.string().default('* * * * *'),
+  WEBHOOK_BATCH_SIZE: z.coerce.number().int().min(1).max(2000).default(100),
+  /** Attempts per delivery, the first included. */
+  WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(8),
+  /** Deliveries in a row that must exhaust their attempts before the endpoint is switched off. */
+  WEBHOOK_DISABLE_AFTER_FAILURES: z.coerce.number().int().min(1).max(100).default(5),
+  WEBHOOK_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(10_000),
+  /**
+   * Whether an `http://` receiver is allowed. Off in every real deployment: a
+   * signed event over plain HTTP is a signed event anybody on the path can
+   * read. On only for a local test receiver.
+   */
+  WEBHOOK_ALLOW_HTTP: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
   /**
    * How long identity documents are kept after a record is decided. Must agree
    * with the API's value: the API states the policy to the person, the worker

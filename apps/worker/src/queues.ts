@@ -21,6 +21,8 @@ export const QueueName = {
   BROKER_HEALTH: 'broker-health',
   /** Hands on what the transactional outbox holds. */
   OUTBOX_RELAY: 'outbox-relay',
+  /** Sends what the outbox relay recorded as owed to each firm's webhook endpoints. */
+  WEBHOOK_DELIVERY: 'webhook-delivery',
 } as const;
 export type QueueName = (typeof QueueName)[keyof typeof QueueName];
 

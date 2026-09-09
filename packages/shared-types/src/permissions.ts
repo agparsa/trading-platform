@@ -275,6 +275,18 @@ export const Permission = {
    * second one deliberately. Granting it to a role is that decision.
    */
   SECURITY_BREAK_GLASS: 'security.break_glass',
+
+  // --- webhooks ---
+  /**
+   * Register where the firm's events are sent, and read the delivery log (§49).
+   *
+   * One permission for both, deliberately: an endpoint is a place every order
+   * fill and balance change will be posted to, so registering one is the most
+   * consequential thing a developer does here, and reading the log is how they
+   * find out whether it worked. Person-only — a stolen API key that could
+   * register a webhook would be exfiltration of every event from then on.
+   */
+  WEBHOOKS_MANAGE: 'webhooks.manage',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
 
@@ -399,6 +411,7 @@ const ADMIN_PERMISSIONS: readonly Permission[] = [
   Permission.ROLES_MANAGE,
   Permission.SYSTEM_OPERATIONS,
   Permission.SYSTEM_KILL_SWITCH,
+  Permission.WEBHOOKS_MANAGE,
   Permission.API_KEYS_READ_ANY,
   Permission.API_KEYS_REVOKE_ANY,
   Permission.SERVICE_TOKENS_MANAGE,
@@ -541,6 +554,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.API_KEYS_READ_ANY,
     Permission.SERVICE_TOKENS_MANAGE,
     Permission.BROKER_CONNECTIONS_READ,
+    Permission.WEBHOOKS_MANAGE,
   ],
 
   /**
@@ -911,6 +925,7 @@ export function masterRoleOf(capabilities: readonly string[]): MasterRole | null
  * decision, when made, is one entry here with the reason above it.
  */
 export const PERSON_ONLY_PERMISSIONS: readonly Permission[] = [
+  Permission.WEBHOOKS_MANAGE,
   Permission.ACCOUNTS_ADJUST,
   Permission.ACCOUNTS_MANAGE,
   Permission.WALLET_ADJUST,

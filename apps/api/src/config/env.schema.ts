@@ -386,6 +386,17 @@ export const envSchema = z
      */
     TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(8).optional(),
 
+    /**
+     * Whether an `http://` webhook receiver may be registered. Off in every
+     * real deployment — a signed event over plain HTTP is a signed event
+     * anybody on the path can read. On only for a local test receiver, and
+     * the worker has the same switch for the delivery side.
+     */
+    WEBHOOK_ALLOW_HTTP: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+
     BREAK_GLASS_MAX_TTL_MS: z.coerce
       .number()
       .int()
