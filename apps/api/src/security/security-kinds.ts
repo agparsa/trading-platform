@@ -66,6 +66,21 @@ export const SECURITY_KINDS: Readonly<Record<string, SecurityKind>> = {
    */
   BREAK_GLASS_OPENED: { kind: 'BREAK_GLASS_OPENED', severity: 'WARNING', subject: 'resource' },
   BREAK_GLASS_CLOSED: { kind: 'BREAK_GLASS_CLOSED', severity: 'INFO', subject: 'resource' },
+  /**
+   * `actor`, unlike break-glass, because an IP rule has no individual subject —
+   * it is a firm-wide control. The feed it belongs in is that of the person
+   * whose session made the change, and that is precisely the value: an attacker
+   * holding a staff session widens the allow-list to cover their own address,
+   * and the rightful holder of that session is the one person certain to see a
+   * change they did not make.
+   *
+   * WARNING for all three, including removal. A rule taken away is a control
+   * weakened, which is what an attacker does second.
+   */
+  IP_RULE_CREATED: { kind: 'IP_RULE_CHANGED', severity: 'WARNING', subject: 'actor' },
+  IP_RULE_ENABLED: { kind: 'IP_RULE_CHANGED', severity: 'WARNING', subject: 'actor' },
+  IP_RULE_DISABLED: { kind: 'IP_RULE_CHANGED', severity: 'WARNING', subject: 'actor' },
+  IP_RULE_DELETED: { kind: 'IP_RULE_CHANGED', severity: 'WARNING', subject: 'actor' },
 };
 
 /** Audit resource types that name a person. Case varies by author; the check does not. */

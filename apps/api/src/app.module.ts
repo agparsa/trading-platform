@@ -43,6 +43,8 @@ import { EventsModule } from './realtime/events.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { PlatformMetricsModule } from './metrics/platform-metrics.module';
 import { BearerAuthGuard } from './common/guards/bearer-auth.guard';
+import { trackerFor } from './common/throttler-tracker';
+import { IpRulesGuard } from './security/ip-rules.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { TenancyModule } from './tenancy/tenancy.module';
@@ -89,6 +91,12 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
             limit: config.get('RATE_LIMIT_API_PER_MINUTE', { infer: true }),
           },
         ],
+        /**
+         * Bucketed on the caller's address rather than the proxy's. Without
+         * this the whole platform shares one allowance behind nginx — see
+         * `common/throttler-tracker.ts`.
+         */
+        getTracker: trackerFor(config.get('TRUSTED_PROXY_HOPS', { infer: true })),
       }),
     }),
     PrismaModule,
@@ -134,6 +142,11 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
     // a user has been established.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: BearerAuthGuard },
+    // After authentication, because the rule set is per tenant and its scope
+    // depends on whether the caller is staff. Before the role and permission
+    // guards, so a caller from a refused address is turned away without the
+    // platform revealing whether they would otherwise have been allowed in.
+    { provide: APP_GUARD, useClass: IpRulesGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     // After the role guard, so a route may narrow by role and by capability.
     { provide: APP_GUARD, useClass: PermissionsGuard },

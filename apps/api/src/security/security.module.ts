@@ -4,6 +4,8 @@ import { BreakGlassService } from './break-glass.service';
 import { AdminSecurityController } from './admin-security.controller';
 import { SecurityController } from './security.controller';
 import { BreakGlassController } from './break-glass.controller';
+import { IpRulesService } from './ip-rules.service';
+import { IpRulesController } from './ip-rules.controller';
 
 /**
  * Global, because the authentication guard resolves break-glass grants and the
@@ -12,8 +14,13 @@ import { BreakGlassController } from './break-glass.controller';
  */
 @Global()
 @Module({
-  controllers: [SecurityController, AdminSecurityController, BreakGlassController],
-  providers: [SecurityEventsService, BreakGlassService],
-  exports: [SecurityEventsService, BreakGlassService],
+  controllers: [
+    SecurityController,
+    AdminSecurityController,
+    BreakGlassController,
+    IpRulesController,
+  ],
+  providers: [SecurityEventsService, BreakGlassService, IpRulesService],
+  exports: [SecurityEventsService, BreakGlassService, IpRulesService],
 })
 export class SecurityModule {}

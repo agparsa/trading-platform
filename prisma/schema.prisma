@@ -224,6 +224,7 @@ model Tenant {
   reconciliationItems      ReconciliationItem[]
   resolutionRecords        ResolutionRecord[]
   breakGlassGrants         BreakGlassGrant[]
+  ipRules                  TenantIpRule[]
 
   @@map("tenants")
 }
@@ -338,6 +339,7 @@ model User {
   resolutions              ResolutionRecord[]
   breakGlassAsActor        BreakGlassGrant[]   @relation("BreakGlassActor")
   breakGlassAsSubject      BreakGlassGrant[]   @relation("BreakGlassSubject")
+  ipRules                  TenantIpRule[]
 
   /// One address per tenant, not per platform: the same person may hold an account with two firms.
   @@unique([tenantId, email])
@@ -2452,6 +2454,10 @@ enum SecurityEventKind {
   /// because it is the account owner's business and they are entitled to know.
   BREAK_GLASS_OPENED
   BREAK_GLASS_CLOSED
+  /// Somebody changed where this firm may be reached from (§46). WARNING, and
+  /// against the actor: a stolen staff session would widen the allow-list, and
+  /// the rightful holder is the one person certain to see that it happened.
+  IP_RULE_CHANGED
 }
 
 enum SecuritySeverity {
@@ -3083,4 +3089,67 @@ model BreakGlassGrant {
   @@index([subjectUserId, createdAt(sort: Desc)])
   @@index([tenantId])
   @@map("break_glass_grants")
+}
+
+enum IpRuleKind {
+  ALLOW
+  DENY
+}
+
+/// Who an IP rule applies to.
+///
+/// `STAFF` is the useful, low-risk case: "our administrators sign in from the
+/// office". `EVERYONE` includes customers, which is a business decision with
+/// support consequences — a trader travelling is a trader locked out — so it is
+/// never the default.
+enum IpRuleScope {
+  STAFF
+  EVERYONE
+}
+
+/// Where a firm's people may reach it from (§46).
+///
+/// ## The semantics
+///
+/// A `DENY` match refuses and beats everything. If any `ALLOW` rule exists for
+/// the scope, the address must match one — that is allow-list mode, and it is
+/// what a firm means by "only from the office". With no `ALLOW` rule the set is
+/// a block-list: everything not denied is allowed.
+///
+/// Adding the *first* `ALLOW` rule therefore changes the mode of the whole set,
+/// from "everyone except these" to "nobody except these". The API makes the
+/// caller confirm that, and refuses outright if the new set would exclude the
+/// person writing it: an allow-list that locks the firm out of the screen where
+/// it could be undone leaves a database console as the only remaining fix,
+/// which is not a support process but an outage.
+model TenantIpRule {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  /// An address or a range. A bare address means a single host: it is what
+  /// people type, and refusing it would make `/32` a thing you have to know.
+  cidr  String
+  kind  IpRuleKind
+  scope IpRuleScope @default(STAFF)
+
+  /// Why this rule exists. Read a year later by somebody deciding whether the
+  /// office moved.
+  note String
+
+  /// Off rather than deleted, so a rule can be tried and withdrawn without
+  /// losing the record that it was tried.
+  enabled Boolean @default(true)
+
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  createdBy User   @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  /// One rule per range per scope. Two rows saying the same thing are two rows
+  /// somebody has to reconcile by hand when only one of them is disabled.
+  @@unique([tenantId, cidr, scope])
+  @@index([tenantId, enabled])
+  @@map("tenant_ip_rules")
 }

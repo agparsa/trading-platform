@@ -399,12 +399,29 @@ permission that performs it. [break-glass.md](./break-glass.md).
 needs controls a firm has to decide on, and inventing them would be inventing a
 policy nobody agreed to.
 
+**Rapid cancel/replace (§46) — done.** Counted per order over a lookback six
+times the window, so a burst spread thinly across the period is not read as one.
+
+**IP rules per tenant (§46) — done.** A firm says where its staff, and
+optionally its customers, may reach it from. Almost all of the design is one
+failure: an allow-list that excludes its own author locks the firm out of the
+screen where the mistake could be undone. So a rule that would shut out its
+author is refused — against the set as it _would be_, since an `ALLOW` covering
+you is still a lock-out when a `DENY` covers you too — while disabling and
+deleting are never refused, and the guard fails open, loudly, whenever it cannot
+establish the caller's address. `TRUSTED_PROXY_HOPS` distinguishes _unset_
+(nobody has said; nothing is enforced) from `0` (a claim that nothing sits in
+front of the API), because collapsing the two either refuses every direct
+deployment the feature or enforces an allow-list against an nginx container.
+Enforced in a global guard after authentication and before authorization, so a
+refused address never learns whether it would otherwise have been allowed in.
+[ip-rules.md](./ip-rules.md).
+
 **Still to do:** the Security Centre (sessions, devices, IP history, 2FA, own
-audit, active keys — the `SecurityEvent` feed exists, the rest does not); fraud
-signals for request rate, duplicate ids, replay, timestamp skew, sequence
-anomalies, rapid cancel/replace, device and IP change (§46), with operator
-review and no automatic punishment; IP rules per tenant; the §72 security test
-list extended to the new surfaces.
+audit, active keys — the `SecurityEvent` feed exists, the rest does not); the
+remaining fraud signals — request rate, duplicate ids, replay, timestamp skew,
+sequence anomalies, device and IP change — with operator review and no automatic
+punishment; the §72 security test list extended to the new surfaces.
 
 ## Phase 11 — Mobile architecture · ~3 weeks · partly BLOCKED
 

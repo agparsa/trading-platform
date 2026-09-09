@@ -167,6 +167,7 @@ const adminKeys = {
   orderHistory: (id: string) => ['admin', 'order-history', id] as const,
   sessions: (code: string) => ['admin', 'sessions', code] as const,
   securityFeed: (filter: string) => ['admin', 'security-feed', filter] as const,
+  ipRules: ['admin', 'ip-rules'] as const,
   user: (id: string) => ['admin', 'user', id] as const,
   accounts: (search: string) => ['admin', 'accounts', search] as const,
   account: (id: string) => ['admin', 'account', id] as const,
@@ -1189,6 +1190,83 @@ export function useSecurityFeed(filter: { severity?: string; kind?: string; user
   });
 }
 
+// ---- Where the firm may be reached from (§46) ------------------------------
+
+export interface IpRuleRow {
+  id: string;
+  cidr: string;
+  kind: 'ALLOW' | 'DENY';
+  scope: 'STAFF' | 'EVERYONE';
+  note: string;
+  enabled: boolean;
+  createdAt: string;
+  createdBy: { id: string; email: string; displayName: string | null } | null;
+}
+
+export interface IpRulesView {
+  /**
+   * Whether a rule written here would actually be enforced. False while the
+   * deployment has not said what sits in front of it, or while this request's
+   * own address could not be established — in which case the screen says so
+   * rather than showing a list that looks like a control.
+   */
+  enforceable: boolean;
+  yourAddress: string;
+  yourAddressTrusted: boolean;
+  rules: IpRuleRow[];
+}
+
+export function useIpRules() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.ipRules,
+    queryFn: () => api.get<IpRulesView>('/security/ip-rules'),
+  });
+}
+
+function useIpRulesInvalidate() {
+  const client = useQueryClient();
+  return () => void client.invalidateQueries({ queryKey: adminKeys.ipRules });
+}
+
+export function useCreateIpRule() {
+  const { api } = useSession();
+  const invalidate = useIpRulesInvalidate();
+  return useMutation({
+    mutationFn: (input: {
+      cidr: string;
+      kind: 'ALLOW' | 'DENY';
+      scope: 'STAFF' | 'EVERYONE';
+      note: string;
+    }) => api.post('/security/ip-rules', input, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSetIpRuleEnabled() {
+  const { api } = useSession();
+  const invalidate = useIpRulesInvalidate();
+  return useMutation({
+    mutationFn: (input: { id: string; enabled: boolean }) =>
+      api.post(
+        `/security/ip-rules/${input.id}/enabled`,
+        { enabled: input.enabled },
+        { idempotencyKey: crypto.randomUUID() },
+      ),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeleteIpRule() {
+  const { api } = useSession();
+  const invalidate = useIpRulesInvalidate();
+  return useMutation({
+    mutationFn: (input: { id: string }) =>
+      api.delete(`/security/ip-rules/${input.id}`, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: invalidate,
+  });
+}
+
 // ---- Broker connections ---------------------------------------------------
 
 export interface ConnectorRow {
@@ -1329,7 +1407,6 @@ export function useTestBrokerConnection() {
     },
   });
 }
-
 
 // ---- Instrument mappings, the inbox, and unconfirmed orders ---------------
 
@@ -1530,7 +1607,6 @@ export function useResolveUnconfirmed() {
   });
 }
 
-
 // ---- Master accounts, desks, and the risk hierarchy ------------------------
 
 export interface MasterAccountRow {
@@ -1721,7 +1797,6 @@ export function useSetRiskLimits() {
   });
 }
 
-
 // ---- The firm's book, and the trading week ---------------------------------
 
 export interface BlotterFilters {
@@ -1841,9 +1916,7 @@ export function useOrderHistory(id: string | null) {
   return useQuery({
     queryKey: adminKeys.orderHistory(id ?? ''),
     queryFn: () =>
-      api.get<{ order: BlotterOrderRow; events: OrderEventRow[] }>(
-        `/admin/orders/${id}/history`,
-      ),
+      api.get<{ order: BlotterOrderRow; events: OrderEventRow[] }>(`/admin/orders/${id}/history`),
     enabled: id !== null,
   });
 }

@@ -1,0 +1,11 @@
+-- A change to who may reach this firm, in the security feed (§46).
+--
+-- Its own migration because `ALTER TYPE … ADD VALUE` and a use of the new value
+-- cannot share a transaction on PostgreSQL.
+--
+-- Recorded against the **actor**, unlike break-glass. An IP rule is a firm-wide
+-- control with no individual subject; the person whose feed it belongs in is
+-- the one whose session made the change. That is the point: an attacker holding
+-- a staff session would widen the allow-list to cover their own address, and
+-- the rightful holder of that session is the one person guaranteed to notice.
+ALTER TYPE "SecurityEventKind" ADD VALUE IF NOT EXISTS 'IP_RULE_CHANGED';

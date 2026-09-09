@@ -46,392 +46,401 @@ handler is responsible for scoping the result to that user — which for
 
 ### `accounts/accounts.controller.ts` — base `/accounts`
 
-| Verb  | Path                     | Handler    | Requires      |
-| ----- | ------------------------ | ---------- | ------------- |
-| `GET` | `/accounts`              | `list`     | ACCOUNTS_READ |
-| `GET` | `/accounts/:id`          | `get`      | ACCOUNTS_READ |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/accounts` | `list` | ACCOUNTS_READ |
+| `GET` | `/accounts/:id` | `get` | ACCOUNTS_READ |
 | `GET` | `/accounts/:id/settings` | `settings` | ACCOUNTS_READ |
-| `GET` | `/accounts/:id/ledger`   | `ledger`   | ACCOUNTS_READ |
+| `GET` | `/accounts/:id/ledger` | `ledger` | ACCOUNTS_READ |
 
 ### `admin/admin.controller.ts` — base `/admin`
 
-| Verb   | Path                                       | Handler                 | Requires           |
-| ------ | ------------------------------------------ | ----------------------- | ------------------ |
-| `GET`  | `/admin/users`                             | `users`                 | USERS_READ_ANY     |
-| `GET`  | `/admin/users/:id`                         | `user`                  | USERS_READ_ANY     |
-| `POST` | `/admin/users/:id/suspend`                 | `suspend`               | USERS_MANAGE       |
-| `POST` | `/admin/users/:id/reinstate`               | `reinstate`             | USERS_MANAGE       |
-| `POST` | `/admin/users/:id/sign-out`                | `signOut`               | USERS_MANAGE       |
-| `POST` | `/admin/users/:id/role`                    | `assignRole`            | ROLES_ASSIGN       |
-| `POST` | `/admin/users/:id/unlock`                  | `unlock`                | USERS_MANAGE       |
-| `GET`  | `/admin/accounts`                          | `accounts`              | ACCOUNTS_READ_ANY  |
-| `GET`  | `/admin/accounts/:id`                      | `account`               | ACCOUNTS_READ_ANY  |
-| `POST` | `/admin/accounts/:id/status`               | `accountStatus`         | ACCOUNTS_MANAGE    |
-| `GET`  | `/admin/orders`                            | `blotterOrders`         | ACCOUNTS_READ_ANY  |
-| `GET`  | `/admin/positions`                         | `blotterPositions`      | ACCOUNTS_READ_ANY  |
-| `GET`  | `/admin/trades`                            | `blotterTrades`         | ACCOUNTS_READ_ANY  |
-| `GET`  | `/admin/orders/:id/history`                | `orderHistory`          | ACCOUNTS_READ_ANY  |
-| `GET`  | `/admin/risk/limits`                       | `riskLimits`            | RISK_READ          |
-| `POST` | `/admin/risk/limits/broker`                | `setBrokerLimits`       | RISK_MANAGE        |
-| `POST` | `/admin/risk/limits/desk/:masterAccountId` | `setDeskLimits`         | RISK_MANAGE        |
-| `POST` | `/admin/risk/limits/platform`              | `setPlatformLimits`     | RISK_MANAGE        |
-| `POST` | `/admin/accounts/:id/limits`               | `limits`                | RISK_MANAGE        |
-| `POST` | `/admin/accounts/:id/adjustments`          | `adjust`                | ACCOUNTS_ADJUST    |
-| `GET`  | `/admin/risk/at-risk`                      | `atRisk`                | RISK_READ          |
-| `GET`  | `/admin/risk/exposure`                     | `exposure`              | RISK_READ          |
-| `GET`  | `/admin/risk/events`                       | `riskEvents`            | RISK_READ          |
-| `GET`  | `/admin/audit`                             | `audit`                 | AUDIT_READ         |
-| `GET`  | `/admin/audit/actions`                     | `auditActions`          | AUDIT_READ         |
-| `GET`  | `/admin/instruments`                       | `listInstruments`       | INSTRUMENTS_READ   |
-| `POST` | `/admin/instruments/:code/enabled`         | `setInstrumentEnabled`  | INSTRUMENTS_MANAGE |
-| `POST` | `/admin/instruments/:code/terms`           | `setInstrumentTerms`    | INSTRUMENTS_MANAGE |
-| `GET`  | `/admin/instruments/:code/sessions`        | `instrumentSessions`    | INSTRUMENTS_READ   |
-| `POST` | `/admin/instruments/:code/sessions`        | `setInstrumentSessions` | INSTRUMENTS_MANAGE |
-| `POST` | `/admin/invites`                           | `mintInvite`            | INVITES_MANAGE     |
-| `GET`  | `/admin/invites`                           | `listInvites`           | INVITES_MANAGE     |
-| `POST` | `/admin/invites/:id/revoke`                | `revokeInvite`          | INVITES_MANAGE     |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/admin/users` | `users` | USERS_READ_ANY |
+| `GET` | `/admin/users/:id` | `user` | USERS_READ_ANY |
+| `POST` | `/admin/users/:id/suspend` | `suspend` | USERS_MANAGE |
+| `POST` | `/admin/users/:id/reinstate` | `reinstate` | USERS_MANAGE |
+| `POST` | `/admin/users/:id/sign-out` | `signOut` | USERS_MANAGE |
+| `POST` | `/admin/users/:id/role` | `assignRole` | ROLES_ASSIGN |
+| `POST` | `/admin/users/:id/unlock` | `unlock` | USERS_MANAGE |
+| `GET` | `/admin/accounts` | `accounts` | ACCOUNTS_READ_ANY |
+| `GET` | `/admin/accounts/:id` | `account` | ACCOUNTS_READ_ANY |
+| `POST` | `/admin/accounts/:id/status` | `accountStatus` | ACCOUNTS_MANAGE |
+| `GET` | `/admin/orders` | `blotterOrders` | ACCOUNTS_READ_ANY |
+| `GET` | `/admin/positions` | `blotterPositions` | ACCOUNTS_READ_ANY |
+| `GET` | `/admin/trades` | `blotterTrades` | ACCOUNTS_READ_ANY |
+| `GET` | `/admin/orders/:id/history` | `orderHistory` | ACCOUNTS_READ_ANY |
+| `GET` | `/admin/risk/limits` | `riskLimits` | RISK_READ |
+| `POST` | `/admin/risk/limits/broker` | `setBrokerLimits` | RISK_MANAGE |
+| `POST` | `/admin/risk/limits/desk/:masterAccountId` | `setDeskLimits` | RISK_MANAGE |
+| `POST` | `/admin/risk/limits/platform` | `setPlatformLimits` | RISK_MANAGE |
+| `POST` | `/admin/accounts/:id/limits` | `limits` | RISK_MANAGE |
+| `POST` | `/admin/accounts/:id/adjustments` | `adjust` | ACCOUNTS_ADJUST |
+| `GET` | `/admin/risk/at-risk` | `atRisk` | RISK_READ |
+| `GET` | `/admin/risk/exposure` | `exposure` | RISK_READ |
+| `GET` | `/admin/risk/events` | `riskEvents` | RISK_READ |
+| `GET` | `/admin/audit` | `audit` | AUDIT_READ |
+| `GET` | `/admin/audit/actions` | `auditActions` | AUDIT_READ |
+| `GET` | `/admin/instruments` | `listInstruments` | INSTRUMENTS_READ |
+| `POST` | `/admin/instruments/:code/enabled` | `setInstrumentEnabled` | INSTRUMENTS_MANAGE |
+| `POST` | `/admin/instruments/:code/terms` | `setInstrumentTerms` | INSTRUMENTS_MANAGE |
+| `GET` | `/admin/instruments/:code/sessions` | `instrumentSessions` | INSTRUMENTS_READ |
+| `POST` | `/admin/instruments/:code/sessions` | `setInstrumentSessions` | INSTRUMENTS_MANAGE |
+| `POST` | `/admin/invites` | `mintInvite` | INVITES_MANAGE |
+| `GET` | `/admin/invites` | `listInvites` | INVITES_MANAGE |
+| `POST` | `/admin/invites/:id/revoke` | `revokeInvite` | INVITES_MANAGE |
 
 ### `alerts/price-alerts.controller.ts` — base `/alerts`
 
-| Verb     | Path          | Handler  | Requires     |
-| -------- | ------------- | -------- | ------------ |
-| `GET`    | `/alerts`     | `list`   | SELF-SERVICE |
-| `POST`   | `/alerts`     | `create` | SELF-SERVICE |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/alerts` | `list` | SELF-SERVICE |
+| `POST` | `/alerts` | `create` | SELF-SERVICE |
 | `DELETE` | `/alerts/:id` | `cancel` | SELF-SERVICE |
 
 ### `auth/auth.controller.ts` — base `/auth`
 
-| Verb     | Path                           | Handler                   | Requires                |
-| -------- | ------------------------------ | ------------------------- | ----------------------- |
-| `POST`   | `/auth/register`               | `register`                | PUBLIC, throttled       |
-| `POST`   | `/auth/login`                  | `login`                   | PUBLIC, throttled       |
-| `POST`   | `/auth/login/2fa`              | `loginTwoFactor`          | PUBLIC, throttled       |
-| `GET`    | `/auth/2fa`                    | `twoFactorStatus`         | SELF-SERVICE            |
-| `POST`   | `/auth/2fa/enrol`              | `beginTwoFactorEnrolment` | SELF-SERVICE, throttled |
-| `POST`   | `/auth/2fa/activate`           | `activateTwoFactor`       | SELF-SERVICE, throttled |
-| `POST`   | `/auth/2fa/disable`            | `disableTwoFactor`        | SELF-SERVICE, throttled |
-| `GET`    | `/auth/sessions`               | `listSessions`            | SELF-SERVICE            |
-| `DELETE` | `/auth/sessions/:id`           | `revokeSession`           | SELF-SERVICE            |
-| `POST`   | `/auth/refresh`                | `refresh`                 | PUBLIC, throttled       |
-| `POST`   | `/auth/logout`                 | `logout`                  | PUBLIC                  |
-| `POST`   | `/auth/verify-email`           | `verifyEmail`             | PUBLIC                  |
-| `POST`   | `/auth/password-reset`         | `requestPasswordReset`    | PUBLIC, throttled       |
-| `POST`   | `/auth/password-reset/confirm` | `resetPassword`           | PUBLIC, throttled       |
-| `POST`   | `/auth/password`               | `changePassword`          | SELF-SERVICE            |
-| `GET`    | `/auth/me`                     | `me`                      | _authenticated only_    |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `POST` | `/auth/register` | `register` | PUBLIC, throttled |
+| `POST` | `/auth/login` | `login` | PUBLIC, throttled |
+| `POST` | `/auth/login/2fa` | `loginTwoFactor` | PUBLIC, throttled |
+| `GET` | `/auth/2fa` | `twoFactorStatus` | SELF-SERVICE |
+| `POST` | `/auth/2fa/enrol` | `beginTwoFactorEnrolment` | SELF-SERVICE, throttled |
+| `POST` | `/auth/2fa/activate` | `activateTwoFactor` | SELF-SERVICE, throttled |
+| `POST` | `/auth/2fa/disable` | `disableTwoFactor` | SELF-SERVICE, throttled |
+| `GET` | `/auth/sessions` | `listSessions` | SELF-SERVICE |
+| `DELETE` | `/auth/sessions/:id` | `revokeSession` | SELF-SERVICE |
+| `POST` | `/auth/refresh` | `refresh` | PUBLIC, throttled |
+| `POST` | `/auth/logout` | `logout` | PUBLIC |
+| `POST` | `/auth/verify-email` | `verifyEmail` | PUBLIC |
+| `POST` | `/auth/password-reset` | `requestPasswordReset` | PUBLIC, throttled |
+| `POST` | `/auth/password-reset/confirm` | `resetPassword` | PUBLIC, throttled |
+| `POST` | `/auth/password` | `changePassword` | SELF-SERVICE |
+| `GET` | `/auth/me` | `me` | _authenticated only_ |
 
 ### `broker-connections/broker-connections.controller.ts` — base `/admin/broker-connections`
 
-| Verb   | Path                                                  | Handler             | Requires                                        |
-| ------ | ----------------------------------------------------- | ------------------- | ----------------------------------------------- |
-| `GET`  | `/admin/broker-connections/connectors`                | `connectors`        | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
-| `GET`  | `/admin/broker-connections`                           | `list`              | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
-| `GET`  | `/admin/broker-connections/:id`                       | `get`               | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
-| `POST` | `/admin/broker-connections`                           | `create`            | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
-| `POST` | `/admin/broker-connections/:id/credentials`           | `setCredentials`    | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
-| `POST` | `/admin/broker-connections/:id/enabled`               | `setEnabled`        | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
-| `POST` | `/admin/broker-connections/:id/test`                  | `test`              | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
-| `GET`  | `/admin/broker-connections/:id/mappings`              | `mappingList`       | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
-| `GET`  | `/admin/broker-connections/:id/catalogue`             | `catalogue`         | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
-| `GET`  | `/admin/broker-connections/:id/mappings/suggestions`  | `suggestions`       | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
-| `POST` | `/admin/broker-connections/:id/mappings`              | `map`               | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
-| `POST` | `/admin/broker-connections/:id/mappings/enabled`      | `setMappingEnabled` | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
-| `POST` | `/admin/broker-connections/:id/mappings/sync`         | `syncMappings`      | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
-| `GET`  | `/admin/broker-connections/:id/inbox`                 | `inboxList`         | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
-| `GET`  | `/admin/broker-connections/:id/inbox/pending`         | `inboxPending`      | SESSION-ONLY (class), BROKER_CONNECTIONS_READ   |
-| `POST` | `/admin/broker-connections/:id/inbox/:eventId/replay` | `replay`            | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/admin/broker-connections/connectors` | `connectors` | SESSION-ONLY (class), BROKER_CONNECTIONS_READ |
+| `GET` | `/admin/broker-connections` | `list` | SESSION-ONLY (class), BROKER_CONNECTIONS_READ |
+| `GET` | `/admin/broker-connections/:id` | `get` | SESSION-ONLY (class), BROKER_CONNECTIONS_READ |
+| `POST` | `/admin/broker-connections` | `create` | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `POST` | `/admin/broker-connections/:id/credentials` | `setCredentials` | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `POST` | `/admin/broker-connections/:id/enabled` | `setEnabled` | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `POST` | `/admin/broker-connections/:id/test` | `test` | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `GET` | `/admin/broker-connections/:id/mappings` | `mappingList` | SESSION-ONLY (class), BROKER_CONNECTIONS_READ |
+| `GET` | `/admin/broker-connections/:id/catalogue` | `catalogue` | SESSION-ONLY (class), BROKER_CONNECTIONS_READ |
+| `GET` | `/admin/broker-connections/:id/mappings/suggestions` | `suggestions` | SESSION-ONLY (class), BROKER_CONNECTIONS_READ |
+| `POST` | `/admin/broker-connections/:id/mappings` | `map` | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `POST` | `/admin/broker-connections/:id/mappings/enabled` | `setMappingEnabled` | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `POST` | `/admin/broker-connections/:id/mappings/sync` | `syncMappings` | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `GET` | `/admin/broker-connections/:id/inbox` | `inboxList` | SESSION-ONLY (class), BROKER_CONNECTIONS_READ |
+| `GET` | `/admin/broker-connections/:id/inbox/pending` | `inboxPending` | SESSION-ONLY (class), BROKER_CONNECTIONS_READ |
+| `POST` | `/admin/broker-connections/:id/inbox/:eventId/replay` | `replay` | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
 
 ### `brokers/brokers.controller.ts` — base `/admin/brokers`
 
-| Verb   | Path                        | Handler     | Requires                             |
-| ------ | --------------------------- | ----------- | ------------------------------------ |
-| `GET`  | `/admin/brokers`            | `list`      | SESSION-ONLY (class), TENANTS_READ   |
-| `GET`  | `/admin/brokers/:id`        | `get`       | SESSION-ONLY (class), TENANTS_READ   |
-| `POST` | `/admin/brokers`            | `create`    | SESSION-ONLY (class), TENANTS_MANAGE |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/admin/brokers` | `list` | SESSION-ONLY (class), TENANTS_READ |
+| `GET` | `/admin/brokers/:id` | `get` | SESSION-ONLY (class), TENANTS_READ |
+| `POST` | `/admin/brokers` | `create` | SESSION-ONLY (class), TENANTS_MANAGE |
 | `POST` | `/admin/brokers/:id/status` | `setStatus` | SESSION-ONLY (class), TENANTS_MANAGE |
 
 ### `charts/charts.controller.ts` — base `/charts`
 
-| Verb     | Path                       | Handler          | Requires             |
-| -------- | -------------------------- | ---------------- | -------------------- |
-| `GET`    | `/charts/layouts`          | `layouts`        | _authenticated only_ |
-| `GET`    | `/charts/layouts/default`  | `defaultLayout`  | _authenticated only_ |
-| `GET`    | `/charts/layouts/:id`      | `layout`         | _authenticated only_ |
-| `POST`   | `/charts/layouts`          | `saveLayout`     | SELF-SERVICE         |
-| `DELETE` | `/charts/layouts/:id`      | `deleteLayout`   | SELF-SERVICE         |
-| `GET`    | `/charts/templates`        | `templates`      | _authenticated only_ |
-| `GET`    | `/charts/templates/:name`  | `template`       | _authenticated only_ |
-| `POST`   | `/charts/templates`        | `saveTemplate`   | SELF-SERVICE         |
-| `DELETE` | `/charts/templates/:name`  | `deleteTemplate` | SELF-SERVICE         |
-| `GET`    | `/charts/drawings/:symbol` | `drawings`       | _authenticated only_ |
-| `POST`   | `/charts/drawings/:symbol` | `saveDrawings`   | SELF-SERVICE         |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/charts/layouts` | `layouts` | _authenticated only_ |
+| `GET` | `/charts/layouts/default` | `defaultLayout` | _authenticated only_ |
+| `GET` | `/charts/layouts/:id` | `layout` | _authenticated only_ |
+| `POST` | `/charts/layouts` | `saveLayout` | SELF-SERVICE |
+| `DELETE` | `/charts/layouts/:id` | `deleteLayout` | SELF-SERVICE |
+| `GET` | `/charts/templates` | `templates` | _authenticated only_ |
+| `GET` | `/charts/templates/:name` | `template` | _authenticated only_ |
+| `POST` | `/charts/templates` | `saveTemplate` | SELF-SERVICE |
+| `DELETE` | `/charts/templates/:name` | `deleteTemplate` | SELF-SERVICE |
+| `GET` | `/charts/drawings/:symbol` | `drawings` | _authenticated only_ |
+| `POST` | `/charts/drawings/:symbol` | `saveDrawings` | SELF-SERVICE |
 
 ### `credentials/admin-credentials.controller.ts` — base `/admin`
 
-| Verb   | Path                               | Handler       | Requires                                    |
-| ------ | ---------------------------------- | ------------- | ------------------------------------------- |
-| `GET`  | `/admin/api-keys`                  | `keys`        | SESSION-ONLY (class), API_KEYS_READ_ANY     |
-| `POST` | `/admin/api-keys/:id/revoke`       | `revokeKey`   | SESSION-ONLY (class), API_KEYS_REVOKE_ANY   |
-| `GET`  | `/admin/service-tokens`            | `tokens`      | SESSION-ONLY (class), SERVICE_TOKENS_MANAGE |
-| `POST` | `/admin/service-tokens`            | `mintToken`   | SESSION-ONLY (class), SERVICE_TOKENS_MANAGE |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/admin/api-keys` | `keys` | SESSION-ONLY (class), API_KEYS_READ_ANY |
+| `POST` | `/admin/api-keys/:id/revoke` | `revokeKey` | SESSION-ONLY (class), API_KEYS_REVOKE_ANY |
+| `GET` | `/admin/service-tokens` | `tokens` | SESSION-ONLY (class), SERVICE_TOKENS_MANAGE |
+| `POST` | `/admin/service-tokens` | `mintToken` | SESSION-ONLY (class), SERVICE_TOKENS_MANAGE |
 | `POST` | `/admin/service-tokens/:id/revoke` | `revokeToken` | SESSION-ONLY (class), SERVICE_TOKENS_MANAGE |
 
 ### `credentials/api-keys.controller.ts` — base `/api-keys`
 
-| Verb   | Path                   | Handler  | Requires                              |
-| ------ | ---------------------- | -------- | ------------------------------------- |
-| `GET`  | `/api-keys`            | `mine`   | SESSION-ONLY (class), API_KEYS_MANAGE |
-| `POST` | `/api-keys`            | `mint`   | SESSION-ONLY (class), API_KEYS_MANAGE |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/api-keys` | `mine` | SESSION-ONLY (class), API_KEYS_MANAGE |
+| `POST` | `/api-keys` | `mint` | SESSION-ONLY (class), API_KEYS_MANAGE |
 | `POST` | `/api-keys/:id/revoke` | `revoke` | SESSION-ONLY (class), API_KEYS_MANAGE |
 
 ### `devices/devices.controller.ts` — base `/devices`
 
-| Verb     | Path           | Handler      | Requires             |
-| -------- | -------------- | ------------ | -------------------- |
-| `GET`    | `/devices`     | `list`       | _authenticated only_ |
-| `POST`   | `/devices`     | `register`   | SELF-SERVICE         |
-| `DELETE` | `/devices/:id` | `deactivate` | SELF-SERVICE         |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/devices` | `list` | _authenticated only_ |
+| `POST` | `/devices` | `register` | SELF-SERVICE |
+| `DELETE` | `/devices/:id` | `deactivate` | SELF-SERVICE |
 
 ### `health/health.controller.ts` — base `/`
 
-| Verb  | Path             | Handler  | Requires       |
-| ----- | ---------------- | -------- | -------------- |
-| `GET` | `/health`        | `live`   | PUBLIC (class) |
-| `GET` | `/ready`         | `ready`  | PUBLIC (class) |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/health` | `live` | PUBLIC (class) |
+| `GET` | `/ready` | `ready` | PUBLIC (class) |
 | `GET` | `/health/market` | `market` | PUBLIC (class) |
 
 ### `integrity/integrity.controller.ts` — base `/integrity`
 
-| Verb   | Path                            | Handler     | Requires         |
-| ------ | ------------------------------- | ----------- | ---------------- |
-| `GET`  | `/integrity/signals`            | `list`      | INTEGRITY_READ   |
-| `GET`  | `/integrity/signals/:id`        | `detail`    | INTEGRITY_READ   |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/integrity/signals` | `list` | INTEGRITY_READ |
+| `GET` | `/integrity/signals/:id` | `detail` | INTEGRITY_READ |
 | `POST` | `/integrity/signals/:id/status` | `setStatus` | INTEGRITY_MANAGE |
-| `POST` | `/integrity/scan/:accountId`    | `scan`      | INTEGRITY_MANAGE |
+| `POST` | `/integrity/scan/:accountId` | `scan` | INTEGRITY_MANAGE |
 
 ### `kyc/admin-kyc.controller.ts` — base `/admin/kyc`
 
-| Verb   | Path                                   | Handler    | Requires           |
-| ------ | -------------------------------------- | ---------- | ------------------ |
-| `GET`  | `/admin/kyc`                           | `queue`    | KYC_READ_ANY       |
-| `GET`  | `/admin/kyc/:id`                       | `one`      | KYC_READ_ANY       |
-| `GET`  | `/admin/kyc/:id/documents/:documentId` | `document` | KYC_DOCUMENTS_READ |
-| `POST` | `/admin/kyc/:id/claim`                 | `claim`    | KYC_REVIEW         |
-| `POST` | `/admin/kyc/:id/release`               | `release`  | KYC_REVIEW         |
-| `POST` | `/admin/kyc/:id/decide`                | `decide`   | KYC_REVIEW         |
-| `POST` | `/admin/kyc/:id/revoke`                | `revoke`   | KYC_REVIEW         |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/admin/kyc` | `queue` | KYC_READ_ANY |
+| `GET` | `/admin/kyc/:id` | `one` | KYC_READ_ANY |
+| `GET` | `/admin/kyc/:id/documents/:documentId` | `document` | KYC_DOCUMENTS_READ |
+| `POST` | `/admin/kyc/:id/claim` | `claim` | KYC_REVIEW |
+| `POST` | `/admin/kyc/:id/release` | `release` | KYC_REVIEW |
+| `POST` | `/admin/kyc/:id/decide` | `decide` | KYC_REVIEW |
+| `POST` | `/admin/kyc/:id/revoke` | `revoke` | KYC_REVIEW |
 
 ### `kyc/kyc.controller.ts` — base `/kyc`
 
-| Verb   | Path                   | Handler  | Requires   |
-| ------ | ---------------------- | -------- | ---------- |
-| `GET`  | `/kyc`                 | `mine`   | KYC_READ   |
-| `PUT`  | `/kyc/documents/:kind` | `upload` | KYC_SUBMIT |
-| `POST` | `/kyc/submit`          | `submit` | KYC_SUBMIT |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/kyc` | `mine` | KYC_READ |
+| `PUT` | `/kyc/documents/:kind` | `upload` | KYC_SUBMIT |
+| `POST` | `/kyc/submit` | `submit` | KYC_SUBMIT |
 
 ### `leadership/leadership.controller.ts` — base `/admin/leadership`
 
-| Verb  | Path                | Handler  | Requires                                |
-| ----- | ------------------- | -------- | --------------------------------------- |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
 | `GET` | `/admin/leadership` | `leases` | SESSION-ONLY (class), SYSTEM_OPERATIONS |
 
 ### `market/market.controller.ts` — base `/market`
 
-| Verb  | Path              | Handler      | Requires             |
-| ----- | ----------------- | ------------ | -------------------- |
-| `GET` | `/market/quotes`  | `quotes_`    | _authenticated only_ |
-| `GET` | `/market/stats`   | `stats`      | _authenticated only_ |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/market/quotes` | `quotes_` | _authenticated only_ |
+| `GET` | `/market/stats` | `stats` | _authenticated only_ |
 | `GET` | `/market/candles` | `candlesFor` | _authenticated only_ |
 
 ### `master/master-accounts.controller.ts` — base `/master-accounts`
 
-| Verb     | Path                                    | Handler  | Requires      |
-| -------- | --------------------------------------- | -------- | ------------- |
-| `GET`    | `/master-accounts`                      | `list`   | MASTER_READ   |
-| `GET`    | `/master-accounts/:id/links`            | `links`  | MASTER_READ   |
-| `GET`    | `/master-accounts/:id/desk`             | `desk`   | MASTER_READ   |
-| `POST`   | `/master-accounts`                      | `create` | MASTER_MANAGE |
-| `POST`   | `/master-accounts/:id/links`            | `grant`  | MASTER_MANAGE |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/master-accounts` | `list` | MASTER_READ |
+| `GET` | `/master-accounts/:id/links` | `links` | MASTER_READ |
+| `GET` | `/master-accounts/:id/desk` | `desk` | MASTER_READ |
+| `POST` | `/master-accounts` | `create` | MASTER_MANAGE |
+| `POST` | `/master-accounts/:id/links` | `grant` | MASTER_MANAGE |
 | `DELETE` | `/master-accounts/:id/links/:accountId` | `revoke` | MASTER_MANAGE |
 
 ### `metrics/metrics.controller.ts` — base `/metrics`
 
-| Verb  | Path       | Handler  | Requires       |
-| ----- | ---------- | -------- | -------------- |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
 | `GET` | `/metrics` | `scrape` | PUBLIC (class) |
 
 ### `notifications/notifications.controller.ts` — base `/notifications`
 
-| Verb    | Path                                   | Handler          | Requires             |
-| ------- | -------------------------------------- | ---------------- | -------------------- |
-| `GET`   | `/notifications`                       | `list`           | _authenticated only_ |
-| `GET`   | `/notifications/unread-count`          | `unread`         | _authenticated only_ |
-| `POST`  | `/notifications/:id/read`              | `read`           | SELF-SERVICE         |
-| `POST`  | `/notifications/read-all`              | `readAll`        | SELF-SERVICE         |
-| `GET`   | `/notifications/preferences`           | `preferencesFor` | _authenticated only_ |
-| `PATCH` | `/notifications/preferences`           | `updateSettings` | SELF-SERVICE         |
-| `PATCH` | `/notifications/preferences/:category` | `updateCategory` | SELF-SERVICE         |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/notifications` | `list` | _authenticated only_ |
+| `GET` | `/notifications/unread-count` | `unread` | _authenticated only_ |
+| `POST` | `/notifications/:id/read` | `read` | SELF-SERVICE |
+| `POST` | `/notifications/read-all` | `readAll` | SELF-SERVICE |
+| `GET` | `/notifications/preferences` | `preferencesFor` | _authenticated only_ |
+| `PATCH` | `/notifications/preferences` | `updateSettings` | SELF-SERVICE |
+| `PATCH` | `/notifications/preferences/:category` | `updateCategory` | SELF-SERVICE |
 
 ### `operations/operations.controller.ts` — base `/operations`
 
-| Verb   | Path                        | Handler        | Requires           |
-| ------ | --------------------------- | -------------- | ------------------ |
-| `GET`  | `/operations/summary`       | `summary`      | SYSTEM_OPERATIONS  |
-| `GET`  | `/operations/trading-state` | `tradingState` | SYSTEM_OPERATIONS  |
-| `POST` | `/operations/halt`          | `halt`         | SYSTEM_KILL_SWITCH |
-| `POST` | `/operations/resume`        | `resume`       | SYSTEM_KILL_SWITCH |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/operations/summary` | `summary` | SYSTEM_OPERATIONS |
+| `GET` | `/operations/trading-state` | `tradingState` | SYSTEM_OPERATIONS |
+| `POST` | `/operations/halt` | `halt` | SYSTEM_KILL_SWITCH |
+| `POST` | `/operations/resume` | `resume` | SYSTEM_KILL_SWITCH |
 
 ### `payments/admin-payments.controller.ts` — base `/admin/payments`
 
-| Verb   | Path                         | Handler  | Requires          |
-| ------ | ---------------------------- | -------- | ----------------- |
-| `GET`  | `/admin/payments`            | `list`   | PAYMENTS_READ_ANY |
-| `GET`  | `/admin/payments/:id/events` | `events` | PAYMENTS_READ_ANY |
-| `POST` | `/admin/payments/:id/settle` | `settle` | PAYMENTS_CONFIRM  |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/admin/payments` | `list` | PAYMENTS_READ_ANY |
+| `GET` | `/admin/payments/:id/events` | `events` | PAYMENTS_READ_ANY |
+| `POST` | `/admin/payments/:id/settle` | `settle` | PAYMENTS_CONFIRM |
 
 ### `payments/payments.controller.ts` — base `/payments`
 
-| Verb   | Path                  | Handler     | Requires        |
-| ------ | --------------------- | ----------- | --------------- |
-| `GET`  | `/payments/providers` | `available` | PAYMENTS_READ   |
-| `GET`  | `/payments`           | `mine`      | PAYMENTS_READ   |
-| `GET`  | `/payments/:id`       | `one`       | PAYMENTS_READ   |
-| `POST` | `/payments`           | `start`     | PAYMENTS_CREATE |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/payments/providers` | `available` | PAYMENTS_READ |
+| `GET` | `/payments` | `mine` | PAYMENTS_READ |
+| `GET` | `/payments/:id` | `one` | PAYMENTS_READ |
+| `POST` | `/payments` | `start` | PAYMENTS_CREATE |
 
 ### `payments/webhooks.controller.ts` — base `/webhooks/payments`
 
-| Verb   | Path                           | Handler   | Requires |
-| ------ | ------------------------------ | --------- | -------- |
-| `POST` | `/webhooks/payments/:provider` | `receive` | PUBLIC   |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `POST` | `/webhooks/payments/:provider` | `receive` | PUBLIC |
 
 ### `permissions/permissions.controller.ts` — base `/permissions`
 
-| Verb   | Path                            | Handler          | Requires             |
-| ------ | ------------------------------- | ---------------- | -------------------- |
-| `GET`  | `/permissions/me`               | `me`             | _authenticated only_ |
-| `GET`  | `/permissions/catalogue`        | `catalogue`      | ROLES_READ           |
-| `GET`  | `/permissions/roles`            | `list`           | ROLES_READ           |
-| `POST` | `/permissions/roles/:key/reset` | `reset`          | ROLES_MANAGE         |
-| `PUT`  | `/permissions/roles/:key`       | `setPermissions` | ROLES_MANAGE         |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/permissions/me` | `me` | _authenticated only_ |
+| `GET` | `/permissions/catalogue` | `catalogue` | ROLES_READ |
+| `GET` | `/permissions/roles` | `list` | ROLES_READ |
+| `POST` | `/permissions/roles/:key/reset` | `reset` | ROLES_MANAGE |
+| `PUT` | `/permissions/roles/:key` | `setPermissions` | ROLES_MANAGE |
 
 ### `reconciliation/reconciliation.controller.ts` — base `/reconciliation`
 
-| Verb   | Path                                  | Handler       | Requires              |
-| ------ | ------------------------------------- | ------------- | --------------------- |
-| `GET`  | `/reconciliation/runs`                | `runs`        | RECONCILIATION_READ   |
-| `GET`  | `/reconciliation/findings`            | `findings`    | RECONCILIATION_READ   |
-| `POST` | `/reconciliation/findings/:id/status` | `setStatus`   | RECONCILIATION_MANAGE |
-| `POST` | `/reconciliation/runs`                | `run`         | RECONCILIATION_RUN    |
-| `GET`  | `/reconciliation/items`               | `items`       | RECONCILIATION_READ   |
-| `POST` | `/reconciliation/external-runs`       | `runExternal` | RECONCILIATION_RUN    |
-| `POST` | `/reconciliation/resolutions`         | `resolve`     | RECONCILIATION_MANAGE |
-| `GET`  | `/reconciliation/resolutions`         | `resolutions` | RECONCILIATION_READ   |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/reconciliation/runs` | `runs` | RECONCILIATION_READ |
+| `GET` | `/reconciliation/findings` | `findings` | RECONCILIATION_READ |
+| `POST` | `/reconciliation/findings/:id/status` | `setStatus` | RECONCILIATION_MANAGE |
+| `POST` | `/reconciliation/runs` | `run` | RECONCILIATION_RUN |
+| `GET` | `/reconciliation/items` | `items` | RECONCILIATION_READ |
+| `POST` | `/reconciliation/external-runs` | `runExternal` | RECONCILIATION_RUN |
+| `POST` | `/reconciliation/resolutions` | `resolve` | RECONCILIATION_MANAGE |
+| `GET` | `/reconciliation/resolutions` | `resolutions` | RECONCILIATION_READ |
 
 ### `security/admin-security.controller.ts` — base `/admin/security`
 
-| Verb  | Path                      | Handler   | Requires      |
-| ----- | ------------------------- | --------- | ------------- |
-| `GET` | `/admin/security/events`  | `feed`    | SECURITY_READ |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/admin/security/events` | `feed` | SECURITY_READ |
 | `GET` | `/admin/security/summary` | `summary` | SECURITY_READ |
 
 ### `security/break-glass.controller.ts` — base `/security/break-glass`
 
-| Verb     | Path                         | Handler | Requires                                                 |
-| -------- | ---------------------------- | ------- | -------------------------------------------------------- |
-| `POST`   | `/security/break-glass`      | `open`  | SESSION-ONLY (class), SESSION-ONLY, SECURITY_BREAK_GLASS |
-| `DELETE` | `/security/break-glass/:id`  | `close` | SESSION-ONLY (class), SESSION-ONLY, SECURITY_BREAK_GLASS |
-| `GET`    | `/security/break-glass/mine` | `mine`  | SESSION-ONLY (class), SESSION-ONLY, SECURITY_BREAK_GLASS |
-| `GET`    | `/security/break-glass`      | `all`   | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS    |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `POST` | `/security/break-glass` | `open` | SESSION-ONLY (class), SESSION-ONLY, SECURITY_BREAK_GLASS |
+| `DELETE` | `/security/break-glass/:id` | `close` | SESSION-ONLY (class), SESSION-ONLY, SECURITY_BREAK_GLASS |
+| `GET` | `/security/break-glass/mine` | `mine` | SESSION-ONLY (class), SESSION-ONLY, SECURITY_BREAK_GLASS |
+| `GET` | `/security/break-glass` | `all` | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS |
+
+### `security/ip-rules.controller.ts` — base `/security/ip-rules`
+
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/security/ip-rules` | `list` | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS |
+| `POST` | `/security/ip-rules` | `create` | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS |
+| `POST` | `/security/ip-rules/:id/enabled` | `setEnabled` | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS |
+| `DELETE` | `/security/ip-rules/:id` | `remove` | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS |
 
 ### `security/security.controller.ts` — base `/security`
 
-| Verb  | Path               | Handler | Requires     |
-| ----- | ------------------ | ------- | ------------ |
-| `GET` | `/security/events` | `mine`  | SELF-SERVICE |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/security/events` | `mine` | SELF-SERVICE |
 
 ### `symbols/symbols.controller.ts` — base `/symbols`
 
-| Verb  | Path             | Handler | Requires             |
-| ----- | ---------------- | ------- | -------------------- |
-| `GET` | `/symbols`       | `list`  | _authenticated only_ |
-| `GET` | `/symbols/:code` | `get`   | _authenticated only_ |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/symbols` | `list` | _authenticated only_ |
+| `GET` | `/symbols/:code` | `get` | _authenticated only_ |
 
 ### `trading/trading.controller.ts` — base `/`
 
-| Verb     | Path                     | Handler         | Requires                                  |
-| -------- | ------------------------ | --------------- | ----------------------------------------- |
-| `POST`   | `/orders`                | `open`          | throttled, ORDERS_CREATE                  |
-| `POST`   | `/orders/preview`        | `preview`       | throttled, ORDERS_READ                    |
-| `POST`   | `/orders/pending`        | `placePending`  | throttled, ORDERS_CREATE                  |
-| `GET`    | `/orders/pending`        | `listPending`   | ORDERS_READ                               |
-| `PATCH`  | `/orders/:id`            | `modifyPending` | throttled, ORDERS_MODIFY                  |
-| `DELETE` | `/orders/:id`            | `cancelPending` | throttled, ORDERS_CANCEL                  |
-| `GET`    | `/orders`                | `list`          | ORDERS_READ                               |
-| `GET`    | `/orders/:id/events`     | `events`        | ORDERS_READ                               |
-| `GET`    | `/positions`             | `positionsFor`  | POSITIONS_READ                            |
-| `POST`   | `/positions/:id/close`   | `close`         | throttled, POSITIONS_CLOSE                |
-| `POST`   | `/positions/close-all`   | `closeAll`      | throttled, POSITIONS_CLOSE                |
-| `PATCH`  | `/positions/:id`         | `modify`        | throttled, POSITIONS_MODIFY               |
-| `POST`   | `/positions/:id/reverse` | `reverse`       | throttled, POSITIONS_CLOSE, ORDERS_CREATE |
-| `GET`    | `/trades`                | `trades`        | POSITIONS_READ                            |
-| `GET`    | `/accounts/:id/state`    | `state`         | ACCOUNTS_READ                             |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `POST` | `/orders` | `open` | throttled, ORDERS_CREATE |
+| `POST` | `/orders/preview` | `preview` | throttled, ORDERS_READ |
+| `POST` | `/orders/pending` | `placePending` | throttled, ORDERS_CREATE |
+| `GET` | `/orders/pending` | `listPending` | ORDERS_READ |
+| `PATCH` | `/orders/:id` | `modifyPending` | throttled, ORDERS_MODIFY |
+| `DELETE` | `/orders/:id` | `cancelPending` | throttled, ORDERS_CANCEL |
+| `GET` | `/orders` | `list` | ORDERS_READ |
+| `GET` | `/orders/:id/events` | `events` | ORDERS_READ |
+| `GET` | `/positions` | `positionsFor` | POSITIONS_READ |
+| `POST` | `/positions/:id/close` | `close` | throttled, POSITIONS_CLOSE |
+| `POST` | `/positions/close-all` | `closeAll` | throttled, POSITIONS_CLOSE |
+| `PATCH` | `/positions/:id` | `modify` | throttled, POSITIONS_MODIFY |
+| `POST` | `/positions/:id/reverse` | `reverse` | throttled, POSITIONS_CLOSE, ORDERS_CREATE |
+| `GET` | `/trades` | `trades` | POSITIONS_READ |
+| `GET` | `/accounts/:id/state` | `state` | ACCOUNTS_READ |
 
 ### `trading/venue-recovery.controller.ts` — base `/admin/venue-recovery`
 
-| Verb   | Path                                                 | Handler       | Requires                                        |
-| ------ | ---------------------------------------------------- | ------------- | ----------------------------------------------- |
-| `GET`  | `/admin/venue-recovery/unconfirmed`                  | `unconfirmed` | SESSION-ONLY (class), ACCOUNTS_READ_ANY         |
-| `POST` | `/admin/venue-recovery/run`                          | `run`         | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
-| `POST` | `/admin/venue-recovery/unconfirmed/:orderId/resolve` | `resolve`     | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/admin/venue-recovery/unconfirmed` | `unconfirmed` | SESSION-ONLY (class), ACCOUNTS_READ_ANY |
+| `POST` | `/admin/venue-recovery/run` | `run` | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
+| `POST` | `/admin/venue-recovery/unconfirmed/:orderId/resolve` | `resolve` | SESSION-ONLY (class), BROKER_CONNECTIONS_MANAGE |
 
 ### `users/users.controller.ts` — base `/users`
 
-| Verb    | Path        | Handler  | Requires             |
-| ------- | ----------- | -------- | -------------------- |
-| `GET`   | `/users/me` | `me`     | _authenticated only_ |
-| `PATCH` | `/users/me` | `update` | SELF-SERVICE         |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/users/me` | `me` | _authenticated only_ |
+| `PATCH` | `/users/me` | `update` | SELF-SERVICE |
 
 ### `wallet/admin-wallet.controller.ts` — base `/admin/wallets`
 
-| Verb   | Path                              | Handler        | Requires        |
-| ------ | --------------------------------- | -------------- | --------------- |
-| `GET`  | `/admin/wallets`                  | `forUser`      | WALLET_READ_ANY |
-| `GET`  | `/admin/wallets/:id/transactions` | `transactions` | WALLET_READ_ANY |
-| `POST` | `/admin/wallets/:id/adjustments`  | `adjust`       | WALLET_ADJUST   |
-| `POST` | `/admin/wallets/:id/status`       | `setStatus`    | WALLET_MANAGE   |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/admin/wallets` | `forUser` | WALLET_READ_ANY |
+| `GET` | `/admin/wallets/:id/transactions` | `transactions` | WALLET_READ_ANY |
+| `POST` | `/admin/wallets/:id/adjustments` | `adjust` | WALLET_ADJUST |
+| `POST` | `/admin/wallets/:id/status` | `setStatus` | WALLET_MANAGE |
 
 ### `wallet/wallet.controller.ts` — base `/wallet`
 
-| Verb   | Path                       | Handler        | Requires        |
-| ------ | -------------------------- | -------------- | --------------- |
-| `GET`  | `/wallet`                  | `mine`         | WALLET_READ     |
-| `GET`  | `/wallet/:id/transactions` | `transactions` | WALLET_READ     |
-| `POST` | `/wallet/transfer`         | `transfer`     | WALLET_TRANSFER |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/wallet` | `mine` | WALLET_READ |
+| `GET` | `/wallet/:id/transactions` | `transactions` | WALLET_READ |
+| `POST` | `/wallet/transfer` | `transfer` | WALLET_TRANSFER |
 
 ### `withdrawals/admin-withdrawals.controller.ts` — base `/admin/withdrawals`
 
-| Verb   | Path                                 | Handler       | Requires             |
-| ------ | ------------------------------------ | ------------- | -------------------- |
-| `GET`  | `/admin/withdrawals`                 | `queue`       | WITHDRAWALS_READ_ANY |
-| `GET`  | `/admin/withdrawals/:id`             | `one`         | WITHDRAWALS_READ_ANY |
-| `GET`  | `/admin/withdrawals/:id/destination` | `destination` | WITHDRAWALS_PAY      |
-| `POST` | `/admin/withdrawals/:id/claim`       | `claim`       | WITHDRAWALS_REVIEW   |
-| `POST` | `/admin/withdrawals/:id/release`     | `release`     | WITHDRAWALS_REVIEW   |
-| `POST` | `/admin/withdrawals/:id/decide`      | `decide`      | WITHDRAWALS_REVIEW   |
-| `POST` | `/admin/withdrawals/:id/payout`      | `startPayout` | WITHDRAWALS_PAY      |
-| `POST` | `/admin/withdrawals/:id/settle`      | `settle`      | WITHDRAWALS_PAY      |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/admin/withdrawals` | `queue` | WITHDRAWALS_READ_ANY |
+| `GET` | `/admin/withdrawals/:id` | `one` | WITHDRAWALS_READ_ANY |
+| `GET` | `/admin/withdrawals/:id/destination` | `destination` | WITHDRAWALS_PAY |
+| `POST` | `/admin/withdrawals/:id/claim` | `claim` | WITHDRAWALS_REVIEW |
+| `POST` | `/admin/withdrawals/:id/release` | `release` | WITHDRAWALS_REVIEW |
+| `POST` | `/admin/withdrawals/:id/decide` | `decide` | WITHDRAWALS_REVIEW |
+| `POST` | `/admin/withdrawals/:id/payout` | `startPayout` | WITHDRAWALS_PAY |
+| `POST` | `/admin/withdrawals/:id/settle` | `settle` | WITHDRAWALS_PAY |
 
 ### `withdrawals/withdrawals.controller.ts` — base `/withdrawals`
 
-| Verb   | Path                      | Handler   | Requires            |
-| ------ | ------------------------- | --------- | ------------------- |
-| `GET`  | `/withdrawals/terms`      | `terms`   | WITHDRAWALS_READ    |
-| `GET`  | `/withdrawals`            | `mine`    | WITHDRAWALS_READ    |
-| `GET`  | `/withdrawals/:id`        | `one`     | WITHDRAWALS_READ    |
-| `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
-| `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/withdrawals/terms` | `terms` | WITHDRAWALS_READ |
+| `GET` | `/withdrawals` | `mine` | WITHDRAWALS_READ |
+| `GET` | `/withdrawals/:id` | `one` | WITHDRAWALS_READ |
+| `POST` | `/withdrawals` | `request` | WITHDRAWALS_REQUEST |
+| `POST` | `/withdrawals/:id/cancel` | `cancel` | WITHDRAWALS_REQUEST |
 
-**207 routes:** 104 `GET`, 88 `POST`, 8 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**211 routes:** 105 `GET`, 90 `POST`, 9 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

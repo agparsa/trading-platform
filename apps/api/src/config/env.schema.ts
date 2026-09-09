@@ -360,6 +360,32 @@ export const envSchema = z
      * shift. Asking for longer is capped rather than refused: the person is
      * mid-incident and does not need an argument about a number.
      */
+    /**
+     * How many proxies at the right-hand end of `X-Forwarded-For` belong to
+     * this deployment.
+     *
+     * **Unset and zero are different, deliberately.** `X-Forwarded-For` is a
+     * header: anyone can send one, and trusting it blindly hands every caller a
+     * free choice of source address — precisely the control an IP allow-list is
+     * meant to be. So:
+     *
+     * - **unset** — this deployment has not said. The platform does not know
+     *   whether the socket address is a client or a proxy, treats it as
+     *   untrusted, and enforces no IP rule on it.
+     * - **`0`** — a deliberate "there is nothing in front of me". The socket
+     *   address is the client and is trusted.
+     * - **`n`** — n proxies this deployment owns append to the chain; the
+     *   client is the entry immediately to their left.
+     *
+     * There is no safe default for a value only the operator can know, so there
+     * is no default: an unset variable produces a control that is plainly off
+     * and says so, rather than one that looks on and admits everybody.
+     *
+     * This deployment runs behind two: a host nginx holding 80/443 and the
+     * stack's own nginx container. So production sets **2**.
+     */
+    TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(8).optional(),
+
     BREAK_GLASS_MAX_TTL_MS: z.coerce
       .number()
       .int()
