@@ -223,6 +223,7 @@ model Tenant {
   priceAlerts              PriceAlert[]
   reconciliationItems      ReconciliationItem[]
   resolutionRecords        ResolutionRecord[]
+  breakGlassGrants         BreakGlassGrant[]
 
   @@map("tenants")
 }
@@ -335,6 +336,8 @@ model User {
   tenant                   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   priceAlerts              PriceAlert[]
   resolutions              ResolutionRecord[]
+  breakGlassAsActor        BreakGlassGrant[]   @relation("BreakGlassActor")
+  breakGlassAsSubject      BreakGlassGrant[]   @relation("BreakGlassSubject")
 
   /// One address per tenant, not per platform: the same person may hold an account with two firms.
   @@unique([tenantId, email])
@@ -2445,6 +2448,10 @@ enum SecurityEventKind {
   USER_SUSPENDED
   USER_REINSTATED
   USER_UNLOCKED
+  /// Somebody with a reason looked through this person's eyes (§9). WARNING,
+  /// because it is the account owner's business and they are entitled to know.
+  BREAK_GLASS_OPENED
+  BREAK_GLASS_CLOSED
 }
 
 enum SecuritySeverity {
@@ -2999,4 +3006,81 @@ enum ResolutionDecision {
   UNDER_INVESTIGATION
   /// Escalated beyond the desk — to the venue, or to whoever owns the money.
   ESCALATED
+}
+
+/// What an impersonation grant permits.
+///
+/// `READ_ONLY` is the only value this platform will create today, and the guard
+/// refuses every non-GET request made under a grant regardless. `READ_WRITE`
+/// exists in the type because §9 describes it and truncating the vocabulary at
+/// the database boundary is how a column quietly becomes a lie — but a support
+/// person placing a trade as a customer needs controls a firm has to decide on
+/// (who approves, for how long, what is still forbidden), and inventing them
+/// here would be inventing a policy nobody agreed to.
+enum BreakGlassScope {
+  READ_ONLY
+  READ_WRITE
+}
+
+/// A member of staff, temporarily allowed to see what one trader sees (§9).
+///
+/// ## Why this is a grant and not a token
+///
+/// The obvious design is to mint an access token that says "you are the
+/// trader". It is the wrong one. Every downstream check would then see the
+/// trader, the audit trail would record the trader as the actor, and revoking
+/// mid-session would mean chasing a token that has already been issued.
+///
+/// So the staff member stays themselves for the whole session and carries this
+/// row instead. Revocation is an `UPDATE`. The audit trail always names the
+/// person who actually did it. And "may this person see that person's data" is
+/// a question asked per request against the database's clock, rather than a
+/// claim minted fifteen minutes ago and trusted since.
+///
+/// ## What a grant can never do
+///
+/// It cannot cross tenants — a broker's staff cannot reach the platform's users
+/// or another firm's traders. It cannot reach a subject who holds a permission
+/// the actor does not, which is what stops an administrator from using support
+/// tooling to become a super administrator. And it cannot outlive
+/// `BREAK_GLASS_MAX_TTL_MS`; a grant is an errand, not a mode somebody leaves
+/// switched on.
+model BreakGlassGrant {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  /// The member of staff. Always the actor in every audit row written under it.
+  actorId       String @map("actor_id") @db.Uuid
+  /// Whose data may be seen.
+  subjectUserId String @map("subject_user_id") @db.Uuid
+
+  /// Why. Required, and the database refuses a blank one — a break-glass with
+  /// no reason is the access nobody can review afterwards, which is the only
+  /// thing that makes this safe to have at all.
+  reason String
+  scope  BreakGlassScope @default(READ_ONLY)
+
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+
+  /// Set when somebody ends it early. A grant that has been used and closed is
+  /// a different record from one that ran out, and an investigator wants both.
+  endedAt       DateTime? @map("ended_at") @db.Timestamptz(6)
+  endedByUserId String?   @map("ended_by_user_id") @db.Uuid
+
+  /// How many requests were served under it. Zero means it was opened and never
+  /// used, which is worth being able to see.
+  uses Int @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor   User @relation("BreakGlassActor", fields: [actorId], references: [id], onDelete: Restrict)
+  subject User @relation("BreakGlassSubject", fields: [subjectUserId], references: [id], onDelete: Restrict)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  /// The sweep's query: this person's live grants.
+  @@index([actorId, expiresAt(sort: Desc)])
+  @@index([subjectUserId, createdAt(sort: Desc)])
+  @@index([tenantId])
+  @@map("break_glass_grants")
 }

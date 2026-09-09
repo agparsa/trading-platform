@@ -383,15 +383,28 @@ adapter interface exposes neither, and inventing the calls would be fabricating
 an API. All three wait on **a broker's API documentation and sandbox
 credentials**.
 
-## Phase 10 — Security and anti-abuse · ~2 weeks
+## Phase 10 — Security and anti-abuse · **in progress**
 
-Break-glass impersonation (§9): explicit permission, reason, time-limited,
-read-only by default, visible indicator, full audit. `SecurityEvent` feed and
-Security Centre (sessions, devices, IP history, 2FA, own audit, active keys).
-Fraud signals for request rate, duplicate ids, replay, timestamp skew, sequence
-anomalies, rapid cancel/replace, device and IP change (§46) with operator
-review and no automatic punishment. IP rules per tenant. The §72 security
-test list extended to the new surfaces.
+**Break-glass (§9) — done.** A grant, not a minted token: the staff member stays
+themselves, so the audit trail always names who actually did it and revocation
+is an `UPDATE` rather than chasing an issued token. Read-only enforced in the
+guard by refusing every non-GET request that carries a grant — one check, rather
+than a hope about which routes were remembered. Never across tenants, never
+upward, never on yourself, never without a reason the database also checks.
+Capped at `BREAK_GLASS_MAX_TTL_MS`, and the subject is told in their own
+security feed. Reviewed under `system.operations`, deliberately not under the
+permission that performs it. [break-glass.md](./break-glass.md).
+
+`READ_WRITE` is in the enum and refused: a support person trading as a customer
+needs controls a firm has to decide on, and inventing them would be inventing a
+policy nobody agreed to.
+
+**Still to do:** the Security Centre (sessions, devices, IP history, 2FA, own
+audit, active keys — the `SecurityEvent` feed exists, the rest does not); fraud
+signals for request rate, duplicate ids, replay, timestamp skew, sequence
+anomalies, rapid cancel/replace, device and IP change (§46), with operator
+review and no automatic punishment; IP rules per tenant; the §72 security test
+list extended to the new surfaces.
 
 ## Phase 11 — Mobile architecture · ~3 weeks · partly BLOCKED
 

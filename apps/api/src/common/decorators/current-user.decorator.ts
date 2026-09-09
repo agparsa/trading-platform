@@ -17,6 +17,35 @@ export interface AuthenticatedUser {
   /** How the caller authenticated. A handler that cares reads this; most need not. */
   readonly principal: 'session' | 'api_key' | 'service_token';
   readonly credentialId?: string;
+  /**
+   * A live break-glass grant, when this request presented one (§9).
+   *
+   * The caller is **still themselves** — `id`, `email` and `role` are the staff
+   * member's, and every audit row written under this request names them. This
+   * only says whose data they are permitted to look at, and only for reads:
+   * the guard refuses every non-GET request that carries a grant.
+   *
+   * Absent on almost every request, and a handler that does not know about it
+   * simply serves the staff member's own view — which is the safe default.
+   */
+  readonly viewingAs?: {
+    readonly grantId: string;
+    readonly userId: string;
+    readonly email: string;
+    readonly expiresAt: Date;
+  };
+}
+
+/**
+ * Whose data this request is about.
+ *
+ * The one helper every self-service read should use in place of `user.id`. A
+ * route that forgets it serves the staff member's own view rather than the
+ * subject's — wrong, but harmless. A route that reached for `viewingAs.userId`
+ * without checking would be the other kind of wrong.
+ */
+export function subjectOf(user: AuthenticatedUser): string {
+  return user.viewingAs?.userId ?? user.id;
 }
 
 /**

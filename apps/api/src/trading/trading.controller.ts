@@ -7,7 +7,11 @@ import { clientSkewMs } from './order-timeline';
 import { Permission } from '@tp/shared-types';
 import { rateLimits, RATE_LIMIT_WINDOW_MS } from '../config/env.schema';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
-import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  subjectOf,
+  type AuthenticatedUser,
+} from '../common/decorators/current-user.decorator';
 import { IdempotencyKey } from '../common/decorators/idempotency-key.decorator';
 import { IdempotencyService } from '../common/idempotency/idempotency.service';
 import { AccountAccessService } from '../accounts/account-access.service';
@@ -201,7 +205,7 @@ export class TradingController {
   @Get('orders/pending')
   @ApiOperation({ summary: 'Resting orders for an account' })
   listPending(@CurrentUser() user: AuthenticatedUser, @Query() query: AccountQueryDto) {
-    return this.orders.listPending(user.id, query.accountId);
+    return this.orders.listPending(subjectOf(user), query.accountId);
   }
 
   @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
@@ -243,21 +247,21 @@ export class TradingController {
   @Get('orders')
   @ApiOperation({ summary: 'Recent orders for an account' })
   list(@CurrentUser() user: AuthenticatedUser, @Query() query: ListQueryDto) {
-    return this.orders.listOrders(user.id, query.accountId, query.limit);
+    return this.orders.listOrders(subjectOf(user), query.accountId, query.limit);
   }
 
   @RequirePermissions(Permission.ORDERS_READ)
   @Get('orders/:id/events')
   @ApiOperation({ summary: 'Every recorded state change for one order' })
   events(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.orders.orderEvents(user.id, id);
+    return this.orders.orderEvents(subjectOf(user), id);
   }
 
   @RequirePermissions(Permission.POSITIONS_READ)
   @Get('positions')
   @ApiOperation({ summary: 'Positions for an account' })
   positionsFor(@CurrentUser() user: AuthenticatedUser, @Query() query: ListQueryDto) {
-    return this.positions.list(user.id, query.accountId, query.includeClosed, query.limit);
+    return this.positions.list(subjectOf(user), query.accountId, query.includeClosed, query.limit);
   }
 
   @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
@@ -341,7 +345,7 @@ export class TradingController {
   @Get('trades')
   @ApiOperation({ summary: 'Completed round trips, newest first' })
   trades(@CurrentUser() user: AuthenticatedUser, @Query() query: ListQueryDto) {
-    return this.positions.trades(user.id, query.accountId, query.limit);
+    return this.positions.trades(subjectOf(user), query.accountId, query.limit);
   }
 
   @RequirePermissions(Permission.ACCOUNTS_READ)
@@ -358,7 +362,7 @@ export class TradingController {
      * it. That worked, and it was one "remove the unused call" away from
      * turning this route into an IDOR with nothing in the diff to notice.
      */
-    await this.access.resolve(user.id, id, Permission.ACCOUNTS_READ);
+    await this.access.resolve(subjectOf(user), id, Permission.ACCOUNTS_READ);
     const valuation = await this.accountState.valuate(id);
     // The snapshot carries realized P&L; the tick-driven frames do not, because
     // nothing about realized P&L changes on a tick. See account-state.service.

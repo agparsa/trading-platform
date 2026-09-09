@@ -351,6 +351,22 @@ export const envSchema = z
      */
     PRICE_ALERT_SWEEP_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1_000),
 
+    /**
+     * The longest a break-glass grant may live, whatever anybody asks for.
+     *
+     * A grant is an errand, not a mode somebody leaves switched on. An hour is
+     * long enough to work through a customer's problem with them on the phone
+     * and short enough that a forgotten one closes itself before the end of the
+     * shift. Asking for longer is capped rather than refused: the person is
+     * mid-incident and does not need an argument about a number.
+     */
+    BREAK_GLASS_MAX_TTL_MS: z.coerce
+      .number()
+      .int()
+      .min(60_000)
+      .max(8 * 60 * 60 * 1000)
+      .default(60 * 60 * 1000),
+
     LEADER_LEASE_TTL_MS: z.coerce.number().int().min(2_000).max(300_000).default(10_000),
     /**
      * How often the holder renews. A third of the TTL, so two consecutive

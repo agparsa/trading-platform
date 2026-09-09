@@ -1,13 +1,20 @@
 import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { looksLikeCredential } from '@tp/crypto-core';
-import { DomainError, TradingErrorCode } from '@tp/shared-types';
+import {
+  DomainError,
+  Permission,
+  roleHasPermissions,
+  TradingErrorCode,
+  type UserRole,
+} from '@tp/shared-types';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { SELF_SERVICE_KEY } from '../decorators/self-service.decorator';
 import { SESSION_ONLY_KEY } from '../decorators/session-only.decorator';
 import { TokenService } from '../../auth/token.service';
 import { CredentialsService } from '../../credentials/credentials.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { BreakGlassService } from '../../security/break-glass.service';
 import { noteActor } from '../request-scope';
 import type { RequestWithContext } from '../request-context';
 import { currentTenant } from '@tp/tenancy';
@@ -44,6 +51,7 @@ export class BearerAuthGuard implements CanActivate {
     private readonly tokens: TokenService,
     private readonly prisma: PrismaService,
     @Inject(CredentialsService) private readonly credentials: CredentialsService,
+    @Inject(BreakGlassService) private readonly breakGlass: BreakGlassService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -132,6 +140,72 @@ export class BearerAuthGuard implements CanActivate {
       principal: 'session',
     };
     noteActor(request.user.id);
+
+    await this.attachBreakGlass(request, user.role);
     return true;
+  }
+
+  /**
+   * A break-glass grant, if this request presented one (§9).
+   *
+   * Opt-in **per request**, by header, and that is the point: a staff member
+   * browsing normally cannot accidentally be looking at somebody else's data,
+   * because looking at somebody else's data takes an explicit act on every
+   * single request.
+   *
+   * Three refusals happen here rather than in the service:
+   *
+   *   1. **No permission, no grant.** Presenting one without
+   *      `security.break_glass` is refused outright rather than ignored — a
+   *      caller who has had the permission taken away needs to be told, not
+   *      quietly served their own view while they believe they are seeing
+   *      somebody else's.
+   *   2. **Reads only.** Every non-GET request carrying a grant is refused,
+   *      whatever the grant says. This is the one check that makes "read-only
+   *      by default" a property of the system rather than a hope about which
+   *      routes were remembered.
+   *   3. **Sessions only.** A grant on an API key or service token is refused
+   *      before this point — the credential path returns above and never gets
+   *      here. A long-lived secret must not be able to read a trader's private
+   *      view.
+   *
+   * A grant that is expired, ended, or somebody else's resolves to nothing and
+   * the request proceeds as the staff member. That degradation is deliberate:
+   * a stale grant id in a browser tab should show the operator their own screen,
+   * not a wall of errors.
+   */
+  private async attachBreakGlass(
+    request: RequestWithContext,
+    role: UserRole,
+  ): Promise<void> {
+    const grantId = request.header('x-break-glass')?.trim();
+    if (grantId === undefined || grantId === '') return;
+
+    if (!roleHasPermissions(role, [Permission.SECURITY_BREAK_GLASS])) {
+      throw new DomainError(
+        TradingErrorCode.FORBIDDEN,
+        'You may not open a break-glass session',
+      );
+    }
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      throw new DomainError(
+        TradingErrorCode.FORBIDDEN,
+        'A break-glass session may look and may not touch',
+        { method: request.method },
+      );
+    }
+
+    const grant = await this.breakGlass.resolve(request.user!.id, grantId);
+    if (grant === null) return;
+
+    request.user = {
+      ...request.user!,
+      viewingAs: {
+        grantId: grant.id,
+        userId: grant.subjectUserId,
+        email: grant.subjectEmail,
+        expiresAt: grant.expiresAt,
+      },
+    };
   }
 }

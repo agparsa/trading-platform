@@ -266,6 +266,15 @@ export const Permission = {
   // --- system ---
   SYSTEM_KILL_SWITCH: 'system.kill_switch',
   SYSTEM_OPERATIONS: 'system.operations',
+  /**
+   * Open a break-glass grant and see one trader's own view of the platform (§9).
+   *
+   * Its own permission, held by nobody by default — not implied by being an
+   * administrator, because "can manage the firm" and "can look through a
+   * customer's eyes" are different powers and a firm should have to decide the
+   * second one deliberately. Granting it to a role is that decision.
+   */
+  SECURITY_BREAK_GLASS: 'security.break_glass',
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
 
@@ -330,6 +339,21 @@ const TRADER: readonly Permission[] = [
  * administrator (this plus the platform's brokers).
  */
 const ADMIN_PERMISSIONS: readonly Permission[] = [
+  /**
+   * Break-glass lives with the administrator, and deliberately **not** with
+   * SUPPORT.
+   *
+   * Support is who needs it day to day, which is exactly the argument for not
+   * giving it to them by default: "anyone on the support rota can look through
+   * any customer's eyes" is a different security posture from "a named senior
+   * person can, with a reason, for an hour". A firm that wants the first should
+   * decide it on purpose.
+   *
+   * It sits on the *tenant's* administrator rather than the platform's because
+   * a grant cannot cross tenants — a platform-only permission would be useless
+   * for the case it exists for, which is a broker supporting its own trader.
+   */
+  Permission.SECURITY_BREAK_GLASS,
   Permission.ACCOUNTS_READ,
   Permission.ACCOUNTS_READ_ANY,
   Permission.ACCOUNTS_MANAGE,
@@ -921,6 +945,13 @@ export const PERSON_ONLY_PERMISSIONS: readonly Permission[] = [
    * be able to repoint a firm's execution at a venue of its holder's choosing.
    */
   Permission.BROKER_CONNECTIONS_MANAGE,
+  /**
+   * Break-glass is a person looking through a customer's eyes, with a reason
+   * somebody can be asked about afterwards. A key in a config file has no eyes
+   * and cannot be asked anything, and a long-lived secret that can read any
+   * trader's private view is the single worst thing to leave in a `.env`.
+   */
+  Permission.SECURITY_BREAK_GLASS,
 ];
 
 /** What an API key may carry: everything a person may hold that is not person-only. */

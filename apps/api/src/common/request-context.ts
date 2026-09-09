@@ -35,6 +35,19 @@ export interface RequestPrincipal {
   /** Set for a key or token; absent for a session, whose capabilities are its role's. */
   credentialId?: string;
   permissions?: ReadonlySet<string>;
+  /**
+   * A live break-glass grant, when this request presented one (§9).
+   *
+   * The principal is still the staff member — this only says whose data they
+   * are permitted to *read*, and the guard refuses every non-GET request that
+   * carries a grant.
+   */
+  viewingAs?: {
+    grantId: string;
+    userId: string;
+    email: string;
+    expiresAt: Date;
+  };
 }
 
 /**

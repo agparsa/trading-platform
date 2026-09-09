@@ -334,6 +334,15 @@ handler is responsible for scoping the result to that user — which for
 | `GET` | `/admin/security/events`  | `feed`    | SECURITY_READ |
 | `GET` | `/admin/security/summary` | `summary` | SECURITY_READ |
 
+### `security/break-glass.controller.ts` — base `/security/break-glass`
+
+| Verb     | Path                         | Handler | Requires                                                 |
+| -------- | ---------------------------- | ------- | -------------------------------------------------------- |
+| `POST`   | `/security/break-glass`      | `open`  | SESSION-ONLY (class), SESSION-ONLY, SECURITY_BREAK_GLASS |
+| `DELETE` | `/security/break-glass/:id`  | `close` | SESSION-ONLY (class), SESSION-ONLY, SECURITY_BREAK_GLASS |
+| `GET`    | `/security/break-glass/mine` | `mine`  | SESSION-ONLY (class), SESSION-ONLY, SECURITY_BREAK_GLASS |
+| `GET`    | `/security/break-glass`      | `all`   | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS    |
+
 ### `security/security.controller.ts` — base `/security`
 
 | Verb  | Path               | Handler | Requires     |
@@ -422,7 +431,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**203 routes:** 102 `GET`, 87 `POST`, 7 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**207 routes:** 104 `GET`, 88 `POST`, 8 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

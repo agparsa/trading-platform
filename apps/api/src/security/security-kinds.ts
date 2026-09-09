@@ -57,6 +57,15 @@ export const SECURITY_KINDS: Readonly<Record<string, SecurityKind>> = {
   'user.suspended': { kind: 'USER_SUSPENDED', severity: 'WARNING', subject: 'resource' },
   'user.reinstated': { kind: 'USER_REINSTATED', severity: 'NOTICE', subject: 'resource' },
   'user.unlocked': { kind: 'USER_UNLOCKED', severity: 'NOTICE', subject: 'resource' },
+  /**
+   * `resource`, so the event lands in the *subject's* feed rather than the
+   * staff member's. "Somebody looked at your account" is a thing the account
+   * owner is entitled to know, and a break-glass nobody outside the room can
+   * see is indistinguishable from snooping. The feed answers "what happened to
+   * my account", not "what did I do".
+   */
+  BREAK_GLASS_OPENED: { kind: 'BREAK_GLASS_OPENED', severity: 'WARNING', subject: 'resource' },
+  BREAK_GLASS_CLOSED: { kind: 'BREAK_GLASS_CLOSED', severity: 'INFO', subject: 'resource' },
 };
 
 /** Audit resource types that name a person. Case varies by author; the check does not. */
