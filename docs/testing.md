@@ -213,7 +213,7 @@ a stale binary is the worst failure mode there is.
   minted from the security page is shown once and never again. Set
   `PLAYWRIGHT_CHROMIUM_PATH` where Chromium is provisioned outside Playwright's
   own download.
-- `pnpm pentest` — 42 attacks attempted against the compiled binary; an attack
+- `pnpm pentest` — 59 attacks attempted against the compiled binary; an attack
   that succeeds fails the run. It was itself tested by breaking the API four
   times to see whether the probes noticed — two did not, and both gaps are now
   closed. Three of the attacks aim at the money path: confirming your own

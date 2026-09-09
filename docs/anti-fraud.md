@@ -122,6 +122,19 @@ number on an order, and the venue sequence on `BrokerInboundEvent` is the
 venue's ordering, not a client's. Building a detector over an identifier this
 platform does not receive would be fabricating one.
 
+**Request rate, duplicate ids and replay** — the remaining §46 signals — are
+each handled by the layer that owns them, and a second copy here would be a
+second definition of the same check. Request rate is the API rate limiter,
+which since the client-address work counts per caller rather than per proxy,
+and `ORDER_BURST` above for the order path specifically. Duplicate ids are
+`DUPLICATE_ORDER_ATTEMPTS`. Replay is what idempotency keys exist to absorb: a
+retry with the same key and body is served the stored answer, and one with a
+different body is refused with `IDEMPOTENCY_KEY_CONFLICT`. Raising a signal on
+that refusal was considered and rejected — an attacker who holds a request and
+its bearer token does not need to replay anything, so the conflict is in
+practice always a client bug, and a detector that fires on bugs is noise the
+operator learns to dismiss.
+
 A detector that cannot fire is worse than an absent one: it looks like coverage
 on a dashboard and quietly reassures everybody.
 

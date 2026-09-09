@@ -19,6 +19,11 @@ who knows what the system is supposed to refuse.
 
 ## What is attempted
 
+Fifty-nine attacks, grouped by what the attacker is trying to be. The number is
+held equal to the script's own `attack:` labels by
+`scripts/pentest-checklist.test.ts`, so adding a probe without saying so here
+fails the gate.
+
 **Getting in without credentials**
 
 - Reach `/accounts`, `/positions`, `/orders`, `/auth/sessions` with no token.
@@ -29,26 +34,68 @@ who knows what the system is supposed to refuse.
   `2fa`, `session`, empty) — and present an access token as a sign-in challenge.
 - Replay a refresh token that has already been rotated, and check the whole family
   is revoked rather than just that token.
+- Guess a password repeatedly until the account locks, then confirm the _correct_
+  password is also refused while locked.
+- Mint yourself an invitation, or register on a code you invented.
 
-**Reaching another account**
+**Reaching another person**
 
 - Read another user's account, ledger, settings and state by id.
-- Open a position on another user's account.
-- Close another user's position.
-- End another user's session.
+- Open a position on another user's account; close another user's position;
+  flatten another trader's account with one call.
+- End another user's session; change another user's account state.
+- Move money out of another person's wallet; withdraw from somebody else's wallet,
+  or approve your own withdrawal.
+- Read another person's payments and the events behind them; another person's
+  identity documents; another person's security feed; another trader's chart
+  layouts; another trader's price alerts.
+- Read where an account has signed in from with a machine credential, or
+  anonymously.
+- Delegate someone else's account to yourself, or raise a ceiling set above you.
+
+**Reaching another firm**
+
+- Reach one firm's data with another firm's token — every scoped table, by id
+  and by list, and the tenant's own settings.
+- Run the platform from a broker: create or list brokers with a broker's token.
 
 **Becoming somebody more important**
 
-- Put `role: ADMIN` in a profile update.
-- Put `role: ADMIN` in a registration.
+- Put `role: ADMIN` in a profile update; put it in a registration.
+- Give a role a capability the administrator editing it does not hold; edit what
+  a role may do with an ordinary trader token; give yourself, or any role, the
+  power to both create money and pay it out.
+- Read every user on the platform with an ordinary trader token; read the whole
+  firm's book as a trader, or decide when the venue trades.
+- Close a reconciliation finding on the permission to read one; read or resolve
+  the firm's reconciliation discrepancies as a trader.
+- Read who leads the trading loops, or hand leadership somewhere else.
 - Pollute `Object.prototype` through `__proto__` and `constructor.prototype` in a
   JSON body.
+
+**Using a credential for more than it was minted for**
+
+- Do more with a stolen API key than it was minted for.
+- Mint a service token that can trade, or use one where a person must be.
+- Use a break-glass grant to write, or to look without the permission; open a
+  break-glass session with no reason, or on yourself.
+- Read or rewrite the firm's IP rules as a trader, or with a machine credential.
+- Choose your own source address with `X-Forwarded-For`.
+
+**Making the money move**
+
+- Credit your own wallet with the administrative endpoint.
+- Confirm your own deposit and credit yourself.
+- Credit a payment by posting a webhook nobody signed.
+- Credit an account by calling the adjustment endpoint directly.
+- Record a decision about the money with no reason for it.
 
 **Making the database do the work**
 
 - SQL injection through the login email (`' OR '1'='1`, `'; DROP TABLE users; --`,
   a `UNION SELECT`), with a row count either side.
 - SQL injection through a path parameter and a query string.
+- Edit or erase the audit trail from SQL.
 
 **Reading what should not be readable**
 
@@ -58,18 +105,15 @@ who knows what the system is supposed to refuse.
   `PrismaClient`, `SELECT`, a connection string, a filesystem path.
 - Read the server and framework version from response headers, and confirm the
   security headers are present.
+- Read or replace a venue credential — nothing brings one back, ever.
+- Store something that is not a document, wearing an image content type.
 
-**Trading logic**
+**Trading and venue logic**
 
 - Open a position with a negative, zero, `NaN`, `Infinity` or absurd volume — and
   confirm the balance did not move on the rejections.
 - Reuse an idempotency key with a different order body.
-
-**Grinding**
-
-- Guess a password repeatedly until the account locks, then confirm the _correct_
-  password is also refused while locked. A lockout that lets the right password
-  through only delays a guesser.
+- Redirect an instrument to another venue contract, or rewrite what a venue said.
 
 ## The checklist was itself tested by breaking the system
 

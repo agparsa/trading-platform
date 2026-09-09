@@ -383,7 +383,7 @@ adapter interface exposes neither, and inventing the calls would be fabricating
 an API. All three wait on **a broker's API documentation and sandbox
 credentials**.
 
-## Phase 10 — Security and anti-abuse · **in progress**
+## Phase 10 — Security and anti-abuse · **done**
 
 **Break-glass (§9) — done.** A grant, not a minted token: the staff member stays
 themselves, so the audit trail always names who actually did it and revocation
@@ -427,9 +427,17 @@ whether a session there is still open — sign-ins counted as rotation families,
 not token rows. A separate device registry and a raw own-audit view are
 deliberately absent, with reasons. [security-centre.md](./security-centre.md).
 
-**Still to do:** the remaining fraud signals — request rate, duplicate ids,
-replay, timestamp skew, sequence anomalies — with operator review and no
-automatic punishment; the §72 security test list extended to the new surfaces.
+**The remaining §46 signals — accounted for, not built.** Request rate is the
+rate limiter (now per caller) and `ORDER_BURST`; duplicate ids are
+`DUPLICATE_ORDER_ATTEMPTS`; replay is what idempotency keys absorb, and a signal
+on a body-mismatch conflict would fire on client bugs. Reasons in
+[anti-fraud.md](./anti-fraud.md).
+
+**The §72 security test list — brought up to date.** The penetration checklist
+now enumerates all 59 attacks the script runs, grouped by what the attacker is
+trying to be; it said 42. [penetration-checklist.md](./penetration-checklist.md).
+
+Phase 10 is **complete** for what this environment can verify.
 
 ## Phase 11 — Mobile architecture · ~3 weeks · partly BLOCKED
 
