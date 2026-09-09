@@ -9,6 +9,7 @@ export {
   mintCredential,
   parseCredential,
   looksLikeCredential,
+  CREDENTIAL_PREFIX,
   hashCredentialSecret,
   credentialMatches,
   HANDLE_LENGTH,

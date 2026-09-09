@@ -19,7 +19,7 @@ who knows what the system is supposed to refuse.
 
 ## What is attempted
 
-Sixty attacks, grouped by what the attacker is trying to be. The number is
+Sixty-one attacks, grouped by what the attacker is trying to be. The number is
 held equal to the script's own `attack:` labels by
 `scripts/pentest-checklist.test.ts`, so adding a probe without saying so here
 fails the gate.
@@ -51,6 +51,8 @@ fails the gate.
   layouts; another trader's price alerts.
 - Read where an account has signed in from with a machine credential, or
   anonymously.
+- Enumerate every route the API serves — the OpenAPI document — anonymously, or
+  with a machine credential.
 - Delegate someone else's account to yourself, or raise a ceiling set above you.
 
 **Reaching another firm**

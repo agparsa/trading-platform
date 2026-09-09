@@ -603,7 +603,41 @@ async function main(): Promise<void> {
       verificationBody.slice(0, 300),
     );
     await visit(page, '/history', { url: '/history', text: /Trades/i });
+
+    /**
+     * The developer reference is fetched, not typed: the route list comes from
+     * the OpenAPI document the server built at boot. So the check is that a
+     * route which certainly exists is listed, and that the page shows the
+     * signature header the worker actually sends.
+     */
+    await visit(page, '/developer', { url: '/developer', text: /Conventions/i });
+    let reference = '';
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      reference = await page.getByTestId('developer-reference').innerText();
+      if (/\/auth\/sessions/.test(reference) && /x-signature/i.test(reference)) break;
+      await page.waitForTimeout(500);
+    }
+    ok(
+      /\/auth\/sessions/.test(reference) && /x-signature/i.test(reference),
+      'the developer reference lists real routes and the real signature header',
+      reference.replace(/\s+/g, ' ').slice(0, 200),
+    );
+
     await visit(page, '/security', { url: '/security', text: /Two-factor/i });
+    /**
+     * Where the account has been signed in from: this very session, at least.
+     */
+    let addresses = '';
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      addresses = await page.getByTestId('addresses').innerText();
+      if (/sign-in/i.test(addresses)) break;
+      await page.waitForTimeout(500);
+    }
+    ok(
+      /you, now/i.test(addresses),
+      'the security page shows where the account has signed in from, and marks this session’s address',
+      addresses.replace(/\s+/g, ' ').slice(0, 200),
+    );
     /**
      * A key, minted through the page. The secret appears once, in a box the
      * page marks, and nothing else on the page carries it afterwards — which

@@ -185,6 +185,13 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/api-keys`            | `mint`   | SESSION-ONLY (class), API_KEYS_MANAGE |
 | `POST` | `/api-keys/:id/revoke` | `revoke` | SESSION-ONLY (class), API_KEYS_MANAGE |
 
+### `developer/developer.controller.ts` — base `/developer`
+
+| Verb  | Path                      | Handler       | Requires     |
+| ----- | ------------------------- | ------------- | ------------ |
+| `GET` | `/developer/openapi.json` | `openApi`     | SELF-SERVICE |
+| `GET` | `/developer/conventions`  | `conventions` | SELF-SERVICE |
+
 ### `devices/devices.controller.ts` — base `/devices`
 
 | Verb     | Path           | Handler      | Requires             |
@@ -454,7 +461,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**220 routes:** 109 `GET`, 94 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**222 routes:** 111 `GET`, 94 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

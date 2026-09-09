@@ -10,6 +10,7 @@ import { API_VERSION } from '@tp/shared-types';
 import { AppModule } from './app.module';
 import { corsOrigins, Env } from './config/env.schema';
 import { requestContext } from './common/request-context';
+import { OpenApiDocumentService } from './developer/openapi-document.service';
 import { ApiResponseInterceptor } from './common/api-response.interceptor';
 import { DomainExceptionFilter } from './common/domain-exception.filter';
 
@@ -68,18 +69,26 @@ async function bootstrap(): Promise<void> {
   app.useGlobalInterceptors(new ApiResponseInterceptor());
   app.useGlobalFilters(new DomainExceptionFilter());
 
+  /**
+   * The OpenAPI document is built in every environment and handed to the
+   * developer reference, which serves it behind authentication. Swagger's own
+   * UI mounts on Express outside Nest's guards, so it stays a development
+   * convenience: in production the whole route surface is not for anybody who
+   * can reach the host.
+   */
+  const document = SwaggerModule.createDocument(
+    app,
+    new DocumentBuilder()
+      .setTitle('Trading Platform API')
+      .setDescription(
+        'Order, position and market endpoints. Every mutation requires an Idempotency-Key header.',
+      )
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .build(),
+  );
+  app.get(OpenApiDocumentService).set(document);
   if (!isProduction) {
-    const document = SwaggerModule.createDocument(
-      app,
-      new DocumentBuilder()
-        .setTitle('Trading Platform API')
-        .setDescription(
-          'Order, position and market endpoints. Every mutation requires an Idempotency-Key header.',
-        )
-        .setVersion('0.1.0')
-        .addBearerAuth()
-        .build(),
-    );
     SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs/openapi.json' });
   }
 

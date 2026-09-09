@@ -32,10 +32,12 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
  */
 export type CredentialKind = 'api_key' | 'service_token';
 
-const PREFIX: Record<CredentialKind, string> = {
+/** Exported so documentation states the prefixes the code actually mints. */
+export const CREDENTIAL_PREFIX: Readonly<Record<CredentialKind, string>> = {
   api_key: 'tpk',
   service_token: 'tps',
 };
+const PREFIX = CREDENTIAL_PREFIX;
 const KIND_BY_PREFIX: Record<string, CredentialKind> = {
   tpk: 'api_key',
   tps: 'service_token',

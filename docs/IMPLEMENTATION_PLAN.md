@@ -448,7 +448,7 @@ states, biometric unlock (Keychain / Keystore), haptics, confirmations (§56).
 **BLOCKED for acceptance (§105)** on a physical device; iOS additionally on
 macOS, Xcode and a signing key — none of which this environment has.
 
-## Phase 12 — Broker API, webhooks, developer portal · **in progress**
+## Phase 12 — Broker API, webhooks, developer portal · **done** (two items wait on producers)
 
 **Webhooks (§49) — done.** `WebhookEndpoint` and `WebhookDelivery`; payloads
 signed `t=…,v1=hmac-sha256` over the timestamp and the raw bytes, so a captured
@@ -465,10 +465,16 @@ pinned to the one that passed — DNS rebinding defeated, redirects never
 followed. `/admin/webhooks` with the secret shown once. Person-only
 `webhooks.manage`. [webhooks.md](./webhooks.md).
 
-**Still to do:** the API documentation page from the OpenAPI the API already
-serves; `reconciliation.mismatch` and `security.alert` once their producers
-write outbox rows; service-token writes once the audit model has a service
-actor.
+**The developer reference — done.** `/developer` renders the OpenAPI document
+the API builds at boot and the conventions (signature header, credential
+prefixes, keyable capabilities) from the constants that enforce them — fetched,
+never typed, so it cannot drift. Behind a session; Swagger's own UI, which
+mounts outside the guards, stays out of production and a test pins the `if`.
+[developer-reference.md](./developer-reference.md).
+
+**Still to do:** `reconciliation.mismatch` and `security.alert` once their
+producers write outbox rows; service-token writes once the audit model has a
+service actor.
 
 ## Phase 13 — Observability, load, failure injection · ~2 weeks
 

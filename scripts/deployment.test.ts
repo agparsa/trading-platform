@@ -977,3 +977,21 @@ describe('scripts/first-administrator.sh', () => {
     expect(read('apps/api/src/cli/first-administrator.ts')).not.toMatch(/user\.create\(/);
   });
 });
+
+describe('the API document in production', () => {
+  /**
+   * Swagger's UI mounts on Express, outside Nest's guards: whoever can reach
+   * the host can read every route. The document itself is served behind
+   * authentication by `/developer/openapi.json`; the UI must stay a
+   * development convenience. This pins the `if` that keeps it one.
+   */
+  it('mounts the Swagger UI only outside production', () => {
+    const main = read('apps/api/src/main.ts');
+    const setup = main.indexOf('SwaggerModule.setup(');
+    expect(setup).toBeGreaterThan(0);
+    const guard = main.lastIndexOf('if (!isProduction)', setup);
+    expect(guard).toBeGreaterThan(0);
+    // The guard is the nearest enclosing block: no closing brace between it and the setup call.
+    expect(main.slice(guard, setup)).not.toMatch(/\n\s*}\n/);
+  });
+});

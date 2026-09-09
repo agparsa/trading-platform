@@ -14,6 +14,7 @@ const SECTIONS = [
   { href: '/verification', label: 'Verification' },
   { href: '/history', label: 'History' },
   { href: '/security', label: 'Security' },
+  { href: '/developer', label: 'Developer' },
   { href: '/settings', label: 'Settings' },
 ] as const;
 

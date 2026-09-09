@@ -29,6 +29,7 @@ import { CredentialsModule } from './credentials/credentials.module';
 import { BrokersModule } from './brokers/brokers.module';
 import { SecurityModule } from './security/security.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { DeveloperModule } from './developer/developer.module';
 import { BrokerConnectionsModule } from './broker-connections/broker-connections.module';
 import { OutboxModule } from './outbox/outbox.module';
 import { ChartsModule } from './charts/charts.module';
@@ -124,6 +125,7 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
     BrokersModule,
     SecurityModule,
     WebhooksModule,
+    DeveloperModule,
     BrokerConnectionsModule,
     OutboxModule,
     ChartsModule,
