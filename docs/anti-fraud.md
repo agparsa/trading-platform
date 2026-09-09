@@ -86,16 +86,44 @@ orders" depends on the desk, the instrument and the hour.
 - **Rapid open-close is `LOW`.** It is what scalping looks like from the outside,
   and scalping is a strategy rather than an offence.
 
+- **Rapid cancel/replace is counted per order, not per account.** Twenty
+  amendments spread over twenty orders is a busy desk; twenty on one order is
+  somebody doing something to that order, and only the second is worth a
+  person's time. It also ignores `MODIFY_REQUESTED` without a `MODIFIED`: an
+  amendment the engine refused is not churn on the book, and counting it would
+  report a broken client as an integrity concern.
+
 ### What is not detected, and why
 
-The specification also lists client/server clock anomalies, reconnect anomalies,
-market-data sequence anomalies, and execution/ledger mismatches.
+§46 also lists client/server clock anomalies, market-data sequence anomalies,
+device and IP change, and execution/ledger mismatches.
 
-The last is [reconciliation](./reconciliation.md), which does it properly and
-should not be done twice. The others need telemetry this platform does not
-collect yet — client timestamps arrive with §50's order-latency work. A detector
-that cannot fire is worse than an absent one: it looks like coverage on a
-dashboard and quietly reassures everybody.
+**Execution/ledger mismatch** is [reconciliation](./reconciliation.md), which
+does it properly and should not be done twice.
+
+**Device and IP change** is already detected, and is in the _security_ feed
+rather than here: `SIGN_IN_NEW_DEVICE` carries the address and the user agent
+and reaches the account owner. Duplicating it as an integrity signal would put
+one event in two queues with two review states, and the account owner is the
+person best placed to say whether a new device is theirs.
+
+**Clock skew** is recorded but deliberately not a detector.
+`tp_client_clock_skew_seconds` (§50) is an _aggregate_: a population whose skew
+moves together is a real signal and is visible on the dashboard. Turning it into
+a per-account detector would mean storing every trader's clock offset over time
+— a profile of a person's device that trading never required, which is exactly
+the line this engine does not cross. The interesting question ("did this fleet
+of clients suddenly change together?") is answered by the metric; the
+uninteresting one ("is this person's laptop clock wrong?") is not worth a file
+on them.
+
+**Market-data sequence anomalies** have no input. There is no client sequence
+number on an order, and the venue sequence on `BrokerInboundEvent` is the
+venue's ordering, not a client's. Building a detector over an identifier this
+platform does not receive would be fabricating one.
+
+A detector that cannot fire is worse than an absent one: it looks like coverage
+on a dashboard and quietly reassures everybody.
 
 ## The engine is never in the execution path
 

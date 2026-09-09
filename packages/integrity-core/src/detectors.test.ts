@@ -4,6 +4,7 @@ import {
   detectConcentration,
   detectDuplicateOrders,
   detectOrderBurst,
+  detectRapidCancelReplace,
   detectRapidOpenClose,
   detectRepeatedRejections,
   detectVolumeSpike,
@@ -13,6 +14,7 @@ import {
   SignalCode,
   SignalSeverity,
   type ActivityWindow,
+  type OrderChurnObservation,
   type OrderObservation,
 } from './types';
 
@@ -265,6 +267,104 @@ describe('concentration', () => {
       { symbol: 'EURUSD', grossNotional: '10' },
     ];
     expect(detectConcentration(window({ exposure }))).toBeNull();
+  });
+});
+
+/** `count` amendments on one order, spread evenly across `spanMs`, ending now. */
+function churn(
+  orderId: string,
+  count: number,
+  spanMs: number,
+  kind: 'MODIFIED' | 'CANCELLED' = 'MODIFIED',
+): OrderChurnObservation[] {
+  const step = count > 1 ? spanMs / (count - 1) : 0;
+  return Array.from({ length: count }, (_, i) => ({
+    orderId,
+    kind,
+    atMs: NOW - spanMs + i * step,
+  }));
+}
+
+describe('rapid cancel and replace', () => {
+  it('notices one order amended over and over', () => {
+    const signal = detectRapidCancelReplace(
+      window({ orderChurn: churn('o-1', 10, 30_000) }),
+    );
+    expect(signal?.code).toBe(SignalCode.RAPID_CANCEL_REPLACE);
+    expect(signal?.evidence['orderId']).toBe('o-1');
+    expect(signal?.evidence['observed']).toBe(10);
+  });
+
+  /**
+   * The case that decides whether this detector is usable. Twenty amendments
+   * spread over twenty orders is a busy desk; twenty on one order is somebody
+   * doing something to that order. Summing them would report every busy morning
+   * as an incident until operators learned to ignore the code.
+   */
+  it('does not fire on a busy desk amending many different orders', () => {
+    const spread = Array.from({ length: 20 }, (_, i) => churn(`o-${i}`, 2, 30_000)).flat();
+    expect(detectRapidCancelReplace(window({ orderChurn: spread }))).toBeNull();
+  });
+
+  it('does not fire on a trader chasing a price a few times', () => {
+    expect(detectRapidCancelReplace(window({ orderChurn: churn('o-1', 3, 40_000) }))).toBeNull();
+  });
+
+  /**
+   * The lookback is wider than the window, so the *densest slice* is what
+   * counts — not the total.
+   *
+   * Ten amendments spread evenly over five minutes is somebody working an
+   * order through a slow morning. Counting the lookback's total would report it
+   * as ten-in-a-minute and fire every time, which is how a detector becomes
+   * noise. This is the case that makes the sliding window earn its place.
+   */
+  it('does not fire on churn spread thinly across the whole lookback', () => {
+    expect(detectRapidCancelReplace(window({ orderChurn: churn('o-1', 10, 300_000) }))).toBeNull();
+  });
+
+  /**
+   * And it still finds a burst that happened a few minutes ago rather than
+   * right now — a sweep runs on a timer, so churn that ended ninety seconds ago
+   * is churn a one-minute lookback would never see.
+   */
+  it('finds a dense burst anywhere in the lookback', () => {
+    const shifted = churn('o-1', 10, 5_000).map((event) => ({
+      ...event,
+      atMs: event.atMs - 180_000,
+    }));
+    expect(detectRapidCancelReplace(window({ orderChurn: shifted }))?.evidence['observed']).toBe(10);
+  });
+
+  it('counts cancellations as well as amendments', () => {
+    const mixed = [
+      ...churn('o-1', 5, 10_000, 'MODIFIED'),
+      ...churn('o-1', 5, 10_000, 'CANCELLED'),
+    ];
+    expect(detectRapidCancelReplace(window({ orderChurn: mixed }))).not.toBeNull();
+  });
+
+  it('ignores churn older than the lookback', () => {
+    const old = churn('o-1', 20, 5_000).map((event) => ({
+      ...event,
+      atMs: event.atMs - 1_200_000,
+    }));
+    expect(detectRapidCancelReplace(window({ orderChurn: old }))).toBeNull();
+  });
+
+  /**
+   * A caller that cannot see order events produces no signal rather than a
+   * guess. A detector that cannot see is better than one that invents.
+   */
+  it('says nothing when the caller supplied no churn at all', () => {
+    expect(detectRapidCancelReplace(window())).toBeNull();
+  });
+
+  it('escalates when the count is far past the threshold', () => {
+    const heavy = detectRapidCancelReplace(window({ orderChurn: churn('o-1', 20, 30_000) }));
+    expect(heavy?.severity).toBe(SignalSeverity.HIGH);
+    const moderate = detectRapidCancelReplace(window({ orderChurn: churn('o-1', 9, 30_000) }));
+    expect(moderate?.severity).toBe(SignalSeverity.MEDIUM);
   });
 });
 

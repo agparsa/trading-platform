@@ -260,7 +260,7 @@ export class IntegrityService {
    */
   private async observe(accountId: string, nowMs: number): Promise<ActivityWindow> {
     const since = new Date(nowMs - WINDOW_MS);
-    const [orders, closed, open] = await Promise.all([
+    const [orders, closed, open, churn] = await Promise.all([
       this.prisma.order.findMany({
         where: { accountId, createdAt: { gte: since } },
         select: {
@@ -290,6 +290,28 @@ export class IntegrityService {
           entryPrice: true,
           symbol: { select: { code: true, spec: { select: { contractSize: true } } } },
         },
+      }),
+      /**
+       * Amendments and cancellations on resting orders (§46).
+       *
+       * Read from `OrderEvent`, which the platform already writes because the
+       * audit trail must show the same shape for every order. Nothing new is
+       * collected to make this detector possible — which is the rule this whole
+       * method is written to.
+       *
+       * `MODIFIED` and `CANCELLED`, not the `*_REQUESTED` pair: a request that
+       * was refused is not churn on the book, and counting it would report a
+       * trader whose amendments keep bouncing off a validation rule as though
+       * they were working the order.
+       */
+      this.prisma.orderEvent.findMany({
+        where: {
+          order: { accountId },
+          type: { in: ['MODIFIED', 'CANCELLED'] },
+          createdAt: { gte: since },
+        },
+        select: { orderId: true, type: true, createdAt: true },
+        take: 5_000,
       }),
     ]);
 
@@ -337,6 +359,11 @@ export class IntegrityService {
           closedAtMs: position.closedAt.getTime(),
         })),
       exposure: [...bySymbol.values()],
+      orderChurn: churn.map((event) => ({
+        orderId: event.orderId,
+        kind: event.type === 'MODIFIED' ? ('MODIFIED' as const) : ('CANCELLED' as const),
+        atMs: event.createdAt.getTime(),
+      })),
     };
   }
 

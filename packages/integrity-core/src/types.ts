@@ -35,6 +35,16 @@ export const SignalCode = {
   VOLUME_SPIKE: 'VOLUME_SPIKE',
   /** Most of the account's exposure in a single instrument. */
   CONCENTRATION: 'CONCENTRATION',
+  /**
+   * One resting order amended or cancelled over and over (§46).
+   *
+   * Different from `ORDER_BURST`, which counts *new* orders. This counts churn
+   * on orders that already exist, and the two have different innocent
+   * explanations: a burst is usually an automated strategy, while heavy
+   * cancel/replace on one order is usually somebody chasing a price. Reporting
+   * them as one code would make the common case bury the uncommon one.
+   */
+  RAPID_CANCEL_REPLACE: 'RAPID_CANCEL_REPLACE',
 } as const;
 export type SignalCode = (typeof SignalCode)[keyof typeof SignalCode];
 
@@ -88,6 +98,20 @@ export interface ClosedPositionObservation {
   closedAtMs: number;
 }
 
+/**
+ * What happened to one resting order, as amendments and cancellations.
+ *
+ * Read from `OrderEvent`, which the platform already writes because the audit
+ * trail must show the same shape for every order. Nothing new is collected to
+ * make this detector possible — see `docs/anti-fraud.md`.
+ */
+export interface OrderChurnObservation {
+  orderId: string;
+  /** `MODIFIED` or `CANCELLED`, with when it happened. */
+  kind: 'MODIFIED' | 'CANCELLED';
+  atMs: number;
+}
+
 export interface SymbolExposureObservation {
   symbol: string;
   /** Decimal string, in account currency. */
@@ -102,6 +126,12 @@ export interface ActivityWindow {
   orders: readonly OrderObservation[];
   closedPositions: readonly ClosedPositionObservation[];
   exposure: readonly SymbolExposureObservation[];
+  /**
+   * Amendments and cancellations on resting orders. Optional so an older caller
+   * keeps working and simply produces no churn signal — a detector that cannot
+   * see is better than one that guesses.
+   */
+  orderChurn?: readonly OrderChurnObservation[];
 }
 
 /**
@@ -120,6 +150,8 @@ export interface IntegrityThresholds {
   volumeSpike: { multiple: number; minimumSample: number };
   /** A share of gross exposure in one instrument, as a fraction of 1. */
   concentration: { share: number; minimumNotional: string };
+  /** Amendments plus cancellations on a *single* order within the window. */
+  rapidCancelReplace: { windowMs: number; count: number };
 }
 
 export const DEFAULT_THRESHOLDS: IntegrityThresholds = {
@@ -129,4 +161,12 @@ export const DEFAULT_THRESHOLDS: IntegrityThresholds = {
   rapidOpenClose: { windowMs: 300_000, holdMs: 3_000, count: 5 },
   volumeSpike: { multiple: 10, minimumSample: 8 },
   concentration: { share: 0.9, minimumNotional: '50000' },
+  /**
+   * Eight amendments to one order in a minute. A trader chasing a price makes
+   * two or three; eight is a machine, and a machine amending a resting order
+   * eight times a minute is either a badly written strategy or somebody probing
+   * how the book responds. Both are worth a person looking, and neither is an
+   * accusation.
+   */
+  rapidCancelReplace: { windowMs: 60_000, count: 8 },
 };

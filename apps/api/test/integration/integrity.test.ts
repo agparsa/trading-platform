@@ -81,6 +81,117 @@ suite('Integrity engine (integration)', () => {
     }
   }
 
+  /**
+   * Amendments and cancellations on one resting order (§46).
+   *
+   * Written straight into `OrderEvent`, which is where the platform already
+   * records them — the point of this detector is that it needed no new data
+   * collection, and a test that invented a new table would not be testing that.
+   */
+  async function amend(accountId: string, count: number, spanMs: number) {
+    const symbol = await prisma.symbol.findFirstOrThrow({ where: { code: 'XAUUSD' } });
+    const order = await prisma.order.create({
+      data: {
+        tenantId: DEFAULT_TENANT_ID,
+        accountId,
+        symbolId: symbol.id,
+        side: 'BUY',
+        type: 'LIMIT',
+        status: 'ACCEPTED',
+        timeInForce: 'GTC',
+        volume: '1',
+        filledVolume: '0',
+        price: '4500',
+        createdAt: new Date(NOW - spanMs - 1_000),
+      },
+    });
+    const step = count > 1 ? spanMs / (count - 1) : 0;
+    for (let i = 0; i < count; i += 1) {
+      await prisma.orderEvent.create({
+        data: {
+          tenantId: DEFAULT_TENANT_ID,
+          orderId: order.id,
+          type: 'MODIFIED',
+          toStatus: 'ACCEPTED',
+          createdAt: new Date(NOW - spanMs + i * step),
+        },
+      });
+    }
+    return order.id;
+  }
+
+  it('notices one order amended over and over, from the events it already keeps', async () => {
+    const { accountId } = await createAccount(prisma, { balance: '100000' });
+    const orderId = await amend(accountId, 12, 20_000);
+
+    const signals = await integrity.scanAccount(accountId, NOW);
+    expect(signals.map((s) => s.code)).toContain('RAPID_CANCEL_REPLACE');
+
+    const stored = await prisma.integritySignal.findFirstOrThrow({
+      where: { accountId, code: 'RAPID_CANCEL_REPLACE' },
+    });
+    const raised = await prisma.integritySignalEvent.findFirstOrThrow({
+      where: { signalId: stored.id, type: 'RAISED' },
+    });
+    // The order is named, so a reviewer can go and look at it.
+    expect(JSON.stringify(raised.evidence)).toContain(orderId);
+  });
+
+  /**
+   * A busy desk working many orders is not one order being worked. Summing
+   * across the account would report every busy morning as an incident, until
+   * operators learned to dismiss the code.
+   */
+  it('does not fire when the amendments are spread across many orders', async () => {
+    const { accountId } = await createAccount(prisma, { balance: '100000' });
+    for (let i = 0; i < 10; i += 1) await amend(accountId, 2, 20_000);
+
+    const signals = await integrity.scanAccount(accountId, NOW);
+    expect(signals.map((s) => s.code)).not.toContain('RAPID_CANCEL_REPLACE');
+  });
+
+  /**
+   * A request that was refused is not churn on the book.
+   *
+   * `MODIFY_REQUESTED` without a following `MODIFIED` means the amendment
+   * bounced off a validation rule. Counting it would report a trader whose
+   * client keeps sending something the engine will never accept as though they
+   * were working the order — a support problem dressed up as an integrity one.
+   */
+  it('does not count amendments the engine refused', async () => {
+    const { accountId } = await createAccount(prisma, { balance: '100000' });
+    const symbol = await prisma.symbol.findFirstOrThrow({ where: { code: 'XAUUSD' } });
+    const order = await prisma.order.create({
+      data: {
+        tenantId: DEFAULT_TENANT_ID,
+        accountId,
+        symbolId: symbol.id,
+        side: 'BUY',
+        type: 'LIMIT',
+        status: 'ACCEPTED',
+        timeInForce: 'GTC',
+        volume: '1',
+        filledVolume: '0',
+        price: '4500',
+        createdAt: new Date(NOW - 30_000),
+      },
+    });
+    for (let i = 0; i < 20; i += 1) {
+      await prisma.orderEvent.create({
+        data: {
+          tenantId: DEFAULT_TENANT_ID,
+          orderId: order.id,
+          type: 'MODIFY_REQUESTED',
+          toStatus: 'ACCEPTED',
+          createdAt: new Date(NOW - 20_000 + i * 500),
+        },
+      });
+    }
+
+    const signals = await integrity.scanAccount(accountId, NOW);
+    expect(signals.map((s) => s.code)).not.toContain('RAPID_CANCEL_REPLACE');
+  });
+
   it('says nothing about an account that has barely traded', async () => {
     const { accountId } = await createAccount(prisma, { balance: '100000' });
     await placeOrders(accountId, 3, 600_000);

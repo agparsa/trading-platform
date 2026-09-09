@@ -42,6 +42,7 @@ export function detectAll(
     detectRapidOpenClose(window, thresholds),
     detectVolumeSpike(window, thresholds),
     detectConcentration(window, thresholds),
+    detectRapidCancelReplace(window, thresholds),
   ].filter((signal): signal is Signal => signal !== null);
 }
 
@@ -295,6 +296,80 @@ export function detectConcentration(
       totalNotional: total.toString(),
       share: fraction.toDecimalPlaces(4).toString(),
       threshold: share,
+    },
+  };
+}
+
+/**
+ * One resting order amended or cancelled over and over (§46).
+ *
+ * Counted **per order**, not across the account. Twenty amendments spread over
+ * twenty orders is a busy desk; twenty on one order is somebody doing something
+ * to that order, and only the second is worth a person's time. Summing them
+ * would report the first as though it were the second, every busy morning,
+ * until the operator learned to ignore the code.
+ *
+ * The window slides, like `detectOrderBurst`: churn that straddles a fixed
+ * boundary is churn a fixed window cannot see.
+ *
+ * The message says what was counted and over how long, and nothing about why.
+ * Chasing a price and probing the book produce the same number here, and this
+ * engine is not the thing that can tell them apart.
+ */
+export function detectRapidCancelReplace(
+  window: ActivityWindow,
+  thresholds: IntegrityThresholds = DEFAULT_THRESHOLDS,
+): Signal | null {
+  const { windowMs, count } = thresholds.rapidCancelReplace;
+  const churn = window.orderChurn ?? [];
+  if (churn.length === 0) return null;
+
+  /**
+   * The lookback is six windows wide, and the count is taken over the densest
+   * slice inside it — the same shape as `detectOrderBurst`, for the same
+   * reason and one more.
+   *
+   * The reason: a sweep runs on a timer, so churn that ended ninety seconds ago
+   * is churn a one-minute lookback never sees at all.
+   *
+   * The one more: with a lookback of exactly `windowMs`, everything that
+   * survives the filter is already inside one window, the densest slice is
+   * always all of it, and the sliding window is dead code that looks like a
+   * safeguard. A mutation test caught exactly that in the first version of this
+   * function, which is the only way anybody was ever going to notice.
+   */
+  const byOrder = new Map<string, number[]>();
+  for (const event of churn) {
+    if (window.nowMs - event.atMs > windowMs * 6) continue;
+    const times = byOrder.get(event.orderId);
+    if (times === undefined) byOrder.set(event.orderId, [event.atMs]);
+    else times.push(event.atMs);
+  }
+
+  let worstOrder: string | null = null;
+  let worst = { count: 0, spanMs: 0 };
+  for (const [orderId, times] of byOrder) {
+    const densest = densestRun([...times].sort((a, b) => a - b), windowMs);
+    if (densest.count > worst.count) {
+      worst = densest;
+      worstOrder = orderId;
+    }
+  }
+
+  if (worstOrder === null || worst.count < count) return null;
+
+  return {
+    code: SignalCode.RAPID_CANCEL_REPLACE,
+    severity: worst.count >= count * 2 ? SignalSeverity.HIGH : SignalSeverity.MEDIUM,
+    message: `${worst.count} amendments or cancellations on one order in ${Math.round(
+      worst.spanMs / 1000,
+    )}s`,
+    evidence: {
+      orderId: worstOrder,
+      observed: worst.count,
+      spanMs: worst.spanMs,
+      threshold: count,
+      windowMs,
     },
   };
 }
