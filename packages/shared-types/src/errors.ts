@@ -60,6 +60,14 @@ export const TradingErrorCode = {
   // --- concurrency / delivery ---
   IDEMPOTENCY_KEY_REQUIRED: 'IDEMPOTENCY_KEY_REQUIRED',
   IDEMPOTENCY_KEY_CONFLICT: 'IDEMPOTENCY_KEY_CONFLICT',
+  /**
+   * The request was applied — its transaction committed — but the process
+   * recording its result was interrupted before it could. The retry is not
+   * run again, because the effects exist; and it cannot be answered, because
+   * the answer was never written. The client reads the account instead. It
+   * must not retry with a fresh key: that is the doubled fill.
+   */
+  IDEMPOTENCY_RESULT_UNAVAILABLE: 'IDEMPOTENCY_RESULT_UNAVAILABLE',
   CONCURRENT_MODIFICATION: 'CONCURRENT_MODIFICATION',
   RATE_LIMITED: 'RATE_LIMITED',
 

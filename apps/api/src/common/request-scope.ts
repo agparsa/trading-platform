@@ -15,6 +15,17 @@ export interface RequestScope {
   readonly requestId: string;
   /** Set once the guard knows who is asking. Null on a public route. */
   actorId: string | null;
+  /**
+   * The idempotency claim this request is running under, while it runs.
+   *
+   * Read by `PrismaService.$transaction`, which marks the claim COMMITTED
+   * inside whatever transaction the operation commits — so a crash between
+   * the commit and the recording of the result leaves a row that says
+   * "applied", and a retry is refused rather than run again. Set by
+   * `IdempotencyService.claim`, cleared when the claim completes or is
+   * abandoned.
+   */
+  idempotencyClaimId?: string | null;
 }
 
 const storage = new AsyncLocalStorage<RequestScope>();
@@ -40,3 +51,13 @@ export function noteActor(actorId: string): void {
 
 /** Test seam: run something as if it were a request. */
 export const __testing = { storage };
+
+/** Records the idempotency claim the request is running under, or clears it. */
+export function noteIdempotencyClaim(claimId: string | null): void {
+  const scope = storage.getStore();
+  if (scope !== undefined) scope.idempotencyClaimId = claimId;
+}
+
+export function currentIdempotencyClaim(): string | null {
+  return storage.getStore()?.idempotencyClaimId ?? null;
+}

@@ -472,6 +472,19 @@ export const envSchema = z
     VENUE_RECOVERY_GRACE_MS: z.coerce.number().int().min(0).default(5_000),
     DEFAULT_ACCOUNT_LEVERAGE: z.coerce.number().int().min(1).default(100),
     IDEMPOTENCY_KEY_TTL_SECONDS: z.coerce.number().int().min(60).default(86_400),
+    /**
+     * How long an IN_PROGRESS idempotency claim may stand before a retry with
+     * the same key may take it over. A claim that old with nothing committed
+     * belongs to a process that died before it committed; a live request is
+     * bounded by the transaction budget many times over. Five minutes is
+     * generous for the one and short for the other.
+     */
+    IDEMPOTENCY_TAKEOVER_AFTER_MS: z.coerce
+      .number()
+      .int()
+      .min(10_000)
+      .max(60 * 60 * 1000)
+      .default(5 * 60 * 1000),
 
     RATE_LIMIT_LOGIN_PER_MINUTE: z.coerce.number().int().min(1).default(5),
     RATE_LIMIT_ORDERS_PER_MINUTE: z.coerce.number().int().min(1).default(120),

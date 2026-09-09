@@ -476,13 +476,24 @@ mounts outside the guards, stays out of production and a test pins the `if`.
 producers write outbox rows; service-token writes once the audit model has a
 service actor.
 
-## Phase 13 — Observability, load, failure injection · ~2 weeks
+## Phase 13 — Observability, load, failure injection · **in progress**
 
-The §63 metric set; dashboards; the §74 load scenarios at 100 / 500 / 1,000
-traders and 200 / 1,000 / 5,000 sockets with p50/p95/p99; the §75 failure
-injection harness (Redis away, Postgres latency, broker timeout/disconnect,
-duplicate and missing and out-of-order broker events, market data gap, socket
-and worker and API crashes) with the invariant that financial state survives.
+**Failure injection (§75) — done.** `pnpm chaos`: Postgres and Redis behind a
+TCP proxy that adds latency, severs every connection or refuses; the API in two
+instances, `SIGKILL`ed mid-burst; and one invariant checked after each — the
+ledger sums to the balance, every accepted order filled exactly once, every
+fill has an idempotency record. **It found a defect on its first properly timed
+run:** 39 of 40 fills had committed with claims still `IN_PROGRESS`, so every
+retry was refused for a day and the only path left doubled the fill. The claim
+is now marked `COMMITTED` inside the operation's transaction, a retry gets
+`IDEMPOTENCY_RESULT_UNAVAILABLE`, and a claim a crash left before commit is
+taken over after a window instead of blocking. Also reported: ingest stalls on
+a slow database (safe — `STALE_QUOTE`), and ~45 database messages per order.
+[failure-injection.md](./failure-injection.md).
+
+**Still to do:** the §74 load scenarios at 500 / 1,000 traders and 1,000 /
+5,000 sockets with p50/p95/p99 (`pnpm load` runs the small end); Grafana
+dashboards for the §63 metric set.
 
 ## Phase 14 — Production deployment hardening · ~1–2 weeks
 

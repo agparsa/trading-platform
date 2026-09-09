@@ -6,6 +6,7 @@ import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { Env } from '../../config/env.schema';
 import { requireTenantId } from '@tp/tenancy';
+import { noteIdempotencyClaim } from '../request-scope';
 
 export type IdempotencyOutcome<T> =
   | { kind: 'fresh'; complete: (result: T) => Promise<void>; abandon: () => Promise<void> }
@@ -52,26 +53,7 @@ export class IdempotencyService {
           expiresAt,
         },
       });
-      return {
-        kind: 'fresh',
-        complete: async (result: T) => {
-          await this.prisma.idempotencyKey.update({
-            where: { id: claimed.id },
-            data: {
-              status: 'COMPLETED',
-              responseCode: 200,
-              responseBody: result as Prisma.InputJsonValue,
-            },
-          });
-        },
-        // A failed attempt releases the key so the client can correct and retry.
-        // Keeping it would make a transient error permanent for that key.
-        abandon: async () => {
-          await this.prisma.idempotencyKey
-            .delete({ where: { id: claimed.id } })
-            .catch(() => undefined);
-        },
-      };
+      return this.fresh<T>(claimed.id);
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
         throw error;
@@ -100,15 +82,93 @@ export class IdempotencyService {
       );
     }
 
-    if (existing.status !== 'COMPLETED' || existing.responseBody === null) {
+    if (existing.status === 'COMPLETED' && existing.responseBody !== null) {
+      return { kind: 'replayed', result: existing.responseBody as T };
+    }
+
+    if (existing.status === 'COMMITTED') {
+      /**
+       * The effects exist — the transaction marked the claim as it committed —
+       * but the result was never recorded, because the process died in the
+       * few milliseconds between. Running the operation again would double it;
+       * answering from a result that was never written is impossible. So the
+       * client is told, in a code it can act on, to read the account.
+       */
       throw new DomainError(
-        TradingErrorCode.IDEMPOTENCY_KEY_CONFLICT,
-        'A request with this Idempotency-Key is still in flight',
+        TradingErrorCode.IDEMPOTENCY_RESULT_UNAVAILABLE,
+        'This request was already applied, but its result was not recorded. Do not retry with a new key — read the account to see the effect.',
         { key },
       );
     }
 
-    return { kind: 'replayed', result: existing.responseBody as T };
+    /**
+     * IN_PROGRESS. Either another attempt is running now, or one died before
+     * it committed anything — and the two are told apart by age. A live
+     * request cannot outlast the takeover window (it is bounded by the
+     * transaction budget many times over), so a claim older than that with
+     * nothing committed is a claim nobody is going to finish. The retry takes
+     * it over, atomically: the conditional update succeeds for exactly one
+     * contender.
+     *
+     * Without this, a crash before commit blocked every retry with the same key
+     * for the key's whole lifetime — a day — and the client's only way forward
+     * was a fresh key, which is the one thing the design asks them never to do.
+     */
+    const takeoverAfterMs = this.config.getOrThrow('IDEMPOTENCY_TAKEOVER_AFTER_MS', { infer: true });
+    const cutoff = new Date(Date.now() - takeoverAfterMs);
+    if (existing.status === 'IN_PROGRESS' && existing.createdAt < cutoff) {
+      const taken = await this.prisma.idempotencyKey.updateMany({
+        where: { id: existing.id, status: 'IN_PROGRESS', createdAt: { lt: cutoff } },
+        data: { createdAt: new Date(), expiresAt },
+      });
+      if (taken.count === 1) {
+        this.logger.warn(
+          { scope, claimId: existing.id },
+          'An idempotency claim abandoned by a crash was taken over by a retry',
+        );
+        return this.fresh<T>(existing.id);
+      }
+    }
+
+    throw new DomainError(
+      TradingErrorCode.IDEMPOTENCY_KEY_CONFLICT,
+      'A request with this Idempotency-Key is still in flight',
+      { key },
+    );
+  }
+
+  private fresh<T>(claimId: string): IdempotencyOutcome<T> {
+    noteIdempotencyClaim(claimId);
+    return {
+      kind: 'fresh',
+      complete: async (result: T) => {
+        noteIdempotencyClaim(null);
+        // From IN_PROGRESS or from COMMITTED — whichever the transaction left.
+        await this.prisma.idempotencyKey.updateMany({
+          where: { id: claimId, status: { in: ['IN_PROGRESS', 'COMMITTED'] } },
+          data: {
+            status: 'COMPLETED',
+            responseCode: 200,
+            responseBody: result as Prisma.InputJsonValue,
+          },
+        });
+      },
+      /**
+       * A failed attempt releases the key so the client can correct and retry.
+       * Keeping it would make a transient error permanent for that key.
+       *
+       * Only while nothing committed. A claim the transaction already marked
+       * COMMITTED is *kept*: its effects are real, and deleting the row would
+       * let a retry apply them again. Whatever failed after the commit — the
+       * event publish, the audit row — did not un-happen the fill.
+       */
+      abandon: async () => {
+        noteIdempotencyClaim(null);
+        await this.prisma.idempotencyKey
+          .deleteMany({ where: { id: claimId, status: 'IN_PROGRESS' } })
+          .catch(() => undefined);
+      },
+    };
   }
 
   /** Removes expired records. Called by the worker's sweep job. */

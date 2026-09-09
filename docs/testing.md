@@ -229,6 +229,12 @@ a stale binary is the worst failure mode there is.
   by the _slope_ and the _fit_ of its trend, not by a before-and-after: a leak
   climbs, it does not double, and V8's sawtooth produces a confident gradient
   that means nothing. See [soak.md](./soak.md).
+- `pnpm chaos` — failure injection (§75): Postgres and Redis behind a proxy that
+  adds latency, severs connections or refuses; the API killed mid-burst; the
+  feed leader killed. After each, the invariant: ledger equals balance, every
+  accepted order filled exactly once, every fill has an idempotency record. It
+  found the commit-before-record window on its first timed run. See
+  [failure-injection.md](./failure-injection.md).
 - `pnpm restore:rehearse` — dumps the database, restores it into an empty one,
   runs migrations, compares the two by _value_ rather than by row count, and runs
   the real reconciliation engine over the copy. A backup nobody has restored is a

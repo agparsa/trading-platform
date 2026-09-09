@@ -636,43 +636,51 @@ export class PositionsService {
         : request.trailingStopDistance;
     validateProtectiveLevels(spec, position.side, reference.toString(), { stopLoss, takeProfit });
 
-    const updated = await this.prisma.position.updateMany({
-      where: { id: position.id, status: 'OPEN', version: position.version },
-      data: {
-        stopLoss,
-        takeProfit,
-        trailingStopDistance: trailing,
-        // The ratchet anchors on the current executable price when trailing is
-        // switched on, and the anchor is dropped when it is switched off, so a
-        // later re-enable does not inherit a high-water mark from last week.
-        highWaterPrice:
-          trailing === null ? null : (position.highWaterPrice ?? reference.toString()),
-        version: { increment: 1 },
-      },
-    });
-    if (updated.count === 0) {
-      throw new DomainError(
-        TradingErrorCode.CONCURRENT_MODIFICATION,
-        'The position changed while this modification was being prepared. Retry against the current state.',
-        { positionId: position.id },
-      );
-    }
-
-    await this.prisma.positionEvent.create({
-      data: {
-        tenantId: requireTenantId(),
-        positionId: position.id,
-        type: 'MODIFIED',
-        fromStatus: 'OPEN',
-        toStatus: 'OPEN',
-        payload: {
-          stopLoss: stopLoss ?? null,
-          takeProfit: takeProfit ?? null,
-          trailingStopDistance: trailing ?? null,
-          previousStopLoss: position.stopLoss,
-          previousTakeProfit: position.takeProfit,
+    /**
+     * One transaction: the change and the event that records it are durable
+     * together, or neither is. A modified stop with no event row is an audit
+     * gap; and the transaction is also what lets the request's idempotency
+     * claim commit alongside the change (see `PrismaService.$transaction`).
+     */
+    await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.position.updateMany({
+        where: { id: position.id, status: 'OPEN', version: position.version },
+        data: {
+          stopLoss,
+          takeProfit,
+          trailingStopDistance: trailing,
+          // The ratchet anchors on the current executable price when trailing is
+          // switched on, and the anchor is dropped when it is switched off, so a
+          // later re-enable does not inherit a high-water mark from last week.
+          highWaterPrice:
+            trailing === null ? null : (position.highWaterPrice ?? reference.toString()),
+          version: { increment: 1 },
         },
-      },
+      });
+      if (updated.count === 0) {
+        throw new DomainError(
+          TradingErrorCode.CONCURRENT_MODIFICATION,
+          'The position changed while this modification was being prepared. Retry against the current state.',
+          { positionId: position.id },
+        );
+      }
+
+      await tx.positionEvent.create({
+        data: {
+          tenantId: requireTenantId(),
+          positionId: position.id,
+          type: 'MODIFIED',
+          fromStatus: 'OPEN',
+          toStatus: 'OPEN',
+          payload: {
+            stopLoss: stopLoss ?? null,
+            takeProfit: takeProfit ?? null,
+            trailingStopDistance: trailing ?? null,
+            previousStopLoss: position.stopLoss,
+            previousTakeProfit: position.takeProfit,
+          },
+        },
+      });
     });
 
     await this.audit.record({

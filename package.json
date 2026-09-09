@@ -42,7 +42,8 @@
     "keygen": "tsx scripts/keygen.ts",
     "pentest": "tsx --env-file-if-exists=.env scripts/pentest.ts",
     "soak": "tsx --env-file-if-exists=.env scripts/soak.ts",
-    "restore:rehearse": "tsx --env-file-if-exists=.env scripts/restore-rehearsal.ts"
+    "restore:rehearse": "tsx --env-file-if-exists=.env scripts/restore-rehearsal.ts",
+    "chaos": "tsx --env-file-if-exists=.env scripts/failure-injection.ts"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

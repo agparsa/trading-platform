@@ -1,7 +1,8 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import type { Env } from '../config/env.schema';
+import { currentIdempotencyClaim } from '../common/request-scope';
 import {
   TenantClientRegistry,
   currentScope,
@@ -152,6 +153,52 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     });
     // Layer one rides on every client. Two independent mechanisms, still.
     return client.$extends(tenantScopeExtension()) as unknown as PrismaClient;
+  }
+
+  /**
+   * A transaction, with the request's idempotency claim committed inside it.
+   *
+   * ## The window this closes
+   *
+   * An idempotent operation claims its key, runs, and then records the result
+   * against the claim. Between the operation's commit and that recording there
+   * were a few milliseconds in which the process could die — and did, under
+   * failure injection: 39 of 40 orders had filled, none of their claims said
+   * so, every retry with the same key was refused as "still in flight", and a
+   * client following the only remaining path — a fresh key — would have
+   * filled each of them again.
+   *
+   * So when a request is running under a claim, the interactive transaction is
+   * wrapped: after the body has done its work and before the commit, the claim
+   * is marked COMMITTED *in the same transaction*. Either both are durable or
+   * neither is. A retry that finds COMMITTED is refused with a code that says
+   * "already applied, read the account" rather than run again.
+   *
+   * Overridden here, on the service, so every `this.prisma.$transaction` in
+   * every service gets it without knowing. A hook that had to be called from
+   * each transaction body would be a hook somebody forgot in one.
+   *
+   * The array form (a batch of promises) passes straight through: it carries
+   * no callback to wrap, and nothing idempotent uses it.
+   */
+  $transaction<R>(
+    arg: ((tx: Prisma.TransactionClient) => Promise<R>) | Prisma.PrismaPromise<unknown>[],
+    options?: Parameters<PrismaClient['$transaction']>[1],
+  ): Promise<R> {
+    const client = this.registry.forScope(currentScope());
+    if (typeof arg !== 'function') {
+      return client.$transaction(arg, options as never) as unknown as Promise<R>;
+    }
+    const claimId = currentIdempotencyClaim();
+    if (claimId === null) return client.$transaction(arg, options as never);
+    return client.$transaction(async (tx) => {
+      const result = await arg(tx);
+      await tx.idempotencyKey.updateMany({
+        where: { id: claimId, status: 'IN_PROGRESS' },
+        data: { status: 'COMMITTED' },
+      });
+      return result;
+    }, options as never);
   }
 
   async onModuleInit(): Promise<void> {

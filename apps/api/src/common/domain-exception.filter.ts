@@ -41,6 +41,7 @@ const STATUS_BY_CODE: Readonly<Partial<Record<TradingErrorCode, HttpStatus>>> = 
   [TradingErrorCode.POSITION_ALREADY_CLOSING]: HttpStatus.CONFLICT,
   [TradingErrorCode.CONCURRENT_MODIFICATION]: HttpStatus.CONFLICT,
   [TradingErrorCode.IDEMPOTENCY_KEY_CONFLICT]: HttpStatus.CONFLICT,
+  [TradingErrorCode.IDEMPOTENCY_RESULT_UNAVAILABLE]: HttpStatus.CONFLICT,
   [TradingErrorCode.STALE_QUOTE]: HttpStatus.CONFLICT,
 
   [TradingErrorCode.INSUFFICIENT_MARGIN]: HttpStatus.UNPROCESSABLE_ENTITY,

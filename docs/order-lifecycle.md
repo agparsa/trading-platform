@@ -81,6 +81,40 @@ The stored `requestHash` matters: a key reused with a **different** payload is a
 client bug and is rejected with `IDEMPOTENCY_KEY_CONFLICT`, not silently answered
 from cache.
 
+### The claim commits with the money
+
+A claim has four states, and the third exists because of a crash the failure
+injection harness produced on demand:
+
+| State         | Meaning                                                                             | A retry with the same key…                                                                                  |
+| ------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `IN_PROGRESS` | claimed; nothing has committed                                                      | is refused as in flight — or **takes the claim over** once it is older than `IDEMPOTENCY_TAKEOVER_AFTER_MS` |
+| `COMMITTED`   | the operation's transaction committed, **and marked the claim in that transaction** | is refused with `IDEMPOTENCY_RESULT_UNAVAILABLE`: applied, read the account                                 |
+| `COMPLETED`   | the result was recorded                                                             | is answered from the stored result                                                                          |
+| _(deleted)_   | the operation failed before anything committed                                      | runs afresh                                                                                                 |
+
+`PrismaService.$transaction` does the marking: whenever a request runs under a
+claim, the interactive transaction is wrapped so that, after the body's work and
+before the commit, the claim's row is set to `COMMITTED` — in the same
+transaction. Either the fill and the mark are both durable or neither is. No
+service has to know; every `this.prisma.$transaction` gets it.
+
+Before this, the recording happened _after_ the transaction, and a process
+killed in between left a fill with a claim that still said `IN_PROGRESS`. Every
+retry with the same key was then refused as "still in flight" for the key's
+whole lifetime — a day — and the only path a client had left was a fresh key,
+which fills again. Under `pnpm chaos`, 39 of 40 orders landed in exactly that
+state. Now a retry gets `IDEMPOTENCY_RESULT_UNAVAILABLE` and must not retry with
+a new key; the effect is visible on the account.
+
+The takeover is what stops the _other_ crash — before commit — from blocking
+retries for a day. A claim still `IN_PROGRESS` after the window (five minutes by
+default, bounded far above any live request) belongs to a process that died, and
+the retry takes it over with a conditional update that exactly one contender
+wins. `abandon()` deletes a claim only while it is `IN_PROGRESS`; one the
+transaction marked is kept, because whatever failed afterwards did not
+un-happen the fill.
+
 ## Resting orders — LIMIT and STOP
 
 **Implemented in Phase 10.**
