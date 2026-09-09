@@ -201,6 +201,7 @@ export const queryKeys = {
   withdrawalTerms: (currency: string) => ['withdrawal-terms', currency] as const,
   apiKeys: ['api-keys'] as const,
   securityEvents: ['security-events'] as const,
+  addresses: ['addresses'] as const,
 };
 
 /** Everything a trading event can invalidate, in one place. */
@@ -1073,6 +1074,26 @@ export function useSecurityEvents(limit = 50) {
   });
 }
 
+export interface AddressRow {
+  ipAddress: string;
+  devices: string[];
+  sessions: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  current: boolean;
+  active: boolean;
+}
+
+/** Where this account has been signed in from: one row per address. */
+export function useAddresses() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: queryKeys.addresses,
+    queryFn: () => api.get<AddressRow[]>('/auth/addresses'),
+    enabled: accessToken !== null,
+    refetchInterval: 60_000,
+  });
+}
 
 // ---- Chart arrangements ----------------------------------------------------
 
@@ -1104,7 +1125,9 @@ export function useDefaultChartLayout(accountId: string | null) {
     queryKey: ['charts', 'default', accountId],
     queryFn: () =>
       api.get<ChartLayoutView | null>(
-        accountId === null ? '/charts/layouts/default' : `/charts/layouts/default?accountId=${accountId}`,
+        accountId === null
+          ? '/charts/layouts/default'
+          : `/charts/layouts/default?accountId=${accountId}`,
       ),
     enabled: accessToken !== null,
     // A layout changes when this person changes it, and nobody else can.
@@ -1123,7 +1146,8 @@ export function useSaveChartLayout() {
       accountId: string | null;
       content: unknown;
       isDefault?: boolean;
-    }) => api.post<ChartLayoutSummary>('/charts/layouts', input, {
+    }) =>
+      api.post<ChartLayoutSummary>('/charts/layouts', input, {
         idempotencyKey: crypto.randomUUID(),
       }),
     onSuccess: (_row, variables) => {

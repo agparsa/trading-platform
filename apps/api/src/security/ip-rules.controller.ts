@@ -52,10 +52,13 @@ export class IpRulesController {
   ) {}
 
   private caller(request: RequestWithContext) {
-    return resolveClientIp(
-      request.ip,
-      request.header('x-forwarded-for'),
-      this.config.get('TRUSTED_PROXY_HOPS', { infer: true }),
+    return (
+      request.client ??
+      resolveClientIp(
+        request.ip,
+        request.header('x-forwarded-for'),
+        this.config.get('TRUSTED_PROXY_HOPS', { infer: true }),
+      )
     );
   }
 

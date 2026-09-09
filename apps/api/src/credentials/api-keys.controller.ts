@@ -4,7 +4,7 @@ import { Permission } from '@tp/shared-types';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 import { SessionOnly } from '../common/decorators/session-only.decorator';
-import type { RequestWithContext } from '../common/request-context';
+import { clientAddress, RequestWithContext } from '../common/request-context';
 import { CredentialsService, type ApiKeyView } from './credentials.service';
 import { MintApiKeyDto, RevokeOwnKeyDto } from './dto/credentials.dto';
 
@@ -44,7 +44,7 @@ export class ApiKeysController {
       expiresInDays: body.expiresInDays,
       rateLimitPerMinute: body.rateLimitPerMinute,
       password: body.password,
-      ip: request.ip,
+      ip: clientAddress(request),
     });
   }
 

@@ -3,10 +3,10 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { DevicePlatform } from '@tp/shared-types';
-import type { Request } from 'express';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { SelfService } from '../common/decorators/self-service.decorator';
 import { AuditService } from '../common/audit/audit.service';
+import { clientAddress, type RequestWithContext } from '../common/request-context';
 import { DevicesService } from './devices.service';
 
 const registerSchema = z
@@ -60,7 +60,7 @@ export class DevicesController {
   async register(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: RegisterDeviceDto,
-    @Req() request: Request,
+    @Req() request: RequestWithContext,
   ) {
     const device = await this.devices.register(user.id, {
       platform: body.platform,
@@ -94,7 +94,7 @@ export class DevicesController {
         pushTokenFingerprint: device.pushTokenFingerprint,
       },
       requestId: requestIdOf(request),
-      ipAddress: request.ip ?? null,
+      ipAddress: clientAddress(request) ?? null,
       userAgent: request.get('user-agent') ?? null,
     });
 
@@ -107,7 +107,7 @@ export class DevicesController {
   async deactivate(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Req() request: Request,
+    @Req() request: RequestWithContext,
   ) {
     const result = await this.devices.deactivate(user.id, id);
     await this.audit.record({
@@ -117,14 +117,13 @@ export class DevicesController {
       resourceType: 'Device',
       resourceId: id,
       requestId: requestIdOf(request),
-      ipAddress: request.ip ?? null,
+      ipAddress: clientAddress(request) ?? null,
       userAgent: request.get('user-agent') ?? null,
     });
     return result;
   }
 }
 
-function requestIdOf(request: Request): string | null {
-  const header = request.get('x-request-id');
-  return header === undefined || header.length === 0 ? null : header;
+function requestIdOf(request: RequestWithContext): string | null {
+  return request.requestId ?? null;
 }

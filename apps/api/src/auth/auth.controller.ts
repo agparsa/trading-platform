@@ -31,10 +31,10 @@ import {
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { SelfService } from '../common/decorators/self-service.decorator';
-import type { RequestWithContext } from '../common/request-context';
+import { clientAddress, RequestWithContext } from '../common/request-context';
 import { AuthService, type AuthContext } from './auth.service';
 import { TotpService, type TotpStatus } from './totp.service';
-import { SessionsService, type SessionSummary } from './sessions.service';
+import { SessionsService, type AddressSummary, type SessionSummary } from './sessions.service';
 import {
   ChangePasswordDto,
   LoginDto,
@@ -51,7 +51,7 @@ import {
 function contextOf(request: RequestWithContext): AuthContext {
   return {
     requestId: request.requestId,
-    ipAddress: request.ip,
+    ipAddress: clientAddress(request),
     userAgent: request.header('user-agent'),
   };
 }
@@ -241,6 +241,21 @@ export class AuthController {
   }
 
   /**
+   * Where this account has been signed in from — one row per address, with
+   * the first and last time and what signed in from it. The list a person
+   * reads when something in the security feed looked unfamiliar.
+   */
+  @SelfService()
+  @Get('addresses')
+  @ApiOperation({ summary: 'Where the signed-in user’s account has been signed in from' })
+  async listAddresses(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: RequestWithContext,
+  ): Promise<AddressSummary[]> {
+    return this.sessions.addresses(user.id, clientAddress(request));
+  }
+
+  /**
    * Ends one session.
    *
    * A user who ends their own current session is signing out, which is a
@@ -259,7 +274,7 @@ export class AuthController {
   ): Promise<void> {
     await this.sessions.revoke(user.id, id, {
       requestId: request.requestId,
-      ipAddress: request.ip,
+      ipAddress: clientAddress(request),
       userAgent: request.header('user-agent'),
     });
   }

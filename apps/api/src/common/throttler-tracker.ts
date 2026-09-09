@@ -1,4 +1,4 @@
-import { resolveClientIp } from '../security/client-ip';
+import { resolveClientIp, type ResolvedIp } from '../security/client-ip';
 
 /**
  * What the tracker needs from a request, and no more.
@@ -10,6 +10,8 @@ import { resolveClientIp } from '../security/client-ip';
 interface Addressed {
   readonly ip?: string | undefined;
   readonly headers?: Readonly<Record<string, string | readonly string[] | undefined>> | undefined;
+  /** Set by the request middleware, which runs before any guard. */
+  readonly client?: ResolvedIp | undefined;
 }
 
 function forwardedFor(request: Addressed): string | undefined {
@@ -39,7 +41,7 @@ function forwardedFor(request: Addressed): string | undefined {
  */
 export function trackerFor(hops: number | undefined) {
   return (request: Addressed): string => {
-    const resolved = resolveClientIp(request.ip, forwardedFor(request), hops);
+    const resolved = request.client ?? resolveClientIp(request.ip, forwardedFor(request), hops);
     return resolved.trusted ? resolved.address : (request.ip ?? '');
   };
 }

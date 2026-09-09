@@ -417,11 +417,19 @@ Enforced in a global guard after authentication and before authorization, so a
 refused address never learns whether it would otherwise have been allowed in.
 [ip-rules.md](./ip-rules.md).
 
-**Still to do:** the Security Centre (sessions, devices, IP history, 2FA, own
-audit, active keys — the `SecurityEvent` feed exists, the rest does not); the
-remaining fraud signals — request rate, duplicate ids, replay, timestamp skew,
-sequence anomalies, device and IP change — with operator review and no automatic
-punishment; the §72 security test list extended to the new surfaces.
+**The Security Centre — done.** Two-factor, sessions, API keys and the
+security feed already existed; what was missing was that every address in them
+was the nginx container's. The request middleware now resolves the caller once
+under `TRUSTED_PROXY_HOPS`, everything records `clientAddress(request)`, and a
+lint rule refuses `request.ip` anywhere else. Added "where I have signed in
+from": one row per address with first and last seen, what signed in from it and
+whether a session there is still open — sign-ins counted as rotation families,
+not token rows. A separate device registry and a raw own-audit view are
+deliberately absent, with reasons. [security-centre.md](./security-centre.md).
+
+**Still to do:** the remaining fraud signals — request rate, duplicate ids,
+replay, timestamp skew, sequence anomalies — with operator review and no
+automatic punishment; the §72 security test list extended to the new surfaces.
 
 ## Phase 11 — Mobile architecture · ~3 weeks · partly BLOCKED
 

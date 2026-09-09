@@ -17,6 +17,20 @@ export interface SessionSummary {
   current: boolean;
 }
 
+export interface AddressSummary {
+  ipAddress: string;
+  /** What signed in from it, deduplicated: "Chrome on macOS", "Safari on iOS". */
+  devices: string[];
+  /** Distinct sign-ins (rotation families), not token rows. */
+  sessions: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  /** Whether the request asking is coming from this address right now. */
+  current: boolean;
+  /** Whether one of those sign-ins is still live. */
+  active: boolean;
+}
+
 /**
  * What the user can see and revoke.
  *
@@ -105,6 +119,82 @@ export class SessionsService {
         current: token.familyId === currentFamilyId,
       }))
       .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+  }
+
+  /**
+   * Where this account has been signed in from — the IP history a Security
+   * Centre owes its owner.
+   *
+   * Grouped by address rather than listed by session, because the question a
+   * person brings to it is "have I ever been here?", and the answer to that is
+   * a short list of places with a first and last date, not a long list of
+   * mornings. The sessions list says what is open *now*; this says where the
+   * account has *been*, for as long as token rows are kept.
+   *
+   * Two queries, both bounded: one grouping for the dates and counts, one
+   * distinct scan for what each address's clients looked like. Neither reads
+   * every rotation row into memory, which for a session refreshing every
+   * fifteen minutes would be thousands.
+   */
+  async addresses(
+    userId: string,
+    currentAddress: string | undefined,
+    now = new Date(),
+  ): Promise<AddressSummary[]> {
+    const grouped = await this.prisma.refreshToken.groupBy({
+      by: ['ipAddress'],
+      where: { userId, ipAddress: { not: null } },
+      _min: { createdAt: true },
+      _max: { createdAt: true },
+      orderBy: { _max: { createdAt: 'desc' } },
+      take: 100,
+    });
+    if (grouped.length === 0) return [];
+    const addresses = grouped.map((row) => row.ipAddress as string);
+
+    const [clients, families, live] = await Promise.all([
+      this.prisma.refreshToken.findMany({
+        where: { userId, ipAddress: { in: addresses } },
+        distinct: ['ipAddress', 'userAgent'],
+        select: { ipAddress: true, userAgent: true },
+      }),
+      this.prisma.refreshToken.groupBy({
+        by: ['ipAddress', 'familyId'],
+        where: { userId, ipAddress: { in: addresses } },
+      }),
+      this.prisma.refreshToken.findMany({
+        where: { userId, ipAddress: { in: addresses }, revokedAt: null, expiresAt: { gt: now } },
+        distinct: ['ipAddress'],
+        select: { ipAddress: true },
+      }),
+    ]);
+
+    const devices = new Map<string, Set<string>>();
+    for (const row of clients) {
+      const address = row.ipAddress as string;
+      const set = devices.get(address) ?? new Set<string>();
+      set.add(describeDevice(row.userAgent).label);
+      devices.set(address, set);
+    }
+    const sessionCounts = new Map<string, number>();
+    for (const row of families) {
+      const address = row.ipAddress as string;
+      sessionCounts.set(address, (sessionCounts.get(address) ?? 0) + 1);
+    }
+    const stillLive = new Set(live.map((row) => row.ipAddress as string));
+
+    return grouped.map((row) => {
+      const address = row.ipAddress as string;
+      return {
+        ipAddress: address,
+        devices: [...(devices.get(address) ?? [])].sort(),
+        sessions: sessionCounts.get(address) ?? 0,
+        firstSeenAt: (row._min.createdAt ?? now).toISOString(),
+        lastSeenAt: (row._max.createdAt ?? now).toISOString(),
+        current: currentAddress !== undefined && currentAddress === address,
+        active: stillLive.has(address),
+      };
+    });
   }
 
   /**

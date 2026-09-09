@@ -335,4 +335,69 @@ suite('Sessions and device visibility (integration)', () => {
       ).resolves.toEqual({ newDevice: false });
     });
   });
+
+  /**
+   * Where the account has been. The list a person reads when a line in the
+   * security feed looked unfamiliar: a short list of places, with dates, not a
+   * long list of mornings.
+   */
+  describe('where the account has been signed in from', () => {
+    it('groups by address, with first and last seen and what signed in from it', async () => {
+      await signIn(CHROME_MAC, '203.0.113.4');
+      await signIn(FIREFOX_LINUX, '203.0.113.4');
+      await signIn(CHROME_MAC, '198.51.100.9');
+
+      const list = await sessions.addresses(await userId(), undefined);
+      expect(list.map((row) => row.ipAddress).sort()).toEqual(['198.51.100.9', '203.0.113.4']);
+
+      const office = list.find((row) => row.ipAddress === '203.0.113.4');
+      expect(office?.devices).toEqual(['Chrome on macOS', 'Firefox on Linux']);
+      expect(office?.sessions).toBe(2);
+      expect(office?.active).toBe(true);
+      expect(Date.parse(office?.lastSeenAt ?? '')).toBeGreaterThanOrEqual(
+        Date.parse(office?.firstSeenAt ?? ''),
+      );
+    });
+
+    /**
+     * A rotation is not a sign-in. A session refreshing every fifteen minutes
+     * for a week is one row here, or the list is ninety-six mornings a day.
+     */
+    it('counts sign-ins, not rotations', async () => {
+      const pair = await signIn(CHROME_MAC, '203.0.113.4');
+      await tokens.rotate(pair.refreshToken, { userAgent: CHROME_MAC, ipAddress: '203.0.113.4' });
+
+      const [row] = await sessions.addresses(await userId(), undefined);
+      expect(row?.sessions).toBe(1);
+      expect(await prisma.refreshToken.count()).toBeGreaterThan(1);
+    });
+
+    it('marks the address the caller is asking from, and remembers ended sessions', async () => {
+      const pair = await signIn(CHROME_MAC, '198.51.100.9');
+      await signIn(FIREFOX_LINUX, '203.0.113.4');
+      await sessions.revoke(await userId(), tokens.familyOf(pair.accessToken));
+
+      const list = await sessions.addresses(await userId(), '203.0.113.4');
+      expect(list.find((row) => row.current)?.ipAddress).toBe('203.0.113.4');
+
+      const gone = list.find((row) => row.ipAddress === '198.51.100.9');
+      expect(gone).toBeDefined();
+      expect(gone?.active).toBe(false);
+    });
+
+    it('shows one person only their own addresses', async () => {
+      await signIn(CHROME_MAC, '203.0.113.4');
+      await auth.register({ email: 'other@test.local', password: PASSWORD, displayName: 'Other' });
+      const otherLogin = await auth.login('other@test.local', PASSWORD, {
+        userAgent: CHROME_MAC,
+        ipAddress: '198.51.100.9',
+      });
+      expect(otherLogin.kind).toBe('authenticated');
+      const otherId = (await prisma.user.findFirstOrThrow({ where: { email: 'other@test.local' } }))
+        .id;
+
+      const theirs = await sessions.addresses(otherId, undefined);
+      expect(theirs.map((row) => row.ipAddress)).not.toContain('203.0.113.4');
+    });
+  });
 });

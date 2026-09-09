@@ -33,6 +33,9 @@ const WORDING: Record<string, string> = {
   USER_SUSPENDED: 'Your account was suspended',
   USER_REINSTATED: 'Your account was reinstated',
   USER_UNLOCKED: 'Your sign-in lock was cleared',
+  BREAK_GLASS_OPENED: 'A member of staff viewed your account, with a recorded reason',
+  BREAK_GLASS_CLOSED: 'The staff view of your account ended',
+  IP_RULE_CHANGED: 'You changed where this firm can be reached from',
 };
 
 /**

@@ -40,7 +40,11 @@ export default tseslint.config(
       'no-console': ['error', { allow: ['warn', 'error'] }],
       'no-restricted-globals': [
         'error',
-        { name: 'setInterval', message: 'Polling is not a substitute for the realtime architecture. Use the event bus / scheduler abstractions.' },
+        {
+          name: 'setInterval',
+          message:
+            'Polling is not a substitute for the realtime architecture. Use the event bus / scheduler abstractions.',
+        },
       ],
     },
   },
@@ -58,8 +62,40 @@ export default tseslint.config(
     },
   },
   {
+    /**
+     * `request.ip` is the socket address, which behind nginx is the proxy.
+     * Every session, audit row and rate-limit bucket that read it recorded
+     * the same container address until the request middleware started
+     * resolving the real caller. The three files below are the resolution
+     * itself and its fallbacks; everything else goes through `clientAddress`
+     * or `request.client`.
+     */
+    files: ['apps/api/src/**/*.ts'],
+    ignores: [
+      'apps/api/src/common/request-context.ts',
+      'apps/api/src/common/throttler-tracker.ts',
+      'apps/api/src/security/ip-rules.guard.ts',
+      'apps/api/src/security/ip-rules.controller.ts',
+      'apps/api/src/**/*.test.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[property.name='ip'][object.name=/^(req|request)$/]",
+          message:
+            'request.ip is the proxy behind nginx. Use clientAddress(request) to record an address, or request.client to decide on one.',
+        },
+      ],
+    },
+  },
+  {
     // Pure domain packages must never depend on frameworks or I/O.
-    files: ['packages/financial-core/**/*.ts', 'packages/trading-core/**/*.ts', 'packages/risk-core/**/*.ts'],
+    files: [
+      'packages/financial-core/**/*.ts',
+      'packages/trading-core/**/*.ts',
+      'packages/risk-core/**/*.ts',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -69,11 +105,17 @@ export default tseslint.config(
             { name: 'next', message: 'Domain packages must stay framework-independent.' },
             { name: '@nestjs/common', message: 'Domain packages must stay framework-independent.' },
             { name: '@nestjs/core', message: 'Domain packages must stay framework-independent.' },
-            { name: '@prisma/client', message: 'Domain packages must not depend on infrastructure.' },
+            {
+              name: '@prisma/client',
+              message: 'Domain packages must not depend on infrastructure.',
+            },
             { name: 'ioredis', message: 'Domain packages must not depend on infrastructure.' },
           ],
           patterns: [
-            { group: ['node:*', 'fs', 'http', 'https', 'net'], message: 'Domain packages must be pure and I/O free.' },
+            {
+              group: ['node:*', 'fs', 'http', 'https', 'net'],
+              message: 'Domain packages must be pure and I/O free.',
+            },
           ],
         },
       ],

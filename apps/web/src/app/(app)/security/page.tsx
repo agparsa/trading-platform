@@ -5,6 +5,7 @@ import { Panel } from '@/components/primitives';
 import { SecuritySettings } from '@/components/security-settings';
 import { ApiKeysPanel } from '@/components/api-keys-panel';
 import { SecurityEventsPanel } from '@/components/security-events-panel';
+import { AddressesPanel } from '@/components/addresses-panel';
 
 /**
  * Two-factor authentication, where this login is signed in, and the keys
@@ -21,7 +22,7 @@ export default function SecurityPage() {
   return (
     <AppShell
       title="Security"
-      description="Two-factor authentication, recovery codes, the sessions signed in as you, the API keys that act as you, and everything that has happened to your account."
+      description="Two-factor authentication, recovery codes, the sessions signed in as you, the API keys that act as you, where you have signed in from, and everything that has happened to your account."
     >
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel className="p-4">
@@ -29,6 +30,9 @@ export default function SecurityPage() {
         </Panel>
         <Panel className="p-4">
           <ApiKeysPanel />
+        </Panel>
+        <Panel className="p-4 lg:col-span-2">
+          <AddressesPanel />
         </Panel>
         <Panel className="p-4 lg:col-span-2">
           <SecurityEventsPanel />

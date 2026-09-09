@@ -16,7 +16,7 @@ import { CredentialsService } from '../../credentials/credentials.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BreakGlassService } from '../../security/break-glass.service';
 import { noteActor } from '../request-scope';
-import type { RequestWithContext } from '../request-context';
+import { clientAddress, type RequestWithContext } from '../request-context';
 import { currentTenant } from '@tp/tenancy';
 
 /**
@@ -94,7 +94,7 @@ export class BearerAuthGuard implements CanActivate {
           'This needs a signed-in session, not an API key or service token',
         );
       }
-      const principal = await this.credentials.authenticate(bearer, tenant, request.ip);
+      const principal = await this.credentials.authenticate(bearer, tenant, clientAddress(request));
       request.user =
         principal.kind === 'api_key'
           ? {

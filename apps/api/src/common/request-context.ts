@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { REQUEST_ID_HEADER } from '@tp/shared-types';
+import { resolveClientIp, type ResolvedIp } from '../security/client-ip';
 import { runInRequestScope } from './request-scope';
 
 /**
@@ -12,8 +13,35 @@ import { runInRequestScope } from './request-scope';
  */
 export interface RequestWithContext extends Request {
   requestId?: string;
+  /**
+   * Who is calling, as far as the platform can tell — resolved once, here,
+   * and read everywhere. See `clientAddress` for why nothing else may read
+   * `request.ip`.
+   */
+  client?: ResolvedIp;
   /** Attached by BearerAuthGuard. Absent on public routes. */
   user?: RequestPrincipal;
+}
+
+/**
+ * The address to record against what this request does.
+ *
+ * This is the **only** place `request.ip` is read for a client address. Express
+ * resolves that from the socket, and behind nginx the socket is the proxy — so
+ * every session, audit row and security event used to say the same container
+ * address, and "signed in from somewhere new" could never fire. The middleware
+ * resolves the real caller from the forwarded chain, under `TRUSTED_PROXY_HOPS`,
+ * and this hands it out.
+ *
+ * It answers "what is the best address to write down", which is always
+ * something: the forwarded address when the chain can be trusted, the socket
+ * when it cannot. A security *decision* — the rate limiter, an IP rule — reads
+ * `request.client.trusted` as well, because for those the honest answer to an
+ * untrusted address is "do not decide", not "use the socket".
+ */
+export function clientAddress(request: RequestWithContext): string | undefined {
+  const address = request.client?.address ?? request.ip;
+  return address === undefined || address === '' ? undefined : address;
 }
 
 /**
@@ -57,16 +85,19 @@ export interface RequestPrincipal {
  * which is what makes "the order I placed at 09:27 was rejected" a traceable
  * report rather than a guessing game.
  */
-export function requestContext(req: RequestWithContext, res: Response, next: NextFunction): void {
-  const incoming = req.header(REQUEST_ID_HEADER);
-  const id =
-    incoming !== undefined && incoming.length > 0 && incoming.length <= 128
-      ? incoming
-      : randomUUID();
-  req.requestId = id;
-  res.setHeader(REQUEST_ID_HEADER, id);
-  // The rest of the request runs inside the scope, so anything it publishes
-  // can say which request caused it. `next` is called synchronously, which is
-  // what makes the scope reach the handlers — see tenancy's `withTenant`.
-  runInRequestScope({ requestId: id, actorId: null }, next);
+export function requestContext(options: { readonly trustedProxyHops: number | undefined }) {
+  return (req: RequestWithContext, res: Response, next: NextFunction): void => {
+    const incoming = req.header(REQUEST_ID_HEADER);
+    const id =
+      incoming !== undefined && incoming.length > 0 && incoming.length <= 128
+        ? incoming
+        : randomUUID();
+    req.requestId = id;
+    res.setHeader(REQUEST_ID_HEADER, id);
+    req.client = resolveClientIp(req.ip, req.header('x-forwarded-for'), options.trustedProxyHops);
+    // The rest of the request runs inside the scope, so anything it publishes
+    // can say which request caused it. `next` is called synchronously, which is
+    // what makes the scope reach the handlers — see tenancy's `withTenant`.
+    runInRequestScope({ requestId: id, actorId: null }, next);
+  };
 }

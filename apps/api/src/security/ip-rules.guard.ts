@@ -50,7 +50,10 @@ export class IpRulesGuard implements CanActivate {
     if (user === undefined) return true;
 
     const hops = this.config.get('TRUSTED_PROXY_HOPS', { infer: true });
-    const resolved = resolveClientIp(request.ip, request.header('x-forwarded-for'), hops);
+    // Resolved once by the request middleware; computed here only when a test
+    // hands the guard a bare request.
+    const resolved =
+      request.client ?? resolveClientIp(request.ip, request.header('x-forwarded-for'), hops);
 
     /**
      * The rules are read before the trust check, so a firm that has rules and a

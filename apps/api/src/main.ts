@@ -36,7 +36,7 @@ async function bootstrap(): Promise<void> {
 
   const isProduction = config.get('NODE_ENV', { infer: true }) === 'production';
 
-  app.use(requestContext);
+  app.use(requestContext({ trustedProxyHops: config.get('TRUSTED_PROXY_HOPS', { infer: true }) }));
   app.use(
     helmet({
       // The API serves JSON only; a restrictive CSP costs nothing here.
