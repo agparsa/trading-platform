@@ -32,12 +32,12 @@ regress first.
 
 ## Dashboards and alerts (§63)
 
-`docker/observability/` ships Prometheus and Grafana as an opt-in profile of the
-production stack:
+`docker/observability/` and `docker-compose.observability.yml` ship Prometheus
+and Grafana as a third compose file, added to the command when wanted:
 
 ```bash
 docker compose -f docker-compose.prod.yml -f docker-compose.cpanel.yml \
-  --env-file .env.production --profile observability up -d
+  -f docker-compose.observability.yml --env-file .env.production up -d
 ```
 
 Prometheus scrapes the serving and ingest API processes over the compose
@@ -52,8 +52,11 @@ reviewed commit. It listens on the loopback interface only
 ssh -L 3001:127.0.0.1:3001 tp-server   # then http://127.0.0.1:3001
 ```
 
-`GRAFANA_ADMIN_PASSWORD` must be set in `.env.production` before the profile
-will start; generate it, do not reuse another secret.
+`GRAFANA_ADMIN_PASSWORD` must be set in `.env.production` before that file will
+start; generate it, do not reuse another secret. It is a separate file rather
+than a profile because compose interpolates every file it is given, profiles
+included — a required password in the main file stopped every `up`, `ps` and
+`logs` on a host that had not set it.
 
 The dashboard's twenty-one panels chart the metric set above plus what later
 phases added — order pipeline stages, requests shed as overloaded, tick →

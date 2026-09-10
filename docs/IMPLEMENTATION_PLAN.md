@@ -505,8 +505,8 @@ burst overflowed the 511-entry listen backlog so 120 orders were refused with
 exempt). The run then passed with every refusal safe. Numbers, and the caveat
 that the generator shares the two cores, in [capacity.md](./capacity.md).
 
-**Grafana dashboards (§63) — done.** Prometheus and Grafana as an opt-in
-compose profile, provisioned from files in the repository: one dashboard of
+**Grafana dashboards (§63) — done.** Prometheus and Grafana as a third
+compose file, provisioned from files in the repository: one dashboard of
 twenty-one panels over the metric set, and alert rules for what the runbook
 says to be woken for. Grafana on the loopback interface only, reached over an
 SSH tunnel. A deployment test checks every metric a panel or alert names

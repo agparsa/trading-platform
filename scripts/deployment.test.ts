@@ -171,18 +171,24 @@ describe('docker-compose.prod.yml', () => {
     expect(compose.match(/TRIGGER_ENGINE_ENABLED: 'false'/g)).toHaveLength(1);
   });
 
-  it('publishes ports from nginx, and from grafana on the loopback interface only', () => {
+  it('publishes ports from nginx and from nothing else', () => {
     const services = compose.split(/\n {2}(?=[a-z])/);
     const publishing = services
       .filter((block) => /\n\s+ports:/.test(block))
       .map((block) => block.trim().split(':')[0]);
-    expect(publishing).toEqual(['nginx', 'grafana']);
-    // Grafana sees the shape of the whole platform; it is reached over an SSH
-    // tunnel, never from the network the edge faces.
-    const grafana = services.find((block) => block.trim().startsWith('grafana:'))!;
-    for (const port of grafana.match(/- '[^']+'/g) ?? []) {
-      expect(port).toMatch(/^- '127\.0\.0\.1:/);
-    }
+    expect(publishing).toEqual(['nginx']);
+  });
+
+  /**
+   * Compose interpolates the whole file it is given, profiles included, so a
+   * required variable anywhere in it stops every `up`, `ps` and `logs` on a
+   * host that has not set it. Grafana's password is required — and therefore
+   * lives in a file that is only read when Grafana is wanted.
+   */
+  it('requires nothing an ordinary deploy does not set', () => {
+    const required = [...compose.matchAll(/\$\{([A-Z_]+):\?/g)].map((m) => m[1]!);
+    expect(required).not.toContain('GRAFANA_ADMIN_PASSWORD');
+    expect(compose).not.toMatch(/grafana|prometheus/i);
   });
 
   it('runs migrations as a job everything else waits for', () => {
@@ -1069,7 +1075,7 @@ describe('the backup service', () => {
 // ─── Observability (§63): the dashboard names only metrics that exist ──────
 
 describe('observability stack', () => {
-  const compose = read('docker-compose.prod.yml');
+  const compose = read('docker-compose.observability.yml');
   const dashboard = JSON.parse(
     read('docker/observability/grafana/dashboards/trading-platform.json'),
   ) as { panels: Array<{ title: string; targets: Array<{ expr: string }> }> };
@@ -1122,15 +1128,20 @@ describe('observability stack', () => {
     }
   });
 
-  it('keeps both services behind the observability profile, and Prometheus unpublished', () => {
+  it('publishes Grafana on the loopback interface only, and Prometheus not at all', () => {
     const services = compose.split(/\n {2}(?=[a-z])/);
-    for (const name of ['prometheus', 'grafana']) {
-      const block = services.find((b) => b.trim().startsWith(`${name}:`));
-      expect(block, `${name} service exists`).toBeDefined();
-      expect(block).toMatch(/profiles: \[observability\]/);
-    }
-    const prometheus = services.find((b) => b.trim().startsWith('prometheus:'))!;
+    const prometheus = services.find((b) => b.trim().startsWith('prometheus:'));
+    const grafana = services.find((b) => b.trim().startsWith('grafana:'));
+    expect(prometheus, 'prometheus service exists').toBeDefined();
+    expect(grafana, 'grafana service exists').toBeDefined();
     expect(prometheus).not.toMatch(/\n\s+ports:/);
+    // Grafana sees the shape of the whole platform; it is reached over an SSH
+    // tunnel, never from the network the edge faces.
+    const ports = grafana!.match(/- '[^']+'/g) ?? [];
+    expect(ports.length).toBeGreaterThan(0);
+    for (const port of ports) expect(port).toMatch(/^- '127\.0\.0\.1:/);
+    // And it insists on a password rather than starting with Grafana's default.
+    expect(grafana).toMatch(/GRAFANA_ADMIN_PASSWORD:\?/);
   });
 
   it('mounts the provisioning it ships, read-only', () => {

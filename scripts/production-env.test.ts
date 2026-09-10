@@ -117,7 +117,8 @@ describe('.env.production.example', () => {
   it('lists as compose-only nothing the compose files do not read', () => {
     const compose =
       readFileSync(resolve(ROOT, 'docker-compose.prod.yml'), 'utf8') +
-      readFileSync(resolve(ROOT, 'docker-compose.cpanel.yml'), 'utf8');
+      readFileSync(resolve(ROOT, 'docker-compose.cpanel.yml'), 'utf8') +
+      readFileSync(resolve(ROOT, 'docker-compose.observability.yml'), 'utf8');
     const unread = [...COMPOSE_ONLY].filter((key) => !compose.includes(`\${${key}`));
     expect(unread).toEqual([]);
   });
