@@ -36,3 +36,6 @@ docker/volumes/
 dump.rdb
 _staging/
 _to_delete/
+
+# Local database dumps written by the backup service (docker/backup/backup.sh).
+backups/

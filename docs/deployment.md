@@ -329,9 +329,13 @@ screen that tells them what has happened. Alert on it; do not route on it.
 
 ## Backups
 
-PostgreSQL is the only stateful component that matters. Point-in-time recovery,
-plus periodic restore drills. Redis holds no financial truth — losing it costs a
-cache warm-up and a round of client re-snapshots.
+PostgreSQL is the only stateful component that matters. The `backup` service in
+the production compose file dumps it every `BACKUP_INTERVAL_HOURS` into
+`BACKUP_DIR` on the host, verifies each dump before naming it, and prunes only
+after a good one. Copying that directory offsite is the operator's job. Redis
+holds no financial truth — losing it costs a cache warm-up and a round of client
+re-snapshots. What to do when the database is gone, and how long it takes, is
+[disaster-recovery.md](./disaster-recovery.md).
 
 ## Taking money
 

@@ -508,10 +508,18 @@ internally), in position modification (setting a trail; clearing stays open),
 and in webhook registration. `/admin/features`, with the platform picking a
 broker from its own tenant. [feature-flags.md](./feature-flags.md).
 
+**Backups and disaster recovery — done.** A `backup` service in the production
+stack: `pg_dump -Fc` every six hours to a host path, each dump parsed before it
+is named, pruning only after a verified dump — the ordering a deployment test
+pins. `docs/disaster-recovery.md`: what each component holds, why
+`SECRET_ENCRYPTION_KEYS` is the row that ends a firm, the restore in order, the
+RPO as the interval it is, the RTO as the rehearsal measured it (5.0 s on this
+data, dominated by the human steps), and what is deliberately not here —
+point-in-time recovery stated as absent rather than implied.
+
 **Still to do:** separate containers for WebSocket, ingest, trigger engine,
 workers, scheduler and broker adapters (§77) — ingest and trigger already run
-apart; graceful shutdown verified under load; secrets manager integration;
-`docs/disaster-recovery.md` around the restore rehearsal that already exists.
+apart; graceful shutdown verified under load; secrets manager integration.
 
 ## Phase 15 — Final audit
 

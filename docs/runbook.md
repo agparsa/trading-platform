@@ -146,6 +146,10 @@ half.
 
 ## Backups
 
-`docs/deployment.md` covers the schedule. What matters here: a restore has to be
-**rehearsed**, and the rehearsal has to include replaying the ledger against the
-restored `accounts` table. A backup nobody has restored is a hope, not a backup.
+The `backup` service dumps the database every six hours by default and writes a
+one-line `status` file beside the dumps; `FAILED` there, or a stale file, is the
+first thing to check. The restore, in order and with the measured numbers, is
+[disaster-recovery.md](./disaster-recovery.md). What matters here: a restore has
+to be **rehearsed** (`pnpm restore:rehearse`), and the rehearsal has to include
+replaying the ledger against the restored `accounts` table. A backup nobody has
+restored is a hope, not a backup.

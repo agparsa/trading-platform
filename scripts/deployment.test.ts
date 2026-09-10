@@ -6,6 +6,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -993,5 +994,44 @@ describe('the API document in production', () => {
     expect(guard).toBeGreaterThan(0);
     // The guard is the nearest enclosing block: no closing brace between it and the setup call.
     expect(main.slice(guard, setup)).not.toMatch(/\n\s*}\n/);
+  });
+});
+
+describe('the backup service', () => {
+  const script = read('docker/backup/backup.sh');
+
+  it('is in the production stack, on the database, writing to a host path', () => {
+    const compose = read('docker-compose.prod.yml');
+    expect(compose).toMatch(/\n {2}backup:\n/);
+    expect(compose).toMatch(/\.\/docker\/backup\/backup\.sh:\/backup\.sh:ro/);
+    expect(compose).toMatch(/\$\{BACKUP_DIR:-\.\/backups\}:\/backups/);
+  });
+
+  it('is executable and dumps in the custom format', () => {
+    expect(statSync(resolve(ROOT, 'docker/backup/backup.sh')).mode & 0o111).not.toBe(0);
+    expect(script).toMatch(/pg_dump -Fc/);
+  });
+
+  /**
+   * The ordering the whole script exists for: verify, then rename into place,
+   * then prune. A dump that fails verification is deleted before it can be
+   * pointed at, and nothing older is touched on a night the dump fails.
+   */
+  it('verifies a dump before it is named, and prunes only after a good one', () => {
+    const verify = script.indexOf('pg_restore --list');
+    const rename = script.indexOf('mv "$tmp" "$target"');
+    const prune = script.indexOf('-delete');
+    expect(verify).toBeGreaterThan(0);
+    expect(rename).toBeGreaterThan(verify);
+    expect(prune).toBeGreaterThan(rename);
+    // A failed verification discards the partial file and returns before the prune.
+    const failure = script.slice(verify, rename);
+    expect(failure).toMatch(/rm -f "\$tmp"/);
+    expect(failure).toMatch(/return 1/);
+  });
+
+  it('never writes the password anywhere but the environment', () => {
+    expect(script).not.toMatch(/PGPASSWORD=/);
+    expect(script).not.toMatch(/--password/);
   });
 });

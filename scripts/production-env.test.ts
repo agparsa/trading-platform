@@ -52,6 +52,10 @@ const COMPOSE_ONLY = new Set([
   'ALPINE_MIRROR',
   'PUBLIC_API_URL',
   'PUBLIC_WS_URL',
+  // Read by the backup service (docker/backup/backup.sh) through the compose file.
+  'BACKUP_DIR',
+  'BACKUP_INTERVAL_HOURS',
+  'BACKUP_RETENTION_DAYS',
 ]);
 
 function declaredKeys(file: string): string[] {
@@ -99,6 +103,19 @@ describe('.env.production.example', () => {
       (key) => !(key in apiShape) && !(key in workerShape) && !COMPOSE_ONLY.has(key),
     );
     expect(orphans).toEqual([]);
+  });
+
+  /**
+   * `COMPOSE_ONLY` is itself a claim — that the compose files read the key. A
+   * key listed here that no compose file mentions is exactly the orphan the
+   * test above exists to catch, hidden behind an allow-list.
+   */
+  it('lists as compose-only nothing the compose files do not read', () => {
+    const compose =
+      readFileSync(resolve(ROOT, 'docker-compose.prod.yml'), 'utf8') +
+      readFileSync(resolve(ROOT, 'docker-compose.cpanel.yml'), 'utf8');
+    const unread = [...COMPOSE_ONLY].filter((key) => !compose.includes(`\${${key}`));
+    expect(unread).toEqual([]);
   });
 
   it('leaves every secret blank rather than shipping one', () => {

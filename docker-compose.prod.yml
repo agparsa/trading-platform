@@ -229,6 +229,29 @@ services:
   # as root on the host — `:ro` protects the socket file, not the API behind it.
   # Nginx watches its own certificate file instead; see
   # docker/nginx/entrypoint/20-watch-renewals.sh.
+  # Periodic dumps of the one component that holds financial truth. Verified
+  # before anything older is pruned; see docker/backup/backup.sh and
+  # docs/disaster-recovery.md. BACKUP_DIR is a host path so the operator's
+  # offsite copy can pick the files up — a dump on the database's own disk is
+  # a copy, not a backup.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:?set POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:?set POSTGRES_DB}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-6}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./docker/backup/backup.sh:/backup.sh:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+    entrypoint: ['/bin/sh', '/backup.sh']
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   certbot:
     image: certbot/certbot:latest
     restart: unless-stopped
