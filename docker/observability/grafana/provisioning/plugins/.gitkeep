@@ -1,0 +1,1 @@
+# Grafana logs an error for a provisioning directory that does not exist. Nothing is provisioned here; the directory exists so the log stays clean.
