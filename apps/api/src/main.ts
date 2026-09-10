@@ -10,6 +10,7 @@ import { API_VERSION } from '@tp/shared-types';
 import { AppModule } from './app.module';
 import { corsOrigins, Env } from './config/env.schema';
 import { requestContext } from './common/request-context';
+import { DrainState } from './common/drain';
 import { OpenApiDocumentService } from './developer/openapi-document.service';
 import { ApiResponseInterceptor } from './common/api-response.interceptor';
 import { DomainExceptionFilter } from './common/domain-exception.filter';
@@ -37,6 +38,12 @@ async function bootstrap(): Promise<void> {
 
   const isProduction = config.get('NODE_ENV', { infer: true }) === 'production';
 
+  /**
+   * Before anything else, so a request refused while draining costs nothing
+   * and a request admitted is counted for the whole of its life.
+   */
+  const drain = new DrainState();
+  app.use(drain.middleware());
   app.use(requestContext({ trustedProxyHops: config.get('TRUSTED_PROXY_HOPS', { infer: true }) }));
   app.use(
     helmet({
@@ -92,7 +99,36 @@ async function bootstrap(): Promise<void> {
     SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs/openapi.json' });
   }
 
-  app.enableShutdownHooks();
+  /**
+   * Signals are handled here rather than by `enableShutdownHooks`, because
+   * that helper answers SIGTERM with `app.close()` at once — and `app.close()`
+   * takes the database away from requests still in flight. See `DrainState`.
+   * `app.close()` still runs every `onApplicationShutdown` hook; it just runs
+   * them after the last request has left.
+   */
+  const drainDeadlineMs = config.get('SHUTDOWN_DRAIN_TIMEOUT_MS', { infer: true });
+  let stopping = false;
+  const stop = async (signal: NodeJS.Signals) => {
+    if (stopping) return;
+    stopping = true;
+    logger.log(
+      `${signal}: draining ${drain.inFlightRequests} request(s) in flight, up to ${drainDeadlineMs} ms`,
+    );
+    const abandoned = await drain.drain(drainDeadlineMs, () => {
+      (app.getHttpServer() as { closeIdleConnections?: () => void }).closeIdleConnections?.();
+    });
+    if (abandoned > 0) {
+      logger.warn(
+        `Drain deadline passed with ${abandoned} request(s) still in flight; closing anyway`,
+      );
+    } else {
+      logger.log('Drained; closing');
+    }
+    await app.close();
+    process.exit(0);
+  };
+  process.once('SIGTERM', () => void stop('SIGTERM'));
+  process.once('SIGINT', () => void stop('SIGINT'));
 
   const port = config.get('API_PORT', { infer: true });
   const host = config.get('API_HOST', { infer: true });

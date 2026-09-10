@@ -517,9 +517,21 @@ RPO as the interval it is, the RTO as the rehearsal measured it (5.0 s on this
 data, dominated by the human steps), and what is deliberately not here —
 point-in-time recovery stated as absent rather than implied.
 
-**Still to do:** separate containers for WebSocket, ingest, trigger engine,
-workers, scheduler and broker adapters (§77) — ingest and trigger already run
-apart; graceful shutdown verified under load; secrets manager integration.
+**Graceful shutdown under load — done.** The failure-injection harness gained
+a scenario that sends `SIGTERM` while forty orders are in flight. The first run
+showed that "graceful" was not: `app.close()` disconnected the database before
+it stopped accepting requests, and 36 of 40 failed. The API now drains — a
+`DrainState` middleware refuses newcomers with `503`/`Retry-After` and counts
+what is inside; the signal handler waits for that count to reach zero (bounded
+by `SHUTDOWN_DRAIN_TIMEOUT_MS`), closes idle sockets, then closes the app.
+After: 40 filled, 0 refused, exit 1.8 s after the signal. `stop_grace_period`
+raised to 40 s on the API, ingest and worker services so Docker does not kill a
+process mid-drain. [runbook.md](./runbook.md#draining),
+[failure-injection.md](./failure-injection.md).
+
+**Still to do:** separate containers for WebSocket, workers, scheduler and
+broker adapters (§77) — ingest and trigger already run apart; secrets manager
+integration.
 
 ## Phase 15 — Final audit
 

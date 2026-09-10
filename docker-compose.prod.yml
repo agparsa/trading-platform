@@ -96,6 +96,7 @@ services:
       args:
         ALPINE_MIRROR: ${ALPINE_MIRROR:-}
     restart: unless-stopped
+    stop_grace_period: 40s
     env_file: [.env.production]
     environment:
       <<: *api-env
@@ -121,6 +122,10 @@ services:
       args:
         ALPINE_MIRROR: ${ALPINE_MIRROR:-}
     restart: unless-stopped
+    # Drain first, then close: the API refuses newcomers on SIGTERM and finishes
+    # the requests already inside it (SHUTDOWN_DRAIN_TIMEOUT_MS, default 25 s).
+    # Docker's default 10 s would SIGKILL a process mid-drain.
+    stop_grace_period: 40s
     env_file: [.env.production]
     environment:
       <<: *api-env
@@ -148,6 +153,8 @@ services:
       args:
         ALPINE_MIRROR: ${ALPINE_MIRROR:-}
     restart: unless-stopped
+    # A swap-accrual run can outlive Docker's default 10 s grace period.
+    stop_grace_period: 40s
     env_file: [.env.production]
     environment: *api-env
     depends_on:

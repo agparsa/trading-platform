@@ -397,6 +397,13 @@ export const envSchema = z
       .default('false')
       .transform((value) => value === 'true'),
 
+    /**
+     * How long a stopping instance waits for requests already inside it before
+     * closing. Below the 30 s the runbook asks orchestrators to allow, so that
+     * SIGKILL is never what ends a drain.
+     */
+    SHUTDOWN_DRAIN_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(25_000),
+
     BREAK_GLASS_MAX_TTL_MS: z.coerce
       .number()
       .int()

@@ -129,11 +129,34 @@ decision to make deliberately rather than at 3am.
 
 ### Draining
 
-Both the API and the worker enable shutdown hooks. `SIGTERM` closes the market
-feed, unsubscribes the tick consumers, drains in-flight BullMQ jobs and closes
-the Redis and database connections. Give the container at least 30 seconds before
-`SIGKILL`; the default 10 is enough for the API and can cut a swap-accrual run in
-half.
+**API.** `SIGTERM` (or `SIGINT`) puts the process into a draining state
+_before_ anything is closed:
+
+1. New requests are refused with `503 SERVICE_UNAVAILABLE`, `Retry-After: 2` and
+   `Connection: close`, so a load balancer or client retries against another
+   instance. Probes are refused too — that is the point; the orchestrator stops
+   routing to this pod.
+2. Requests already inside the process run to completion. An order that was
+   half-way through its transaction when the signal arrived commits normally —
+   the idempotency claim commits with the money, so a retry after restart gets
+   the stored result rather than a duplicate fill.
+3. When the last in-flight request finishes (or `SHUTDOWN_DRAIN_TIMEOUT_MS`,
+   default 25 000, elapses), idle keep-alive sockets are closed, then `app.close()`
+   runs the module hooks: market feed, tick consumers, Redis, database.
+
+Under load (`pnpm chaos`, scenario "the API is asked to stop mid-burst") the
+process exits well under two seconds after `SIGTERM` with every accepted order
+filled once. Before this, `app.close()` disconnected Prisma while requests were
+still running and most of the burst failed with `CONCURRENT_MODIFICATION`.
+
+Give the container `SHUTDOWN_DRAIN_TIMEOUT_MS` plus a few seconds before
+`SIGKILL` — `stop_grace_period: 40s` in the compose files. If the drain deadline
+passes with requests still in flight the log line `drain: abandoning N request(s)`
+tells you how many were cut off; they are safe to retry by idempotency key.
+
+**Worker.** Shutdown hooks drain in-flight BullMQ jobs and then close Redis and
+the database. Allow at least 30 seconds; the default 10 can cut a swap-accrual
+run in half.
 
 ## What is safe to restart
 

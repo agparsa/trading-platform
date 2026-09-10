@@ -40,6 +40,7 @@ before anything had been injected.
 | **Database 150 ms late**                        | every packet delayed                                                                                             | orders fill slowly, or are refused `STALE_QUOTE` — either is right; never a fill at a price the platform no longer trusted                                              |
 | **Redis unreachable** for 8 s                   | connections refused                                                                                              | every order `STALE_QUOTE` (quotes reach the serving instance over Redis); fills resume within seconds of Redis returning                                                |
 | **Market data leader dies**                     | the ingest instance killed; 16 s pass                                                                            | every order `STALE_QUOTE`; not one fill on a stopped feed; fills resume once a new leader ingests                                                                       |
+| **API asked to stop** (`SIGTERM`) mid-burst     | the signal lands while 40 orders are in flight                                                                   | 40 filled, 0 refused; the process exited 1.8 s after the signal; the invariant held                                                                                     |
 
 ## What it found
 
@@ -50,6 +51,18 @@ a client following the only path left — a fresh key — would have filled each
 again. The claim is now marked `COMMITTED` _inside_ the operation's
 transaction, and a retry is refused with a code that says "applied, read the
 account". See [order-lifecycle.md](./order-lifecycle.md#the-claim-commits-with-the-money).
+
+**Stopping was not graceful.** `enableShutdownHooks()` ran `app.close()` on
+`SIGTERM`, and `app.close()` destroys the modules — Prisma disconnects — before
+it stops accepting HTTP. The first run of this scenario filled 4 of 40 orders;
+36 failed with `CONCURRENT_MODIFICATION` after ten seconds because their
+transactions lost the connection under them, and the process took 14.6 s to
+exit. Nothing was half-applied (the transactions rolled back), so the ledger
+held, but a deploy would have failed most of the orders in flight at that
+moment. The API now drains first: newcomers get `503` with `Retry-After`, the
+requests already inside finish, and only then do the modules close. After the
+change: 40 filled, 0 refused, exit 1.8 s after the signal. See
+[runbook.md](./runbook.md#draining).
 
 **Ingest waits on the database.** With the database slow, the ingest
 instance's tick pipeline falls behind, the serving instance's quotes age past

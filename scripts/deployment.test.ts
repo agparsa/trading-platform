@@ -191,6 +191,30 @@ describe('docker-compose.prod.yml', () => {
     expect(compose).not.toMatch(/- \.\/apps/);
     expect(compose).not.toMatch(/- \.\/packages/);
   });
+
+  /**
+   * The API drains for up to SHUTDOWN_DRAIN_TIMEOUT_MS (default 25 s) before it
+   * closes. Docker's default grace period is 10 s, which would SIGKILL it with
+   * requests still inside. Every service that runs the API or the worker states
+   * a grace period longer than the drain.
+   */
+  it('gives every application process longer to stop than it takes to drain', () => {
+    const services = compose.split(/\n {2}(?=[a-z])/);
+    // The migrate job shares the API image but runs `prisma migrate deploy`
+    // once and exits; it is not a long-running process anybody drains.
+    const appServices = services.filter(
+      (block) =>
+        /dockerfile: docker\/(api|worker)\.Dockerfile/.test(block) &&
+        /restart: unless-stopped/.test(block),
+    );
+    expect(appServices.length).toBeGreaterThanOrEqual(3);
+    const drainDefaultMs = 25_000;
+    for (const block of appServices) {
+      const grace = /stop_grace_period: (\d+)s/.exec(block);
+      expect(grace, `${block.trim().split(':')[0]} states stop_grace_period`).not.toBeNull();
+      expect(Number(grace![1]) * 1000).toBeGreaterThan(drainDefaultMs);
+    }
+  });
 });
 
 // ─── The one container that decides whether anybody can reach the platform ───

@@ -407,11 +407,14 @@ async function waitForQuotes(token: string): Promise<void> {
   }
 }
 
-function kill(child: ChildProcess | null): Promise<void> {
+function kill(
+  child: ChildProcess | null,
+  signal: 'SIGKILL' | 'SIGTERM' = 'SIGKILL',
+): Promise<void> {
   return new Promise((resolve) => {
     if (child === null || child.exitCode !== null) return resolve();
     child.once('exit', () => resolve());
-    child.kill('SIGKILL');
+    child.kill(signal);
   });
 }
 
@@ -520,6 +523,36 @@ async function main(): Promise<void> {
       if (stillInFlight > 0)
         throw new Error(`${stillInFlight} claim(s) were still in flight after the takeover window`);
       await checkInvariant(prisma, traders, allKeys, 'API kill + retry');
+    });
+
+    await scenario('the API is asked to stop (SIGTERM) mid-burst', async () => {
+      /**
+       * A deploy, not a crash. The orchestrator sends SIGTERM and waits; the
+       * process is meant to finish what it is doing and leave. What is pinned:
+       * it leaves within the grace an orchestrator gives (30 s in the runbook),
+       * nothing in flight is left half-applied, and the fills it did make have
+       * their idempotency records — a graceful stop that loses the record is
+       * the crash scenario with better manners.
+       */
+      const stopKeys = keys(BURST);
+      const inFlight = burst(traders, stopKeys);
+      await sleep(300);
+      const askedAt = Date.now();
+      await kill(api, 'SIGTERM');
+      const exitMs = Date.now() - askedAt;
+      const during = await inFlight;
+      summarise('while stopping', during);
+      console.log(`    exited ${exitMs} ms after SIGTERM`);
+      if (exitMs > 30_000)
+        throw new Error(`the API took ${exitMs} ms to stop; the runbook promises 30 s`);
+      assertCoded(during, true);
+
+      api = spawnApi(PORT, false, env);
+      await waitForBoot(BASE);
+      const after = await burst(traders, stopKeys);
+      summarise('retried with the same keys', after);
+      assertCoded(after, false);
+      await checkInvariant(prisma, traders, allKeys, 'graceful stop');
     });
 
     await scenario('every database connection is severed mid-burst', async () => {
