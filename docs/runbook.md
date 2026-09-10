@@ -179,7 +179,8 @@ run in half.
 
 | Component  | Safe to restart?   | Why                                                                                                                                    |
 | ---------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| API        | Yes                | Stateless. Sockets reconnect and re-snapshot; the client contract requires it.                                                         |
+| API        | Yes                | Stateless. It drains first (below).                                                                                                    |
+| API (ws)   | Yes                | `api-ws` holds the sockets; they reconnect and re-snapshot, which the client contract requires. Restart it off-peak if you can.        |
 | Worker     | Yes                | Jobs are idempotent and BullMQ redelivers.                                                                                             |
 | Redis      | Yes, with a caveat | It carries no financial truth — quotes are re-published on the next tick and clients re-snapshot. In-flight WebSocket fan-out is lost. |
 | PostgreSQL | Only deliberately  | It _is_ the financial truth. Restore from backup rather than improvising.                                                              |

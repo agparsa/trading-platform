@@ -10,6 +10,7 @@ import { Queue, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { ALL_QUEUES, DEFAULT_JOB_OPTIONS, QueueName } from './queues';
 import { queueLagMs } from './queue-lag';
+import { workerAssignment, type WorkerAssignment } from './roles';
 import type { WorkerEnv } from './env';
 import { SwapAccrualService } from './jobs/swap-accrual.service';
 import { ReconciliationService } from './jobs/reconciliation.service';
@@ -33,6 +34,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly connection: IORedis;
   private readonly queues = new Map<QueueName, Queue>();
   private readonly workers: Worker[] = [];
+  private readonly assignment: WorkerAssignment;
 
   constructor(
     @Inject(ConfigService) private readonly config: ConfigService<WorkerEnv, true>,
@@ -44,6 +46,12 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly outbox: OutboxRelayService,
     private readonly webhooks: WebhookDeliveryService,
   ) {
+    // Decided in the constructor so a bad WORKER_QUEUES refuses to boot at
+    // once, with a message, rather than after Redis is connected.
+    this.assignment = workerAssignment(
+      config.getOrThrow('WORKER_ROLE', { infer: true }),
+      config.get('WORKER_QUEUES', { infer: true }),
+    );
     this.connection = new IORedis(config.getOrThrow('REDIS_URL', { infer: true }), {
       // BullMQ requires this to be null: its blocking commands must not time out.
       maxRetriesPerRequest: null,
@@ -87,7 +95,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     this.attach(QueueName.OUTBOX_RELAY, async () => this.outbox.relay());
     this.attach(QueueName.WEBHOOK_DELIVERY, async () => this.webhooks.deliverDue());
 
-    await this.schedule();
+    if (this.assignment.schedules) await this.schedule();
 
     if (this.config.getOrThrow('RUN_JOBS_ON_BOOT', { infer: true })) {
       this.logger.warn('RUN_JOBS_ON_BOOT is set — running every scheduled job once, now');
@@ -96,7 +104,13 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
       await this.queue(QueueName.IDEMPOTENCY_SWEEP).add('boot', {});
     }
 
-    this.logger.log(`Queue registry ready: ${ALL_QUEUES.join(', ')}`);
+    this.logger.log(
+      `Queue registry ready as ${this.config.getOrThrow('WORKER_ROLE', { infer: true })}: ` +
+        (this.assignment.schedules ? 'scheduling; ' : 'not scheduling; ') +
+        (this.assignment.processes.length === 0
+          ? 'processing nothing'
+          : `processing ${this.assignment.processes.join(', ')}`),
+    );
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -112,6 +126,9 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private attach(name: QueueName, run: (job: Job) => Promise<unknown>): void {
+    // Not this process's queue: no Worker, so no blocking connection is held
+    // open for work it would never take.
+    if (!this.assignment.processes.includes(name)) return;
     const worker = new Worker(
       name,
       async (job) => {
@@ -150,6 +167,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     });
 
     this.workers.push(worker);
+    this.logger.log(`Processing ${name}`);
   }
 
   /**

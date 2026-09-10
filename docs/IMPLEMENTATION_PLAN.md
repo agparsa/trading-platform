@@ -551,9 +551,18 @@ raised to 40 s on the API, ingest and worker services so Docker does not kill a
 process mid-drain. [runbook.md](./runbook.md#draining),
 [failure-injection.md](./failure-injection.md).
 
-**Still to do:** separate containers for WebSocket, workers, scheduler and
-broker adapters (§77) — ingest and trigger already run apart; secrets manager
-integration.
+**Container separation (§77) — done as far as the code has parts.** The
+WebSocket is served by `api-ws`, its own containers behind Nginx's `/ws`; the
+worker has a role (`WORKER_ROLE` all / scheduler / processor, a processor
+narrowed by `WORKER_QUEUES`, an undeclared name refused at boot) so the queue
+that needs hands can be scaled without every copy re-registering every cron;
+ingest and the trigger engine were already apart. Deployment tests pin the
+route and the flags; the worker smoke boots a narrowed processor on the real
+build and reads which queues it attached. Broker adapters run in-process by
+design until a real venue connector exists — there is nothing to put in a
+container yet, and a container for the mock would be theatre.
+
+**Still to do:** secrets manager integration.
 
 ## Phase 15 — Final audit
 

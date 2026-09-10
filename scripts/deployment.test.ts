@@ -164,11 +164,36 @@ describe('docker-compose.prod.yml', () => {
    * stops race each other for the same rows. Exactly one instance does both, and
    * it is the one that serves nobody.
    */
-  it('turns ingest and the trigger engine on for exactly one service', () => {
+  it('turns ingest and the trigger engine on for exactly one service, and off for every other API service', () => {
     expect(compose.match(/MARKET_INGEST_ENABLED: 'true'/g)).toHaveLength(1);
     expect(compose.match(/TRIGGER_ENGINE_ENABLED: 'true'/g)).toHaveLength(1);
-    expect(compose.match(/MARKET_INGEST_ENABLED: 'false'/g)).toHaveLength(1);
-    expect(compose.match(/TRIGGER_ENGINE_ENABLED: 'false'/g)).toHaveLength(1);
+    const apiServices = compose
+      .split(/\n {2}(?=[a-z])/)
+      .filter(
+        (block) =>
+          /dockerfile: docker\/api\.Dockerfile/.test(block) &&
+          /restart: unless-stopped/.test(block),
+      );
+    expect(apiServices.length).toBeGreaterThanOrEqual(3);
+    expect(compose.match(/MARKET_INGEST_ENABLED: 'false'/g)).toHaveLength(apiServices.length - 1);
+    expect(compose.match(/TRIGGER_ENGINE_ENABLED: 'false'/g)).toHaveLength(apiServices.length - 1);
+  });
+
+  /**
+   * §77: the WebSocket is served by its own containers. Nginx sends `/ws` to
+   * `api-ws` and everything else to `api`; both run the API image with the
+   * same flags, and only the route decides what each does.
+   */
+  it('serves the WebSocket from its own containers', () => {
+    const nginx = read('docker/nginx/nginx.conf');
+    expect(nginx).toMatch(/location \/ws \{[\s\S]*?set \$api_ws api-ws:4000;/);
+    expect(nginx.match(/set \$api api:4000;/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    const services = compose.split(/\n {2}(?=[a-z])/);
+    const ws = services.find((block) => block.trim().startsWith('api-ws:'));
+    expect(ws, 'api-ws service exists').toBeDefined();
+    expect(ws).toMatch(/dockerfile: docker\/api\.Dockerfile/);
+    expect(ws).toMatch(/MARKET_INGEST_ENABLED: 'false'/);
+    expect(ws).toMatch(/stop_grace_period: 40s/);
   });
 
   it('publishes ports from nginx and from nothing else', () => {

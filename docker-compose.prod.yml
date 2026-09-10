@@ -145,6 +145,35 @@ services:
       redis: { condition: service_healthy }
       migrate: { condition: service_completed_successfully }
 
+  # Serves the WebSocket (§77). The same image and the same flags as `api`,
+  # reached only through Nginx's `/ws` location, so the process that fans out
+  # frames to every connected terminal is not the process answering orders:
+  # at a thousand connected accounts the valuation and fan-out work is what
+  # saturated a serving instance (docs/capacity.md), and it is also the part
+  # that scales by adding copies — each values only the accounts connected to
+  # it. Domain events reach it from the HTTP instances over Redis, exactly as
+  # they reach a second `api` replica today. Scale independently:
+  # `--scale api-ws=2`.
+  api-ws:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+      target: production
+      args:
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-}
+    restart: unless-stopped
+    stop_grace_period: 40s
+    env_file: [.env.production]
+    environment:
+      <<: *api-env
+      MARKET_INGEST_ENABLED: 'false'
+      TRIGGER_ENGINE_ENABLED: 'false'
+      PRICE_ALERTS_ENABLED: 'false'
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
   worker:
     build:
       context: .

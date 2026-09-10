@@ -114,6 +114,15 @@ export const workerEnvSchema = z.object({
    */
   SECRET_ENCRYPTION_KEYS: z.string().optional(),
 
+  /**
+   * What this process does (§77): `all` schedules and processes every queue;
+   * `scheduler` only registers the schedules; `processor` only processes, the
+   * queues optionally narrowed by WORKER_QUEUES. See `roles.ts`.
+   */
+  WORKER_ROLE: z.enum(['all', 'scheduler', 'processor']).default('all'),
+  /** Comma-separated queue names a processor takes. Unset means every queue. */
+  WORKER_QUEUES: z.string().optional(),
+
   /** Runs the jobs once at startup. Development convenience; never in production. */
   RUN_JOBS_ON_BOOT: z
     .union([z.boolean(), z.enum(['true', 'false'])])

@@ -106,7 +106,9 @@ async function main(): Promise<void> {
   }
   console.log(`  ok  it is still running ${SETTLE_MS}ms later, not restarting`);
 
-  const errors = output.join('').match(/UnknownDependenciesException|UndefinedDependencyException/g);
+  const errors = output
+    .join('')
+    .match(/UnknownDependenciesException|UndefinedDependencyException/g);
   if (errors !== null) {
     fail(`the worker logged a dependency error it survived: ${errors.join(', ')}`);
     return;
@@ -114,7 +116,83 @@ async function main(): Promise<void> {
   console.log('  ok  nothing in its output is a dependency it could not resolve');
 
   worker.kill('SIGTERM');
-  console.log('\nAll 3 worker smoke checks passed.');
+
+  /**
+   * A narrowed processor (§77) takes only the queues it was given and writes
+   * no schedules — so it can be scaled for the slow queue without every copy
+   * also re-registering every cron. Proved on the real build, because the
+   * assignment is decided in the registry's constructor and only this run
+   * boots that.
+   */
+  const narrowed = await bootOnce(
+    { WORKER_ROLE: 'processor', WORKER_QUEUES: 'webhook-delivery' },
+    /Queue registry ready as processor: not scheduling; processing webhook-delivery/,
+  );
+  if (narrowed === null) {
+    console.error('  FAIL a narrowed processor did not report the assignment it was given');
+    process.exitCode = 1;
+    return;
+  }
+  // The summary line says what was decided; the per-queue lines say what was
+  // done. A processor attached to a queue it was not given would be invisible
+  // to the first and caught by the second.
+  const attached = [...narrowed.matchAll(/Processing ([a-z-]+)/g)].map((m) => m[1]);
+  if (attached.join(',') !== 'webhook-delivery') {
+    console.error(
+      `  FAIL a narrowed processor attached to ${attached.join(', ') || 'nothing'}; expected webhook-delivery alone`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (/Scheduled [a-z-]+:/.test(narrowed)) {
+    console.error('  FAIL a processor registered a schedule; only all and scheduler roles may');
+    console.error(narrowed.slice(-2000));
+    process.exitCode = 1;
+    return;
+  }
+  console.log('  ok  a narrowed processor takes only its queue and writes no schedules');
+
+  const misnamed = await bootOnce({ WORKER_ROLE: 'processor', WORKER_QUEUES: 'webhooks' }, null);
+  if (misnamed === null || !/nobody declared: webhooks/.test(misnamed)) {
+    console.error('  FAIL a processor given an undeclared queue name did not refuse to start');
+    if (misnamed !== null) console.error(misnamed.slice(-2000));
+    process.exitCode = 1;
+    return;
+  }
+  console.log('  ok  a queue name nobody declared is refused at boot, by name');
+
+  console.log('\nAll 5 worker smoke checks passed.');
+}
+
+/**
+ * Boots the worker with extra environment and returns its output once `until`
+ * has appeared (or, with `null`, once it has exited on its own). `null` means
+ * neither happened inside the boot timeout.
+ */
+async function bootOnce(env: Record<string, string>, until: RegExp | null): Promise<string | null> {
+  const child = spawn('node', [BUILD], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, ...env },
+  });
+  const output: string[] = [];
+  let exited = false;
+  child.stdout.on('data', (chunk: Buffer) => output.push(chunk.toString()));
+  child.stderr.on('data', (chunk: Buffer) => output.push(chunk.toString()));
+  child.on('exit', () => {
+    exited = true;
+  });
+  const deadline = Date.now() + BOOT_TIMEOUT_MS;
+  try {
+    for (;;) {
+      const text = output.join('');
+      if (until !== null && until.test(text)) return text;
+      if (exited) return until === null ? text : null;
+      if (Date.now() > deadline) return null;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  } finally {
+    if (!exited) child.kill('SIGTERM');
+  }
 }
 
 void main();

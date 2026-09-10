@@ -16,6 +16,8 @@ scrape_configs:
         labels: { role: serving }
       - targets: ['api-ingest:4000']
         labels: { role: ingest }
+      - targets: ['api-ws:4000']
+        labels: { role: websocket }
 
 rule_files:
   - /etc/prometheus/alerts.yml

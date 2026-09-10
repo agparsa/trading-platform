@@ -142,6 +142,24 @@ process may ingest — two would double-count candle volume — and a process th
 does both starves its own feed. That is measured, not assumed: see
 [capacity.md](./capacity.md).
 
+**The WebSocket is its own process too (§77).** Nginx sends `/ws` to `api-ws`
+and every HTTP route to `api`. Both are the API image with the same flags;
+only the route differs. Fan-out to every connected terminal, and the
+per-account valuations behind it, were what saturated a serving instance at a
+thousand connected traders ([capacity.md](./capacity.md)), and they are also
+the part that scales by adding copies — each `api-ws` values only the accounts
+connected to it, and domain events reach it from the HTTP instances over Redis
+exactly as they reach a second `api` replica. `--scale api-ws=2` when the
+socket count grows; `--scale api=2` when order latency does.
+
+**The worker has a role.** One `worker` with `WORKER_ROLE=all` (the default)
+schedules and processes every queue. When one queue needs more hands — webhook
+delivery to slow endpoints — run a second worker as
+`WORKER_ROLE=processor WORKER_QUEUES=webhook-delivery` and, if the schedules
+should live apart from the processing, a `WORKER_ROLE=scheduler`. BullMQ makes
+one job per tick however many schedulers register it; the roles decide who
+holds a queue open, not who wins.
+
 **Nothing is exposed but Nginx.** Postgres, Redis, the API and the web app have
 no host ports. One door, one place TLS terminates, one place an edge rate limit
 goes.
