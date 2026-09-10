@@ -1183,3 +1183,36 @@ describe('observability stack', () => {
     expect(read('docker/observability/prometheus.yml')).toMatch(/alerts\.yml/);
   });
 });
+
+// ─── Secrets from files: resolved before anything reads the environment ─────
+
+describe('file-backed secrets', () => {
+  /**
+   * `ConfigModule.forRoot({ validate })` validates the environment when the
+   * module file is *imported*, so the resolver must run before that import —
+   * which in an ES module means it must be the first import after
+   * `reflect-metadata`. The worker smoke found this the hard way; this pins it
+   * for both entry points without booting either.
+   */
+  for (const [entry, resolver] of [
+    ['apps/api/src/main.ts', './config/file-secrets'],
+    ['apps/worker/src/main.ts', './file-secrets'],
+  ] as const) {
+    it(`${entry} resolves file-backed secrets before any other import`, () => {
+      const imports = [...read(entry).matchAll(/^import .*?from '([^']+)';$/gm)].map((m) => m[1]!);
+      const first = imports.filter((source) => source !== 'reflect-metadata')[0];
+      expect(first).toBe(resolver);
+    });
+  }
+
+  it('offers a _FILE form for every secret the production example carries', () => {
+    const example = read('.env.production.example');
+    const secretsInExample = [...example.matchAll(/^([A-Z_]+)=/gm)]
+      .map((m) => m[1]!)
+      .filter((key) => /SECRET|PASSWORD|_URL$|ENCRYPTION_KEYS|SERVICE_ACCOUNT/.test(key))
+      .filter((key) => !/^PUBLIC_|^APP_PUBLIC|^CORS/.test(key));
+    const listed = read('packages/crypto-core/src/file-secrets.ts');
+    const unlisted = secretsInExample.filter((key) => !listed.includes(`'${key}'`));
+    expect(unlisted).toEqual([]);
+  });
+});

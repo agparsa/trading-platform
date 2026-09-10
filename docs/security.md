@@ -100,8 +100,11 @@ tightest of all. See [api.md](./api.md).
 ## Secrets
 
 `.env` is git-ignored; `.env.example` carries placeholders only and is the file
-committed. Deployments inject real values through the platform's secret manager.
-Nothing in this repository holds a real credential.
+committed. Deployments inject real values as environment variables or, better,
+as files named by `VARIABLE_FILE` — the convention every secrets manager that
+delivers files can meet. Which variables, the refusals, and the compose recipe
+are in [secrets.md](./secrets.md). Nothing in this repository holds a real
+credential.
 
 ## Browser sessions
 

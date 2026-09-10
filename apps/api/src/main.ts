@@ -1,4 +1,7 @@
 import 'reflect-metadata';
+// First, and as a side effect: file-backed secrets must be in place before any
+// module below reads the environment at import time. See config/file-secrets.ts.
+import { FILE_SECRETS_RESOLVED } from './config/file-secrets';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
@@ -38,6 +41,9 @@ async function bootstrap(): Promise<void> {
   app.useLogger(logger);
 
   const isProduction = config.get('NODE_ENV', { infer: true }) === 'production';
+  if (FILE_SECRETS_RESOLVED.length > 0) {
+    logger.log(`Secrets read from files: ${FILE_SECRETS_RESOLVED.join(', ')}`);
+  }
 
   /**
    * Before anything else, so a request refused while draining costs nothing

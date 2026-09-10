@@ -562,7 +562,18 @@ build and reads which queues it attached. Broker adapters run in-process by
 design until a real venue connector exists — there is nothing to put in a
 container yet, and a container for the mock would be theatre.
 
-**Still to do:** secrets manager integration.
+**Secrets from files — done; a manager's API — deliberately not.** Every
+secret the platform reads may arrive as `VARIABLE_FILE=/run/secrets/…`, the
+convention Docker secrets, Kubernetes secrets, Vault Agent and External
+Secrets all deliver; resolved as the first import of both entry points (the
+config module validates at import time — found by the worker smoke), only for
+an explicit list of secrets, with every ambiguity a refusal by name and never
+by value. Boot log names which variables came from files. A direct client for
+Vault / AWS / GCP / Azure is an operator's choice tied to where the platform
+runs, and would start with that manager's documentation; stated as such.
+[secrets.md](./secrets.md).
+
+**Phase 14 is complete.**
 
 ## Phase 15 — Final audit
 

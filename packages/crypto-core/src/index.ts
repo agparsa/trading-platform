@@ -17,3 +17,9 @@ export {
   type MintedCredential,
   type ParsedCredential,
 } from './credential';
+export {
+  FILE_BACKED_SECRETS,
+  FileSecretError,
+  resolveFileSecrets,
+  type FileSecretsOptions,
+} from './file-secrets';

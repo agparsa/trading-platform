@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 
 /**
@@ -161,7 +164,46 @@ async function main(): Promise<void> {
   }
   console.log('  ok  a queue name nobody declared is refused at boot, by name');
 
-  console.log('\nAll 5 worker smoke checks passed.');
+  /**
+   * Secrets from files (docs/secrets.md): `DATABASE_URL_FILE` pointing at a
+   * file holding the URL, and no `DATABASE_URL`, boots the real build; a
+   * pointer at a missing file refuses to, naming the variable.
+   */
+  const secretDir = mkdtempSync(join(tmpdir(), 'tp-secret-'));
+  const secretFile = join(secretDir, 'database_url');
+  try {
+    writeFileSync(secretFile, `${process.env['DATABASE_URL'] ?? ''}\n`, { mode: 0o600 });
+    const fromFile = await bootOnce(
+      { DATABASE_URL: '', DATABASE_URL_FILE: secretFile },
+      /Worker started/,
+    );
+    if (fromFile === null || !/Secrets read from files: DATABASE_URL/.test(fromFile)) {
+      console.error('  FAIL the worker did not boot from DATABASE_URL_FILE');
+      if (fromFile !== null) console.error(fromFile.slice(-2000));
+      process.exitCode = 1;
+      return;
+    }
+    console.log('  ok  a secret delivered as a file is read at boot');
+
+    const missing = await bootOnce(
+      { DATABASE_URL: '', DATABASE_URL_FILE: join(secretDir, 'not-there') },
+      null,
+    );
+    if (
+      missing === null ||
+      !/DATABASE_URL_FILE points at .*not-there, which could not be read/.test(missing)
+    ) {
+      console.error('  FAIL a secret file that is missing did not refuse boot by name');
+      if (missing !== null) console.error(missing.slice(-2000));
+      process.exitCode = 1;
+      return;
+    }
+    console.log('  ok  a missing secret file refuses boot, naming the variable');
+  } finally {
+    rmSync(secretDir, { recursive: true, force: true });
+  }
+
+  console.log('\nAll 7 worker smoke checks passed.');
 }
 
 /**
