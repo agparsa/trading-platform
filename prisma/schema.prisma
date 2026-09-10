@@ -227,6 +227,7 @@ model Tenant {
   ipRules                  TenantIpRule[]
   webhookEndpoints         WebhookEndpoint[]
   webhookDeliveries        WebhookDelivery[]
+  features                 TenantFeature[]
 
   @@map("tenants")
 }
@@ -2595,6 +2596,31 @@ enum OutboxStatus {
   RELAYED
   /// Tried enough times to stop trying. A person looks; nothing is discarded.
   ABANDONED
+}
+
+/// A feature flag set for one firm (§95). Absent means the catalogue default.
+///
+/// `authority` is copied from the catalogue at write time so the row says who
+/// was allowed to write it, and a flag that later moves from platform to firm
+/// authority does not retroactively look like a firm changed it.
+model TenantFeature {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  key       String
+  enabled   Boolean
+  authority String
+  /// Why, for the person reading this in a year.
+  note      String
+
+  updatedByUserId String   @map("updated_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, key])
+  @@map("tenant_features")
 }
 
 /// Somewhere a firm has asked to be told about its own events (§49).

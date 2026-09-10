@@ -1,12 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DomainEvent, DomainError, TradingErrorCode } from '@tp/shared-types';
+import { DomainEvent, DomainError, Feature, TradingErrorCode } from '@tp/shared-types';
 import { requireTenantId } from '@tp/tenancy';
 import { checkDestination, type DestinationRefusal } from '@tp/webhooks-core';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { SecretBoxService } from '../common/crypto/crypto.module';
+import { FeaturesService } from '../features/features.service';
 import type { Env } from '../config/env.schema';
 
 /** How long the previous secret keeps signing after a rotation. */
@@ -57,6 +58,7 @@ export class WebhooksService {
     private readonly secrets: SecretBoxService,
     private readonly audit: AuditService,
     private readonly config: ConfigService<Env, true>,
+    private readonly features: FeaturesService,
   ) {}
 
   /** The event types an endpoint may subscribe to: what the outbox carries. */
@@ -90,6 +92,9 @@ export class WebhooksService {
     readonly description: string;
     readonly events: readonly string[];
   }) {
+    // A platform flag (§95): a firm that has not been given webhooks cannot
+    // register one, whatever permission its administrator holds.
+    await this.features.assertEnabled(Feature.WEBHOOKS);
     const url = this.acceptableUrl(args.url);
     const events = this.acceptableEvents(args.events);
 

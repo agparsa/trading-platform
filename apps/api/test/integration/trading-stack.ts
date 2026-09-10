@@ -8,6 +8,7 @@ import { AccountStateService } from '../../src/trading/account-state.service';
 import { RiskContextBuilder } from '../../src/trading/risk-context.builder';
 import { RiskLimitsService } from '../../src/trading/risk-limits.service';
 import { OrdersService } from '../../src/trading/orders.service';
+import { FeaturesService } from '../../src/features/features.service';
 import { PositionsService } from '../../src/trading/positions.service';
 import { TriggerEngineService } from '../../src/trading/trigger-engine.service';
 import { SnapshotService } from '../../src/trading/snapshot.service';
@@ -75,6 +76,8 @@ export interface TradingStack {
   quotes: QuoteService;
   orders: OrdersService;
   positions: PositionsService;
+  /** The flags the services above consult, so a test can flip one they will see. */
+  features: FeaturesService;
   accountState: AccountStateService;
   ledger: LedgerService;
   /** The registry these services record into, for tests about what they record. */
@@ -186,6 +189,7 @@ export async function buildTradingStack(
     outbox,
   );
 
+  const features = new FeaturesService(prismaService, audit);
   const orders = new OrdersService(
     prismaService,
     access,
@@ -203,6 +207,7 @@ export async function buildTradingStack(
     external,
     throttle,
     config as never,
+    features,
   );
   const positions = new PositionsService(
     prismaService,
@@ -217,6 +222,7 @@ export async function buildTradingStack(
     events,
     accountState,
     throttle,
+    features,
   );
 
   /**
@@ -298,6 +304,7 @@ export async function buildTradingStack(
     conversion,
     orders,
     positions,
+    features,
     accountState,
     ledger,
     metrics,

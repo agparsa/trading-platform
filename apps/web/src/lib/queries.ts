@@ -202,6 +202,7 @@ export const queryKeys = {
   apiKeys: ['api-keys'] as const,
   securityEvents: ['security-events'] as const,
   addresses: ['addresses'] as const,
+  features: ['features'] as const,
 };
 
 /** Everything a trading event can invalidate, in one place. */
@@ -1091,6 +1092,18 @@ export function useAddresses() {
     queryKey: queryKeys.addresses,
     queryFn: () => api.get<AddressRow[]>('/auth/addresses'),
     enabled: accessToken !== null,
+    refetchInterval: 60_000,
+  });
+}
+
+/** What the firm has switched on (§95). Client-enforced flags are honoured here; server-enforced ones are refused by the API regardless. */
+export function useFeatures() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: queryKeys.features,
+    queryFn: () => api.get<{ features: Record<string, boolean> }>('/features'),
+    enabled: accessToken !== null,
+    staleTime: 60_000,
     refetchInterval: 60_000,
   });
 }

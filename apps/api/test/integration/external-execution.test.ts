@@ -2,10 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 import { MockBrokerAdapter, type BrokerCredentials } from '@tp/broker-sdk';
 import { OrderStatus, TradingErrorCode } from '@tp/shared-types';
-import {
-  sumVolume,
-  weightedAverage,
-} from '../../src/trading/external-execution.service';
+import { sumVolume, weightedAverage } from '../../src/trading/external-execution.service';
 import {
   createAccount,
   createTestClient,
@@ -67,6 +64,21 @@ suite('External execution (integration)', () => {
         },
       })
     ).id;
+    /**
+     * A venue-routed account only executes when the platform has switched
+     * external execution on for the firm (§95). These tests are about the
+     * venue, so the flag is on; `features.test.ts` is where it is off.
+     */
+    await prisma.tenantFeature.create({
+      data: {
+        tenantId: DEFAULT_TENANT_ID,
+        key: 'external_execution',
+        enabled: true,
+        authority: 'PLATFORM',
+        note: 'test venue',
+        updatedByUserId: actorId,
+      },
+    });
     const connection = await stack.connections.create(actorId, {
       name: 'Mock venue',
       adapterKind: 'MOCK',

@@ -71,6 +71,9 @@ export const TradingErrorCode = {
   CONCURRENT_MODIFICATION: 'CONCURRENT_MODIFICATION',
   RATE_LIMITED: 'RATE_LIMITED',
 
+  /** The action is behind a feature flag this firm does not have on (§95). */
+  FEATURE_DISABLED: 'FEATURE_DISABLED',
+
   // --- system ---
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',

@@ -17,11 +17,14 @@ export function TradingSettings({
   preferences,
   onChange,
   presentation = 'popover',
+  oneClickAllowed = true,
 }: {
   preferences: TradingPreferences;
   onChange: (patch: Partial<TradingPreferences>) => void;
   /** `page` drops the trigger button and renders the panel inline. */
   presentation?: 'popover' | 'page';
+  /** Whether the firm allows one-click at all (§95). Defaults to yes for callers that do not know. */
+  oneClickAllowed?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const armed = preferences.oneClick && !preferences.confirm;
@@ -40,10 +43,17 @@ export function TradingSettings({
         One-click trading
       </p>
 
+      {oneClickAllowed ? null : (
+        <p className="mb-2 text-[11px] text-terminal-warning" data-testid="one-click-off">
+          Your firm has switched one-click trading off. Every order is confirmed; the setting below
+          is kept for when it is switched back on.
+        </p>
+      )}
       <Toggle
         label="Send on one click"
         checked={preferences.oneClick}
         onChange={(value) => onChange({ oneClick: value })}
+        disabled={!oneClickAllowed}
       />
       <Toggle
         label="Ask before sending"
@@ -157,17 +167,22 @@ function Toggle({
   checked,
   onChange,
   hint,
+  disabled = false,
 }: {
   label: string;
   checked: boolean;
   onChange: (value: boolean) => void;
   hint?: string;
+  disabled?: boolean;
 }) {
   return (
-    <label className="mb-1 flex cursor-pointer items-start gap-2 text-xs text-terminal-text">
+    <label
+      className={`mb-1 flex items-start gap-2 text-xs text-terminal-text ${disabled ? 'opacity-60' : 'cursor-pointer'}`}
+    >
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
         className="mt-0.5 accent-terminal-long"
       />

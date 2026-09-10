@@ -24,6 +24,7 @@ const SECTIONS = [
   { href: '/admin/connections', label: 'Connections' },
   { href: '/admin/security', label: 'Security' },
   { href: '/admin/webhooks', label: 'Webhooks' },
+  { href: '/admin/features', label: 'Features' },
   { href: '/admin/brokers', label: 'Brokers' },
   { href: '/admin/audit', label: 'Audit' },
 ] as const;

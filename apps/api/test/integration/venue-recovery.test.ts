@@ -75,6 +75,21 @@ suite('Venue recovery after a lost connection (integration)', () => {
         },
       })
     ).id;
+    /**
+     * A venue-routed account only executes when the platform has switched
+     * external execution on for the firm (§95). These tests are about the
+     * venue, so the flag is on; `features.test.ts` is where it is off.
+     */
+    await prisma.tenantFeature.create({
+      data: {
+        tenantId: DEFAULT_TENANT_ID,
+        key: 'external_execution',
+        enabled: true,
+        authority: 'PLATFORM',
+        note: 'test venue',
+        updatedByUserId: actorId,
+      },
+    });
     const connection = await stack.connections.create(actorId, {
       name: 'Mock venue',
       adapterKind: 'MOCK',
@@ -102,8 +117,13 @@ suite('Venue recovery after a lost connection (integration)', () => {
    * One adapter for the whole test, so the venue's state survives the
    * platform building and disposing a session around each call.
    */
-  function venue(accounts?: readonly { id: string; currency: string; balance: string }[]): MockBrokerAdapter {
-    const adapter = new MockBrokerAdapter({ latencyMs: 0, ...(accounts === undefined ? {} : { accounts }) });
+  function venue(
+    accounts?: readonly { id: string; currency: string; balance: string }[],
+  ): MockBrokerAdapter {
+    const adapter = new MockBrokerAdapter({
+      latencyMs: 0,
+      ...(accounts === undefined ? {} : { accounts }),
+    });
     stack.registry.register({ ...FACTORY, create: () => adapter });
     return adapter;
   }
@@ -189,9 +209,7 @@ suite('Venue recovery after a lost connection (integration)', () => {
     // When the venue comes back the same question gets a real answer.
     stack.registry.register({ ...FACTORY, create: () => adapter });
     expect(await stack.recovery.run()).toEqual({ examined: 1, resolved: 1, unresolved: 0 });
-    expect(
-      (await prisma.order.findFirstOrThrow({ where: { accountId } })).status,
-    ).toBe('FILLED');
+    expect((await prisma.order.findFirstOrThrow({ where: { accountId } })).status).toBe('FILLED');
     expect(await prisma.position.count({ where: { accountId } })).toBe(1);
   });
 

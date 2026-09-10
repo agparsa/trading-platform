@@ -72,6 +72,7 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'TenantIpRule',
   'WebhookEndpoint',
   'WebhookDelivery',
+  'TenantFeature',
   'RiskEvent',
   'IntegritySignal',
   'IntegritySignalEvent',

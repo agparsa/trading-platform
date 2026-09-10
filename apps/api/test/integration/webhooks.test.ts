@@ -4,6 +4,7 @@ import type { PrismaClient } from '@prisma/client';
 import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import { withTenant, withoutTenantScope } from '@tp/tenancy';
 import { WebhooksService } from '../../src/webhooks/webhooks.service';
+import { FeaturesService } from '../../src/features/features.service';
 import { AuditService } from '../../src/common/audit/audit.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 import type { SecretBoxService } from '../../src/common/crypto/crypto.module';
@@ -40,6 +41,10 @@ suite('webhooks', () => {
       box as unknown as SecretBoxService,
       new AuditService(prisma as unknown as PrismaService),
       new ConfigService({ WEBHOOK_ALLOW_HTTP: allowHttp } as never) as never,
+      new FeaturesService(
+        prisma as unknown as PrismaService,
+        new AuditService(prisma as unknown as PrismaService),
+      ),
     );
 
   beforeAll(async () => {
@@ -101,6 +106,21 @@ suite('webhooks', () => {
     await expect(create({ url: 'http://receiver.example.com/' })).rejects.toThrow(/https/);
     const { endpoint } = await create({ url: 'http://receiver.example.com/' }, build(true));
     expect(endpoint.url).toBe('http://receiver.example.com/');
+  });
+
+  it('refuses to register an endpoint when the platform has not switched webhooks on for the firm', async () => {
+    await prisma.tenantFeature.create({
+      data: {
+        tenantId: DEFAULT_TENANT_ID,
+        key: 'webhooks',
+        enabled: false,
+        authority: 'PLATFORM',
+        note: 'not on this plan',
+        updatedByUserId: admin,
+      },
+    });
+    await expect(create()).rejects.toThrow(/not switched on/);
+    expect(await prisma.webhookEndpoint.count()).toBe(0);
   });
 
   it('refuses an event type the outbox does not carry', async () => {

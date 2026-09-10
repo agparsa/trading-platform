@@ -169,6 +169,8 @@ const adminKeys = {
   securityFeed: (filter: string) => ['admin', 'security-feed', filter] as const,
   ipRules: ['admin', 'ip-rules'] as const,
   webhooks: ['admin', 'webhooks'] as const,
+  features: ['admin', 'features'] as const,
+  brokerFeatures: (id: string) => ['admin', 'broker-features', id] as const,
   webhookEvents: ['admin', 'webhook-events'] as const,
   webhookDeliveries: (id: string) => ['admin', 'webhook-deliveries', id] as const,
   user: (id: string) => ['admin', 'user', id] as const,
@@ -1267,6 +1269,56 @@ export function useDeleteIpRule() {
     mutationFn: (input: { id: string }) =>
       api.delete(`/security/ip-rules/${input.id}`, { idempotencyKey: crypto.randomUUID() }),
     onSuccess: invalidate,
+  });
+}
+
+// ---- Feature flags (§95) ---------------------------------------------------
+
+export interface FeatureRow {
+  key: string;
+  name: string;
+  description: string;
+  authority: 'PLATFORM' | 'FIRM';
+  enforcement: 'SERVER' | 'CLIENT';
+  default: boolean;
+  enabled: boolean;
+  override: { note: string; updatedAt: string } | null;
+}
+
+export function useAdminFeatures() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.features,
+    queryFn: () => api.get<FeatureRow[]>('/admin/features'),
+  });
+}
+
+export function useBrokerFeatures(brokerId: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.brokerFeatures(brokerId ?? ''),
+    queryFn: () => api.get<FeatureRow[]>(`/admin/brokers/${brokerId}/features`),
+    enabled: brokerId !== null,
+  });
+}
+
+export function useSetFeature() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { key: string; enabled: boolean; note: string; brokerId?: string }) =>
+      api.post(
+        input.brokerId === undefined
+          ? `/admin/features/${input.key}`
+          : `/admin/brokers/${input.brokerId}/features/${input.key}`,
+        { enabled: input.enabled, note: input.note },
+        { idempotencyKey: crypto.randomUUID() },
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: adminKeys.features });
+      void client.invalidateQueries({ queryKey: ['admin', 'broker-features'] });
+      void client.invalidateQueries({ queryKey: ['features'] });
+    },
   });
 }
 

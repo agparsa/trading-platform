@@ -123,7 +123,7 @@ export function Terminal() {
   const accountState = useAccountState(accountId);
 
   const gapDetected = useRealtime((state) => state.gapDetected);
-  const { preferences, update: updatePreferences } = useTradingPreferences();
+  const { preferences, update: updatePreferences, oneClickAllowed } = useTradingPreferences();
   /**
    * A keystroke asks the ticket to act rather than acting itself.
    *
@@ -253,7 +253,11 @@ export function Terminal() {
             ))}
           </select>
           <NotificationBell />
-          <TradingSettings preferences={preferences} onChange={updatePreferences} />
+          <TradingSettings
+            preferences={preferences}
+            onChange={updatePreferences}
+            oneClickAllowed={oneClickAllowed}
+          />
           <SecuritySettings />
           {/*
             The same two panels have pages of their own now, at /settings and

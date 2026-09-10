@@ -19,8 +19,10 @@ import {
   TradingErrorCode,
   type OrderSide,
   accountStatusPolicy,
+  Feature,
 } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
+import { FeaturesService } from '../features/features.service';
 import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from '../market/quote.service';
 import { ConversionService } from '../market/conversion.service';
@@ -84,6 +86,7 @@ export class PositionsService {
     private readonly events: EventsService,
     private readonly accountState: AccountStateService,
     private readonly throttle: TradingThrottle,
+    private readonly features: FeaturesService,
   ) {}
 
   /**
@@ -634,6 +637,16 @@ export class PositionsService {
       request.trailingStopDistance === undefined
         ? position.trailingStopDistance
         : request.trailingStopDistance;
+    /**
+     * Setting or changing a trail is behind the firm's flag (§95). Clearing one
+     * is not: a firm that switches trailing off must still let its traders
+     * remove the trails they have, and an existing trail keeps ratcheting —
+     * a stop that stopped following the price would be a worse surprise than
+     * one that keeps doing what it was set to do.
+     */
+    if (request.trailingStopDistance != null) {
+      await this.features.assertEnabled(Feature.TRAILING_STOP);
+    }
     validateProtectiveLevels(spec, position.side, reference.toString(), { stopLoss, takeProfit });
 
     /**

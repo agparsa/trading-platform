@@ -1099,6 +1099,14 @@ async function main(): Promise<void> {
       ipRules.replace(/\s+/g, ' ').slice(0, 160),
     );
 
+    await visit(adminPage, '/admin/features', { url: '/admin/features', text: /Trailing stops/i });
+    const featuresText = await adminPage.getByTestId('features').innerText();
+    ok(
+      /set by the platform/i.test(featuresText) && /by the server/i.test(featuresText),
+      'the features page says who sets each flag and how it is enforced',
+      featuresText.replace(/\s+/g, ' ').slice(0, 160),
+    );
+
     await visit(adminPage, '/admin/webhooks', {
       url: '/admin/webhooks',
       text: /Register endpoint/i,

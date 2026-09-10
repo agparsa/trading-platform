@@ -7,6 +7,7 @@ import {
   savePreferences,
   type TradingPreferences,
 } from './trading-preferences';
+import { useFeatures } from './queries';
 
 /**
  * The trader's terminal preferences, read once and written on every change.
@@ -21,8 +22,18 @@ import {
 export function useTradingPreferences(): {
   preferences: TradingPreferences;
   update: (patch: Partial<TradingPreferences>) => void;
+  /** False when the firm has switched one-click trading off (§95); the setting is then ignored, not lost. */
+  oneClickAllowed: boolean;
 } {
-  const [preferences, setPreferences] = useState<TradingPreferences>(DEFAULT_PREFERENCES);
+  const [stored, setPreferences] = useState<TradingPreferences>(DEFAULT_PREFERENCES);
+  const features = useFeatures();
+  /**
+   * A firm flag the client honours. The trader's own setting is kept, so a
+   * firm that switches one-click back on returns everyone to what they had;
+   * while it is off, the terminal behaves as though nobody had armed it.
+   */
+  const oneClickAllowed = features.data?.features['quick_trading'] !== false;
+  const preferences = oneClickAllowed || !stored.oneClick ? stored : { ...stored, oneClick: false };
 
   useEffect(() => {
     setPreferences(
@@ -38,5 +49,5 @@ export function useTradingPreferences(): {
     });
   }, []);
 
-  return { preferences, update };
+  return { preferences, update, oneClickAllowed };
 }

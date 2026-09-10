@@ -14,7 +14,7 @@ import { useTradingPreferences } from '@/lib/use-trading-preferences';
  * trader last saw yesterday.
  */
 export default function SettingsPage() {
-  const { preferences, update } = useTradingPreferences();
+  const { preferences, update, oneClickAllowed } = useTradingPreferences();
 
   return (
     <AppShell
@@ -22,7 +22,12 @@ export default function SettingsPage() {
       description="One-click trading, confirmations, and default order size."
     >
       <Panel className="max-w-md p-4">
-        <TradingSettings preferences={preferences} onChange={update} presentation="page" />
+        <TradingSettings
+          preferences={preferences}
+          onChange={update}
+          presentation="page"
+          oneClickAllowed={oneClickAllowed}
+        />
       </Panel>
     </AppShell>
   );

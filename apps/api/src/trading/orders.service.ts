@@ -20,10 +20,12 @@ import {
   Permission,
   TradingErrorCode,
   accountStatusPolicy,
+  Feature,
 } from '@tp/shared-types';
 import { Prisma } from '@prisma/client';
 import { OrderTimeline } from './order-timeline';
 import { PrismaService } from '../prisma/prisma.service';
+import { FeaturesService } from '../features/features.service';
 import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from '../market/quote.service';
 import { ConversionService } from '../market/conversion.service';
@@ -118,6 +120,7 @@ export class OrdersService {
     private readonly external: ExternalExecutionService,
     private readonly throttle: TradingThrottle,
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
+    private readonly features: FeaturesService,
   ) {}
 
   /**
@@ -374,6 +377,12 @@ export class OrdersService {
      * code, and is never given a price this platform made up.
      */
     if (ExternalExecutionService.isExternal(account)) {
+      /**
+       * A flag the platform sets per firm (§95). Off, the order is refused
+       * here — never quietly executed internally, which would be a fill at a
+       * price this platform made up for an account that was promised a venue.
+       */
+      await this.features.assertEnabled(Feature.EXTERNAL_EXECUTION);
       const outcome = await this.external.place({
         account,
         symbolId: this.symbols.requireId(symbolCode),

@@ -495,13 +495,23 @@ a slow database (safe — `STALE_QUOTE`), and ~45 database messages per order.
 5,000 sockets with p50/p95/p99 (`pnpm load` runs the small end); Grafana
 dashboards for the §63 metric set.
 
-## Phase 14 — Production deployment hardening · ~1–2 weeks
+## Phase 14 — Production deployment hardening · **in progress**
 
-Separate containers for WebSocket, ingest, trigger engine, workers,
-scheduler and broker adapters (§77); graceful shutdown; secrets manager
-integration; `docs/disaster-recovery.md` with a performed restore rehearsal;
-feature flags for external execution, new adapters, new chart, quick trading,
-trailing stop, mobile trading, white label (§95).
+**Feature flags (§95) — done.** A catalogue with two authorities — the platform
+sets a broker's (`external_execution`, `webhooks`, `new_chart`, `white_label`)
+by entering the broker's scope; a firm sets its own (`trailing_stop`,
+`quick_trading`, `mobile_trading`) — and two enforcements, stated on every flag:
+server (the API refuses with `FEATURE_DISABLED`) or client (a product choice the
+apps honour, never a control). Enforced in the order path (a venue-routed
+account with external execution off is refused, never quietly filled
+internally), in position modification (setting a trail; clearing stays open),
+and in webhook registration. `/admin/features`, with the platform picking a
+broker from its own tenant. [feature-flags.md](./feature-flags.md).
+
+**Still to do:** separate containers for WebSocket, ingest, trigger engine,
+workers, scheduler and broker adapters (§77) — ingest and trigger already run
+apart; graceful shutdown verified under load; secrets manager integration;
+`docs/disaster-recovery.md` around the restore rehearsal that already exists.
 
 ## Phase 15 — Final audit
 
