@@ -1,0 +1,21 @@
+# Prometheus for the trading platform (§63).
+#
+# Scrapes the two API processes over the compose network. `/metrics` is never
+# published outside it — the edge restricts it to private ranges — so this is
+# the only reader. The worker exposes no metrics endpoint; its work shows up
+# as the API's outbox and reconciliation gauges.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['api:4000']
+        labels: { role: serving }
+      - targets: ['api-ingest:4000']
+        labels: { role: ingest }
+
+rule_files:
+  - /etc/prometheus/alerts.yml

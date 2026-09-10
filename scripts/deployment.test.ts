@@ -171,12 +171,18 @@ describe('docker-compose.prod.yml', () => {
     expect(compose.match(/TRIGGER_ENGINE_ENABLED: 'false'/g)).toHaveLength(1);
   });
 
-  it('publishes ports from nginx and from nothing else', () => {
+  it('publishes ports from nginx, and from grafana on the loopback interface only', () => {
     const services = compose.split(/\n {2}(?=[a-z])/);
     const publishing = services
       .filter((block) => /\n\s+ports:/.test(block))
       .map((block) => block.trim().split(':')[0]);
-    expect(publishing).toEqual(['nginx']);
+    expect(publishing).toEqual(['nginx', 'grafana']);
+    // Grafana sees the shape of the whole platform; it is reached over an SSH
+    // tunnel, never from the network the edge faces.
+    const grafana = services.find((block) => block.trim().startsWith('grafana:'))!;
+    for (const port of grafana.match(/- '[^']+'/g) ?? []) {
+      expect(port).toMatch(/^- '127\.0\.0\.1:/);
+    }
   });
 
   it('runs migrations as a job everything else waits for', () => {
@@ -1057,5 +1063,87 @@ describe('the backup service', () => {
   it('never writes the password anywhere but the environment', () => {
     expect(script).not.toMatch(/PGPASSWORD=/);
     expect(script).not.toMatch(/--password/);
+  });
+});
+
+// ─── Observability (§63): the dashboard names only metrics that exist ──────
+
+describe('observability stack', () => {
+  const compose = read('docker-compose.prod.yml');
+  const dashboard = JSON.parse(
+    read('docker/observability/grafana/dashboards/trading-platform.json'),
+  ) as { panels: Array<{ title: string; targets: Array<{ expr: string }> }> };
+  const alerts = read('docker/observability/alerts.yml');
+  const metricsSource = read('apps/api/src/metrics/metrics.service.ts');
+
+  /**
+   * Every `tp_` metric the dashboard or an alert refers to is declared in
+   * `MetricsService` — or is one of prom-client's defaults under the `tp_`
+   * prefix. A panel on a metric nobody emits is a flat line that looks like
+   * "nothing is happening", which is the one thing a dashboard must not say
+   * by accident.
+   */
+  const declared = new Set(
+    [...metricsSource.matchAll(/name: '(tp_[a-z_]+)'/g)].map((match) => match[1]!),
+  );
+  const nodeDefaults = /^tp_nodejs_|^tp_process_/;
+  const referenced = (text: string): string[] => [
+    ...new Set([...text.matchAll(/\b(tp_[a-z_]+?)(?:_bucket|_sum|_count)?\b/g)].map((m) => m[1]!)),
+  ];
+
+  it('charts only metrics the API declares', () => {
+    const exprs = dashboard.panels.flatMap((panel) => panel.targets.map((t) => t.expr)).join('\n');
+    const unknown = referenced(exprs).filter(
+      (name) => !declared.has(name) && !nodeDefaults.test(name),
+    );
+    expect(unknown).toEqual([]);
+    expect(dashboard.panels.length).toBeGreaterThanOrEqual(15);
+  });
+
+  it('alerts only on metrics the API declares', () => {
+    const unknown = referenced(alerts).filter(
+      (name) => !declared.has(name) && !nodeDefaults.test(name),
+    );
+    expect(unknown).toEqual([]);
+  });
+
+  it('covers the counters an operator is told to watch', () => {
+    const exprs = dashboard.panels.flatMap((panel) => panel.targets.map((t) => t.expr)).join('\n');
+    for (const metric of [
+      'tp_execution_latency_seconds',
+      'tp_market_feed_age_ms',
+      'tp_market_ticks_total',
+      'tp_reconciliation_findings_open',
+      'tp_leader_lease',
+      'tp_connected_sockets',
+      'tp_orders_submitted_total',
+    ]) {
+      expect(exprs, `dashboard charts ${metric}`).toContain(metric);
+    }
+  });
+
+  it('keeps both services behind the observability profile, and Prometheus unpublished', () => {
+    const services = compose.split(/\n {2}(?=[a-z])/);
+    for (const name of ['prometheus', 'grafana']) {
+      const block = services.find((b) => b.trim().startsWith(`${name}:`));
+      expect(block, `${name} service exists`).toBeDefined();
+      expect(block).toMatch(/profiles: \[observability\]/);
+    }
+    const prometheus = services.find((b) => b.trim().startsWith('prometheus:'))!;
+    expect(prometheus).not.toMatch(/\n\s+ports:/);
+  });
+
+  it('mounts the provisioning it ships, read-only', () => {
+    expect(compose).toMatch(
+      /docker\/observability\/prometheus\.yml:\/etc\/prometheus\/prometheus\.yml:ro/,
+    );
+    expect(compose).toMatch(/docker\/observability\/alerts\.yml:\/etc\/prometheus\/alerts\.yml:ro/);
+    expect(compose).toMatch(
+      /docker\/observability\/grafana\/provisioning:\/etc\/grafana\/provisioning:ro/,
+    );
+    expect(compose).toMatch(
+      /docker\/observability\/grafana\/dashboards:\/var\/lib\/grafana\/dashboards:ro/,
+    );
+    expect(read('docker/observability/prometheus.yml')).toMatch(/alerts\.yml/);
   });
 });

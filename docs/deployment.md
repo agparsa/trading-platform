@@ -327,6 +327,15 @@ the load balancer because the upstream feed stopped is a process that cannot
 serve history, account state or the ledger either — and traders would lose the
 screen that tells them what has happened. Alert on it; do not route on it.
 
+## Dashboards
+
+Prometheus and Grafana are in the production compose file behind the
+`observability` profile — off unless asked for, because they need
+`GRAFANA_ADMIN_PASSWORD` set and an operator who will read them. Grafana binds
+the loopback interface only; open an SSH tunnel to it. What is on the dashboard
+and what the alert rules page on is in
+[observability.md](./observability.md#dashboards-and-alerts-63).
+
 ## Backups
 
 PostgreSQL is the only stateful component that matters. The `backup` service in

@@ -30,6 +30,46 @@ Plus Node defaults under the same `tp_` prefix (event-loop lag, heap, GC).
 tells you whether the engine is healthy under load, and the one that will
 regress first.
 
+## Dashboards and alerts (§63)
+
+`docker/observability/` ships Prometheus and Grafana as an opt-in profile of the
+production stack:
+
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.cpanel.yml \
+  --env-file .env.production --profile observability up -d
+```
+
+Prometheus scrapes the serving and ingest API processes over the compose
+network (the worker exposes no metrics endpoint; its work is visible through
+the outbox and reconciliation gauges). Grafana provisions itself from files in
+this repository — the datasource, the "Trading platform" dashboard and the
+alert rules — so a fresh host gets the same screens and a threshold change is a
+reviewed commit. It listens on the loopback interface only
+(`GRAFANA_PORT`, default 3001); reach it over an SSH tunnel:
+
+```bash
+ssh -L 3001:127.0.0.1:3001 tp-server   # then http://127.0.0.1:3001
+```
+
+`GRAFANA_ADMIN_PASSWORD` must be set in `.env.production` before the profile
+will start; generate it, do not reuse another secret.
+
+The dashboard's twenty-one panels chart the metric set above plus what later
+phases added — order pipeline stages, requests shed as overloaded, tick →
+frame latency, realtime pass lag and valuations deferred, leadership leases
+and transitions, event-loop lag and heap. A deployment test checks that every
+`tp_` metric the dashboard or an alert names is one `MetricsService` declares,
+so a panel can never be a flat line for a metric nobody emits.
+
+The alert rules in `docker/observability/alerts.yml` encode the table below:
+feed stale or flat, no trigger-engine leader, execution p99 above two seconds,
+requests shed for five minutes, reconciliation findings open (page), integrity
+signals open, valuations deferred for ten minutes, event-loop lag. Thresholds
+are starting points for a two-core deployment; the reasoning beside each is
+the part to keep when they are tuned. Routing them to a pager is Alertmanager
+configuration this repository does not presume to write.
+
 ## Health
 
 `/health` — liveness, no dependencies touched.

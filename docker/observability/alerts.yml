@@ -1,0 +1,73 @@
+# What to be woken for, from docs/observability.md. Thresholds are starting
+# points for a two-core deployment; the reasoning beside each is the part to
+# keep when they are tuned.
+groups:
+  - name: trading-platform
+    rules:
+      - alert: MarketFeedStale
+        expr: max(tp_market_feed_age_ms{role="ingest"}) > 10000
+        for: 30s
+        labels: { severity: page }
+        annotations:
+          summary: The newest tick is over ten seconds old on the ingest instance
+          description: Orders are being refused STALE_QUOTE or soon will be. Either the provider stopped or the ingest process is starved.
+
+      - alert: MarketFeedFlat
+        expr: sum(rate(tp_market_ticks_total{role="ingest"}[2m])) == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: No ticks ingested for two minutes
+
+      - alert: NoLeaderForTriggerEngine
+        expr: sum(tp_leader_lease{loop="trigger-engine"}) == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: Nothing holds the trigger-engine lease
+          description: Stops and take-profits are not being evaluated anywhere.
+
+      - alert: ExecutionLatencyHigh
+        expr: histogram_quantile(0.99, sum(rate(tp_execution_latency_seconds_bucket[5m])) by (le)) > 2
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: p99 acceptance-to-fill above two seconds for five minutes
+
+      - alert: RequestsShed
+        expr: sum(rate(tp_http_requests_total{status="503"}[5m])) > 1
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: The API is refusing more than one request a second as overloaded
+          description: Admission control (HTTP_MAX_IN_FLIGHT / HTTP_MAX_EVENT_LOOP_LAG_MS) is shedding. Add a serving instance.
+
+      - alert: ReconciliationFindingsOpen
+        expr: max(tp_reconciliation_findings_open) > 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: The ledger disagrees with a cached balance
+          description: The most serious alert here. Nothing repairs it automatically; see docs/runbook.md.
+
+      - alert: IntegritySignalsOpen
+        expr: max(tp_integrity_signals_open) > 0
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: Market-data integrity signals are open
+
+      - alert: RealtimeValuationsDeferred
+        expr: sum(rate(tp_realtime_valuations_deferred_total[5m])) > 10
+        for: 10m
+        labels: { severity: warn }
+        annotations:
+          summary: Screens are refreshing less often than the interval
+          description: The valuation pass is out of budget every second; orders keep their share of the loop, traders see slower updates. Add a serving instance.
+
+      - alert: EventLoopLag
+        expr: max(tp_nodejs_eventloop_lag_p99_seconds) > 0.5
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: Event-loop lag p99 above half a second on an API instance

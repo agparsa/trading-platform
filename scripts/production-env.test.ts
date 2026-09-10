@@ -39,6 +39,10 @@ const INJECTED_BY_COMPOSE = new Set([
 
 /** Read by compose itself, not by any application. */
 const COMPOSE_ONLY = new Set([
+  'GRAFANA_ADMIN_USER',
+  'GRAFANA_ADMIN_PASSWORD',
+  'GRAFANA_PORT',
+  'PROMETHEUS_RETENTION',
   'POSTGRES_USER',
   'POSTGRES_PASSWORD',
   'POSTGRES_DB',
