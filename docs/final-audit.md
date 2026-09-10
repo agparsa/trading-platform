@@ -1,7 +1,125 @@
 # The final audit
 
-The last step of the upgrade plan: look at the whole thing at once, from the
-three angles that catch different faults.
+Two plans have run against this repository. The second — the multi-tenant,
+multi-broker specification of 3 September 2026 — ends here, with the §107
+matrix: one line per area of the specification, PASS / PARTIAL / BLOCKED, and
+for every BLOCKED item what is missing, why, what outside the repository it
+waits on, and what interface or mock already stands in its place. The first
+plan's audit follows, unchanged, because what it found still holds.
+
+## The multi-broker plan's audit (10 September 2026)
+
+### How it was verified
+
+Everything below was checked against the build at the head of
+`feat/m1-realtime-terminal`, not against the plan's description of it:
+
+| Gate                                                 | Result                                                      |
+| ---------------------------------------------------- | ----------------------------------------------------------- |
+| `pnpm verify` (lint, types, inventory, tests, build) | 185 files / 2,480 tests                                     |
+| `pnpm smoke` (boots the API build)                   | 22 checks, including the boot log reaching stdout           |
+| `pnpm smoke:worker`                                  | 7 checks, including a narrowed processor and a file secret  |
+| `pnpm smoke:ws`                                      | 9 checks                                                    |
+| `pnpm smoke:web` (Playwright)                        | 124 checks                                                  |
+| `pnpm pentest`                                       | 62 attacks refused, every one enumerated in the checklist   |
+| `pnpm chaos` (§75)                                   | 7 scenarios hold the invariant, including SIGTERM mid-burst |
+| `pnpm load` at 500 traders / 1,000 sockets           | passes; every refusal a safe one                            |
+| Production (`devopss.ir`)                            | deployed at each phase; boot log read after each deploy     |
+
+Mutation testing was standing practice: every guarantee added in the last two
+phases was broken on purpose and the test that was supposed to catch it was
+watched fail. The one mutant that survived — a duplicate quote-flush timer with
+no observable effect — is recorded as equivalent, not as covered.
+
+### The matrix (§107)
+
+PASS: present and tested. PARTIAL: present, short of the section, with what is
+short named. BLOCKED: cannot be finished without something outside the
+repository — each states what, why, and the seam already in place.
+
+| §                 | Area                                            | Status  | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------- | ----------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2                 | Execution modes                                 | PARTIAL | INTERNAL complete; `EXTERNAL_BROKER` built end to end against the mock adapter (Phases 2–3, 9); a real venue is §10–11's BLOCKED item                                                                                                                                                                                                                                                                                                                                       |
+| 4                 | Non-negotiable abstractions                     | PASS    |                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 5                 | Money / precision                               | PASS    | Decimal, NUMERIC, strings; `assert-no-float-columns`                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 6                 | Domain model                                    | PASS    | broker, connection, credential, mapping, outbox/inbox, master accounts, security events, webhooks, tenant features all present                                                                                                                                                                                                                                                                                                                                              |
+| 7                 | Multi-tenancy                                   | PASS    | RLS on a separate role, probed at boot; connection budget printed at boot; platform-wide sweeps run on the privileged pool by name                                                                                                                                                                                                                                                                                                                                          |
+| 8                 | Role model                                      | PASS    | platform and broker role groups, assignability rule, reconciled with each build                                                                                                                                                                                                                                                                                                                                                                                             |
+| 9                 | Break-glass / impersonation                     | PASS    | reason-bound, time-bound, audited; one decision open (which role holds `security.break_glass`)                                                                                                                                                                                                                                                                                                                                                                              |
+| 10–11             | Broker adapter SDK, account mapping             | BLOCKED | **Missing:** a connector to a real venue. **Why:** the specification forbids inventing an undocumented broker API. **Waits on:** that venue's API documentation and sandbox credentials. **In place:** `BrokerAdapter` port with capability discovery, `MockBrokerAdapter` with the whole failure catalogue, the contract suite any adapter must pass, connection state machine, credential envelope, instrument mapping, a registry that refuses an undocumented connector |
+| 12                | Credential security                             | PASS    | sealed with `SecretBox`; metadata only leaves the server; secrets may arrive as files (`docs/secrets.md`)                                                                                                                                                                                                                                                                                                                                                                   |
+| 13–14             | Broker panel, dashboard                         | PARTIAL | the firm's book, sessions, money by currency, connections, security centre, IP rules, webhooks, features, developer reference; **not built:** fee schedules, server-side reports, admin threshold alerts, branding — each stated in `broker-panel.md`                                                                                                                                                                                                                       |
+| 15                | Master accounts                                 | PASS    | links, capabilities, desk view across linked accounts, desk risk ceilings; no organisation hierarchy above a master (stated)                                                                                                                                                                                                                                                                                                                                                |
+| 16                | Multi-account user                              | PASS    | account selector; state scoped per account                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 17–24             | Terminal IA, header, watchlist, tickets, panels | PARTIAL | the parts where the alternative was a defect are built; the inline quick ticket, categories/top movers, Finance/Alerts/Logs tabs and the typography scale are not — `uiux.md` says why for each                                                                                                                                                                                                                                                                             |
+| 25                | Server-side close-all                           | PASS    | `POST /positions/close-all`, outcome per position, largest margin first                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 26–27             | Chart, drawing persistence                      | PARTIAL | persistence of layout, instrument, resolution and levels done; indicators, the drawing set and bid/ask axis labels are §7's BLOCKED item                                                                                                                                                                                                                                                                                                                                    |
+| 26–27 (library)   | Indicators, drawings, axis labels               | BLOCKED | **Missing:** the indicator and drawing toolset. **Why:** the reference is the TradingView charting library's behaviour, and this repository holds an open-source renderer. **Waits on:** a TradingView licence, or the product owner accepting the open-source set as the target. **In place:** the chart seam (§58) that keeps the renderer replaceable, and level persistence that survives either choice                                                                 |
+| 28–29             | Overlays, draggable SL/TP                       | PASS    |                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 30–31             | Edit dialog, shared calculator                  | PASS    | one calculator, shared by ticket, dialog and mobile                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 32–35             | Market data, realtime, freshness                | PASS    | quotes conflated; P&L one frame per account; tick → frame latency measured; freshness gates on every fill                                                                                                                                                                                                                                                                                                                                                                   |
+| 36                | Market status states                            | PARTIAL | OPEN / CLOSED / HALTED (kill switch) exist; PRE_OPEN / POST_CLOSE / UNKNOWN do not — the session table has no pre/post windows to derive them from                                                                                                                                                                                                                                                                                                                          |
+| 37–39             | P&L, fees, risk engine                          | PASS    |                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 40                | Risk hierarchy                                  | PASS    | platform → broker → master/desk → account, ceilings audited                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 41–43             | External execution, outbox, disconnect          | PARTIAL | built and tested against the mock, UNKNOWN outcomes queried back never retried blindly, recovery sequence on reconnect; exercised against a real venue only when §10–11 unblocks                                                                                                                                                                                                                                                                                            |
+| 44                | Reconciliation                                  | PARTIAL | internal complete; external: on-demand runs, `MISSING_INTERNAL` / `MISSING_EXTERNAL` / `UNREACHABLE`, `ResolutionRecord`; **not done:** scheduled external sweeps, status vocabulary mapping, swaps/cash — each waits on a real venue (§10–11)                                                                                                                                                                                                                              |
+| 45                | Ledger                                          | PASS    | append-only, replayed by reconciliation, never repaired                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 46                | Anti-fraud                                      | PASS    | security events, rate/replay/device/IP signals, review queue, tenant IP rules (`anti-fraud.md`)                                                                                                                                                                                                                                                                                                                                                                             |
+| 47                | Security                                        | PASS    | `SECURITY_AUDIT.md`, `penetration-checklist.md` (62), Security Centre; one production setting owed: `TRUSTED_PROXY_HOPS`                                                                                                                                                                                                                                                                                                                                                    |
+| 48                | API keys                                        | PASS    |                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 49                | Webhooks                                        | PASS    | signed, retried, disabled after failures, SSRF-vetted, secret shown once; `reconciliation.mismatch` and `security.alert` events wait on their producers writing outbox rows                                                                                                                                                                                                                                                                                                 |
+| 50–51             | Notifications, sounds                           | PASS    |                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 52, 57, 61, 83–86 | Terminal UX, responsive, a11y, quality          | PARTIAL | large-order confirmation, risk as a share of equity, account selector done; a documented accessibility pass and a light theme are not                                                                                                                                                                                                                                                                                                                                       |
+| 53–56             | Mobile                                          | PARTIAL | reconnect with backoff and the §55 states, secure token store, seen-event dedupe, haptics, sound, chart with overlays, shared protective-level maths; **not built:** account switching and biometric unlock; acceptance is §105's BLOCKED item                                                                                                                                                                                                                              |
+| 58                | Chart library seams                             | PASS    |                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 59                | White label                                     | PARTIAL | `white_label` is a platform-set feature flag, enforced server-side; the `Tenant` model has no visual fields yet — a phase nobody has designed                                                                                                                                                                                                                                                                                                                               |
+| 60                | Locale (English + Persian, RTL)                 | PARTIAL | not built; stated rather than stubbed                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 62                | Audit log                                       | PASS    | append-only at the database; before/after on every mutation                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 63                | Observability                                   | PASS    | the metric set, Prometheus + Grafana provisioned from the repository, alert rules, dashboard cross-checked against `MetricsService`                                                                                                                                                                                                                                                                                                                                         |
+| 64                | Distributed leadership                          | PASS    | database-clock leases for ingest, trigger engine, price alerts; verified under chaos                                                                                                                                                                                                                                                                                                                                                                                        |
+| 65–66             | Database, concurrency                           | PASS    |                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 67                | Failure handling                                | PASS    | internal and external paths against the mock; the idempotency claim commits with the money (found by §75)                                                                                                                                                                                                                                                                                                                                                                   |
+| 68                | Rate limiting                                   | PASS    | per IP, tenant, account, master; admission control by count and loop lag                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 69–71             | API design, envelope, idempotency               | PASS    |                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 72–75             | Security tests, load, failure injection         | PARTIAL | pentest, soak, chaos and load at 500 traders done and every finding fixed; **1,000 traders / 5,000 sockets** needs a generator on a host other than the platform's — reported as a limit of the box, not the platform                                                                                                                                                                                                                                                       |
+| 76                | Disaster recovery                               | PASS    | verified backups, `disaster-recovery.md`, rehearsed restore                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 77–79             | Deployment, config, migrations                  | PASS    | ingest, trigger engine, WebSocket, worker roles each in their own containers; graceful drain; secrets from files; broker adapters stay in-process until one exists                                                                                                                                                                                                                                                                                                          |
+| 80–81             | UI state, optimistic UI                         | PASS    |                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 87–90             | Account/broker status, instruments              | PARTIAL | account status policy table complete; a broker has connection status but no broker-level status of its own                                                                                                                                                                                                                                                                                                                                                                  |
+| 91, 113           | PropFA seam                                     | PASS    | none of it in the repository; the outbox is the seam                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 92–94             | Analytics/event schema, versioning              | PASS    | envelope v2                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 95                | Feature flags                                   | PASS    | authority and enforcement stated per flag                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 96                | Documentation                                   | PASS    | seventy-odd documents; every phase's decisions written where the code is                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 100–103           | Acceptance scenarios                            | PARTIAL | the internal path end to end in the browser suite; the broker steps run against the mock and wait on §10–11 for a venue                                                                                                                                                                                                                                                                                                                                                     |
+| 105               | Mobile acceptance                               | BLOCKED | **Missing:** a run on a device. **Why:** an emulator proves nothing about biometrics, background reconnects or a real network. **Waits on:** a physical Android device; iOS additionally on macOS, Xcode and a signing key. **In place:** the app builds for Android, its logic is unit-tested, and every screen runs on the same store the web terminal uses                                                                                                               |
+
+### What the audit itself found
+
+Looking at the whole thing again at the end turned up three things, all fixed
+before this was written: the first deploy of the direct `listen()` lost the
+entire boot log (Nest flushes buffered logs from inside `app.listen`; the smoke
+now pins that the boot log reaches stdout); a compose profile is still
+interpolated, so a required Grafana password in the main file stopped every
+`compose` command on the host (moved to its own file; a test pins that the main
+file requires nothing an ordinary deploy does not set); and the worker's config
+module validates at import time, so a secret resolved inside `bootstrap()` was
+resolved too late (the resolver is the first import; a test pins the order).
+
+### Decisions owed by the product owner
+
+Named here because the code cannot make them: `TRUSTED_PROXY_HOPS=2` and
+`DATABASE_TENANT_POOLS=4` in production; whether `security.break_glass` sits on
+ADMIN or SUPPORT; the first ADMIN account; TP-100001's +42.98 USD; a broker's
+API documentation and sandbox; a TradingView licence or the open-source
+target; the Match-Trader screenshots the terminal was to match; a device for
+mobile acceptance; a host for the load generator; what a resting order should
+do when the market is closed; CSF's SSH bans and its treatment of Docker's
+iptables.
+
+## The first plan's audit (August 2026)
+
+The last step of the first upgrade plan: look at the whole thing at once, from
+the three angles that catch different faults.
 
 - **In a browser**, because every UI defect this work found — a figure rendering
   as `—` while the API was sending it, a chart level drawn off-screen, a label
@@ -12,7 +130,7 @@ three angles that catch different faults.
 - **Across the integration**, because a platform whose parts are each correct can
   still present something incoherent.
 
-## Concurrency
+### Concurrency
 
 `apps/api/test/integration/concurrency.test.ts` is the deliberate pass over races
 nobody had gone looking for. `trading.test.ts` already covers the ones this
@@ -41,7 +159,7 @@ fired would pass a `<= 1` assertion while proving nothing. The five-way close
 exists because a two-way race can pass by luck — two requests can miss each
 other; five cannot all miss each other.
 
-### What it found: margin could be spent twice
+#### What it found: margin could be spent twice
 
 The margin case failed on its first run.
 
@@ -93,13 +211,13 @@ purpose. It survived every unit test, every integration test, the smoke suite, t
 penetration checklist and a fifteen-minute soak, because all of those submit
 orders one at a time.
 
-## The browser
+### The browser
 
 A full walkthrough, photographed at each step: register, land, read the account
 strip, open a position, watch the figures move without touching anything, close
 it, walk the history tabs, open both settings panels.
 
-### What it found
+#### What it found
 
 **The terminal opened on a closed instrument.** The default was
 `tradeableSymbols[0]` — alphabetical, which at a weekend is AUDUSD, and at a
@@ -116,7 +234,7 @@ honestly labelled.
 This is a good example of the class of fault only a browser finds. Every test
 passed. The API was correct. The data was correct. The product was bad.
 
-### Everything else, cross-checked on screen
+#### Everything else, cross-checked on screen
 
 Read off one screenshot, mid-position, and verified by hand:
 
@@ -137,7 +255,7 @@ price the ticket quoted.
 button is labelled with the volume it will close — `Close 0.10` — rather than with
 the word "Close", which is the difference between an action and a guess.
 
-## Integration
+### Integration
 
 The things that have to agree across the whole system, checked as a set rather
 than one service at a time:
@@ -153,7 +271,7 @@ than one service at a time:
 - **One definition of a token's type.** Access, refresh and two-factor challenge
   are told apart by the same `typ` discriminator, checked in both directions.
 
-## What is deliberately still open
+### What was deliberately still open then
 
 Recorded here rather than left to be discovered:
 

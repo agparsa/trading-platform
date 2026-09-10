@@ -575,11 +575,15 @@ runs, and would start with that manager's documentation; stated as such.
 
 **Phase 14 is complete.**
 
-## Phase 15 — Final audit
+## Phase 15 — Final audit · **done**
 
 `docs/final-audit.md` with PASS / PARTIAL / BLOCKED per area, every BLOCKED
 item stating what is missing, why, the external dependency, and the interface
-or mock already in place (§107).
+or mock already in place (§107). Three BLOCKED areas, each with its seam in
+place: a real venue connector (§10–11), the TradingView indicator and drawing
+set (§26–27), mobile acceptance on a device (§105). Written against the build,
+with the gates that verified it, and the three faults the audit itself found
+and fixed.
 
 ---
 
