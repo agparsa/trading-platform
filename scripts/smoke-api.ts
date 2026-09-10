@@ -1780,6 +1780,37 @@ async function main(): Promise<void> {
   let failures = 0;
   try {
     await waitForBoot();
+    /**
+     * The boot log reached stdout.
+     *
+     * Nest buffers everything logged before `useLogger` and flushes it from
+     * inside `app.listen()`. The API listens through the HTTP server directly
+     * (to state the backlog), and the first deploy of that lost every boot
+     * line — tenant isolation, the connection budget, roles reconciled — while
+     * "API listening" still appeared and the health check passed. An operator
+     * reading the log after a deploy would have seen nothing wrong and learned
+     * nothing. Only the local run can prove this; a deployment's stdout is not
+     * reachable from here.
+     */
+    // Pino writes through a worker thread, so the flushed lines can land a few
+    // milliseconds after the health check answers. Wait for them, briefly.
+    const bootLogDeadline = Date.now() + 5_000;
+    while (
+      !output.join('').includes('Database connection established') &&
+      Date.now() < bootLogDeadline
+    ) {
+      await sleep(100);
+    }
+    const booted = output.join('');
+    if (!booted.includes('Database connection established')) {
+      failures += 1;
+      console.error(
+        '  FAIL the boot log reached stdout: "Database connection established" was never printed — ' +
+          'buffered logs are not being flushed',
+      );
+    } else {
+      console.log('  ok  the boot log reached stdout');
+    }
     for (const check of checks) {
       try {
         await check.run();
@@ -1801,7 +1832,7 @@ async function main(): Promise<void> {
     console.error(`\n${failures} smoke check(s) failed.`);
     process.exitCode = 1;
   } else {
-    console.log(`\nAll ${checks.length} smoke checks passed.`);
+    console.log(`\nAll ${checks.length + 1} smoke checks passed.`);
   }
 }
 

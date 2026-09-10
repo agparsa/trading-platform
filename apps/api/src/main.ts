@@ -180,6 +180,12 @@ async function bootstrap(): Promise<void> {
   /**
    * Listening directly rather than through `app.listen`, which offers no way
    * to state the backlog and leaves Node's 511. See `HTTP_LISTEN_BACKLOG`.
+   *
+   * `app.listen` also does one thing that is easy to miss: it flushes the logs
+   * Nest buffered before `useLogger`. Without the `flushLogs()` below, the
+   * first deploy of this lost every boot line — isolation probe, connection
+   * budget, roles reconciled — while the health check passed. The smoke suite
+   * now proves the boot log reaches stdout.
    */
   await app.init();
   await new Promise<void>((resolve, reject) => {
@@ -193,6 +199,7 @@ async function bootstrap(): Promise<void> {
       resolve,
     );
   });
+  app.flushLogs();
   logger.log(
     `API listening on http://${host}:${port} (${config.get('NODE_ENV', { infer: true })})`,
   );
