@@ -14,7 +14,7 @@ import {
   permissionsFor as codePermissionsFor,
   seedRoles,
 } from '@tp/shared-types';
-import { requireTenantId, seedTenantRoles, withTenant, withoutTenantScope } from '@tp/tenancy';
+import { requireTenantId, seedTenantRoles, withoutTenantScope } from '@tp/tenancy';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AuditService } from '../common/audit/audit.service';
@@ -127,40 +127,67 @@ export class RolesService implements OnModuleInit {
    * a role for a brand-new tenant; that surfaces as a unique violation on one of
    * them, which is logged and not fatal. An API that cannot reconcile roles must
    * still start and still enforce the roles it can read.
+   *
+   * ## Why it runs through the privileged pool, not a pool per tenant
+   *
+   * It used to enter each tenant's scope in turn, which is the natural way to
+   * write it and the wrong way to run it. A connection is bound to one tenant
+   * for its life, so entering thirty-five scopes in a second opens thirty-five
+   * pools — and `DATABASE_TENANT_POOLS` did not stop it, because an evicted
+   * pool keeps its connections for a drain period so that work already on it
+   * can finish. Two instances booting against a development database the
+   * penetration suite had filled with tenants asked a stock Postgres for more
+   * connections than it had; this very sweep failed for some tenants, the
+   * price-alert sweep failed, and a trader registering was told
+   * `INTERNAL_ERROR`. The load harness found it.
+   *
+   * This is platform work — a release reaching every tenant — which is exactly
+   * what `withoutTenantScope` exists to name. `seedTenantRoles` states the
+   * tenant on every row it reads or writes, so nothing depends on the scope to
+   * narrow or stamp; the sweep runs on the owner's single pool, and boot opens
+   * no tenant pool at all until the first request needs one.
    */
   private async reconcileWithBuild(): Promise<void> {
-    let tenants;
-    try {
-      tenants = await withoutTenantScope(
-        'a release adds capabilities to every tenant, not to one',
-        () => this.prisma.tenant.findMany({ select: { id: true, slug: true, kind: true } }),
-      );
-    } catch (error) {
-      this.logger.error(
-        'Could not read the tenant list to reconcile roles. Roles are whatever the database holds.',
-        error instanceof Error ? error.stack : String(error),
-      );
-      return;
-    }
+    await withoutTenantScope(
+      'a release adds capabilities to every tenant, not to one; reconciling through one pool keeps boot from opening a pool per tenant',
+      async () => {
+        let tenants;
+        try {
+          tenants = await this.prisma.tenant.findMany({
+            select: { id: true, slug: true, kind: true },
+          });
+        } catch (error) {
+          this.logger.error(
+            'Could not read the tenant list to reconcile roles. Roles are whatever the database holds.',
+            error instanceof Error ? error.stack : String(error),
+          );
+          return;
+        }
 
-    let created = 0;
-    let refreshed = 0;
-    for (const tenant of tenants) {
-      try {
-        const result = await withTenant(
-          { tenantId: tenant.id, slug: tenant.slug, kind: tenant.kind },
-          () => seedTenantRoles(this.prisma as unknown as PrismaClient, tenant.id, tenant.kind),
-        );
-        created += result.created;
-        refreshed += result.refreshed;
-        if (result.created > 0 || result.refreshed > 0) this.markDirty(tenant.id);
-      } catch (error) {
-        this.logger.warn(
-          `Could not reconcile roles for ${tenant.slug}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-    }
+        let created = 0;
+        let refreshed = 0;
+        for (const tenant of tenants) {
+          try {
+            const result = await seedTenantRoles(
+              this.prisma as unknown as PrismaClient,
+              tenant.id,
+              tenant.kind,
+            );
+            created += result.created;
+            refreshed += result.refreshed;
+            if (result.created > 0 || result.refreshed > 0) this.markDirty(tenant.id);
+          } catch (error) {
+            this.logger.warn(
+              `Could not reconcile roles for ${tenant.slug}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+        this.reportReconciliation(created, refreshed, tenants.length);
+      },
+    );
+  }
 
+  private reportReconciliation(created: number, refreshed: number, tenantCount: number): void {
     if (created > 0 || refreshed > 0) {
       /**
        * Said out loud, because it is a change to what people may do.
@@ -171,7 +198,7 @@ export class RolesService implements OnModuleInit {
        */
       this.logger.log(
         `Roles reconciled with this build: ${created} created, ${refreshed} brought up to date ` +
-          `across ${tenants.length} tenant(s). Roles that had been edited were left alone.`,
+          `across ${tenantCount} tenant(s). Roles that had been edited were left alone.`,
       );
     }
   }

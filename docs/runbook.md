@@ -63,10 +63,27 @@ the pool size (`connection_limit` on `DATABASE_URL`). Every queued transaction
 holds a connection while it waits, so the pool must be larger than the expected
 queue depth, not merely larger than the core count.
 
+### Orders are failing with SERVICE_UNAVAILABLE
+
+The instance is refusing at its concurrency limit (`HTTP_MAX_IN_FLIGHT`,
+default 512 requests in flight) or it is draining for a restart. Either way
+nothing was changed and the response carries `Retry-After`. A burst that clears
+in seconds is the control doing its job — the alternative was accepting more
+than the loop could serve, until connections reset with no answer at all.
+Sustained, it means the instance is undersized for the traffic: add an instance
+behind the edge before raising the limit, and read the boot log's
+connection-budget line first, because every instance takes its share of the
+database's connections. The warning `Refused N request(s) at the concurrency
+limit` is logged at most once every ten seconds while it is happening.
+
 ### Orders are failing with INTERNAL_ERROR
 
 This is a bug, not load. Find the `requestId` in the trader's error response and
-grep the logs for it; every request carries one end to end.
+grep the logs for it; every request carries one end to end. One exception worth
+knowing: `Too many database connections opened` in that log means the
+connection budget was exceeded — the boot log says what this instance may open
+and what the server allows; lower `DATABASE_TENANT_POOLS` or `connection_limit`,
+or run fewer instances against that database.
 
 ### An account's balance looks wrong
 

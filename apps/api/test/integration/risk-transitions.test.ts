@@ -110,6 +110,9 @@ suite('Risk state transitions (integration)', () => {
       // not what these tests are about, and leaving it on would make them
       // depend on how fast the machine is.
       REALTIME_VALUATION_INTERVAL_MS: 0,
+      // Generous, for the same reason: a pass that ran out of budget on a slow
+      // machine would defer the very valuation a test is waiting for.
+      REALTIME_VALUATION_BUDGET_MS: 10_000,
     } as never);
 
     /**

@@ -4,6 +4,12 @@ import { PrismaClient, type Prisma } from '@prisma/client';
 import type { Env } from '../config/env.schema';
 import { currentIdempotencyClaim } from '../common/request-scope';
 import {
+  connectionBudget,
+  connectionLimitOf,
+  describeConnectionBudget,
+  type ServerCapacity,
+} from './connection-budget';
+import {
   TenantClientRegistry,
   currentScope,
   probeTenantIsolation,
@@ -206,6 +212,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
       this.registry.unscopedClient(),
       this.registry.privilegedClient(),
     );
+    await this.reportConnectionBudget();
 
     if (this.isolation.enforced === true) {
       this.logger.log(`Database connection established; tenant isolation enforced at the database`);
@@ -228,6 +235,60 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await this.registry.disconnectAll();
+  }
+
+  /**
+   * What this process may ask of the database, against what the database has.
+   *
+   * See `connection-budget.ts` for why. A warning, never a refusal: the budget
+   * is a ceiling a one-tenant deployment never reaches. If the server cannot
+   * be asked — a pooler in front of it, a role without `SHOW` — the check is
+   * skipped and says so, at debug, because nothing has gone wrong.
+   */
+  private async reportConnectionBudget(): Promise<void> {
+    const owner = this.config.get('DATABASE_URL', { infer: true });
+    const tenantUrl = this.config.get('DATABASE_URL_TENANT', { infer: true }) ?? owner;
+    const input = {
+      tenantPools: this.config.get('DATABASE_TENANT_POOLS', { infer: true }),
+      tenantConnectionLimit: connectionLimitOf(tenantUrl),
+      privilegedConnectionLimit: connectionLimitOf(owner),
+    };
+
+    let server: ServerCapacity;
+    try {
+      const rows = await this.registry.privilegedClient().$queryRaw<
+        Array<{ name: string; setting: string }>
+      >`SELECT name, setting FROM pg_settings WHERE name IN ('max_connections', 'superuser_reserved_connections')`;
+      const setting = (name: string) => Number(rows.find((row) => row.name === name)?.setting);
+      server = {
+        maxConnections: setting('max_connections'),
+        reserved: setting('superuser_reserved_connections'),
+      };
+      if (!Number.isFinite(server.maxConnections) || !Number.isFinite(server.reserved)) {
+        throw new Error('pg_settings did not report both values');
+      }
+    } catch (error) {
+      this.logger.debug(
+        `Connection budget not checked: the server's limits could not be read (${
+          error instanceof Error ? error.name : String(error)
+        })`,
+      );
+      return;
+    }
+
+    const budget = connectionBudget(input, server);
+    const message = describeConnectionBudget(budget, input);
+    if (budget.fits && budget.instancesThatFit > 1) this.logger.log(message);
+    else this.logger.warn(message);
+  }
+
+  /**
+   * How many tenant pools are open right now. For tests that pin what a code
+   * path costs in connections, and for the metric an operator watches against
+   * `DATABASE_TENANT_POOLS`.
+   */
+  get tenantPoolsOpen(): number {
+    return this.registry.size;
   }
 
   /** Cheap liveness probe for the health endpoint. */

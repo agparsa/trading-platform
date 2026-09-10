@@ -17,6 +17,9 @@
  * machine and fails on a busy CI runner teaches nobody anything.
  */
 import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { io, type Socket } from 'socket.io-client';
 
@@ -53,6 +56,8 @@ const OBSERVE_MS = Number(process.env['LOAD_OBSERVE_MS'] ?? 20_000);
  * being used, as opposed to while it is being hit.
  */
 const STEADY_MS = Number(process.env['LOAD_STEADY_MS'] ?? 15_000);
+/** Traders registered concurrently while the run is being set up. */
+const REGISTRATION_BATCH = Number(process.env['LOAD_REGISTRATION_BATCH'] ?? 100);
 const STEADY_ORDERS_PER_TRADER = Number(process.env['LOAD_STEADY_ORDERS'] ?? 3);
 
 interface Frame {
@@ -69,7 +74,18 @@ interface Frame {
  * longer trusts. That is the behaviour §26 asks for — an infrastructure problem
  * must never become a trade — and it is a capacity limit, not a defect.
  */
-const SAFE_REFUSALS = new Set(['STALE_QUOTE', 'NO_QUOTE_AVAILABLE', 'TRADING_HALTED']);
+const SAFE_REFUSALS = new Set([
+  'STALE_QUOTE',
+  'NO_QUOTE_AVAILABLE',
+  'TRADING_HALTED',
+  /**
+   * The instance refusing at its concurrency limit (`HTTP_MAX_IN_FLIGHT`).
+   * A coded 503 with Retry-After is the platform saying "not now" to an order
+   * it never began — the safe answer, and the one that replaced a hundred and
+   * twenty connection resets at two thousand simultaneous orders.
+   */
+  'SERVICE_UNAVAILABLE',
+]);
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -212,6 +228,47 @@ async function main(): Promise<void> {
     // The socket limit too: a hundred terminals each sending five subscribes
     // on connect is ordinary traffic, and this run is not about that limit.
     RATE_LIMIT_SOCKET_MESSAGES_PER_MINUTE: '100000',
+    /**
+     * The connection budget, stated for this run.
+     *
+     * Every trader here lives in one tenant, so the run needs a handful of
+     * pools, not the default thirty-two. Left at the default against a
+     * development database that the penetration suite has filled with tenants,
+     * the two instances asked a stock Postgres for 340 connections out of 100 —
+     * role reconciliation failed for some tenants and the first registration
+     * came back `INTERNAL_ERROR`. That was a real finding (the API now reports
+     * its budget at boot), but it is not the one this harness measures.
+     */
+    DATABASE_TENANT_POOLS: process.env['LOAD_TENANT_POOLS'] ?? '1',
+  };
+
+  /**
+   * The pool, sized for the concurrency this run drives.
+   *
+   * Prisma's default is `cpus × 2 + 1` — five on the two-core box that measured
+   * everything in `docs/capacity.md`. Five hundred traders placing orders at
+   * once queue on five connections, the queue outlives the pool's ten-second
+   * wait, and the run measures `P2024` instead of the engine. The runbook says
+   * to raise the pool with concurrency, not with core count; this is that
+   * advice, applied to the run. The ingest instance serves nobody and keeps a
+   * small one, so that between them the pair stays inside a stock Postgres's
+   * hundred connections: serving (1 tenant + 1 unscoped) × 25 + 25 privileged
+   * = 75, ingest (1 + 1) × 5 + 5 = 15.
+   */
+  const servingLimit = process.env['LOAD_CONNECTION_LIMIT'] ?? '25';
+  const withConnectionLimit = (url: string | undefined, limit: string): string | undefined => {
+    if (url === undefined) return undefined;
+    const parsed = new URL(url);
+    parsed.searchParams.set('connection_limit', limit);
+    return parsed.toString();
+  };
+  const pooled = (limit: string): Record<string, string> => {
+    const out: Record<string, string> = {};
+    const owner = withConnectionLimit(process.env['DATABASE_URL'], limit);
+    const tenant = withConnectionLimit(process.env['DATABASE_URL_TENANT'], limit);
+    if (owner !== undefined) out['DATABASE_URL'] = owner;
+    if (tenant !== undefined) out['DATABASE_URL_TENANT'] = tenant;
+    return out;
   };
 
   /**
@@ -228,6 +285,7 @@ async function main(): Promise<void> {
     env: {
       ...process.env,
       ...limits,
+      ...pooled('5'),
       API_PORT: INGEST_PORT,
       MARKET_INGEST_ENABLED: 'true',
       TRIGGER_ENGINE_ENABLED: 'true',
@@ -245,6 +303,7 @@ async function main(): Promise<void> {
     env: {
       ...process.env,
       ...limits,
+      ...pooled(servingLimit),
       API_PORT: PORT,
       MARKET_INGEST_ENABLED: 'false',
       TRIGGER_ENGINE_ENABLED: 'false',
@@ -256,6 +315,21 @@ async function main(): Promise<void> {
 
   const sockets: Socket[] = [];
   let failed = false;
+  /**
+   * What each phase saw, kept outside the `try` so a run that dies half-way
+   * still says what it had measured. A histogram of refusal codes is the
+   * difference between "fetch failed" and knowing the queue was already
+   * refusing `CONCURRENT_MODIFICATION` for a full round before the socket went.
+   */
+  const progress: string[] = [];
+  const histogram = (codes: readonly string[]): string => {
+    const counts = new Map<string, number>();
+    for (const code of codes) counts.set(code, (counts.get(code) ?? 0) + 1);
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([code, count]) => `${code}×${count}`)
+      .join(', ');
+  };
 
   try {
     await waitForBoot(`http://127.0.0.1:${INGEST_PORT}`);
@@ -270,9 +344,21 @@ async function main(): Promise<void> {
         `\n  (per-IP rate limits raised for this run — see the note in the script)\n`,
     );
 
-    const traders = await Promise.all(
-      Array.from({ length: TRADERS }, (_, index) => registerTrader(index)),
-    );
+    /**
+     * Registered in batches, not all at once. A thousand simultaneous
+     * registrations are not what a thousand traders look like — they arrive
+     * over months — and above `HTTP_MAX_IN_FLIGHT` the API would rightly
+     * refuse the excess. The traders exist before the measurement starts;
+     * how fast they were created is not what this harness measures.
+     */
+    const traders: Trader[] = [];
+    for (let start = 0; start < TRADERS; start += REGISTRATION_BATCH) {
+      const batch = Array.from(
+        { length: Math.min(REGISTRATION_BATCH, TRADERS - start) },
+        (_, offset) => registerTrader(start + offset),
+      );
+      traders.push(...(await Promise.all(batch)));
+    }
 
     /**
      * What the platform is already holding.
@@ -296,54 +382,83 @@ async function main(): Promise<void> {
     assert(symbols.length > 0, 'nothing is quoting');
 
     // --- sockets ------------------------------------------------------------
-    const streams: Array<{ frames: Frame[]; errors: string[] }> = [];
+    /**
+     * Per socket: how many frames, whether the sequence ever skipped, what
+     * errored. Counts, not the frames themselves — five thousand sockets
+     * retaining every frame for a minute is gigabytes in the generator, and
+     * at that point the harness is measuring its own memory.
+     */
+    const streams: Array<{ frames: number; gapped: boolean; errors: string[] }> = [];
     for (const trader of traders) {
       for (let i = 0; i < SOCKETS_PER_TRADER; i += 1) {
-        const frames: Frame[] = [];
-        const errors: string[] = [];
+        const stream = { frames: 0, gapped: false, errors: [] as string[] };
         const socket = io(BASE, {
           path: '/ws',
           transports: ['websocket'],
           auth: { token: trader.token },
         });
-        socket.on('frame', (frame: Frame) => frames.push(frame));
-        socket.on('connect_error', (error: Error) => errors.push(error.message));
+        socket.on('frame', (frame: Frame) => {
+          stream.frames += 1;
+          if (frame.seq !== stream.frames) stream.gapped = true;
+        });
+        socket.on('connect_error', (error: Error) => stream.errors.push(error.message));
         socket.on('connect', () => {
           for (const channel of ['quotes', 'positions', 'account', 'pnl']) {
             socket.emit('subscribe', { channel });
           }
         });
         sockets.push(socket);
-        streams.push({ frames, errors });
+        streams.push(stream);
       }
     }
     await sleep(3_000);
+    const socketsOpenedAt = Date.now();
 
     const coalescedBefore = await counterValue('tp_ticks_coalesced_total');
 
     // --- orders, while the sockets are being served -------------------------
     const latencies: number[] = [];
     const rejections: string[] = [];
+    /**
+     * A request the transport lost is a refusal too, and the worst kind: the
+     * client does not know whether the order was placed. It is recorded as
+     * `TRANSPORT:<cause>` so it fails the safe-refusal check by name rather than
+     * aborting the run and taking every other number with it.
+     */
+    let inFlight = 0;
+    let peakInFlight = 0;
     const submit = async (trader: Trader, index: number): Promise<void> => {
       const symbol = symbols[index % symbols.length]!.symbol;
       const startedAt = Date.now();
-      const response = await fetch(`${BASE}/api/v1/orders`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${trader.token}`,
-          'Idempotency-Key': crypto.randomUUID(),
-        },
-        body: JSON.stringify({
-          accountId: trader.accountId,
-          symbol,
-          side: index % 2 === 0 ? 'BUY' : 'SELL',
-          volume: '0.01',
-        }),
-      });
-      latencies.push(Date.now() - startedAt);
-      const payload = (await response.json()) as { ok: boolean; error?: { code: string } };
-      if (!payload.ok) rejections.push(payload.error?.code ?? 'UNKNOWN');
+      inFlight += 1;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      try {
+        const response = await fetch(`${BASE}/api/v1/orders`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${trader.token}`,
+            'Idempotency-Key': crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            accountId: trader.accountId,
+            symbol,
+            side: index % 2 === 0 ? 'BUY' : 'SELL',
+            volume: '0.01',
+          }),
+        });
+        latencies.push(Date.now() - startedAt);
+        const payload = (await response.json()) as { ok: boolean; error?: { code: string } };
+        if (!payload.ok) rejections.push(payload.error?.code ?? 'UNKNOWN');
+      } catch (error) {
+        latencies.push(Date.now() - startedAt);
+        const cause = (error as { cause?: { code?: string } }).cause;
+        rejections.push(
+          `TRANSPORT:${cause?.code ?? (error as Error).message} after ${Date.now() - startedAt} ms with ${inFlight} in flight`,
+        );
+      } finally {
+        inFlight -= 1;
+      }
     };
 
     /**
@@ -401,6 +516,11 @@ async function main(): Promise<void> {
     const steadyElapsed = Date.now() - steadyStartedAt;
     const steadyOrders = TRADERS * STEADY_ORDERS_PER_TRADER;
     const steadyRejections = [...rejections];
+    progress.push(
+      `steady: ${steadyOrders} orders in ${steadyElapsed} ms, p50 ${percentile(steady, 50)} ms, ` +
+        `p95 ${percentile(steady, 95)} ms; refused ${steadyRejections.length}` +
+        (steadyRejections.length > 0 ? ` (${histogram(steadyRejections)})` : ''),
+    );
     latencies.length = 0;
     rejections.length = 0;
 
@@ -414,6 +534,11 @@ async function main(): Promise<void> {
     const orderElapsed = Date.now() - orderStartedAt;
     const burst = [...latencies];
     const burstRejections = [...rejections];
+    progress.push(
+      `burst: ${burst.length} orders in ${orderElapsed} ms, p50 ${percentile(burst, 50)} ms; ` +
+        `refused ${burstRejections.length}` +
+        (burstRejections.length > 0 ? ` (${histogram(burstRejections)})` : ''),
+    );
     rejections.length = 0;
 
     // --- phase 3: recovery --------------------------------------------------
@@ -436,22 +561,14 @@ async function main(): Promise<void> {
     const feedAgeMs = await newestTickAge();
 
     // --- results ------------------------------------------------------------
-    const allFrames = streams.reduce((total, stream) => total + stream.frames.length, 0);
+    const allFrames = streams.reduce((total, stream) => total + stream.frames, 0);
     const socketErrors = streams.flatMap((stream) => stream.errors);
 
     let gaps = 0;
     let emptyStreams = 0;
     for (const stream of streams) {
-      if (stream.frames.length === 0) {
-        emptyStreams += 1;
-        continue;
-      }
-      for (let i = 0; i < stream.frames.length; i += 1) {
-        if (stream.frames[i]!.seq !== i + 1) {
-          gaps += 1;
-          break;
-        }
-      }
+      if (stream.frames === 0) emptyStreams += 1;
+      if (stream.gapped) gaps += 1;
     }
 
     const orders = TRADERS * ORDERS_PER_TRADER;
@@ -462,12 +579,16 @@ async function main(): Promise<void> {
       ['Sockets held open', String(sockets.length)],
       ['Frames delivered', String(allFrames)],
       [
+        // Over the time the sockets were actually open, not the observation
+        // window: a twenty-minute run at a thousand traders once reported 92
+        // frames a second by dividing a run's worth of frames by twenty seconds.
         'Frames per socket per second',
-        (allFrames / sockets.length / (OBSERVE_MS / 1000)).toFixed(1),
+        (allFrames / sockets.length / ((Date.now() - socketsOpenedAt) / 1000)).toFixed(1),
       ],
       ['Sockets with a sequence gap', String(gaps)],
       ['Sockets that received nothing', String(emptyStreams)],
       ['Socket errors', String(socketErrors.length)],
+      ['Peak orders in flight', String(peakInFlight)],
       ['Orders submitted', String(orders + steadyOrders + quiet.length + recovered.length)],
       [
         'Orders rejected',
@@ -616,11 +737,23 @@ async function main(): Promise<void> {
   } catch (error) {
     failed = true;
     console.error(`\n  ${(error as Error).message}`);
+    // `fetch failed` on its own names nothing; undici puts the reason underneath.
+    const cause = (error as { cause?: { code?: string; message?: string } }).cause;
+    if (cause !== undefined) console.error(`  cause: ${cause.code ?? ''} ${cause.message ?? ''}`);
+    for (const line of progress) console.error(`  before that — ${line}`);
     console.error(output.join('').slice(-3000));
   } finally {
     for (const socket of sockets) socket.close();
     api.kill('SIGTERM');
     ingest.kill('SIGTERM');
+    if (failed) {
+      // The tail above is rarely where the cause is. Keep everything the
+      // instance said, so a failure at a thousand traders can be read rather
+      // than guessed.
+      const dump = join(tmpdir(), `load-test-api-${process.pid}.log`);
+      writeFileSync(dump, output.join(''));
+      console.error(`\n  the serving instance's full output is in ${dump}`);
+    }
   }
 
   if (failed) {

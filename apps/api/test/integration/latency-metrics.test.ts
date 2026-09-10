@@ -116,7 +116,10 @@ suite('latency metrics', () => {
     } as unknown as RedisService;
 
     realtime = new RealtimeService(
-      new ConfigService({ REALTIME_VALUATION_INTERVAL_MS: 0 } as never) as never,
+      new ConfigService({
+        REALTIME_VALUATION_INTERVAL_MS: 0,
+        REALTIME_VALUATION_BUDGET_MS: 10_000,
+      } as never) as never,
       prismaService,
       stack.accountState,
       gateway,

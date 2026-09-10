@@ -491,9 +491,22 @@ taken over after a window instead of blocking. Also reported: ingest stalls on
 a slow database (safe — `STALE_QUOTE`), and ~45 database messages per order.
 [failure-injection.md](./failure-injection.md).
 
-**Still to do:** the §74 load scenarios at 500 / 1,000 traders and 1,000 /
-5,000 sockets with p50/p95/p99 (`pnpm load` runs the small end); Grafana
-dashboards for the §63 metric set.
+**Load at five hundred traders (§74) — done, and it paid for itself.** The
+harness at 500 traders / 1,000 sockets / 2,000 simultaneous orders found four
+defects in sequence, each fixed and pinned: boot opened a connection pool per
+tenant (role reconciliation now runs through the privileged pool; the API
+reports its connection budget at boot); quote fan-out sent a frame per tick
+per socket (~20,000 serialisations/s at 200 sockets — quotes are conflated into
+one `quotes.updated` frame per 100 ms); Node's 5 s keep-alive reset clients
+that paused exactly that long (`HTTP_KEEP_ALIVE_TIMEOUT_MS`, 65 s); and the
+burst overflowed the 511-entry listen backlog so 120 orders were refused with
+`ECONNRESET` and no code (`HTTP_LISTEN_BACKLOG` 4,096 and admission control
+`HTTP_MAX_IN_FLIGHT` 512 — above it a coded 503 with `Retry-After`, liveness
+exempt). The run then passed with every refusal safe. Numbers, and the caveat
+that the generator shares the two cores, in [capacity.md](./capacity.md).
+
+**Still to do:** the 1,000-trader / 5,000-socket scenario on a host that is
+not also running the generator; Grafana dashboards for the §63 metric set.
 
 ## Phase 14 — Production deployment hardening · **in progress**
 

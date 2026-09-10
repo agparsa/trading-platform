@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { NextFunction, Request, Response } from 'express';
 import { DrainState } from './drain';
 
@@ -41,7 +41,7 @@ function fakeResponse() {
   return res;
 }
 
-const request = {} as Request;
+const request = { path: '/api/v1/orders' } as Request;
 
 describe('DrainState', () => {
   it('counts requests in and out', () => {
@@ -115,5 +115,108 @@ describe('DrainState', () => {
     let told = false;
     expect(await drain.drain(5_000, () => (told = true))).toBe(0);
     expect(told).toBe(true);
+  });
+
+  /**
+   * Admission control. Above the limit a newcomer is refused at once with a
+   * code and Retry-After — never accepted into a queue the process cannot
+   * serve, which is how two thousand simultaneous orders became connection
+   * resets with no answer.
+   */
+  describe('at the concurrency limit', () => {
+    const admit = (drain: DrainState, path = '/api/v1/orders') => {
+      const res = fakeResponse();
+      let passed = false;
+      drain.middleware()({ path } as Request, res as unknown as Response, () => {
+        passed = true;
+      });
+      return { res, passed };
+    };
+
+    it('refuses the request above the limit, immediately and by name, and admits again once one leaves', () => {
+      const shed: Array<[number, number]> = [];
+      const drain = new DrainState({
+        maxInFlight: 2,
+        onShed: (n, inFlight) => shed.push([n, inFlight]),
+      });
+      const first = admit(drain);
+      const second = admit(drain);
+      expect(first.passed && second.passed).toBe(true);
+      expect(drain.inFlightRequests).toBe(2);
+
+      const third = admit(drain);
+      expect(third.passed).toBe(false);
+      expect(third.res.statusCode).toBe(503);
+      expect(third.res.headers['Retry-After']).toBe('1');
+      expect(third.res.body).toMatchObject({ ok: false, error: { code: 'SERVICE_UNAVAILABLE' } });
+      // A refused request was never inside, so it is not counted out either.
+      expect(drain.inFlightRequests).toBe(2);
+      expect(drain.shedRequests).toBe(1);
+      expect(shed).toEqual([[1, 2]]);
+
+      first.res.finish();
+      const fourth = admit(drain);
+      expect(fourth.passed).toBe(true);
+      expect(drain.inFlightRequests).toBe(2);
+    });
+
+    it('always admits the liveness probe, because a killed process helps nobody', () => {
+      const drain = new DrainState({ maxInFlight: 1 });
+      admit(drain);
+      const probe = admit(drain, '/health');
+      expect(probe.passed).toBe(true);
+      const ready = admit(drain, '/ready');
+      expect(ready.passed).toBe(false);
+    });
+
+    it('says that shedding happened at once, then at most once per window with the count since', () => {
+      vi.useFakeTimers();
+      try {
+        const shed: number[] = [];
+        const drain = new DrainState({
+          maxInFlight: 1,
+          onShed: (n) => shed.push(n),
+          logEveryMs: 60_000,
+        });
+        admit(drain);
+        admit(drain);
+        admit(drain);
+        admit(drain);
+        expect(drain.shedRequests).toBe(3);
+        // The first refusal is said immediately; the next two wait for the window.
+        expect(shed).toEqual([1]);
+
+        vi.advanceTimersByTime(60_000);
+        admit(drain);
+        expect(shed).toEqual([1, 3]);
+        expect(drain.shedRequests).toBe(4);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('refuses on event-loop lag too, whatever the count, and admits again when the loop catches up', () => {
+      let lag = 0;
+      const drain = new DrainState({ maxEventLoopLagMs: 1_000, eventLoopLag: () => lag });
+      expect(admit(drain).passed).toBe(true);
+      lag = 1_001;
+      const refused = admit(drain);
+      expect(refused.passed).toBe(false);
+      expect(refused.res.statusCode).toBe(503);
+      expect(refused.res.body).toMatchObject({ ok: false, error: { code: 'SERVICE_UNAVAILABLE' } });
+      expect((refused.res.body as { error: { message: string } }).error.message).toMatch(
+        /too busy/,
+      );
+      expect(admit(drain, '/health').passed).toBe(true);
+      lag = 1_000;
+      expect(admit(drain).passed).toBe(true);
+      expect(drain.shedRequests).toBe(1);
+    });
+
+    it('sheds nothing by default', () => {
+      const drain = new DrainState();
+      for (let i = 0; i < 1_000; i += 1) expect(admit(drain).passed).toBe(true);
+      expect(drain.shedRequests).toBe(0);
+    });
   });
 });

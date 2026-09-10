@@ -8,6 +8,7 @@
  * start is not a passing build.
  */
 import { spawn } from 'node:child_process';
+import { connect } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { PrismaClient } from '@prisma/client';
 import { base32Decode, codeForStep, stepFor } from '../apps/api/src/auth/totp';
@@ -1607,6 +1608,60 @@ const checks: Check[] = [
       const text = await response.text();
       for (const metric of ['tp_orders_submitted_total', 'tp_market_ticks_total']) {
         assert(text.includes(metric), `metrics output is missing ${metric}`);
+      }
+    },
+  },
+  {
+    name: 'an idle keep-alive connection outlives a six-second pause',
+    /**
+     * Node closes an idle connection after five seconds by default, and a
+     * client that reuses one at that instant has its request reset — the load
+     * harness paced orders five seconds apart and lost some to "other side
+     * closed". `HTTP_KEEP_ALIVE_TIMEOUT_MS` raises it; this holds one raw
+     * connection open across the old default and asks again on it.
+     *
+     * Local only: against a deployment the connection ends at the edge, whose
+     * keep-alive is Nginx's to keep.
+     */
+    run: async () => {
+      if (TARGET !== undefined) {
+        console.log('      (keep-alive to the API is behind the edge here; not asserted)');
+        return;
+      }
+      const url = new URL(BASE);
+      const socket = connect({ host: url.hostname, port: Number(url.port) });
+      await new Promise<void>((resolve, reject) => {
+        socket.once('connect', resolve);
+        socket.once('error', reject);
+      });
+      let received = '';
+      let closed = false;
+      socket.on('data', (chunk: Buffer) => {
+        received += chunk.toString();
+      });
+      socket.once('close', () => {
+        closed = true;
+      });
+      const request = `GET /health HTTP/1.1\r\nHost: ${url.host}\r\nConnection: keep-alive\r\n\r\n`;
+      const responsesSeen = () => received.split('HTTP/1.1 200').length - 1;
+      try {
+        socket.write(request);
+        const deadline = Date.now() + 5_000;
+        while (responsesSeen() < 1 && Date.now() < deadline) await sleep(50);
+        assert(responsesSeen() === 1, 'the first request on the connection was not answered');
+
+        await sleep(6_000);
+        assert(!closed, 'the server closed an idle keep-alive connection within six seconds');
+
+        socket.write(request);
+        const second = Date.now() + 5_000;
+        while (responsesSeen() < 2 && Date.now() < second) await sleep(50);
+        assert(
+          responsesSeen() === 2,
+          'the second request on the same connection, after a six-second pause, was not answered',
+        );
+      } finally {
+        socket.destroy();
       }
     },
   },

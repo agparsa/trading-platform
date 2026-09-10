@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger, type OnApplicationShutdown } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   type OnGatewayConnection,
   type OnGatewayDisconnect,
@@ -18,7 +19,8 @@ import {
   isDomainError,
   PUBLIC_CHANNELS,
   WsChannel,
-  type WsEvent,
+  WsEvent,
+  type QuoteDto,
 } from '@tp/shared-types';
 import type { Tick } from '@tp/market-core';
 import { TokenService } from '../auth/token.service';
@@ -29,7 +31,7 @@ import { CandleBus, type CandleUpdate } from '../market/candle-bus';
 import { MetricsService } from '../metrics/metrics.service';
 import { RedisService } from '../redis/redis.service';
 import { DOMAIN_EVENT_CHANNEL, EventsService, type DomainEventEnvelope } from './events.service';
-import { rateLimits, socketCorsOrigins } from '../config/env.schema';
+import { rateLimits, socketCorsOrigins, type Env } from '../config/env.schema';
 import { initialState, type TradingSocket } from './socket.types';
 import { TenantResolver } from '../tenancy/tenant-resolver.service';
 import { withTenant, type TenantContext } from '@tp/tenancy';
@@ -113,6 +115,9 @@ export class RealtimeGateway
   private unsubscribeTicks: (() => void) | null = null;
   private unsubscribeEvents: (() => void) | null = null;
   private unsubscribeCandles: (() => void) | null = null;
+  /** The newest quote per symbol since the last flush. See `onTick`. */
+  private readonly pendingQuotes = new Map<string, QuoteDto>();
+  private quoteFlushTimer: NodeJS.Timeout | null = null;
 
   /**
    * Held for room-based broadcast in a later phase. Fan-out today is explicit:
@@ -133,6 +138,7 @@ export class RealtimeGateway
     private readonly redis: RedisService,
     private readonly metrics: MetricsService,
     private readonly tenants: TenantResolver,
+    private readonly config: ConfigService<Env, true>,
   ) {}
 
   async afterInit(): Promise<void> {
@@ -188,6 +194,9 @@ export class RealtimeGateway
     this.shuttingDown = true;
     if (this.refreshTimer !== null) clearTimeout(this.refreshTimer);
     this.refreshTimer = null;
+    if (this.quoteFlushTimer !== null) clearTimeout(this.quoteFlushTimer);
+    this.quoteFlushTimer = null;
+    this.pendingQuotes.clear();
     this.unsubscribeTicks?.();
     this.unsubscribeCandles?.();
     this.unsubscribeEvents?.();
@@ -570,13 +579,56 @@ export class RealtimeGateway
     };
   }
 
+  /**
+   * Quotes are conflated, not relayed.
+   *
+   * One frame per tick per socket was the whole of the serving instance at a
+   * thousand sockets: the load harness measured 104 frames a second on every
+   * one of two hundred sockets — twenty thousand serialisations a second for
+   * eight instruments — and at a thousand sockets the event loop stalled long
+   * enough that a single order on its own took six seconds and lost the
+   * leadership lease. The screen cannot use that many frames; a trader reads
+   * a price, not a tick stream.
+   *
+   * So the newest quote per symbol is kept, and every `QUOTE_FANOUT_INTERVAL_MS`
+   * each socket is sent one `quotes.updated` frame carrying what moved. Ten
+   * frames a second, however fast the feed runs, and every price on screen is
+   * at most an interval old. Nothing about *trading* changes: the engine
+   * prices an order from its own quote, freshness-checked, not from anything a
+   * client was shown.
+   *
+   * A self-rescheduling timeout rather than an interval, and only when there is
+   * something to send: a still market sends nothing.
+   */
   private onTick(tick: Tick): void {
-    const quote = this.quotes.toDto(tick);
+    this.pendingQuotes.set(tick.symbol, this.quotes.toDto(tick));
+    if (this.quoteFlushTimer !== null) return;
+    const interval = this.config.get('QUOTE_FANOUT_INTERVAL_MS', { infer: true });
+    if (interval === 0) {
+      this.flushQuotes();
+      return;
+    }
+    this.quoteFlushTimer = setTimeout(() => {
+      this.quoteFlushTimer = null;
+      this.flushQuotes();
+    }, interval);
+  }
+
+  private flushQuotes(): void {
+    if (this.pendingQuotes.size === 0 || this.shuttingDown) return;
+    const moved = [...this.pendingQuotes.values()];
+    this.pendingQuotes.clear();
+    // One occurrence — this flush — however many sockets see it.
+    const eventId = randomUUID();
     for (const socket of this.sockets) {
       if (!socket.state.channels.has(WsChannel.QUOTES)) continue;
       // An empty symbol set means "everything"; a non-empty one filters.
-      if (socket.state.symbols.size > 0 && !socket.state.symbols.has(tick.symbol)) continue;
-      this.send(socket, 'quote.update', WsChannel.QUOTES, null, quote);
+      const selected =
+        socket.state.symbols.size > 0
+          ? moved.filter((quote) => socket.state.symbols.has(quote.symbol))
+          : moved;
+      if (selected.length === 0) continue;
+      this.send(socket, WsEvent.QUOTES_UPDATED, WsChannel.QUOTES, null, selected, eventId);
     }
   }
 

@@ -404,6 +404,63 @@ export const envSchema = z
      */
     SHUTDOWN_DRAIN_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(25_000),
 
+    /**
+     * How long an idle keep-alive connection is held open before the server
+     * closes it.
+     *
+     * Node's default is five seconds, and a client that reuses a connection at
+     * the same moment the server closes it gets its request reset — undici
+     * reports "other side closed", and a POST is not retried. The load harness
+     * hit exactly that: its steady phase paced orders five seconds apart. The
+     * default here matches the edge's `keepalive_timeout 65` so a client behind
+     * Nginx never out-waits the API, and a client talking to the API directly
+     * gets a limit that is written down.
+     */
+    HTTP_KEEP_ALIVE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(600_000).default(65_000),
+
+    /**
+     * Requests in flight above which newcomers are refused with a coded 503.
+     *
+     * Admission control, so that an instance handed more than it can serve
+     * refuses the excess by name instead of stalling until connections reset
+     * with no answer at all. Two thousand simultaneous orders at a two-core
+     * instance produced a hundred and twenty `ECONNRESET`s — a client left not
+     * knowing whether its order exists. Size it to what one instance serves in
+     * a few seconds: at ~50 orders/s on two cores, 512 is about ten seconds of
+     * queue, which is also where transaction waits start expiring. Liveness is
+     * always admitted.
+     */
+    HTTP_MAX_IN_FLIGHT: z.coerce.number().int().min(16).max(100_000).default(512),
+
+    /**
+     * The TCP listen backlog: connections the kernel holds fully established
+     * while the process is too busy to `accept()` them.
+     *
+     * Node's default is 511. A burst of two thousand orders from a load
+     * generator arrived as ~1,500 new connections in one instant while the
+     * event loop was serving what it already had; the backlog overflowed, the
+     * kernel dropped the handshake's final ACK, the clients believed they were
+     * connected, sent their orders, and got `ECONNRESET` ten seconds later —
+     * with no answer, so not knowing whether the order exists. The kernel
+     * clamps this to `net.core.somaxconn` (4096 on any current Linux), so
+     * asking for more than the host allows is harmless. Admission control
+     * (`HTTP_MAX_IN_FLIGHT`) then answers the queued connections by name.
+     */
+    HTTP_LISTEN_BACKLOG: z.coerce.number().int().min(128).max(65_535).default(4_096),
+
+    /**
+     * Event-loop lag above which newcomers are refused with a coded 503,
+     * whatever the in-flight count.
+     *
+     * The count bounds how much is admitted; this bounds how long the admitted
+     * wait. When the loop cannot get round in this many milliseconds, a
+     * request accepted now sits behind everything already there, and at a
+     * thousand traders on two cores that was five minutes — a client timeout
+     * with no answer. Measured as the mean lag over the last second. `0`
+     * disables it. Liveness is always admitted.
+     */
+    HTTP_MAX_EVENT_LOOP_LAG_MS: z.coerce.number().int().min(0).max(60_000).default(1_000),
+
     BREAK_GLASS_MAX_TTL_MS: z.coerce
       .number()
       .int()
@@ -434,6 +491,33 @@ export const envSchema = z
     // Lower bound between account valuations pushed to one connected client.
     // Throttling, not polling: nothing runs when the market is still.
     REALTIME_VALUATION_INTERVAL_MS: z.coerce.number().int().min(0).default(500),
+
+    /**
+     * How much of the event loop one realtime valuation pass may take.
+     *
+     * A pass values every connected account that is due. At a thousand
+     * connected accounts that is a thousand valuations — a database read and
+     * decimal arithmetic over every open position, each — and the pass ran
+     * back to back with itself, so the loop was valuing screens nobody was
+     * waiting on while orders people *were* waiting on queued for minutes.
+     * With a budget, a pass values as many accounts as fit — oldest first —
+     * and leaves the rest for the next pass. Screens refresh less often under
+     * load; the prices on them stay current; orders keep their share of the
+     * loop. `tp_realtime_valuations_deferred_total` counts what was left.
+     */
+    REALTIME_VALUATION_BUDGET_MS: z.coerce.number().int().min(20).max(10_000).default(250),
+
+    /**
+     * How often a socket is sent the quotes that moved, at most.
+     *
+     * Ticks are conflated per symbol between flushes: a socket gets one
+     * `quotes.updated` frame per interval carrying the newest quote of every
+     * instrument that changed, rather than one frame per tick. At the default
+     * that is ten frames a second however fast the feed runs. `0` sends every
+     * tick as it arrives, which is what the gateway used to do and what the
+     * unit tests still exercise.
+     */
+    QUOTE_FANOUT_INTERVAL_MS: z.coerce.number().int().min(0).max(5_000).default(100),
     /**
      * How often the symbol→accounts routing index is re-derived from the database.
      *

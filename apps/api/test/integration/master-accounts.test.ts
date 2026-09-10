@@ -375,6 +375,7 @@ suite('Master accounts (integration)', () => {
       {} as never,
       new MetricsService(),
       { forHost: async () => ({ tenantId: DEFAULT_TENANT_ID, slug: 'test-tenant' }) } as never,
+      { get: () => 0 } as never,
     );
     const socket = {
       state: initialState(),

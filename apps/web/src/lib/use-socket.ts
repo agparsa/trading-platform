@@ -146,14 +146,16 @@ export function useSocket(
       }
 
       switch (frame.event) {
-        case 'quote.update':
-          live.applyQuote(frame.data as unknown as Quote);
+        case 'quotes.updated':
+          // Conflated: every instrument that moved since the last frame.
+          for (const quote of frame.data as unknown as Quote[]) live.applyQuote(quote);
           break;
         case 'account.updated':
           live.applyAccount(frame.data as unknown as AccountState);
           break;
         case 'pnl.updated':
-          live.applyPnl(frame.data as unknown as LivePnl);
+          // One frame per valuation, every open position in it.
+          for (const pnl of frame.data as unknown as LivePnl[]) live.applyPnl(pnl);
           break;
         case 'candle.update':
           live.applyBar(frame.data as unknown as Bar);

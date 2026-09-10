@@ -63,6 +63,9 @@ const tick = (symbol: string): Tick => ({
   volume: '1',
 });
 
+const symbolsIn = (frame: { data: unknown }): string[] =>
+  (frame.data as Array<{ symbol: string }>).map((quote) => quote.symbol);
+
 /**
  * Only the collaborators these paths actually touch are real. Anything the
  * candle and quote filters never reach is a stub, so a failure here can only
@@ -70,6 +73,8 @@ const tick = (symbol: string): Tick => ({
  */
 function buildGateway(
   accounts: { owned?: string[]; linked?: string[] } = { owned: [], linked: [] },
+  /** `0` relays every tick as it arrives, so the filter tests read frames synchronously. */
+  quoteFanoutIntervalMs = 0,
 ) {
   const ticks = new TickBus();
   const candles = new CandleBus();
@@ -101,6 +106,7 @@ function buildGateway(
     redis as never,
     metrics as never,
     { forHost: async () => ({ tenantId: TENANT_ID, slug: 'test' }) } as never,
+    { get: () => quoteFanoutIntervalMs } as never,
   );
   return { gateway, ticks, candles };
 }
@@ -184,8 +190,79 @@ describe('RealtimeGateway subscriptions', () => {
     await harness.ticks.publish(tick('EURUSD'));
     await harness.ticks.publish(tick('BTCUSD'));
 
-    const quotes = socket.frames.filter((frame) => frame.event === 'quote.update');
-    expect(quotes.map((frame) => frame.data['symbol'])).toEqual(['EURUSD', 'BTCUSD']);
+    const quotes = socket.frames.filter((frame) => frame.event === 'quotes.updated');
+    expect(quotes.flatMap((frame) => symbolsIn(frame))).toEqual(['EURUSD', 'BTCUSD']);
+  });
+
+  /**
+   * Conflation. Two hundred sockets receiving a frame per tick was twenty
+   * thousand serialisations a second for eight instruments, and at a thousand
+   * sockets the event loop stalled long enough to lose the leadership lease.
+   * With an interval, a socket gets one frame per interval carrying the newest
+   * quote of each symbol that moved — and only the newest.
+   */
+  describe('with a fan-out interval', () => {
+    it('sends one frame per interval carrying the newest quote of every symbol that moved', async () => {
+      const conflating = buildGateway({ owned: [], linked: [] }, 20);
+      await conflating.gateway.afterInit();
+      const socket = fakeSocket();
+      conflating.gateway['sockets'].add(socket);
+      await conflating.gateway.handleSubscribe(socket, { channel: WsChannel.QUOTES });
+
+      await conflating.ticks.publish({ ...tick('XAUUSD'), bid: '2000.00' });
+      await conflating.ticks.publish({ ...tick('XAUUSD'), bid: '2001.00' });
+      await conflating.ticks.publish({ ...tick('XAUUSD'), bid: '2002.00' });
+      await conflating.ticks.publish(tick('EURUSD'));
+      expect(socket.frames).toHaveLength(0);
+
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      expect(socket.frames).toHaveLength(1);
+      const quotes = socket.frames[0]!.data as unknown as Array<{ symbol: string; bid: string }>;
+      expect(quotes).toHaveLength(2);
+      expect(quotes.find((q) => q.symbol === 'XAUUSD')?.bid).toBe('2002.00');
+      expect(quotes.some((q) => q.symbol === 'EURUSD')).toBe(true);
+      await conflating.gateway.onApplicationShutdown();
+    });
+
+    it('filters the batch to the symbols a socket asked for, and sends nothing when none of them moved', async () => {
+      const conflating = buildGateway({ owned: [], linked: [] }, 20);
+      await conflating.gateway.afterInit();
+      const watching = fakeSocket();
+      const elsewhere = fakeSocket();
+      conflating.gateway['sockets'].add(watching);
+      conflating.gateway['sockets'].add(elsewhere);
+      await conflating.gateway.handleSubscribe(watching, {
+        channel: WsChannel.QUOTES,
+        symbols: ['XAUUSD'],
+      });
+      await conflating.gateway.handleSubscribe(elsewhere, {
+        channel: WsChannel.QUOTES,
+        symbols: ['BTCUSD'],
+      });
+
+      await conflating.ticks.publish(tick('XAUUSD'));
+      await conflating.ticks.publish(tick('EURUSD'));
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      expect(watching.frames).toHaveLength(1);
+      expect(symbolsIn(watching.frames[0]!)).toEqual(['XAUUSD']);
+      expect(elsewhere.frames).toHaveLength(0);
+      await conflating.gateway.onApplicationShutdown();
+    });
+
+    it('sends nothing while the market is still', async () => {
+      const conflating = buildGateway({ owned: [], linked: [] }, 20);
+      await conflating.gateway.afterInit();
+      const socket = fakeSocket();
+      conflating.gateway['sockets'].add(socket);
+      await conflating.gateway.handleSubscribe(socket, { channel: WsChannel.QUOTES });
+
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      expect(socket.frames).toHaveLength(0);
+      await conflating.gateway.onApplicationShutdown();
+    });
   });
 
   /**

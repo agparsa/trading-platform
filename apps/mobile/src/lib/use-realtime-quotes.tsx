@@ -5,7 +5,7 @@ import { apiBaseUrl } from './api';
 import { useSession } from './session';
 
 /**
- * A `quote.update` frame, which carries the same `QuoteDto` the REST endpoint
+ * A `quotes.updated` frame, which carries the same `QuoteDto`s the REST endpoint
  * returns — `spread` included, so no client recomputes it.
  */
 export interface LiveQuote {
@@ -57,10 +57,15 @@ export function useRealtimeQuotes(): {
         onStatus: setStatus,
         onResnapshot: () => undefined,
         onFrame: (frame: Frame) => {
-          if (frame.event !== 'quote.update') return;
-          const quote = frame.data as LiveQuote;
-          if (typeof quote?.symbol !== 'string') return;
-          setQuotes((current) => ({ ...current, [quote.symbol]: quote }));
+          if (frame.event !== 'quotes.updated') return;
+          // Conflated: one frame carries every instrument that moved.
+          const moved = (frame.data as LiveQuote[]).filter((q) => typeof q?.symbol === 'string');
+          if (moved.length === 0) return;
+          setQuotes((current) => {
+            const next = { ...current };
+            for (const quote of moved) next[quote.symbol] = quote;
+            return next;
+          });
         },
       });
     })();

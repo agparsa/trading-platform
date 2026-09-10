@@ -172,12 +172,15 @@ async function main(): Promise<void> {
       await waitFor(() => (socket.connected ? true : undefined), 10_000, 'connection');
       socket.emit('subscribe', { channel: 'quotes' });
       const frame = await waitFor(
-        () => frames.find((f) => f.event === 'quote.update'),
+        () => frames.find((f) => f.event === 'quotes.updated'),
         20_000,
         'a quote',
       );
-      assert(typeof frame.data['bid'] === 'string', 'bid was not a decimal string');
-      assert(typeof frame.data['ask'] === 'string', 'ask was not a decimal string');
+      // Quotes arrive conflated: one frame, the newest quote of everything that moved.
+      const quotes = frame.data as unknown as Array<Record<string, unknown>>;
+      assert(Array.isArray(quotes) && quotes.length > 0, 'the quote frame carried no quotes');
+      assert(typeof quotes[0]!['bid'] === 'string', 'bid was not a decimal string');
+      assert(typeof quotes[0]!['ask'] === 'string', 'ask was not a decimal string');
     });
 
     /**
@@ -316,7 +319,11 @@ async function main(): Promise<void> {
 
       await waitFor(
         () =>
-          frames.find((f) => f.event === 'quote.update' && f.data['symbol'] === other)
+          frames.find(
+            (f) =>
+              f.event === 'quotes.updated' &&
+              (f.data as unknown as Array<{ symbol: string }>).some((q) => q.symbol === other),
+          )
             ? true
             : undefined,
         30_000,

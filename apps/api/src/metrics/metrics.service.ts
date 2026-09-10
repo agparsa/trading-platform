@@ -58,6 +58,7 @@ export class MetricsService {
   readonly quoteAge: Histogram<'symbol' | 'purpose'>;
   readonly orderAck: Histogram<'outcome'>;
   readonly realtimePassLag: Histogram<string>;
+  readonly realtimeDeferred: Counter<string>;
   readonly leaseWait: Histogram<'loop'>;
   readonly orderStage: Histogram<'stage'>;
   readonly clientClockSkew: Histogram<string>;
@@ -165,6 +166,12 @@ export class MetricsService {
       name: 'tp_realtime_pass_lag_seconds',
       help: 'How much later than intended each realtime valuation pass started. Rising means the pass is taking longer than its own cadence, which is the loop falling behind rather than any one query being slow.',
       buckets: [0.005, 0.01, 0.05, 0.1, 0.5, 1, 5],
+      registers: [this.registry],
+    });
+
+    this.realtimeDeferred = new Counter({
+      name: 'tp_realtime_valuations_deferred_total',
+      help: 'Account valuations a realtime pass left for the next pass because its time budget (REALTIME_VALUATION_BUDGET_MS) ran out. Rising means screens are refreshing less often than the interval so that orders keep their share of the loop; add a serving instance.',
       registers: [this.registry],
     });
 

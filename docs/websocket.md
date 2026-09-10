@@ -17,16 +17,36 @@ than one that is pushed to, and the specification (§16) is explicit about it.
 
 | Channel     | Visibility | Carries                                              |
 | ----------- | ---------- | ---------------------------------------------------- |
-| `quotes`    | public     | `quote.update`                                       |
+| `quotes`    | public     | `quotes.updated` — conflated, see below              |
 | `candles`   | public     | `candle.update`                                      |
 | `orders`    | private    | `order.created` / `updated` / `filled` / `cancelled` |
 | `positions` | private    | `position.created` / `updated` / `closed`            |
 | `account`   | private    | `account.updated`                                    |
-| `pnl`       | private    | `pnl.updated`                                        |
+| `pnl`       | private    | `pnl.updated` — every open position, one frame       |
 
 Private channels are scoped to the authenticated account. One user's account
 data is never broadcast to another's socket — the account set is resolved from
 the database at connect time and never taken from anything the client sends.
+
+### Quotes are conflated
+
+`quotes.updated` carries an **array** of `QuoteDto` — every instrument that moved
+since the socket's last quote frame, each at its newest price — and a socket is
+sent at most one such frame every `QUOTE_FANOUT_INTERVAL_MS` (default 100 ms).
+A still market sends nothing. A socket that subscribed with `symbols` gets the
+array filtered to those, and no frame at all when none of them moved.
+
+This replaced one `quote.update` frame per tick per socket, and the reason is
+in `docs/capacity.md`: at two hundred sockets that was ~20,000 serialisations a
+second for eight instruments, and at a thousand sockets the serving instance's
+event loop stalled long enough that a lone order took six seconds and the
+process lost its leadership lease. A screen cannot use a hundred frames a second
+per instrument; a trader reads a price.
+
+What it does **not** change is anything about trading. The engine prices an
+order from its own quote, freshness-checked against `QUOTE_MAX_AGE_MS`, never
+from a value a client was shown. Conflation bounds how often the _screen_
+updates; the price on it is never older than the interval.
 
 That guarantee is one `if` in `onDomainEvent`, so it is verified by removing it:
 with the filter gone, a second trader's socket immediately received two

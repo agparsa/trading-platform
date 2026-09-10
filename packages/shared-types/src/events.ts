@@ -5,7 +5,18 @@ import type { AccountStateDto, CandleDto, DecimalString, EpochMillis, QuoteDto }
  * value on screen arrives through one of these.
  */
 export const WsEvent = {
-  QUOTE_UPDATE: 'quote.update',
+  /**
+   * Every instrument that moved since the last frame, in one frame.
+   *
+   * Quotes are *conflated*: the gateway keeps the newest quote per symbol and
+   * sends what changed every `QUOTE_FANOUT_INTERVAL_MS` (default 100 ms), so a
+   * socket receives at most ten quote frames a second however fast the feed
+   * ticks. The number on screen is never older than the interval; the number an
+   * order fills at is never this one — the engine prices from its own fresh
+   * quote. Before this, one frame per tick per socket was the whole of the
+   * serving instance's CPU at a thousand sockets.
+   */
+  QUOTES_UPDATED: 'quotes.updated',
   CANDLE_UPDATE: 'candle.update',
 
   ORDER_CREATED: 'order.created',
@@ -43,6 +54,13 @@ export const WsEvent = {
    * frames carrying the same information, and it is a quarter of the traffic.
    */
   ACCOUNT_UPDATED: 'account.updated',
+  /**
+   * Every open position's floating figure, in one frame per valuation.
+   *
+   * Computed together from one valuation at one price, and sent together:
+   * a frame per position was thirteen frames per socket per valuation at a
+   * thousand traders, and the serving instance spent itself serialising them.
+   */
   PNL_UPDATED: 'pnl.updated',
   /**
    * The account crossed into or out of a risk state — margin call, stop-out
@@ -137,10 +155,10 @@ export interface RiskUpdatePayload {
 }
 
 export type WsMessage =
-  | WsEnvelope<typeof WsEvent.QUOTE_UPDATE, QuoteDto>
+  | WsEnvelope<typeof WsEvent.QUOTES_UPDATED, QuoteDto[]>
   | WsEnvelope<typeof WsEvent.CANDLE_UPDATE, CandleDto>
   | WsEnvelope<typeof WsEvent.ACCOUNT_UPDATED, AccountStateDto>
-  | WsEnvelope<typeof WsEvent.PNL_UPDATED, PnlUpdatePayload>;
+  | WsEnvelope<typeof WsEvent.PNL_UPDATED, PnlUpdatePayload[]>;
 
 /**
  * Internal domain events published on the event bus (Redis pub/sub + BullMQ).

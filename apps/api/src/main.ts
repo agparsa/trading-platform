@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { VersioningType } from '@nestjs/common';
@@ -42,7 +43,39 @@ async function bootstrap(): Promise<void> {
    * Before anything else, so a request refused while draining costs nothing
    * and a request admitted is counted for the whole of its life.
    */
-  const drain = new DrainState();
+  /**
+   * The loop's own account of how busy it is: mean delay of a 20 ms timer over
+   * the last second, re-read from the histogram and reset once a second so a
+   * bad minute an hour ago does not keep refusing traffic now.
+   */
+  const LAG_RESOLUTION_MS = 20;
+  const loopDelay = monitorEventLoopDelay({ resolution: LAG_RESOLUTION_MS });
+  loopDelay.enable();
+  let lagMs = 0;
+  // A self-rescheduling timeout, as everywhere else here: an interval would
+  // queue its callbacks behind the very lag it is meant to measure.
+  const sampleLag = (): void => {
+    // The histogram records the timer's whole interval; the lag is what is left
+    // after the interval it was asked for.
+    lagMs = Number.isFinite(loopDelay.mean)
+      ? Math.max(0, loopDelay.mean / 1e6 - LAG_RESOLUTION_MS)
+      : 0;
+    loopDelay.reset();
+    setTimeout(sampleLag, 1_000).unref();
+  };
+  setTimeout(sampleLag, 1_000).unref();
+  const maxLag = config.get('HTTP_MAX_EVENT_LOOP_LAG_MS', { infer: true });
+
+  const drain = new DrainState({
+    maxInFlight: config.get('HTTP_MAX_IN_FLIGHT', { infer: true }),
+    maxEventLoopLagMs: maxLag === 0 ? Number.POSITIVE_INFINITY : maxLag,
+    eventLoopLag: () => lagMs,
+    onShed: (shed, inFlight) =>
+      logger.warn(
+        `Refused ${shed} request(s) as overloaded (${inFlight} in flight, loop lag ${lagMs.toFixed(0)} ms). ` +
+          'Add an instance, or raise HTTP_MAX_IN_FLIGHT / HTTP_MAX_EVENT_LOOP_LAG_MS if this is not a burst.',
+      ),
+  });
   app.use(drain.middleware());
   app.use(requestContext({ trustedProxyHops: config.get('TRUSTED_PROXY_HOPS', { infer: true }) }));
   app.use(
@@ -132,7 +165,34 @@ async function bootstrap(): Promise<void> {
 
   const port = config.get('API_PORT', { infer: true });
   const host = config.get('API_HOST', { infer: true });
-  await app.listen(port, host);
+  /**
+   * Keep-alive, stated. Node closes an idle connection after five seconds by
+   * default and a client reusing it at that instant is reset; see
+   * `HTTP_KEEP_ALIVE_TIMEOUT_MS`. `headersTimeout` must exceed it, or Node
+   * ends idle connections on the shorter of the two.
+   */
+  const server = app.getHttpServer() as {
+    keepAliveTimeout: number;
+    headersTimeout: number;
+  };
+  server.keepAliveTimeout = config.get('HTTP_KEEP_ALIVE_TIMEOUT_MS', { infer: true });
+  server.headersTimeout = server.keepAliveTimeout + 1_000;
+  /**
+   * Listening directly rather than through `app.listen`, which offers no way
+   * to state the backlog and leaves Node's 511. See `HTTP_LISTEN_BACKLOG`.
+   */
+  await app.init();
+  await new Promise<void>((resolve, reject) => {
+    const listening = app.getHttpServer() as {
+      listen: (options: { port: number; host: string; backlog: number }, cb: () => void) => void;
+      once: (event: 'error', cb: (error: Error) => void) => void;
+    };
+    listening.once('error', reject);
+    listening.listen(
+      { port, host, backlog: config.get('HTTP_LISTEN_BACKLOG', { infer: true }) },
+      resolve,
+    );
+  });
   logger.log(
     `API listening on http://${host}:${port} (${config.get('NODE_ENV', { infer: true })})`,
   );

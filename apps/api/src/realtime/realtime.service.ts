@@ -227,18 +227,31 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
      * nobody is waiting on, competing with the orders that *are* being waited
      * on. A small window uses the I/O wait without becoming the load.
      */
-    const queue = [...due];
-    for (const [accountId] of queue) {
-      this.lastValuedAt.set(accountId, nowMs);
-      this.inFlight.add(accountId);
-    }
+    /**
+     * Oldest first, and only as many as the budget allows.
+     *
+     * The queue is ordered by when each account was last valued, so an account
+     * deferred by one pass is at the front of the next. Workers stop taking
+     * from it once the pass has used `REALTIME_VALUATION_BUDGET_MS` of the
+     * loop; what is left is counted and waits. `lastValuedAt` is stamped when
+     * a valuation actually starts, not when it is queued, so a deferred
+     * account stays due.
+     */
+    const budgetMs = this.config.getOrThrow('REALTIME_VALUATION_BUDGET_MS', { infer: true });
+    const passStartedAt = Date.now();
+    const queue = [...due].sort(
+      ([a], [b]) => (this.lastValuedAt.get(a) ?? 0) - (this.lastValuedAt.get(b) ?? 0),
+    );
 
     const workers = Array.from({ length: Math.min(VALUATION_CONCURRENCY, queue.length) }, () =>
       (async () => {
         for (;;) {
+          if (Date.now() - passStartedAt > budgetMs) return;
           const next = queue.shift();
           if (next === undefined) return;
           const [accountId, tenant] = next;
+          this.lastValuedAt.set(accountId, nowMs);
+          this.inFlight.add(accountId);
           try {
             // The valuation reads positions and writes a frame for one account.
             // It runs in that account's tenant, exactly as a request would.
@@ -252,6 +265,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       })(),
     );
     await Promise.all(workers);
+    if (queue.length > 0) this.metrics.realtimeDeferred.inc(queue.length);
   }
 
   /**
@@ -301,19 +315,35 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       this.accountState.toDto(valuation),
     );
 
-    for (const position of valuation.positions) {
-      this.gateway.sendToAccount(accountId, WsChannel.PNL, 'pnl.updated', {
+    /**
+     * One frame for the whole book, not one per position.
+     *
+     * At a thousand traders holding thirteen positions each, a frame per
+     * position was thirteen frames per socket per valuation — 92 frames a
+     * second on each of five thousand sockets, and the serving instance spent
+     * itself on serialisation while orders waited. The figures were always
+     * computed together, from one valuation at one price; sending them
+     * together is also the honest shape: a screen never shows position A at
+     * one moment and position B at another.
+     */
+    if (valuation.positions.length > 0) {
+      this.gateway.sendToAccount(
         accountId,
-        positionId: position.positionId,
-        symbol: position.symbol,
-        floatingPnl: position.floatingPnl.toString(),
-        // Sent alongside the floating figure rather than derived in the browser:
-        // a net number the server never computed is a number nobody can
-        // reconcile against the ledger after a dispute.
-        netPnl: position.netPnl.toString(),
-        currentPrice: position.currentPrice,
-        stale: position.stale,
-      });
+        WsChannel.PNL,
+        'pnl.updated',
+        valuation.positions.map((position) => ({
+          accountId,
+          positionId: position.positionId,
+          symbol: position.symbol,
+          floatingPnl: position.floatingPnl.toString(),
+          // Sent alongside the floating figure rather than derived in the browser:
+          // a net number the server never computed is a number nobody can
+          // reconcile against the ledger after a dispute.
+          netPnl: position.netPnl.toString(),
+          currentPrice: position.currentPrice,
+          stale: position.stale,
+        })),
+      );
     }
 
     /**

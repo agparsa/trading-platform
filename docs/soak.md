@@ -99,7 +99,7 @@ A harness that has never been seen to fail is a harness nobody has checked.
 | Fault injected                                          | Caught                                                       |
 | ------------------------------------------------------- | ------------------------------------------------------------ |
 | A balance nudged by 13.37 with no matching ledger entry | `TP-100425: balance 100013.37 but its ledger sums to 100000` |
-| The gateway skipping a sequence number 0.2% of the time | `3 sequence gap(s): quote.update jumped 153 → 155 …`         |
+| The gateway skipping a sequence number 0.2% of the time | `3 sequence gap(s): quotes.updated jumped 153 → 155 …`       |
 | Half a megabyte retained per request                    | `climbing at 1451MB/hour on a fit of 0.97`                   |
 
 The leak injection also found a fault in the harness itself: at sixty orders a
