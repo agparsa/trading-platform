@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { PlatformEvent } from '@tp/shared-types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { requireTenantId } from '@tp/tenancy';
 import { currentRequestScope } from '../request-scope';
@@ -98,7 +100,22 @@ export class AuditService {
   }
 }
 
-type AuditWriter = Pick<Prisma.TransactionClient, 'auditLog' | 'securityEvent'>;
+type AuditWriter = Pick<Prisma.TransactionClient, 'auditLog' | 'securityEvent' | 'outboxEvent'>;
+
+/**
+ * The severity at which a security event is also somebody's *alarm* (§49).
+ *
+ * The feed shows all three. A webhook is a different thing: it wakes a
+ * receiver, and a receiver woken by every successful sign-in stops being read.
+ * WARNING is the platform's own word for "this is what an attacker leaves
+ * behind" — a failed sign-in, a new device, a second factor switched off, a
+ * break-glass, an IP rule changed — and that is exactly the set a firm's SIEM
+ * wants and the set a person should be interrupted for.
+ *
+ * Raising this to include NOTICE would be a product decision about noise, not
+ * a code change: it is one entry in this set.
+ */
+const ALERTING_SEVERITIES = new Set<string>(['WARNING']);
 
 /**
  * The audit row, and — when the action is somebody's security business — the
@@ -135,7 +152,7 @@ async function writeAudit(client: AuditWriter, entry: AuditRecord): Promise<void
     security.subject === 'resource' && isPersonResource(entry.resourceType)
       ? (entry.resourceId ?? null)
       : (entry.actorId ?? null);
-  await client.securityEvent.create({
+  const event = await client.securityEvent.create({
     data: {
       tenantId,
       userId: subject,
@@ -148,6 +165,51 @@ async function writeAudit(client: AuditWriter, entry: AuditRecord): Promise<void
       userAgent: entry.userAgent ?? null,
       details: after,
       auditLogId: written.id,
+    },
+    select: { id: true },
+  });
+
+  if (!ALERTING_SEVERITIES.has(security.severity)) return;
+
+  /**
+   * The same occurrence, once more, where a firm's own systems can be told
+   * about it — on the same client as the audit row and the feed row, so a
+   * rollback takes all three or none.
+   *
+   * The payload is identifiers plus the redacted `after` the feed already
+   * shows. Nothing here is a secret: `redact` ran on the way in, and it is the
+   * *only* reason `details` can be sent at all — the endpoint was registered by
+   * an administrator of this firm and receives this firm's rows, but an audit
+   * diff is still the last place a credential should be allowed to appear.
+   */
+  await client.outboxEvent.create({
+    data: {
+      tenantId,
+      eventId: randomUUID(),
+      eventType: PlatformEvent.SECURITY_ALERT,
+      aggregateType: 'security_event',
+      aggregateId: event.id,
+      // A security event is about a person, not an account. Leaving this null
+      // is what stops a receiver filtering by account from silently dropping
+      // every alert it was registered to hear.
+      accountId: null,
+      actorId: entry.actorId ?? null,
+      correlationId: requestId,
+      causationId: null,
+      payload: {
+        securityEventId: event.id,
+        auditLogId: written.id,
+        kind: security.kind,
+        severity: security.severity,
+        action: entry.action,
+        userId: subject,
+        actorId: entry.actorId ?? null,
+        actorType: entry.actorType,
+        ipAddress: entry.ipAddress ?? null,
+        userAgent: entry.userAgent ?? null,
+        requestId,
+        details: after ?? null,
+      } as Prisma.InputJsonValue,
     },
   });
 }

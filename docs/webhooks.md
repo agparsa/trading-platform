@@ -4,10 +4,15 @@ Where a firm asks to be told about its own events (§49), and how it is told.
 
 ## What is sent
 
-Every event the transactional outbox carries — the `DomainEvent` catalogue:
-`order.*`, `position.*`, `balance.changed`, `margin.call`, `liquidation`. An
-endpoint subscribes to a list of them, or to everything, which includes events
-added after it was registered.
+Every event the transactional outbox carries. That is the `DomainEvent`
+catalogue — `order.*`, `position.*`, `balance.changed`, `margin.call`,
+`liquidation` — and the platform's own two, `security.alert` and
+`reconciliation.mismatch`, described below. An endpoint subscribes to a list of
+them, or to everything, which includes events added after it was registered.
+
+`GET /admin/webhooks/events` is the list, and it is generated from
+`OUTBOX_EVENT_TYPES` rather than written out here or in the form, so a type
+that is offered is a type something produces.
 
 The body is the outbox row, as JSON:
 
@@ -28,6 +33,83 @@ Headers: `X-Signature`, `X-Event-Id`, `X-Event-Type`, `X-Delivery-Id`,
 
 The socket and the webhook carry the same `id` for the same occurrence. A
 receiver that sees both may discard the second.
+
+## The platform's own two events
+
+Both are about the platform rather than about trading, and the interesting
+design in each is **how often it fires**. A webhook that fires too readily is
+not a louder alarm; it is an alarm the receiver learns to filter, and the next
+real one arrives into that filter.
+
+### `security.alert`
+
+Written by the audit writer, on the same client as the audit row and the
+security-feed row, so a caller's transaction takes all three or none.
+
+**Only severity `WARNING`** — the platform's own word for what an attacker
+leaves behind: a failed sign-in, a failed second factor, a sign-in from a new
+device, a second factor switched off, a recovery code used, a user suspended, a
+break-glass opened, an IP rule changed. `INFO` and `NOTICE` stay in the feed;
+a webhook for every successful sign-in is a denial-of-service against whoever
+reads it. Widening this is one entry in `ALERTING_SEVERITIES` and a product
+decision about noise, not a code change.
+
+`accountId` is `null`: a security event is about a person, not an account.
+
+```json
+{
+  "type": "security.alert",
+  "accountId": null,
+  "aggregate": { "type": "security_event", "id": "…" },
+  "data": {
+    "securityEventId": "…", "auditLogId": "…",
+    "kind": "TWO_FACTOR_DISABLED", "severity": "WARNING",
+    "action": "TWO_FACTOR_DISABLED",
+    "userId": "…",            // whose account it concerns; null if unknown
+    "actorId": "…", "actorType": "ADMIN",
+    "ipAddress": "198.51.100.7", "userAgent": "…", "requestId": "…",
+    "details": { … }          // the audit row's `after`, redacted
+  }
+}
+```
+
+`details` is the audit payload after `redact()` — the same object the Security
+Centre already shows. Redaction is what makes it sendable at all: an audit diff
+is the last place a credential should be allowed to appear, and the endpoint is
+off-platform.
+
+### `reconciliation.mismatch`
+
+Written by the reconciliation sweep, in the same transaction as the finding and
+the risk event. Before that transaction existed the three were separate
+statements, which had a hole worth naming: if the finding committed and the
+outbox row did not, the next sweep would see the finding already on record,
+call it a recurrence, and send nothing — the alert lost rather than late.
+
+**Once when a finding is raised, again if a finding somebody closed comes
+back, never for a recurrence.** A drift that is still there an hour later is
+the same fact; an hourly sweep would send it seven hundred times in a month.
+`reopened` says which of the two this is.
+
+```json
+{
+  "type": "reconciliation.mismatch",
+  "accountId": "…",
+  "aggregate": { "type": "account", "id": "…" },
+  "data": {
+    "runId": "…", "accountId": "…", "accountNumber": "TP-100001",
+    "code": "LEDGER_DRIFT", "severity": "CRITICAL",
+    "message": "…",
+    "expected": "100000", "actual": "100500", "difference": "500",
+    "subjectType": null, "subjectId": null,
+    "reopened": false,
+    "detectedAt": "2026-09-11T20:14:02.118Z"
+  }
+}
+```
+
+Nothing is repaired, here or anywhere: the event says what disagrees, and a
+person decides. See [runbook.md](./runbook.md#an-accounts-balance-looks-wrong).
 
 ## Verifying a delivery
 
@@ -133,10 +215,6 @@ exfiltration of every event from then on. Every route is `@SessionOnly()`.
 
 ## Not here, and why
 
-- **`reconciliation.mismatch` and `security.alert` events.** §49 lists them.
-  Neither is written to the outbox today, and a subscription to an event that
-  is never produced is a subscription that reassures. They arrive when their
-  producers write outbox rows, and then need nothing here.
 - **A developer portal.** The OpenAPI document the API already serves is the
   reference; a page that renders it is Phase 12's remaining half.
 - **Per-endpoint rate limiting.** A receiver that cannot keep up answers
@@ -151,5 +229,12 @@ exfiltration of every event from then on. Every route is `@SessionOnly()`.
 - `apps/worker/test/integration/webhook-delivery.test.ts` — recording, sending,
   retrying, exhausting, auto-disable, tenancy
 - `apps/api/test/integration/webhooks.test.ts` — registering, refusing,
-  rotating, replaying, tenancy, audit
+  rotating, replaying, tenancy, audit, and that the catalogue offers exactly
+  what something produces
+- `apps/api/test/integration/security-events.test.ts` — the severity threshold
+  (a WARNING alerts, nothing quieter does), the redaction on the way out, and
+  the rollback that takes audit row, feed row and alert together
+- `apps/worker/test/integration/jobs.test.ts` — raised sends, recurrence does
+  not, reopened sends again; and no finding is recorded when the event it owes
+  cannot be written
 - `scripts/pentest.ts` — the SSRF addresses, over HTTP

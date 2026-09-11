@@ -1,5 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { toDecimal } from '@tp/financial-core';
+import { PlatformEvent } from '@tp/shared-types';
 import {
   reconcileAccount,
   Severity,
@@ -494,67 +497,127 @@ export class ReconciliationService {
       severity: found.severity,
     };
 
-    if (existing === null) {
-      await this.prisma.reconciliationFinding.create({
-        data: {
-          tenantId,
-          runId,
-          accountId,
-          code: found.code,
-          subjectKey,
-          subjectType: found.subjectType ?? null,
-          subjectId: found.subjectId ?? null,
-          firstSeenAt: now,
-          lastSeenAt: now,
-          ...evidence,
-        },
-      });
-    } else {
-      const reopening = existing.status === 'RESOLVED' || existing.status === 'FALSE_POSITIVE';
-      await this.prisma.reconciliationFinding.update({
-        where: { id: existing.id },
-        data: {
-          runId,
-          lastSeenAt: now,
-          occurrences: { increment: 1 },
-          ...evidence,
-          ...(reopening
-            ? { status: 'OPEN', resolvedAt: null, resolvedByUserId: null, resolutionNote: null }
-            : {}),
-        },
-      });
-      if (reopening) {
-        this.logger.error(
-          { accountId, code: found.code, subjectKey },
-          'A reconciliation finding that had been closed has come back; it is open again',
-        );
-      }
-    }
+    const reopening =
+      existing !== null && (existing.status === 'RESOLVED' || existing.status === 'FALSE_POSITIVE');
 
     /**
-     * Still written as a risk event.
+     * The three writes are one transaction.
      *
-     * The findings table is the record an investigator works from; the risk
-     * event stream is what the operations summary and any alerting already
-     * watch. Removing this would silence an alert that exists, to gain nothing.
+     * They were three statements in a row until the outbox joined them, and
+     * that arrangement had a hole the moment anything downstream depended on
+     * the event: if the finding committed and the outbox row did not, the next
+     * sweep would see the finding already on record, call it a recurrence, and
+     * send nothing — an alert lost for good rather than late. The outbox's
+     * whole discipline is that the event commits with the change it describes.
      */
-    await this.prisma.riskEvent.create({
-      data: {
-        tenantId,
-        accountId,
-        rule: 'reconciliation',
-        code: found.code,
-        severity: found.severity,
-        message: found.message,
-        snapshot: {
-          expected: found.expected,
-          actual: found.actual,
-          difference: found.difference,
-          ...(found.subjectType === undefined ? {} : { subjectType: found.subjectType }),
-          ...(found.subjectId === undefined ? {} : { subjectId: found.subjectId }),
+    await this.prisma.$transaction(async (tx) => {
+      if (existing === null) {
+        await tx.reconciliationFinding.create({
+          data: {
+            tenantId,
+            runId,
+            accountId,
+            code: found.code,
+            subjectKey,
+            subjectType: found.subjectType ?? null,
+            subjectId: found.subjectId ?? null,
+            firstSeenAt: now,
+            lastSeenAt: now,
+            ...evidence,
+          },
+        });
+      } else {
+        await tx.reconciliationFinding.update({
+          where: { id: existing.id },
+          data: {
+            runId,
+            lastSeenAt: now,
+            occurrences: { increment: 1 },
+            ...evidence,
+            ...(reopening
+              ? { status: 'OPEN', resolvedAt: null, resolvedByUserId: null, resolutionNote: null }
+              : {}),
+          },
+        });
+      }
+
+      /**
+       * Still written as a risk event.
+       *
+       * The findings table is the record an investigator works from; the risk
+       * event stream is what the operations summary and any alerting already
+       * watch. Removing this would silence an alert that exists, to gain
+       * nothing.
+       */
+      await tx.riskEvent.create({
+        data: {
+          tenantId,
+          accountId,
+          rule: 'reconciliation',
+          code: found.code,
+          severity: found.severity,
+          message: found.message,
+          snapshot: {
+            expected: found.expected,
+            actual: found.actual,
+            difference: found.difference,
+            ...(found.subjectType === undefined ? {} : { subjectType: found.subjectType }),
+            ...(found.subjectId === undefined ? {} : { subjectId: found.subjectId }),
+          },
         },
-      },
+      });
+
+      /**
+       * And told to the firm, once (§49).
+       *
+       * A finding raised for the first time is news; one that had been closed
+       * and has come back is news again, and arguably worse, because somebody
+       * decided it had gone away. A finding that is simply still there is not:
+       * an hourly sweep would send the same fact seven hundred times in a
+       * month, the receiver would filter the type, and the next real
+       * discrepancy would arrive into a filter.
+       *
+       * `occurrences` is in the payload so a receiver can see at a glance
+       * whether this is a first sighting or a relapse, without asking.
+       */
+      if (existing !== null && !reopening) return;
+      await tx.outboxEvent.create({
+        data: {
+          tenantId,
+          eventId: randomUUID(),
+          eventType: PlatformEvent.RECONCILIATION_MISMATCH,
+          aggregateType: 'account',
+          aggregateId: accountId,
+          accountId,
+          // Nobody asked for this; the sweep noticed it.
+          actorId: null,
+          correlationId: runId,
+          causationId: null,
+          payload: {
+            runId,
+            accountId,
+            accountNumber: number,
+            code: found.code,
+            severity: found.severity,
+            message: found.message,
+            expected: found.expected,
+            actual: found.actual,
+            difference: found.difference,
+            subjectType: found.subjectType ?? null,
+            subjectId: found.subjectId ?? null,
+            reopened: reopening,
+            detectedAt: now.toISOString(),
+          } as Prisma.InputJsonValue,
+        },
+      });
     });
+
+    if (reopening) {
+      this.logger.error(
+        { accountId, code: found.code, subjectKey },
+        'A reconciliation finding that had been closed has come back; it is open again',
+      );
+    }
 
     return existing === null ? 'raised' : 'recurred';
   }

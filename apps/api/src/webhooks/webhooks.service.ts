@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DomainEvent, DomainError, Feature, TradingErrorCode } from '@tp/shared-types';
+import { DomainError, Feature, OUTBOX_EVENT_TYPES, TradingErrorCode } from '@tp/shared-types';
 import { requireTenantId } from '@tp/tenancy';
 import { checkDestination, type DestinationRefusal } from '@tp/webhooks-core';
 import { PrismaService } from '../prisma/prisma.service';
@@ -61,9 +61,17 @@ export class WebhooksService {
     private readonly features: FeaturesService,
   ) {}
 
-  /** The event types an endpoint may subscribe to: what the outbox carries. */
+  /**
+   * The event types an endpoint may subscribe to: what the outbox carries.
+   *
+   * Trading's domain events *and* the platform's own two (§49) —
+   * `reconciliation.mismatch` and `security.alert`. This list is the one the
+   * form offers and the one `acceptableEvents` validates against, so a type
+   * that is not produced cannot be subscribed to and a subscription that
+   * reassures is not a state this can reach.
+   */
   eventTypes(): readonly string[] {
-    return Object.values(DomainEvent);
+    return OUTBOX_EVENT_TYPES;
   }
 
   async list() {

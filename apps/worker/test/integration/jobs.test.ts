@@ -523,6 +523,105 @@ suite('Worker jobs (integration)', () => {
       expect(finding.resolutionNote).toBeNull();
     });
 
+    /**
+     * §49: a firm can be told. Until this existed the finding sat in a table
+     * nobody outside the admin panel watched, and the webhook catalogue listed
+     * an event that was never produced — a subscription that reassures.
+     *
+     * What is pinned here is the *rate*, because that is the part that decides
+     * whether the event is read: a first sighting sends, a drift that is
+     * simply still there does not, and a finding somebody closed that has come
+     * back sends again and says so.
+     */
+    it('tells the firm once when a mismatch is raised, again when it comes back, never for a recurrence', async () => {
+      const { accountId } = await createAccount(prisma, { balance: '100000' });
+      await prisma.account.update({ where: { id: accountId }, data: { balance: '100500' } });
+
+      const first = await service().check();
+
+      const raised = await prisma.outboxEvent.findMany({
+        where: { eventType: 'reconciliation.mismatch' },
+      });
+      expect(raised).toHaveLength(1);
+      const event = raised[0];
+      expect(event?.accountId).toBe(accountId);
+      expect(event?.aggregateType).toBe('account');
+      expect(event?.aggregateId).toBe(accountId);
+      expect(event?.actorId).toBeNull();
+      expect(event?.correlationId).toBe(first.runId);
+      const payload = event?.payload as Record<string, unknown>;
+      expect(payload['code']).toBe('LEDGER_DRIFT');
+      expect(payload['severity']).toBe('CRITICAL');
+      expect(payload['expected']).toBe('100000');
+      expect(payload['actual']).toBe('100500');
+      expect(payload['difference']).toBe('500');
+      expect(payload['reopened']).toBe(false);
+
+      // Still drifting, still the same fact: no second event.
+      await service().check();
+      expect(
+        await prisma.outboxEvent.count({ where: { eventType: 'reconciliation.mismatch' } }),
+      ).toBe(1);
+
+      // Somebody closed it in good faith and it is still true.
+      await prisma.reconciliationFinding.updateMany({
+        where: { accountId },
+        data: { status: 'RESOLVED', resolvedAt: new Date(), resolutionNote: 'Looked into it' },
+      });
+      await service().check();
+
+      const all = await prisma.outboxEvent.findMany({
+        where: { eventType: 'reconciliation.mismatch' },
+        orderBy: { occurredAt: 'asc' },
+      });
+      expect(all).toHaveLength(2);
+      expect((all[1]?.payload as Record<string, unknown>)['reopened']).toBe(true);
+      // One occurrence, one id: the relay's uniqueness rests on it.
+      expect(new Set(all.map((row) => row.eventId)).size).toBe(2);
+    });
+
+    /**
+     * The finding, the risk event and the outbox row commit together or not at
+     * all. If the finding could commit alone, the next sweep would call the
+     * drift a recurrence and send nothing — the alert lost rather than late.
+     */
+    it('does not record a finding when the event it owes cannot be written', async () => {
+      const { accountId } = await createAccount(prisma, { balance: '100000' });
+      await prisma.account.update({ where: { id: accountId }, data: { balance: '100500' } });
+
+      const broken = new ReconciliationService(
+        new Proxy(prismaService, {
+          get(target, property, receiver) {
+            if (property === '$transaction') {
+              return async (fn: (tx: unknown) => Promise<unknown>) =>
+                (target as unknown as { $transaction: (f: unknown) => Promise<unknown> })
+                  .$transaction(async (tx: Record<string, unknown>) =>
+                    fn(
+                      new Proxy(tx, {
+                        get(inner, key, self) {
+                          if (key === 'outboxEvent') {
+                            return {
+                              create: async () => {
+                                throw new Error('the outbox went away');
+                              },
+                            };
+                          }
+                          return Reflect.get(inner, key, self);
+                        },
+                      }),
+                    ),
+                  );
+            }
+            return Reflect.get(target, property, receiver);
+          },
+        }) as unknown as PrismaService,
+      );
+
+      await expect(broken.check()).rejects.toThrow('the outbox went away');
+      expect(await prisma.reconciliationFinding.count({ where: { accountId } })).toBe(0);
+      expect(await prisma.riskEvent.count({ where: { accountId } })).toBe(0);
+    });
+
     it('records a failed run as failed, not as a clean one', async () => {
       const broken = new ReconciliationService({
         // The tenant lookup is real: a sweep files its run under a tenant

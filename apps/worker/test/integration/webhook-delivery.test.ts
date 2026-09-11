@@ -210,6 +210,47 @@ suite('Webhook delivery (integration)', () => {
     expect(await deliveries(everything)).toHaveLength(1);
   });
 
+  /**
+   * §49's two platform events are the first that belong to no account, and
+   * `accountId` is on the wire. A receiver that keys deliveries by account has
+   * to see the null rather than an empty string or a missing field — and a
+   * security alert that arrived attributed to somebody's trading account would
+   * be worse than one that did not arrive.
+   */
+  it('delivers an event that belongs to no account, with the null on the wire', async () => {
+    const service = build();
+    const alerts = await endpoint({ events: ['security.alert'] });
+    sequence += 1;
+    const row = await withoutTenantScope('fixture', () =>
+      prisma.outboxEvent.create({
+        data: {
+          tenantId: DEFAULT_TENANT_ID,
+          eventId: `00000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`,
+          eventType: 'security.alert',
+          aggregateType: 'security_event',
+          aggregateId: `sec-${sequence}`,
+          accountId: null,
+          payload: { kind: 'TWO_FACTOR_DISABLED', severity: 'WARNING' },
+        },
+      }),
+    );
+
+    await withTenant(TENANT, () => service.deliver(row));
+    expect(await service.deliverDue()).toMatchObject({ claimed: 1, delivered: 1 });
+
+    const body = JSON.parse((received[0] as SendRequest).body) as {
+      type: string;
+      accountId: string | null;
+      aggregate: { type: string; id: string };
+      data: unknown;
+    };
+    expect(body.type).toBe('security.alert');
+    expect(body.accountId).toBeNull();
+    expect(body.aggregate).toEqual({ type: 'security_event', id: `sec-${sequence}` });
+    expect(body.data).toEqual({ kind: 'TWO_FACTOR_DISABLED', severity: 'WARNING' });
+    expect(await deliveries(alerts)).toHaveLength(1);
+  });
+
   /** The relay may hand an event over twice. The second must create nothing. */
   it('creates one delivery when the relay hands the same event over twice', async () => {
     const service = build();

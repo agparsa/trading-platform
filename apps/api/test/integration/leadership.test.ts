@@ -58,6 +58,23 @@ suite('leadership', () => {
     for (const service of built.splice(0)) await service.onApplicationShutdown();
   });
 
+  /**
+   * How long a contender is given to settle before its outcome is read.
+   *
+   * This was a flat 150 ms sleep, and it failed twice in a full parallel run:
+   * `campaign` starts its first attempt without awaiting it and offers no
+   * handle on it, so on a machine running a hundred and ninety test files at
+   * once a single database round trip outlasted the wait and the assertion
+   * read `acquired` before the attempt had finished. The test was measuring
+   * the box, not the lease.
+   *
+   * So a contender that wins is waited *for* — usually tens of milliseconds —
+   * and only one that is meant to lose spends the whole window. That is the
+   * price of proving a negative, and it is now two seconds of headroom rather
+   * than a hundred and fifty milliseconds of hope.
+   */
+  const SETTLE_MS = 2_000;
+
   /** Drive one acquire/renew attempt without waiting for the timer. */
   const attempt = async (
     service: LeadershipService,
@@ -72,8 +89,12 @@ suite('leadership', () => {
         lost.push(reason);
       },
     });
-    // `campaign` kicks off the first attempt without awaiting it.
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    const deadline = Date.now() + SETTLE_MS;
+    while (!acquired && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    // `lost` is returned by reference: a test that breaks the database after
+    // this returns still reads what the campaign reported afterwards.
     return { acquired, lost };
   };
 

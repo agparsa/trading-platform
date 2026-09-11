@@ -130,6 +130,28 @@ suite('webhooks', () => {
     expect(await prisma.webhookEndpoint.count()).toBe(0);
   });
 
+  /**
+   * The catalogue and the producers have to agree in both directions. A type
+   * offered but never written is a subscription that reassures — the thing
+   * §49's own note said was not to be shipped — and a type written but not
+   * offered can never be subscribed to, so it is delivered only to endpoints
+   * that asked for everything.
+   */
+  it('offers the platform\'s own two events, and accepts a subscription to them', async () => {
+    const offered = service.eventTypes();
+    expect(offered).toContain('reconciliation.mismatch');
+    expect(offered).toContain('security.alert');
+    // Trading's events are still all there.
+    expect(offered).toContain('order.filled');
+    expect(offered).toContain('liquidation');
+
+    const { endpoint } = await create({
+      events: ['security.alert', 'reconciliation.mismatch'],
+    });
+    const row = await prisma.webhookEndpoint.findUniqueOrThrow({ where: { id: endpoint.id } });
+    expect(row.events).toEqual(['reconciliation.mismatch', 'security.alert']);
+  });
+
   it('rotates the secret, keeps the old one for a day, and shows the new one once', async () => {
     const { endpoint, secret: first } = await create();
     const rotated = await withTenant(TENANT, () =>

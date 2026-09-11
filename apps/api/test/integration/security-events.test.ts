@@ -215,6 +215,105 @@ suite('Security events (integration)', () => {
     expect(await prisma.securityEvent.count()).toBe(0);
   });
 
+  /**
+   * §49: the firm's own systems can be told (`security.alert`).
+   *
+   * The rate is the design. A webhook that fires on every successful sign-in
+   * is a denial-of-service against whoever reads it, and a receiver that has
+   * learned to ignore the type is worse than no receiver at all — so only the
+   * severity the platform already calls WARNING, the set an attacker leaves
+   * behind, reaches the outbox.
+   */
+  it('writes an outbox event for a WARNING, and for nothing quieter', async () => {
+    await runInRequestScope({ requestId: 'req-alarm', actorId: alice }, () =>
+      audit.record({
+        actorId: alice,
+        actorType: 'USER',
+        action: 'LOGIN',
+        resourceType: 'User',
+        resourceId: alice,
+        ipAddress: '203.0.113.9',
+      }),
+    );
+    await audit.record({
+      actorId: bob,
+      actorType: 'USER',
+      action: 'api_key.minted',
+      resourceType: 'ApiKey',
+      resourceId: '00000000-0000-4000-8000-000000000001',
+    });
+    // INFO and NOTICE are in the feed and out of the outbox.
+    expect(await prisma.securityEvent.count()).toBe(2);
+    expect(await prisma.outboxEvent.count()).toBe(0);
+
+    await runInRequestScope({ requestId: 'req-2fa-off', actorId: staff }, () =>
+      audit.record({
+        actorId: staff,
+        actorType: 'ADMIN',
+        action: 'TWO_FACTOR_DISABLED',
+        resourceType: 'User',
+        resourceId: alice,
+        ipAddress: '198.51.100.7',
+        userAgent: 'a browser',
+        after: { totpSecret: 'must-not-appear', by: 'support' },
+      }),
+    );
+
+    const [event] = await prisma.outboxEvent.findMany();
+    expect(event?.eventType).toBe('security.alert');
+    expect(event?.aggregateType).toBe('security_event');
+    expect(event?.correlationId).toBe('req-2fa-off');
+    // A security event is about a person: an account filter must not eat it.
+    expect(event?.accountId).toBeNull();
+
+    const payload = event?.payload as Record<string, unknown>;
+    expect(payload['kind']).toBe('TWO_FACTOR_DISABLED');
+    expect(payload['severity']).toBe('WARNING');
+    expect(payload['action']).toBe('TWO_FACTOR_DISABLED');
+    expect(payload['userId']).toBe(alice);
+    expect(payload['actorId']).toBe(staff);
+    expect(payload['ipAddress']).toBe('198.51.100.7');
+
+    // The event points at the row it came from, both ways.
+    const row = await prisma.securityEvent.findFirstOrThrow({ where: { kind: 'TWO_FACTOR_DISABLED' } });
+    expect(payload['securityEventId']).toBe(row.id);
+    expect(event?.aggregateId).toBe(row.id);
+    expect(payload['auditLogId']).toBe(row.auditLogId);
+
+    // Redacted on the way in, and still redacted on the way out of the firm.
+    expect(JSON.stringify(payload)).not.toContain('must-not-appear');
+    expect(payload['details']).toMatchObject({ by: 'support' });
+  });
+
+  it('does not write a security event without the alert it owes', async () => {
+    /**
+     * The audit row, the feed row and the outbox row are written on one
+     * client, so a caller's transaction takes all three or none. Without that,
+     * an alert could be dropped while the feed said the event happened — and
+     * the feed is append-only, so nothing would ever send it.
+     */
+    const service = prisma as unknown as PrismaService;
+    await expect(
+      service.$transaction(async (tx) => {
+        await new AuditService(service).record(
+          {
+            actorId: staff,
+            actorType: 'ADMIN',
+            action: 'TWO_FACTOR_DISABLED',
+            resourceType: 'User',
+            resourceId: alice,
+          },
+          tx,
+        );
+        throw new Error('the operation failed after its audit');
+      }),
+    ).rejects.toThrow('the operation failed after its audit');
+
+    expect(await prisma.securityEvent.count()).toBe(0);
+    expect(await prisma.outboxEvent.count()).toBe(0);
+    expect(await prisma.auditLog.count()).toBe(0);
+  });
+
   it('is append-only at the database: no update, no delete, no truncate', async () => {
     await audit.record({
       actorId: alice,

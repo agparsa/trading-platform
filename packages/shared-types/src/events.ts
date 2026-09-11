@@ -179,3 +179,47 @@ export const DomainEvent = {
   LIQUIDATION: 'liquidation',
 } as const;
 export type DomainEvent = (typeof DomainEvent)[keyof typeof DomainEvent];
+
+/**
+ * Events the outbox carries that are not about an order, a position or a
+ * balance (§49).
+ *
+ * A `DomainEvent` describes something a trader did or something the engine did
+ * to their money, and every one of them is written by the request that caused
+ * it. These two are different in kind: they are the platform noticing something
+ * *about itself*, and they are produced by the audit writer and the
+ * reconciliation sweep rather than by trading.
+ *
+ * They are kept in their own object rather than added to `DomainEvent` because
+ * the domain-event list is also the socket's vocabulary and the PropFA seam's
+ * contract, and neither of those wants a failed sign-in. What both lists share
+ * is the outbox, so `OUTBOX_EVENT_TYPES` is the union and that is what a
+ * webhook endpoint may subscribe to.
+ */
+export const PlatformEvent = {
+  /**
+   * A reconciliation finding raised for the first time, or one that had been
+   * closed and has come back. Deliberately **not** every recurrence: a drift
+   * that is still there an hour later is the same fact, and an hourly sweep
+   * would send it seven hundred times in a month and bury the next real one.
+   */
+  RECONCILIATION_MISMATCH: 'reconciliation.mismatch',
+  /**
+   * A security event the platform rates WARNING — a failed sign-in, a new
+   * device, a second factor switched off, a break-glass, an IP rule changed.
+   * INFO and NOTICE are not sent: a webhook for every successful sign-in is a
+   * denial-of-service against the receiver and against whoever reads it.
+   */
+  SECURITY_ALERT: 'security.alert',
+} as const;
+export type PlatformEvent = (typeof PlatformEvent)[keyof typeof PlatformEvent];
+
+/**
+ * Every event type the outbox can carry, and so every type a webhook endpoint
+ * may name. An endpoint that names none gets all of these, including the ones
+ * added after it was registered.
+ */
+export const OUTBOX_EVENT_TYPES: readonly string[] = [
+  ...Object.values(DomainEvent),
+  ...Object.values(PlatformEvent),
+];

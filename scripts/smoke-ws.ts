@@ -290,6 +290,24 @@ async function main(): Promise<void> {
      * The live form of the unit test in realtime.gateway.test.ts. Quotes and
      * candles carry separate symbol filters; charting one instrument must not
      * silently stop the watchlist for every other one.
+     *
+     * ## Why this check reads the clock
+     *
+     * It used to require two instruments to be quoting and fail if they were
+     * not. That held until §36 gated the feed on market status, and then it
+     * began failing every Friday after 21:00 UTC and all weekend — because at
+     * that hour exactly one instrument in the seed is open, and the check was
+     * reporting the calendar as a defect. A smoke check that fails on Saturday
+     * is a check whoever is on call learns to ignore, which is worse than not
+     * having it.
+     *
+     * So the check now adapts and **says which form it ran**. With two
+     * instruments quoting it is the real assertion: chart one, keep receiving
+     * the other. With one it falls back to the weaker true thing — chart it,
+     * keep receiving its own quotes — which still catches a candle filter that
+     * narrows the quote stream to nothing, and cannot catch one that narrows it
+     * to the charted symbol. Saying so is the point: a check that quietly
+     * degrades is a check that lies.
      */
     await check('charting one instrument does not narrow the quote stream', async () => {
       const { socket, frames } = connect(alice.token);
@@ -302,7 +320,6 @@ async function main(): Promise<void> {
        * The simulator brings instruments up over its first few ticks, so reading
        * the list once can catch a moment when only one has quoted — which reads
        * as "this check needs two instruments" and is really "asked too early".
-       * Bounded, so a feed that only ever quotes one still fails.
        */
       let quotes: Array<{ symbol: string }> = [];
       const deadline = Date.now() + 15_000;
@@ -310,24 +327,41 @@ async function main(): Promise<void> {
         quotes = await get<Array<{ symbol: string }>>('/api/v1/market/quotes', alice.token);
         if (quotes.length < 2) await sleep(500);
       }
-      assert(quotes.length >= 2, 'fewer than two instruments were quoting after 15s');
+      // A feed that quotes nothing at all is still a failure: markets close,
+      // feeds do not disappear.
+      assert(quotes.length >= 1, 'nothing was quoting after 15s');
+
       const charted = quotes[0]!.symbol;
-      const other = quotes[1]!.symbol;
+      const watched = quotes[1]?.symbol ?? charted;
+      if (watched === charted) {
+        console.log(
+          `      (only ${charted} is open right now — checking that charting it does not ` +
+            'silence its own quotes; the two-instrument form needs an open market)',
+        );
+      }
 
       socket.emit('subscribe', { channel: 'quotes' });
       socket.emit('subscribe', { channel: 'candles', symbols: [charted], resolutions: ['1'] });
 
+      /**
+       * Frames that arrived *before* the candle subscription prove nothing —
+       * the fault being hunted is the subscription narrowing the stream — so
+       * only quotes seen from here on count.
+       */
+      const from = frames.length;
       await waitFor(
         () =>
-          frames.find(
-            (f) =>
-              f.event === 'quotes.updated' &&
-              (f.data as unknown as Array<{ symbol: string }>).some((q) => q.symbol === other),
-          )
+          frames
+            .slice(from)
+            .find(
+              (f) =>
+                f.event === 'quotes.updated' &&
+                (f.data as unknown as Array<{ symbol: string }>).some((q) => q.symbol === watched),
+            )
             ? true
             : undefined,
         30_000,
-        `a quote for ${other} while charting ${charted}`,
+        `a quote for ${watched} while charting ${charted}`,
       );
     });
 
