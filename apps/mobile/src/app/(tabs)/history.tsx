@@ -1,3 +1,5 @@
+import { AccountPicker } from '../../components/account-picker';
+import { useAccounts } from '../../lib/accounts';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useSession } from '../../lib/session';
@@ -21,10 +23,6 @@ interface Trade {
   exitTime: string;
 }
 
-interface Account {
-  id: string;
-}
-
 const REASON_LABEL: Record<string, string> = {
   MANUAL: 'closed',
   STOP_LOSS: 'stopped out',
@@ -45,15 +43,16 @@ const REASON_LABEL: Record<string, string> = {
  */
 export default function History(): React.ReactElement {
   const { api } = useSession();
+  // One account for the whole app, chosen by the trader rather than by the
+  // order the server happened to list them in. See lib/accounts.tsx.
+  const { selected: account } = useAccounts();
   const [trades, setTrades] = useState<Trade[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const accounts = await api.get<Account[]>('/accounts');
-      const account = accounts[0];
-      if (account === undefined) {
+      if (account === null) {
         setTrades([]);
         return;
       }
@@ -64,7 +63,7 @@ export default function History(): React.ReactElement {
     } catch {
       setError('Could not load trade history.');
     }
-  }, [api]);
+  }, [api, account]);
 
   useEffect(() => {
     void load();
@@ -72,6 +71,7 @@ export default function History(): React.ReactElement {
 
   return (
     <Screen>
+      <AccountPicker />
       {error === null ? null : <ErrorNote message={error} />}
       <FlatList
         data={trades ?? []}

@@ -1,3 +1,5 @@
+import { AccountPicker } from '../../components/account-picker';
+import { useAccounts } from '../../lib/accounts';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
@@ -29,10 +31,6 @@ interface PendingOrder {
   status: string;
 }
 
-interface Account {
-  id: string;
-}
-
 /**
  * Resting orders.
  *
@@ -43,6 +41,9 @@ interface Account {
  */
 export default function Orders(): React.ReactElement {
   const { api } = useSession();
+  // One account for the whole app, chosen by the trader rather than by the
+  // order the server happened to list them in. See lib/accounts.tsx.
+  const { selected: account } = useAccounts();
   const [orders, setOrders] = useState<PendingOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -53,9 +54,7 @@ export default function Orders(): React.ReactElement {
 
   const load = useCallback(async () => {
     try {
-      const accounts = await api.get<Account[]>('/accounts');
-      const account = accounts[0];
-      if (account === undefined) {
+      if (account === null) {
         setOrders([]);
         return;
       }
@@ -66,7 +65,7 @@ export default function Orders(): React.ReactElement {
     } catch {
       setError('Could not load resting orders.');
     }
-  }, [api]);
+  }, [api, account]);
 
   useEffect(() => {
     void load();
@@ -125,6 +124,7 @@ export default function Orders(): React.ReactElement {
 
   return (
     <Screen>
+      <AccountPicker />
       {error === null ? null : <ErrorNote message={error} />}
       <FlatList
         data={orders ?? []}

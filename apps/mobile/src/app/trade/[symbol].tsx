@@ -1,3 +1,5 @@
+import { AccountPicker } from '../../components/account-picker';
+import { useAccounts } from '../../lib/accounts';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -26,12 +28,6 @@ interface OrderPreview {
   warnings: string[];
 }
 
-interface Account {
-  id: string;
-  number: string;
-  currency: string;
-}
-
 /**
  * The order ticket.
  *
@@ -56,7 +52,9 @@ export default function OrderTicket(): React.ReactElement {
   const { api } = useSession();
   const router = useRouter();
 
-  const [account, setAccount] = useState<Account | null>(null);
+  // The account this ticket sends to — the one the app is on, not whichever
+  // the server listed first. See lib/accounts.tsx.
+  const { selected: account, error: accountError } = useAccounts();
   const [side, setSide] = useState<OrderSide>('BUY');
   const [volume, setVolume] = useState('0.10');
   const [stopLoss, setStopLoss] = useState('');
@@ -65,17 +63,6 @@ export default function OrderTicket(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const accounts = await api.get<Account[]>('/accounts');
-        setAccount(accounts[0] ?? null);
-      } catch {
-        setError('Could not load your account.');
-      }
-    })();
-  }, [api]);
 
   const request = useMemo(
     () =>
@@ -149,7 +136,9 @@ export default function OrderTicket(): React.ReactElement {
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
         <Text style={styles.heading}>{String(symbol)}</Text>
+        <AccountPicker />
         {error === null ? null : <ErrorNote message={error} />}
+        {accountError === null ? null : <ErrorNote message={accountError} />}
 
         <View style={styles.sides}>
           <Button
