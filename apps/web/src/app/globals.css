@@ -18,8 +18,7 @@
   --color-terminal-short: #ef5350;
   --color-terminal-warning: #f0b90b;
 
-  --font-mono:
-    ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
 }
 
 :root {
@@ -51,4 +50,24 @@ body {
   font-family: var(--tp-font-numeric);
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum';
+}
+
+/*
+ * Double-tapping a control acts on it; it does not zoom the page.
+ *
+ * This is the narrow version of what `maximumScale: 1` used to do from the
+ * viewport tag. That capped zoom for the whole document, so a trader who needed
+ * to magnify a price could not — WCAG 1.4.4, and a real barrier rather than a
+ * theoretical one. Declaring the intent on the controls themselves keeps the
+ * accidental double-tap from zooming while leaving the page pinchable, which is
+ * what was wanted in the first place.
+ */
+button,
+[role='button'],
+a,
+input,
+select,
+textarea,
+summary {
+  touch-action: manipulation;
 }

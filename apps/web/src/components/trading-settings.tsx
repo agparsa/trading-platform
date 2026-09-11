@@ -196,11 +196,24 @@ function Toggle({
   );
 }
 
+/**
+ * A labelled control.
+ *
+ * The label wraps the control rather than sitting beside it. As a `<p>` above a
+ * `<div>` it was a caption — visually a label, programmatically nothing — and
+ * five inputs on this screen had no accessible name at all: a screen reader
+ * announced "edit text, 0.10" for the default volume, and the same for the
+ * stop-loss and take-profit beside it. The accessibility audit in
+ * `scripts/smoke-web.ts` found it; wrapping is the fix that needs no ids to go
+ * stale.
+ */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <p className="mb-0.5 text-[10px] uppercase tracking-wider text-terminal-muted">{label}</p>
+    <label className="block">
+      <span className="mb-0.5 block text-[10px] uppercase tracking-wider text-terminal-muted">
+        {label}
+      </span>
       {children}
-    </div>
+    </label>
   );
 }

@@ -52,6 +52,7 @@
     "@tp/tenancy": "workspace:*",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
+    "axe-core": "^4.13.0",
     "eslint": "catalog:",
     "playwright": "^1.62.1",
     "prettier": "catalog:",

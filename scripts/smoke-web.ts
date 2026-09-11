@@ -18,6 +18,8 @@
 import { cpSync, existsSync, rmSync } from 'node:fs';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { chromium, type Browser, type ConsoleMessage, type Page } from 'playwright';
 
@@ -38,6 +40,20 @@ const API = `http://localhost:${API_PORT}`;
 const WEB = `http://localhost:${WEB_PORT}`;
 const PASSWORD = 'smoke-web-password-1';
 const BOOT_TIMEOUT_MS = 90_000;
+/**
+ * axe-core's browser bundle, injected into the page rather than bundled into
+ * the application — the audit is a property of this check, not something the
+ * product should ship to a trader.
+ *
+ * Resolved from this file's own location rather than by module resolution:
+ * `tsx` runs these scripts as CommonJS, where `import.meta.resolve` does not
+ * exist, and the failure mode is a stack trace before the browser even starts.
+ */
+const AXE_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'node_modules/axe-core/axe.min.js',
+);
 
 let failures = 0;
 const problems: string[] = [];
@@ -262,6 +278,73 @@ async function visit(
   } finally {
     page.off('console', onConsole);
     page.off('pageerror', onPageError);
+  }
+}
+
+/**
+ * An accessibility audit of the screen that is on the page (§57, §61, §83–86).
+ *
+ * Run with the real renderer against real data, because that is where these
+ * faults live: a contrast ratio depends on the colour a number went red in, a
+ * label depends on what the API returned, and neither is visible in a unit
+ * test. axe-core is the same engine the browser devtools use; it reports only
+ * what it can determine mechanically, which is a minority of WCAG and the
+ * portion nobody should have to find by hand.
+ *
+ * What this does **not** claim: that the terminal is accessible. axe finds the
+ * machine-checkable subset — roughly a third of the criteria — and says nothing
+ * about whether a screen reader's path through the order ticket makes sense.
+ * `docs/accessibility.md` says which is which, so a green line here is not read
+ * as a conformance claim.
+ */
+async function auditAccessibility(page: Page, label: string): Promise<void> {
+  await page.addScriptTag({ path: AXE_PATH });
+  const violations = await page.evaluate(async () => {
+    const axe = (globalThis as unknown as { axe: { run: (o: unknown) => Promise<unknown> } }).axe;
+    const result = (await axe.run({
+      // The published standard this platform is measured against. Best-practice
+      // rules are excluded deliberately: they are opinions, and a failing
+      // opinion beside a failing standard makes both easy to ignore.
+      runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
+    })) as {
+      violations: Array<{
+        id: string;
+        impact: string | null;
+        help: string;
+        nodes: Array<{ target: string[] }>;
+      }>;
+    };
+    return result.violations.map((violation) => ({
+      id: violation.id,
+      impact: violation.impact ?? 'unknown',
+      help: violation.help,
+      count: violation.nodes.length,
+      first: violation.nodes[0]?.target.join(' ') ?? '',
+    }));
+  });
+
+  /**
+   * Serious and critical fail the run; moderate and minor are reported.
+   *
+   * Not because the rest do not matter, but because a gate that fails on
+   * everything at once gets turned off. The line is where axe itself draws it:
+   * "serious" means a person using assistive technology cannot complete the
+   * task, and that is a defect by any reading.
+   */
+  const blocking = violations.filter(
+    (violation) => violation.impact === 'serious' || violation.impact === 'critical',
+  );
+  const detail = blocking
+    .map((violation) => `${violation.id}×${violation.count} (${violation.first})`)
+    .join('; ');
+  ok(blocking.length === 0, `${label} has no serious accessibility violations`, detail);
+  if (blocking.length > 0) problems.push(`${label}: ${detail}`);
+
+  const advisory = violations.filter((violation) => !blocking.includes(violation));
+  if (advisory.length > 0) {
+    console.log(
+      `      (advisory: ${advisory.map((violation) => `${violation.id}×${violation.count}`).join(', ')})`,
+    );
   }
 }
 
@@ -500,6 +583,7 @@ async function main(): Promise<void> {
     await signIn(page, people.trader.email);
     await visit(page, '/', { url: '/terminal' });
     await visit(page, '/terminal', { url: '/terminal' });
+    await auditAccessibility(page, 'the terminal');
     /**
      * Price alerts, set through the browser and read back from the database.
      *
@@ -553,7 +637,9 @@ async function main(): Promise<void> {
     );
 
     await visit(page, '/account', { url: '/account', text: /Account/i });
+    await auditAccessibility(page, 'the account screen');
     await visit(page, '/wallet', { url: '/wallet', text: /Wallet/i });
+    await auditAccessibility(page, 'the wallet screen');
     /**
      * The deposit form must offer what the *server* has, not a list written in
      * the client. A build that shipped card logos against a deployment with only
@@ -603,6 +689,7 @@ async function main(): Promise<void> {
       verificationBody.slice(0, 300),
     );
     await visit(page, '/history', { url: '/history', text: /Trades/i });
+    await auditAccessibility(page, 'the history screen');
 
     /**
      * The developer reference is fetched, not typed: the route list comes from
@@ -624,6 +711,7 @@ async function main(): Promise<void> {
     );
 
     await visit(page, '/security', { url: '/security', text: /Two-factor/i });
+    await auditAccessibility(page, 'the security screen');
     /**
      * Where the account has been signed in from: this very session, at least.
      */
@@ -697,6 +785,7 @@ async function main(): Promise<void> {
       feedBody.replace(/\s+/g, ' ').slice(0, 200),
     );
     await visit(page, '/settings', { url: '/settings', text: /One-click/i });
+    await auditAccessibility(page, 'the settings screen');
 
     console.log('\n  As an administrator\n');
     const adminContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -704,6 +793,7 @@ async function main(): Promise<void> {
     await signIn(adminPage, people.admin.email);
     await visit(adminPage, '/admin', { url: '/admin/overview' });
     await visit(adminPage, '/admin/people', { url: '/admin/people' });
+    await auditAccessibility(adminPage, 'the admin people screen');
     await visit(adminPage, `/admin/people/${people.userId}`, {
       url: `/admin/people/${people.userId}`,
       text: new RegExp(people.trader.email.replace(/[.@+]/g, '.')),
@@ -716,6 +806,7 @@ async function main(): Promise<void> {
       });
     }
     await visit(adminPage, '/admin/instruments', { url: '/admin/instruments' });
+    await auditAccessibility(adminPage, 'the instruments screen');
     await visit(adminPage, '/admin/risk', { url: '/admin/risk' });
     await visit(adminPage, '/admin/reconciliation', { url: '/admin/reconciliation' });
     /**
@@ -762,6 +853,7 @@ async function main(): Promise<void> {
     await placeOneOrder(people.trader.email);
 
     await visit(adminPage, '/admin/book', { url: '/admin/book' });
+    await auditAccessibility(adminPage, 'the firm book');
     const book = adminPage.getByTestId('book-panel');
     await book.waitFor({ timeout: 10_000 });
     let bookBody = '';

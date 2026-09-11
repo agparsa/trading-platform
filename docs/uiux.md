@@ -136,9 +136,14 @@ Stated rather than stubbed. None of this is built:
 - **Design tokens beyond colour.** There is no spacing scale and no typography
   scale; sizes are arbitrary utilities repeated inline. There is no light
   theme.
-- **Documented keyboard and screen-reader paths.** Shortcuts exist and are
-  configurable; an accessibility pass has not been made, and claiming one had
-  would be worse than saying so.
+- **Documented screen-reader paths.** An _automated_ accessibility pass now
+  runs on every browser suite — nine screens, WCAG 2.1 AA, serious violations
+  failing the run — and it found two real defects on its first run (see
+  [accessibility.md](./accessibility.md)). What it cannot check is still
+  unchecked: whether a screen reader's path through the order ticket makes
+  sense, whether a live P&L column announces politely, whether the chart is
+  usable without sight. Shortcuts exist and are configurable; the keyboard path
+  through them has not been walked by anyone who needs it.
 
 The parts that were built are the ones where the alternative was a defect — a
 calculator that could disagree with itself, a close-all that could half-happen
