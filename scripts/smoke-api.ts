@@ -56,7 +56,7 @@ interface Check {
   run: () => Promise<void>;
 }
 
-function assert(condition: boolean, message: string): void {
+function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
@@ -181,6 +181,91 @@ const checks: Check[] = [
       // At least one instrument must be inside its trading session and quoting;
       // crypto never closes, so this holds at any hour.
       assert(priced.length > 0, 'no instrument started quoting within 15s of boot');
+    },
+  },
+  {
+    name: 'every instrument reports a market state, and only an open one trades',
+    /**
+     * §36. The engine's refusal and the screen's explanation come from one
+     * function; this proves they arrive together over HTTP, on the real build.
+     *
+     * What it cannot prove is the disagreement itself: on a weekday every
+     * instrument is open, so an endpoint that hard-coded `sessionOpen: true`
+     * would satisfy every assertion here — that mutation survived this check
+     * and was killed in `symbols.controller.test.ts`, where the session is
+     * fixed and the shut path runs on any day. This one guards the wire.
+     */
+    run: async () => {
+      const email = `smoke-market-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: registration(email, password, 'Smoke Market'),
+      });
+      const login = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+      const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+
+      const response = await fetch(`${BASE}/api/v1/symbols`, { headers: auth });
+      const symbols = (
+        (await response.json()) as {
+          data: Array<{
+            code: string;
+            sessionOpen: boolean;
+            market?: { state: string; tradeable: boolean; opensAt: number | null };
+          }>;
+        }
+      ).data;
+      assert(symbols.length > 0, 'no instruments were returned');
+
+      for (const symbol of symbols) {
+        const market = symbol.market;
+        assert(market !== undefined, `${symbol.code} carried no market state`);
+        assert(
+          market.tradeable === symbol.sessionOpen,
+          `${symbol.code}: market.tradeable ${market.tradeable} disagrees with sessionOpen ${symbol.sessionOpen}`,
+        );
+        assert(
+          market.tradeable === (market.state === 'OPEN'),
+          `${symbol.code}: state ${market.state} was reported tradeable=${market.tradeable}`,
+        );
+        // A state that cannot know an opening time must not report one.
+        if (market.opensAt !== null) {
+          assert(
+            market.state !== 'OPEN' && market.state !== 'HALTED',
+            `${symbol.code}: ${market.state} should carry no opening time`,
+          );
+        }
+      }
+
+      // And an order on a shut instrument is refused by the server, not merely
+      // discouraged by the screen.
+      const shut = symbols.find((symbol) => !symbol.sessionOpen);
+      if (shut === undefined) {
+        console.log('      (every instrument is open now; the refusal path is covered by tests)');
+        return;
+      }
+      const accountsResponse = await fetch(`${BASE}/api/v1/accounts`, { headers: auth });
+      const accountId = ((await accountsResponse.json()) as { data: Array<{ id: string }> }).data[0]
+        ?.id;
+      assert(accountId !== undefined, 'no account was opened at registration');
+
+      const order = await fetch(`${BASE}/api/v1/orders`, {
+        method: 'POST',
+        headers: { ...auth, 'Idempotency-Key': crypto.randomUUID() },
+        body: JSON.stringify({ accountId, symbol: shut.code, side: 'BUY', volume: '0.01' }),
+      });
+      const payload = (await order.json()) as { ok: boolean; error?: { code: string } };
+      assert(!payload.ok, `an order on ${shut.code} was accepted while its market was shut`);
+      assert(
+        payload.error?.code === 'MARKET_CLOSED' || payload.error?.code === 'TRADING_HALTED',
+        `refusal for a shut market was ${payload.error?.code}`,
+      );
     },
   },
   {

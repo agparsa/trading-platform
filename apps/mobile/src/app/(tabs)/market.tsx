@@ -1,3 +1,5 @@
+import type { MarketStatusDto } from '@tp/shared-types';
+import { marketLabel } from '../../lib/market-state';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -23,6 +25,8 @@ interface Instrument {
   quoteCurrency: string;
   enabled: boolean;
   sessionOpen: boolean;
+  /** Why the market is shut, and when it is not (§36). Absent on an older API. */
+  market?: MarketStatusDto;
 }
 
 export default function Market(): React.ReactElement {
@@ -118,7 +122,9 @@ export default function Market(): React.ReactElement {
                 <Text style={styles.code}>{item.code}</Text>
                 <Text style={styles.name}>
                   {item.description}
-                  {item.sessionOpen ? '' : ' · market closed'}
+                  {item.sessionOpen
+                    ? ''
+                    : ` · ${item.market === undefined ? 'market closed' : marketLabel(item.market)}`}
                 </Text>
               </View>
               <View style={styles.prices}>

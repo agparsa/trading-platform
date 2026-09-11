@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { ApiClient } from '@tp/api-client';
+import type { MarketStatusDto } from '@tp/shared-types';
 import { barWindow, RESOLUTION_MINUTES } from '@tp/chart-core';
 import { useSession } from './session';
 
@@ -91,6 +92,8 @@ export interface SymbolRow {
   swapShortPerLot: string;
   enabled: boolean;
   sessionOpen: boolean;
+  /** Why the market is shut and when it is not, when the API is new enough (§36). */
+  market?: MarketStatusDto;
 }
 
 export interface SessionWindow {

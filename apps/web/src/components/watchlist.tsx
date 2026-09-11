@@ -1,5 +1,6 @@
 'use client';
 
+import { marketNotice } from '../lib/market-state';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@tp/ui';
 import { percent, price as formatPrice } from '@/lib/format';
@@ -238,12 +239,21 @@ function WatchlistRow({
           </button>
           <InstrumentBadge code={symbol.code} />
           <span className="font-medium text-terminal-text">{symbol.code}</span>
+          {/* One word in a column with no room for more; the title carries the
+              reason and, where the platform knows it, the opening time. */}
           {symbol.sessionOpen ? null : (
             <span
               className="rounded bg-terminal-raised px-1 text-[9px] uppercase tracking-wider text-terminal-muted"
-              title="Outside this instrument's trading session"
+              title={
+                symbol.market === undefined
+                  ? "Outside this instrument's trading session"
+                  : (marketNotice(symbol.market, symbol.code).detail ??
+                    "Outside this instrument's trading session")
+              }
             >
-              closed
+              {symbol.market === undefined
+                ? 'closed'
+                : marketNotice(symbol.market, symbol.code).label}
             </span>
           )}
         </div>

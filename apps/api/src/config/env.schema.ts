@@ -485,6 +485,18 @@ export const envSchema = z
      */
     LEADER_GUARD_MS: z.coerce.number().int().min(0).max(60_000).default(1_000),
 
+    /**
+     * How long before an instrument opens the screen says so, and how long
+     * after a close it keeps explaining itself (§36).
+     *
+     * A display convention, not an exchange auction: this platform accepts no
+     * order before its window opens, and `PRE_OPEN` changes what a trader is
+     * told rather than what the engine will take. Zero on both turns the
+     * notices off and leaves `CLOSED` either side of a window.
+     */
+    MARKET_PRE_OPEN_MINUTES: z.coerce.number().int().min(0).max(1_440).default(15),
+    MARKET_POST_CLOSE_MINUTES: z.coerce.number().int().min(0).max(1_440).default(15),
+
     // Lower bound between margin-level evaluations for one account.
     STOP_OUT_CHECK_INTERVAL_MS: z.coerce.number().int().min(0).default(1_000),
 

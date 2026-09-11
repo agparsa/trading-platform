@@ -1,5 +1,6 @@
 'use client';
 
+import { marketNotice } from '../lib/market-state';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@tp/ui';
 import { DomainError, Permission } from '@tp/shared-types';
@@ -395,7 +396,6 @@ export function OrderTicket({
 
   const canSubmit = blockedReason === null && !busy;
 
-
   const submit = () => {
     // A large order is confirmed even in one-click mode. One-click is a
     // convenience for ordinary size; it was never a request to skip the one
@@ -635,7 +635,10 @@ export function OrderTicket({
 
       {symbol.sessionOpen ? null : (
         <p className="text-[11px] text-terminal-warning">
-          {symbol.code} is outside its trading session. The server will reject the order.
+          {symbol.market === undefined
+            ? `${symbol.code} is outside its trading session.`
+            : marketNotice(symbol.market, symbol.code).detail}{' '}
+          The server will reject the order.
         </p>
       )}
 

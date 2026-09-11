@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { TradingSession } from '@tp/market-core';
-import { endOfTradingDay, isSessionOpen, startOfTradingDay, zonedDayAndMinute } from './session';
+import {
+  endOfTradingDay,
+  isSessionOpen,
+  marketStatus,
+  startOfTradingDay,
+  zonedDayAndMinute,
+} from './session';
 
 /** Sunday 22:00 → Friday 21:00 UTC, the usual metals and FX week. */
 const METALS: TradingSession = {
@@ -182,5 +188,147 @@ describe('startOfTradingDay', () => {
     const start = startOfTradingDay('Europe/London', afterTheShift);
     expect(zonedDayAndMinute(start, 'Europe/London').minute).toBe(0);
     expect(start).toBe(Date.UTC(2026, 9, 24, 23, 0, 0));
+  });
+});
+
+/**
+ * The market's state, and the one rule that matters about it (§36).
+ *
+ * `sessionOpen` was a boolean, so a shut market could say nothing about when it
+ * would not be. These states say it — and the risk of adding them is that a
+ * state which merely *sounds* tradeable becomes one. PRE_OPEN is the obvious
+ * trap: real exchanges accept orders into a pre-open auction, and this platform
+ * does not. So the first test here is not about vocabulary at all.
+ */
+describe('marketStatus', () => {
+  const NEVER: TradingSession = { symbol: 'NEW', timezone: 'UTC', windows: [] };
+
+  it('lets exactly one state trade, and it is OPEN', () => {
+    const seen = new Map<string, boolean>();
+    // Sunday 15:00 (closed), Sunday 21:50 (pre-open), Sunday 23:00 (open),
+    // Friday 21:05 (post-close), halted, and an unconfigured instrument.
+    const options = { preOpenMinutes: 15, postCloseMinutes: 15 };
+    for (const at of [
+      utc(2026, 8, 23, 15),
+      utc(2026, 8, 23, 21, 50),
+      utc(2026, 8, 23, 23),
+      utc(2026, 8, 28, 21, 5),
+    ]) {
+      const status = marketStatus(METALS, at, options);
+      seen.set(status.state, status.tradeable);
+    }
+    seen.set('HALTED', marketStatus(METALS, utc(2026, 8, 23, 23), { halted: true }).tradeable);
+    seen.set('UNKNOWN', marketStatus(NEVER, utc(2026, 8, 25, 12), options).tradeable);
+
+    // Every state was actually reached — a rule about states nobody produced
+    // would pass while proving nothing.
+    expect([...seen.keys()].sort()).toEqual([
+      'CLOSED',
+      'HALTED',
+      'OPEN',
+      'POST_CLOSE',
+      'PRE_OPEN',
+      'UNKNOWN',
+    ]);
+    expect([...seen.entries()].filter(([, tradeable]) => tradeable)).toEqual([['OPEN', true]]);
+  });
+
+  it('agrees with isSessionOpen everywhere, because it is the same function', () => {
+    // Every hour of a week, including both session edges.
+    for (let hour = 0; hour < 24 * 7; hour += 1) {
+      const at = utc(2026, 8, 23, 0) + hour * 3_600_000;
+      expect(marketStatus(METALS, at).tradeable, `hour ${hour}`).toBe(isSessionOpen(METALS, at));
+    }
+  });
+
+  it('a halt overrides an open market, and promises no reopening time', () => {
+    const status = marketStatus(METALS, utc(2026, 8, 25, 12), { halted: true });
+    expect(status).toEqual({ state: 'HALTED', tradeable: false, opensAt: null, closesAt: null });
+  });
+
+  it('tells an unconfigured instrument apart from a shut one', () => {
+    expect(marketStatus(NEVER, utc(2026, 8, 25, 12)).state).toBe('UNKNOWN');
+    expect(marketStatus(METALS, utc(2026, 8, 22, 12)).state).toBe('CLOSED');
+  });
+
+  it('says when a shut market opens, and how long an open one has left', () => {
+    // Saturday: shut until Sunday 22:00 UTC.
+    const saturday = marketStatus(METALS, utc(2026, 8, 22, 12));
+    expect(saturday.state).toBe('CLOSED');
+    expect(saturday.opensAt).toBe(utc(2026, 8, 23, 22));
+    expect(saturday.closesAt).toBeNull();
+
+    // Wednesday: open, and the week runs to Friday 21:00 UTC.
+    const wednesday = marketStatus(METALS, utc(2026, 8, 26, 9));
+    expect(wednesday.state).toBe('OPEN');
+    expect(wednesday.closesAt).toBe(utc(2026, 8, 28, 21));
+    expect(wednesday.opensAt).toBeNull();
+  });
+
+  /**
+   * The reason the windows are merged. Metals are stored as seven rows —
+   * Sunday 22:00–24:00, then a full Monday, and so on — which is one continuous
+   * session. Unmerged, this would announce a close every midnight of the week.
+   */
+  it('does not close at midnight in the middle of a continuous week', () => {
+    const beforeMidnight = marketStatus(METALS, utc(2026, 8, 25, 23, 59));
+    expect(beforeMidnight.state).toBe('OPEN');
+    expect(beforeMidnight.closesAt).toBe(utc(2026, 8, 28, 21));
+  });
+
+  it('never closes for crypto, and says so rather than inventing a date', () => {
+    const status = marketStatus(CRYPTO, utc(2026, 8, 22, 12));
+    expect(status.state).toBe('OPEN');
+    expect(status.closesAt).toBeNull();
+  });
+
+  it('warns before the open, and explains itself after the close', () => {
+    const options = { preOpenMinutes: 15, postCloseMinutes: 15 };
+    // Sunday 21:50 UTC — ten minutes before the week opens.
+    expect(marketStatus(METALS, utc(2026, 8, 23, 21, 50), options).state).toBe('PRE_OPEN');
+    // …but twenty minutes before is still just closed.
+    expect(marketStatus(METALS, utc(2026, 8, 23, 21, 40), options).state).toBe('CLOSED');
+    // Friday 21:05 UTC — five minutes after the week ended.
+    expect(marketStatus(METALS, utc(2026, 8, 28, 21, 5), options).state).toBe('POST_CLOSE');
+    expect(marketStatus(METALS, utc(2026, 8, 28, 21, 20), options).state).toBe('CLOSED');
+  });
+
+  it('defaults to no notice period at all, so a caller opts in', () => {
+    expect(marketStatus(METALS, utc(2026, 8, 23, 21, 59)).state).toBe('CLOSED');
+  });
+
+  it('prefers the coming open to the one just gone when a gap is both', () => {
+    // Monday 09:00–12:00 and 13:00–17:00 New York: at 12:50 the gap is inside
+    // both notice periods. A trader waiting at a screen cares what happens next.
+    const gapped: TradingSession = {
+      symbol: 'GAP',
+      timezone: 'UTC',
+      windows: [
+        { day: 1, openMinute: 9 * 60, closeMinute: 12 * 60 },
+        { day: 1, openMinute: 13 * 60, closeMinute: 17 * 60 },
+      ],
+    };
+    const status = marketStatus(gapped, utc(2026, 8, 24, 12, 50), {
+      preOpenMinutes: 15,
+      postCloseMinutes: 60,
+    });
+    expect(status.state).toBe('PRE_OPEN');
+    expect(status.opensAt).toBe(utc(2026, 8, 24, 13));
+  });
+
+  /**
+   * The bug the old `nextOpenAt` carried unread: wall-clock minutes added as
+   * elapsed milliseconds. On the day a zone shifts, a day is 23 or 25 hours
+   * long, and the open lands an hour out.
+   */
+  it('lands the open on the right wall clock across a daylight-saving shift', () => {
+    // US clocks go forward at 02:00 local on Sunday 8 March 2026. The window is
+    // Monday 09:30 New York, which is 13:30 UTC in winter and 12:30 in summer.
+    const beforeShift = marketStatus(NEW_YORK, utc(2026, 3, 6, 12));
+    expect(beforeShift.opensAt).toBe(utc(2026, 3, 9, 13, 30));
+
+    // The same question asked from inside the week after the shift.
+    const afterShift = marketStatus(NEW_YORK, utc(2026, 3, 10, 12));
+    expect(afterShift.opensAt).toBe(utc(2026, 3, 16, 13, 30));
   });
 });
