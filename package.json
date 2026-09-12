@@ -44,6 +44,7 @@
     "soak": "tsx --env-file-if-exists=.env scripts/soak.ts",
     "restore:rehearse": "tsx --env-file-if-exists=.env scripts/restore-rehearsal.ts",
     "migrate:rehearse": "tsx --env-file-if-exists=.env scripts/migration-rehearsal.ts",
+    "verify:production": "tsx --env-file-if-exists=.env scripts/verify-production.ts",
     "chaos": "tsx --env-file-if-exists=.env scripts/failure-injection.ts"
   },
   "devDependencies": {

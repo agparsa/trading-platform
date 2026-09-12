@@ -70,6 +70,29 @@ blip would make the orchestrator kill every healthy API pod at once — turning 
 
 Both are version-neutral, so moving the API from v1 to v2 does not break probes.
 
+## Confirming a deploy from outside
+
+```bash
+pnpm verify:production --expect $(git rev-parse HEAD)
+```
+
+Thirteen checks over HTTPS, with no credentials and no shell: the probes,
+whether the running build is the one you just deployed, that `/metrics` and the
+API reference are **not** public, that an unauthenticated call is refused with a
+coded error rather than a crash, HSTS, and that the real-time socket completes
+a handshake.
+
+`BUILD_SHA` above is what makes the second of those possible. The API serves a
+one-way marker derived from it — not the commit, because `/health` is
+unauthenticated and this platform keeps its route surface off the public
+internet. Deploy without `BUILD_SHA` and the check reports `unknown`, which is
+itself worth knowing: nobody will be able to tell what is running.
+
+What it cannot see: one request reaches one instance, so a half-finished
+rollout can pass. It does not read logs, count containers, or see the worker.
+Green means the public surface is right; the container list still deserves a
+look.
+
 ## Migrations
 
 `prisma migrate deploy` runs before new application containers accept traffic.
@@ -91,7 +114,8 @@ cp .env.production.example .env.production
 pnpm keygen                    # prints fresh JWT secrets and an encryption key
 $EDITOR .env.production        # every value; nothing here has a safe default
 
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+BUILD_SHA=$(git rev-parse HEAD) \
+  docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 docker compose -f docker-compose.prod.yml --env-file .env.production ps
 ```
 

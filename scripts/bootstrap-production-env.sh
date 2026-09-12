@@ -121,5 +121,5 @@ if [ "$TRUSTED" = "./docker/nginx/trusted-proxies.conf" ]; then
 WARN
 fi
 
-echo "  Next: docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build"
+echo "  Next: BUILD_SHA=\$(git rev-parse HEAD) docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build"
 echo

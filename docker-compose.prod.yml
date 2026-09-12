@@ -80,6 +80,7 @@ services:
       target: production
       args:
         ALPINE_MIRROR: ${ALPINE_MIRROR:-}
+        BUILD_SHA: ${BUILD_SHA:-unknown}
     restart: 'no'
     env_file: [.env.production]
     environment: *api-env
@@ -95,6 +96,7 @@ services:
       target: production
       args:
         ALPINE_MIRROR: ${ALPINE_MIRROR:-}
+        BUILD_SHA: ${BUILD_SHA:-unknown}
     restart: unless-stopped
     stop_grace_period: 40s
     env_file: [.env.production]
@@ -121,6 +123,7 @@ services:
       target: production
       args:
         ALPINE_MIRROR: ${ALPINE_MIRROR:-}
+        BUILD_SHA: ${BUILD_SHA:-unknown}
     restart: unless-stopped
     # Drain first, then close: the API refuses newcomers on SIGTERM and finishes
     # the requests already inside it (SHUTDOWN_DRAIN_TIMEOUT_MS, default 25 s).
@@ -161,6 +164,7 @@ services:
       target: production
       args:
         ALPINE_MIRROR: ${ALPINE_MIRROR:-}
+        BUILD_SHA: ${BUILD_SHA:-unknown}
     restart: unless-stopped
     stop_grace_period: 40s
     env_file: [.env.production]
@@ -181,6 +185,7 @@ services:
       target: production
       args:
         ALPINE_MIRROR: ${ALPINE_MIRROR:-}
+        BUILD_SHA: ${BUILD_SHA:-unknown}
     restart: unless-stopped
     # A swap-accrual run can outlive Docker's default 10 s grace period.
     stop_grace_period: 40s
@@ -198,6 +203,7 @@ services:
       target: production
       args:
         ALPINE_MIRROR: ${ALPINE_MIRROR:-}
+        BUILD_SHA: ${BUILD_SHA:-unknown}
         # Baked in at build time: Next.js inlines NEXT_PUBLIC_* into the client
         # bundle, so setting them at runtime would change nothing the browser
         # ever sees. A deployment to a different hostname is a rebuild.
@@ -222,6 +228,7 @@ services:
       dockerfile: docker/nginx.Dockerfile
       args:
         ALPINE_MIRROR: ${ALPINE_MIRROR:-}
+        BUILD_SHA: ${BUILD_SHA:-unknown}
     restart: unless-stopped
     ports:
       - '${HTTP_PORT:-80}:80'

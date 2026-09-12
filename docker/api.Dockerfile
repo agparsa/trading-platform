@@ -48,6 +48,15 @@ RUN corepack enable && apk add --no-cache libc6-compat openssl
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Which build this is, for `pnpm verify:production` (§77).
+#
+# Passed by the deploy as `BUILD_SHA=$(git rev-parse HEAD)`. The API does not
+# serve the sha itself — it serves a one-way marker derived from it, so that a
+# deploy can be identified from outside without publishing which revision of a
+# private repository is running. See health.controller.ts.
+ARG BUILD_SHA=unknown
+ENV BUILD_SHA=$BUILD_SHA
+
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/packages ./packages
 COPY --from=build --chown=node:node /app/prisma ./prisma

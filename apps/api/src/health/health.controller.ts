@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Controller, Get, VERSION_NEUTRAL, Version } from '@nestjs/common';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -34,12 +35,18 @@ export class HealthController {
    * Liveness. Answers "is this process running?" and nothing else — it must not
    * touch the database, or a brief database blip would make the orchestrator
    * kill every healthy API pod at once.
+   *
+   * It also answers **which build is running**, as `build` — see `buildMarker`.
    */
   @Version(VERSION_NEUTRAL)
   @Get('health')
   @ApiOperation({ summary: 'Liveness probe' })
-  live(): { status: string; uptimeSeconds: number } {
-    return { status: 'ok', uptimeSeconds: Math.floor(process.uptime()) };
+  live(): { status: string; uptimeSeconds: number; build: string } {
+    return {
+      status: 'ok',
+      uptimeSeconds: Math.floor(process.uptime()),
+      build: buildMarker(),
+    };
   }
 
   /** Readiness. Answers "can this process serve traffic?" — dependencies included. */
@@ -66,4 +73,40 @@ export class HealthController {
   market() {
     return this.health.check([() => this.marketData.check()]);
   }
+}
+
+/**
+ * Which build this is, without saying which revision it is.
+ *
+ * ## Why there is a marker at all
+ *
+ * Production sits behind Cloudflare and its origin takes no connection from
+ * anywhere the deploy tooling runs, so for a whole weekend the only honest
+ * answer to "did the deploy land?" was to ask somebody to read a container log
+ * over SSH. A probe that says a service is *alive* but not *which* service is
+ * alive cannot tell a successful deploy from one that silently kept the old
+ * containers running — which is the failure a deploy check exists to catch.
+ *
+ * ## Why it is not the commit
+ *
+ * `/health` is unauthenticated, as a liveness probe has to be. This platform
+ * deliberately keeps its route surface off the public internet — Swagger is
+ * dev-only, `/metrics` is refused at nginx, the OpenAPI document sits behind a
+ * session — and publishing the exact revision of a private repository on an
+ * open endpoint would cut against all of it: it tells anyone watching precisely
+ * which code is running and therefore which known defect to try.
+ *
+ * So the endpoint serves a **one-way** marker: the first 12 hex of
+ * SHA-256 over the build's commit. Somebody who already knows the candidate
+ * commit — the person who just deployed it — can confirm a match in one line.
+ * Somebody who does not learns an opaque string. `verify-production.ts` does
+ * that comparison, so nobody has to think about the hashing.
+ *
+ * `unknown` when the image was built without `BUILD_SHA`, which is itself worth
+ * knowing: it means the deploy did not stamp its build, and the next person
+ * asking "what is running?" will have no way to answer.
+ */
+export function buildMarker(sha: string | undefined = process.env['BUILD_SHA']): string {
+  if (sha === undefined || sha === '' || sha === 'unknown') return 'unknown';
+  return createHash('sha256').update(sha.trim()).digest('hex').slice(0, 12);
 }

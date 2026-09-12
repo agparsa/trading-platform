@@ -11,9 +11,16 @@ it destroys the only record of what went wrong.
 ## First five minutes
 
 ```bash
-curl -s localhost:4000/health          # process is alive
+curl -s localhost:4000/health          # process is alive, and which build it is
 curl -s localhost:4000/ready           # database and Redis are reachable
 curl -s localhost:4000/metrics | head  # counters are moving
+```
+
+From anywhere, with no shell on the box — which is the case more often than it
+should be:
+
+```bash
+pnpm verify:production                 # thirteen checks over HTTPS, no credentials
 ```
 
 `/ready` failing while `/health` passes means the process is up but a dependency
