@@ -5,9 +5,11 @@ import { cn } from '@tp/ui';
 import { Button, inputClass } from '@/components/primitives';
 import {
   useAdminUser,
+  useAdminUserDevices,
   useAdminUsers,
   useAssignRole,
   useForceSignOut,
+  useRevokeDevice,
   useSuspendUser,
   useUnlockUser,
 } from '@/lib/admin-queries';
@@ -255,7 +257,125 @@ export function UserDetail({ userId }: { userId: string }) {
           </tbody>
         </Table>
       )}
+
+      <DevicesSection userId={userId} email={data.email} />
     </div>
+  );
+}
+
+/**
+ * The handsets on an account, and the one control that switches one off.
+ *
+ * Why staff need this at all: the platform already raises a WARNING when a
+ * device this account has never been seen on registers, and now sends it on as
+ * a `security.alert` webhook. Until this section existed the person reading
+ * that alarm could not see what devices the account had, when each was last
+ * used, or stop one — an alarm with nothing to do about it.
+ *
+ * Revoking here is **not** the same as the person doing it themselves: it
+ * survives the handset re-registering on its next launch, which the person's
+ * own revocation deliberately does not. The note under the button says so,
+ * because an operator who thinks a revocation signed the thief out would stop
+ * looking — it ends no session, and `Sign out` is the control that does.
+ */
+function DevicesSection({ userId, email }: { userId: string; email: string }) {
+  const devices = useAdminUserDevices(userId);
+  const revoke = useRevokeDevice();
+  const [reason, setReason] = useState('');
+  const [acting, setActing] = useState<string | null>(null);
+
+  return (
+    <>
+      <p className="mb-2 mt-4 text-[10px] uppercase tracking-wider text-terminal-muted">
+        Devices
+      </p>
+      {devices.isLoading ? (
+        <Loading />
+      ) : devices.error !== null ? (
+        <ErrorLine error={devices.error} />
+      ) : (devices.data ?? []).length === 0 ? (
+        <p className="text-[11px] text-terminal-muted">No devices registered.</p>
+      ) : (
+        <Table>
+          <Head
+            columns={['Device', 'App', 'Notifications', 'State', 'Last seen', 'First seen', '']}
+          />
+          <tbody>
+            {(devices.data ?? []).map((device) => {
+              const staffRevoked = device.revokedByStaffAt !== null;
+              return (
+                <tr key={device.id} className="border-t border-terminal-border/60">
+                  <td className="px-2 py-1.5 text-terminal-text">
+                    {device.model ?? device.platform}
+                    <span className="ml-1 text-terminal-muted">{device.platform}</span>
+                  </td>
+                  <td className="numeric px-2 py-1.5 text-terminal-muted">
+                    {device.appVersion ?? '—'}
+                  </td>
+                  <td className="px-2 py-1.5 text-terminal-muted">
+                    {device.pushTokenRejectedAt !== null
+                      ? 'rejected by provider'
+                      : device.hasPushToken
+                        ? `on · ${device.pushTokenFingerprint ?? '····'}`
+                        : 'off'}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <StatusPill
+                      status={staffRevoked ? 'REVOKED' : device.isActive ? 'ACTIVE' : 'INACTIVE'}
+                    />
+                  </td>
+                  <td className="numeric px-2 py-1.5 text-terminal-muted">
+                    {utcTime(device.lastSeenAt)}
+                  </td>
+                  <td className="numeric px-2 py-1.5 text-terminal-muted">
+                    {utcTime(device.createdAt)}
+                  </td>
+                  <td className="px-2 py-1.5 text-right">
+                    <button
+                      type="button"
+                      disabled={revoke.isPending || reason.trim().length === 0}
+                      onClick={() => {
+                        setActing(device.id);
+                        revoke.mutate(
+                          {
+                            userId,
+                            deviceId: device.id,
+                            reason: reason.trim(),
+                            ...(staffRevoked ? { restore: true } : {}),
+                          },
+                          { onSettled: () => setActing(null) },
+                        );
+                      }}
+                      className="border border-terminal-border px-2 py-0.5 text-[11px] text-terminal-text transition-colors hover:border-terminal-text disabled:opacity-40"
+                    >
+                      {acting === device.id ? '…' : staffRevoked ? 'Restore' : 'Revoke'}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </Table>
+      )}
+      {(devices.data ?? []).length > 0 ? (
+        <div className="mt-2">
+          <label className="block">
+            <span className="sr-only">{`Why a device of ${email} is being revoked`}</span>
+            <input
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Why — required, and recorded in their security feed"
+              className="w-full border border-terminal-border bg-terminal-bg px-2 py-1 text-[11px] text-terminal-text placeholder:text-terminal-muted"
+            />
+          </label>
+          <p className="mt-1 text-[10px] text-terminal-muted">
+            Revoking stops notifications to the device and survives the app restarting. It does not
+            end a session — use Sign out for that.
+          </p>
+          {revoke.error !== null ? <ErrorLine error={revoke.error} /> : null}
+        </div>
+      ) : null}
+    </>
   );
 }
 

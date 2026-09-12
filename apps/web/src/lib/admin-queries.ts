@@ -360,6 +360,54 @@ export function useSuspendUser() {
   });
 }
 
+/** A device as staff see it. Mirrors `AdminDeviceDto`; no token, ever. */
+export interface AdminDeviceRow {
+  id: string;
+  platform: string;
+  model: string | null;
+  osVersion: string | null;
+  appVersion: string | null;
+  hasPushToken: boolean;
+  pushTokenFingerprint: string | null;
+  pushTokenRejectedAt: string | null;
+  isActive: boolean;
+  revokedByStaffAt: string | null;
+  lastSeenAt: string;
+  createdAt: string;
+}
+
+/**
+ * The phones, tablets and browsers on somebody's account (§13-14).
+ *
+ * Its own query rather than a field on the person, because it is read only
+ * when an operator opens somebody's record for a lost-phone investigation, and
+ * folding it into the person's detail would fetch it for every search result.
+ */
+export function useAdminUserDevices(id: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: [...adminKeys.user(id ?? 'none'), 'devices'],
+    queryFn: () => api.get<AdminDeviceRow[]>(`/admin/users/${id ?? ''}/devices`),
+    enabled: id !== null,
+  });
+}
+
+export function useRevokeDevice() {
+  const { api } = useSession();
+  const invalidate = useAdminInvalidate();
+  return useMutation({
+    mutationFn: (input: { userId: string; deviceId: string; reason: string; restore?: boolean }) =>
+      api.post(
+        `/admin/users/${input.userId}/devices/${input.deviceId}/${
+          input.restore === true ? 'restore' : 'revoke'
+        }`,
+        { reason: input.reason },
+        { idempotencyKey: crypto.randomUUID() },
+      ),
+    onSuccess: invalidate,
+  });
+}
+
 export function useForceSignOut() {
   const { api } = useSession();
   const invalidate = useAdminInvalidate();

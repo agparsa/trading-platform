@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   DomainError,
   TradingErrorCode,
+  type AdminDeviceDto,
   type DeviceDto,
   type DevicePlatform,
 } from '@tp/shared-types';
@@ -58,7 +59,7 @@ export class DevicesService {
       model?: string | null;
       locale?: string | null;
     },
-  ): Promise<DeviceDto> {
+  ): Promise<RegisterOutcome> {
     const tenantId = requireTenantId();
     const sealed =
       input.pushToken === undefined || input.pushToken === null || input.pushToken.length === 0
@@ -70,6 +71,44 @@ export class DevicesService {
         : fingerprintOf(input.pushToken);
 
     const now = new Date();
+
+    /**
+     * What was here before, because the caller has to be told which of three
+     * things this call is.
+     *
+     * The app re-registers **on every launch**, and until this read existed
+     * every one of those launches wrote an audit row saying
+     * `DEVICE_REGISTERED`. An investigator counting device registrations was
+     * counting app launches, and the one row that meant "a phone this account
+     * had never been seen on" was somewhere in the thousands. A record that
+     * cannot be read is not a record.
+     */
+    const before = await this.prisma.device.findUnique({
+      where: {
+        tenantId_userId_installationId: {
+          tenantId,
+          userId,
+          installationId: input.installationId,
+        },
+      },
+      select: { id: true, isActive: true, revokedByStaffAt: true },
+    });
+
+    /**
+     * A staff revocation is a control, and a relaunch does not lift it.
+     *
+     * The `isActive: true` below is deliberate for a person's own revocation —
+     * they revoked their phone, they signed in on it again, that is consent
+     * expressed by action. It is exactly wrong for the lost-phone case: staff
+     * revoke the handset, the thief opens the app, and the revocation is
+     * undone by the act it was meant to defend against, with notifications
+     * about this person's money resuming on the stolen device. So while
+     * `revokedByStaffAt` is set the row is refreshed but never revived, and
+     * the push token is not taken back either — there is nowhere it should be
+     * delivered to.
+     */
+    const staffRevoked = before?.revokedByStaffAt != null;
+
     const row = await this.prisma.device.upsert({
       where: {
         tenantId_userId_installationId: {
@@ -96,7 +135,7 @@ export class DevicesService {
         // A re-register with no token must not wipe a working one: the app
         // calls this on every launch, and notification permission is granted
         // once, later. Only an explicitly supplied token replaces what is there.
-        ...(sealed === null
+        ...(sealed === null || staffRevoked
           ? {}
           : { pushToken: sealed, pushTokenFingerprint: fingerprint, pushTokenRejectedAt: null }),
         ...(input.appVersion === undefined ? {} : { appVersion: input.appVersion }),
@@ -105,12 +144,29 @@ export class DevicesService {
         ...(input.locale === undefined ? {} : { locale: input.locale }),
         // Re-registering revives a device the user had deactivated only because
         // they have signed in on it again, which is consent expressed by action.
-        isActive: true,
+        // Staff revocations are not theirs to lift; see above.
+        ...(staffRevoked ? {} : { isActive: true }),
         lastSeenAt: now,
       },
     });
 
-    return toDto(row);
+    const change: RegisterOutcome['change'] =
+      before === null
+        ? 'REGISTERED'
+        : staffRevoked
+          ? 'REFUSED_REVIVAL'
+          : before.isActive
+            ? 'REFRESHED'
+            : 'REVIVED';
+
+    if (change === 'REFUSED_REVIVAL') {
+      this.logger.warn(
+        { deviceId: row.id, userId },
+        'A device staff had revoked re-registered and was not revived',
+      );
+    }
+
+    return { device: toDto(row), change };
   }
 
   /** The caller's own devices, newest activity first. */
@@ -129,6 +185,13 @@ export class DevicesService {
    * a live token is one bug away from waking a phone its owner has revoked, and
    * the row is worth keeping for the audit trail without it.
    */
+  /**
+   * A person revoking one of their own devices.
+   *
+   * Leaves `revokedByStaffAt` alone: a person cannot lift a staff revocation
+   * by revoking and re-registering, which would otherwise be the obvious way
+   * round the control above.
+   */
   async deactivate(userId: string, deviceId: string): Promise<{ id: string }> {
     const result = await this.prisma.device.updateMany({
       where: { id: deviceId, userId },
@@ -142,6 +205,74 @@ export class DevicesService {
       // Scoped by userId in the same statement, so somebody else's device id is
       // "not found" rather than "found and refused". The two are
       // indistinguishable to the caller, which is the point.
+      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'No such device');
+    }
+    return { id: deviceId };
+  }
+
+  /**
+   * Somebody else's devices, for staff holding `users.read_any`.
+   *
+   * The same `toDto` the person's own list uses, so there is exactly one
+   * definition of what a device may say about itself and no admin-only branch
+   * that could return the push token. Staff see strictly what the owner sees,
+   * plus who revoked it — never more.
+   */
+  async listFor(userId: string): Promise<AdminDeviceDto[]> {
+    const rows = await this.prisma.device.findMany({
+      where: { userId },
+      orderBy: { lastSeenAt: 'desc' },
+    });
+    return rows.map((row) => ({
+      ...toDto(row),
+      revokedByStaffAt: row.revokedByStaffAt?.toISOString() ?? null,
+    }));
+  }
+
+  /**
+   * Staff revoke a device — the lost-phone case.
+   *
+   * Stops notifications and takes the token back, like the person's own
+   * revocation, and additionally stamps `revokedByStaffAt` so the next app
+   * launch on that handset cannot undo it.
+   *
+   * It does **not** end any session. Sessions are not bound to devices in this
+   * platform, and pretending otherwise would be worse than saying so: an
+   * administrator who thinks this signed the thief out would stop looking.
+   * `POST /admin/users/:id/sign-out` is the one that ends sessions, and the
+   * two are meant to be used together.
+   */
+  async revokeForUser(userId: string, deviceId: string): Promise<{ id: string }> {
+    const result = await this.prisma.device.updateMany({
+      where: { id: deviceId, userId },
+      data: {
+        isActive: false,
+        pushToken: null,
+        pushTokenFingerprint: null,
+        revokedByStaffAt: new Date(),
+      },
+    });
+    if (result.count === 0) {
+      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'No such device');
+    }
+    return { id: deviceId };
+  }
+
+  /**
+   * Staff put a revoked device back — the phone turned up, or it was revoked
+   * in error.
+   *
+   * Clears the stamp but leaves the device inactive and tokenless: the handset
+   * itself must register again before anything is delivered to it. Restoring
+   * a token staff had taken away, on staff's say-so alone, would put
+   * notifications back on a device nobody has confirmed is in the right hands.
+   */
+  async restoreForUser(userId: string, deviceId: string): Promise<{ id: string }> {
+    const result = await this.prisma.device.updateMany({
+      where: { id: deviceId, userId },
+      data: { revokedByStaffAt: null },
+    });
+    if (result.count === 0) {
       throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'No such device');
     }
     return { id: deviceId };
@@ -262,6 +393,17 @@ interface DeviceRow {
  * turns the token back on: a boolean and four characters answer every question
  * a user or a support agent can legitimately ask.
  */
+/**
+ * What `register` actually did, so the caller can audit the truth.
+ *
+ * `REFRESHED` is the overwhelmingly common case — an app launch — and the one
+ * thing it must never be recorded as is a registration.
+ */
+export interface RegisterOutcome {
+  readonly device: DeviceDto;
+  readonly change: 'REGISTERED' | 'REVIVED' | 'REFRESHED' | 'REFUSED_REVIVAL';
+}
+
 export function toDto(row: DeviceRow): DeviceDto {
   return {
     id: row.id,

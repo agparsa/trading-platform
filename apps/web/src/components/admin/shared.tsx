@@ -53,7 +53,7 @@ export function StatusPill({ status }: { status: string }) {
   const tone =
     status === 'ACTIVE'
       ? 'bg-terminal-long/15 text-terminal-long'
-      : status === 'CLOSED' || status === 'SUSPENDED'
+      : status === 'CLOSED' || status === 'SUSPENDED' || status === 'REVOKED'
         ? 'bg-terminal-short/15 text-terminal-short'
         : 'bg-terminal-warning/15 text-terminal-warning';
   return (

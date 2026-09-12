@@ -3,6 +3,8 @@ import type { PrismaClient } from '@prisma/client';
 import { DevicePlatform } from '@tp/shared-types';
 import { withTenant } from '@tp/tenancy';
 import { DevicesService } from '../../src/devices/devices.service';
+import { DevicesController } from '../../src/devices/devices.controller';
+import { AuditService } from '../../src/common/audit/audit.service';
 import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 import {
@@ -61,12 +63,12 @@ suite('Devices and push tokens (integration)', () => {
   });
 
   it('registers an installation and hands back no token', async () => {
-    const device = await devices.register(userId, {
+    const device = (await devices.register(userId, {
       platform: DevicePlatform.IOS,
       installationId: IPHONE,
       pushToken: TOKEN_A,
       model: 'iPhone 15 Pro',
-    });
+    })).device;
 
     expect(device.hasPushToken).toBe(true);
     expect(device.pushTokenFingerprint).toBe('1111');
@@ -120,11 +122,11 @@ suite('Devices and push tokens (integration)', () => {
       installationId: IPHONE,
       pushToken: TOKEN_A,
     });
-    const ipad = await devices.register(userId, {
+    const ipad = (await devices.register(userId, {
       platform: DevicePlatform.IOS,
       installationId: IPAD,
       pushToken: TOKEN_B,
-    });
+    })).device;
     const iphoneRow = await prisma.device.findFirstOrThrow({
       where: { userId, installationId: IPHONE },
     });
@@ -205,11 +207,11 @@ suite('Devices and push tokens (integration)', () => {
   });
 
   it('stops delivering to a revoked device and destroys its token', async () => {
-    const device = await devices.register(userId, {
+    const device = (await devices.register(userId, {
       platform: DevicePlatform.ANDROID,
       installationId: IPHONE,
       pushToken: TOKEN_A,
-    });
+    })).device;
 
     await devices.deactivate(userId, device.id);
 
@@ -230,23 +232,214 @@ suite('Devices and push tokens (integration)', () => {
         displayName: 'Other',
       },
     });
-    const device = await devices.register(other.id, {
+    const device = (await devices.register(other.id, {
       platform: DevicePlatform.IOS,
       installationId: IPHONE,
       pushToken: TOKEN_A,
-    });
+    })).device;
 
     await expect(devices.deactivate(userId, device.id)).rejects.toThrow();
     // And it is still receiving, which is what "refused" has to mean.
     expect(await devices.pushTargets(other.id)).toHaveLength(1);
   });
 
-  it('drops a device the provider has rejected', async () => {
-    const device = await devices.register(userId, {
+  /**
+   * The three things a register call can be, which used to be one thing.
+   *
+   * The app re-registers on every launch, so the common case by far is a
+   * refresh — and until `register` said so, every launch was audited as a new
+   * device. What is pinned here is that the *caller* can tell them apart,
+   * because that is what the audit row and the security feed are built on.
+   */
+  it('says whether a register created, revived or merely refreshed a device', async () => {
+    const first = await devices.register(userId, {
+      platform: DevicePlatform.IOS,
+      installationId: IPHONE,
+      pushToken: TOKEN_A,
+    });
+    expect(first.change).toBe('REGISTERED');
+
+    const relaunch = await devices.register(userId, {
+      platform: DevicePlatform.IOS,
+      installationId: IPHONE,
+    });
+    expect(relaunch.change).toBe('REFRESHED');
+
+    await devices.deactivate(userId, first.device.id);
+    const back = await devices.register(userId, {
+      platform: DevicePlatform.IOS,
+      installationId: IPHONE,
+      pushToken: TOKEN_A,
+    });
+    // The person revoked their own phone and signed in on it again: consent
+    // expressed by action, and the device comes back.
+    expect(back.change).toBe('REVIVED');
+    expect(back.device.isActive).toBe(true);
+    expect(await devices.pushTargets(userId)).toHaveLength(1);
+  });
+
+  /**
+   * The lost phone.
+   *
+   * Before this, a staff revocation was undone by the very act it defends
+   * against: staff revoke the handset, the thief opens the app, the app
+   * re-registers, `isActive` goes back to true and the notifications about
+   * this person's money resume on the stolen device — silently.
+   */
+  it('does not let a relaunch undo a revocation staff applied', async () => {
+    const { device } = await devices.register(userId, {
       platform: DevicePlatform.ANDROID,
       installationId: IPHONE,
       pushToken: TOKEN_A,
     });
+
+    await devices.revokeForUser(userId, device.id);
+    expect(await devices.pushTargets(userId)).toEqual([]);
+
+    const relaunch = await devices.register(userId, {
+      platform: DevicePlatform.ANDROID,
+      installationId: IPHONE,
+      pushToken: TOKEN_B,
+    });
+
+    expect(relaunch.change).toBe('REFUSED_REVIVAL');
+    expect(relaunch.device.isActive).toBe(false);
+    // And the token it offered was not taken: there is nowhere it should go.
+    expect(await devices.pushTargets(userId)).toEqual([]);
+    const row = await prisma.device.findUniqueOrThrow({ where: { id: device.id } });
+    expect(row.pushToken).toBeNull();
+    expect(row.revokedByStaffAt).not.toBeNull();
+    // lastSeenAt still moves: the handset is still out there and still asking,
+    // which is exactly what an investigator wants to be able to see.
+    expect(row.lastSeenAt.getTime()).toBeGreaterThanOrEqual(row.createdAt.getTime());
+  });
+
+  it('cannot be talked round by the person revoking and re-registering', async () => {
+    const { device } = await devices.register(userId, {
+      platform: DevicePlatform.ANDROID,
+      installationId: IPHONE,
+      pushToken: TOKEN_A,
+    });
+    await devices.revokeForUser(userId, device.id);
+
+    // The obvious way round the control, if `deactivate` cleared the stamp.
+    await devices.deactivate(userId, device.id).catch(() => undefined);
+    const relaunch = await devices.register(userId, {
+      platform: DevicePlatform.ANDROID,
+      installationId: IPHONE,
+      pushToken: TOKEN_B,
+    });
+    expect(relaunch.change).toBe('REFUSED_REVIVAL');
+    expect(await devices.pushTargets(userId)).toEqual([]);
+  });
+
+  it('restores a revoked device without putting its notifications back by itself', async () => {
+    const { device } = await devices.register(userId, {
+      platform: DevicePlatform.IOS,
+      installationId: IPHONE,
+      pushToken: TOKEN_A,
+    });
+    await devices.revokeForUser(userId, device.id);
+    await devices.restoreForUser(userId, device.id);
+
+    const restored = await prisma.device.findUniqueOrThrow({ where: { id: device.id } });
+    expect(restored.revokedByStaffAt).toBeNull();
+    // Still off, still tokenless: staff lifting the block does not re-arm a
+    // handset nobody has confirmed is back in the right hands.
+    expect(restored.isActive).toBe(false);
+    expect(restored.pushToken).toBeNull();
+    expect(await devices.pushTargets(userId)).toEqual([]);
+
+    // The device itself asking is what brings it back.
+    const relaunch = await devices.register(userId, {
+      platform: DevicePlatform.IOS,
+      installationId: IPHONE,
+      pushToken: TOKEN_B,
+    });
+    expect(relaunch.change).toBe('REVIVED');
+    expect(await devices.pushTargets(userId)).toHaveLength(1);
+  });
+
+  it('never shows staff a push token, and never one tenant another tenant’s devices', async () => {
+    const { device } = await devices.register(userId, {
+      platform: DevicePlatform.IOS,
+      installationId: IPHONE,
+      pushToken: TOKEN_A,
+      model: 'iPhone 15 Pro',
+    });
+
+    const [seen] = await devices.listFor(userId);
+    expect(seen?.id).toBe(device.id);
+    expect(seen?.model).toBe('iPhone 15 Pro');
+    expect(seen?.revokedByStaffAt).toBeNull();
+    expect(JSON.stringify(seen)).not.toContain(TOKEN_A);
+    expect(Object.keys(seen ?? {})).not.toContain('pushToken');
+
+    const otherTenantId = await createTenant(prisma, 'nosy-tenant');
+    const throughOtherTenant = await withTenant(
+      { tenantId: otherTenantId, slug: 'nosy-tenant' },
+      async () => devices.listFor(userId),
+    );
+    expect(throughOtherTenant).toEqual([]);
+    await expect(
+      withTenant({ tenantId: otherTenantId, slug: 'nosy-tenant' }, async () =>
+        devices.revokeForUser(userId, device.id),
+      ),
+    ).rejects.toThrow();
+    const untouched = await prisma.device.findUniqueOrThrow({ where: { id: device.id } });
+    expect(untouched.revokedByStaffAt).toBeNull();
+    expect(untouched.isActive).toBe(true);
+  });
+
+  /**
+   * The audit log counts registrations, not app launches.
+   *
+   * This is the whole point of `register` reporting what it did. The app
+   * re-registers every time it opens, and a row per launch saying
+   * `DEVICE_REGISTERED` meant the one row that mattered — a phone this account
+   * had never been seen on — sat somewhere in the thousands. An investigator
+   * cannot read that, so in practice it was not recorded at all.
+   */
+  it('writes one audit row per real change and none for a relaunch', async () => {
+    const controller = new DevicesController(
+      devices,
+      new AuditService(prisma as unknown as PrismaService),
+    );
+    const request = {
+      get: () => 'a phone',
+      headers: {},
+      socket: {},
+    } as never;
+    const user = { id: userId } as never;
+    const body = {
+      platform: DevicePlatform.IOS,
+      installationId: IPHONE,
+      pushToken: TOKEN_A,
+    } as never;
+
+    await controller.register(user, body, request);
+    await controller.register(user, body, request);
+    await controller.register(user, body, request);
+
+    const actions = await prisma.auditLog.findMany({
+      where: { resourceType: 'Device' },
+      orderBy: { createdAt: 'asc' },
+      select: { action: true },
+    });
+    expect(actions.map((row) => row.action)).toEqual(['DEVICE_REGISTERED']);
+
+    // And the one row that means something reaches the person's own feed.
+    const events = await prisma.securityEvent.findMany({ where: { userId } });
+    expect(events.map((event) => event.kind)).toEqual(['DEVICE_REGISTERED']);
+    expect(events[0]?.severity).toBe('WARNING');
+  });
+
+  it('drops a device the provider has rejected', async () => {
+    const device = (await devices.register(userId, {
+      platform: DevicePlatform.ANDROID,
+      installationId: IPHONE,
+      pushToken: TOKEN_A,
+    })).device;
 
     await devices.markTokenRejected(device.id);
 

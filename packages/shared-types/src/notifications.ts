@@ -168,6 +168,16 @@ export interface DeviceDto {
   createdAt: string;
 }
 
+/**
+ * A device as staff see it (§13-14): everything its owner sees, plus whether
+ * staff revoked it. Deliberately an extension of `DeviceDto` rather than a
+ * parallel shape, so there is no admin-only field that could one day be a
+ * push token.
+ */
+export interface AdminDeviceDto extends DeviceDto {
+  revokedByStaffAt: string | null;
+}
+
 export interface NotificationPreferenceDto {
   category: NotificationCategory;
   inApp: boolean;

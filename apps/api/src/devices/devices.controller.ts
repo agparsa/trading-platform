@@ -62,7 +62,7 @@ export class DevicesController {
     @Body() body: RegisterDeviceDto,
     @Req() request: RequestWithContext,
   ) {
-    const device = await this.devices.register(user.id, {
+    const outcome = await this.devices.register(user.id, {
       platform: body.platform,
       installationId: body.installationId,
       pushToken: body.pushToken ?? null,
@@ -72,6 +72,8 @@ export class DevicesController {
       locale: body.locale ?? null,
     });
 
+    const device = outcome.device;
+
     /**
      * A new device on an account is a security event, not a settings change.
      *
@@ -79,24 +81,41 @@ export class DevicesController {
      * and the fingerprint rather than the token is what goes in the record —
      * `redact` would catch the token anyway, and relying on that would be
      * relying on a safety net instead of not walking off the roof.
+     *
+     * **Only when something happened.** The app calls this on every launch,
+     * and this used to write a row saying `DEVICE_REGISTERED` every time — so
+     * the audit log counted launches while claiming to count registrations,
+     * and the one row that meant "a phone this account had never been seen on"
+     * was buried among thousands that meant nothing. A refresh now writes
+     * nothing at all: `lastSeenAt` already records that the app ran, and a
+     * record nobody can read is not a record.
      */
-    await this.audit.record({
-      actorId: user.id,
-      actorType: 'USER',
-      action: 'DEVICE_REGISTERED',
-      resourceType: 'Device',
-      resourceId: device.id,
-      after: {
-        platform: device.platform,
-        model: device.model,
-        appVersion: device.appVersion,
-        hasPushToken: device.hasPushToken,
-        pushTokenFingerprint: device.pushTokenFingerprint,
-      },
-      requestId: requestIdOf(request),
-      ipAddress: clientAddress(request) ?? null,
-      userAgent: request.get('user-agent') ?? null,
-    });
+    const ACTIONS = {
+      REGISTERED: 'DEVICE_REGISTERED',
+      REVIVED: 'DEVICE_REVIVED',
+      REFUSED_REVIVAL: 'DEVICE_REVIVAL_REFUSED',
+      REFRESHED: null,
+    } as const;
+    const action = ACTIONS[outcome.change];
+    if (action !== null) {
+      await this.audit.record({
+        actorId: user.id,
+        actorType: 'USER',
+        action,
+        resourceType: 'Device',
+        resourceId: device.id,
+        after: {
+          platform: device.platform,
+          model: device.model,
+          appVersion: device.appVersion,
+          hasPushToken: device.hasPushToken,
+          pushTokenFingerprint: device.pushTokenFingerprint,
+        },
+        requestId: requestIdOf(request),
+        ipAddress: clientAddress(request) ?? null,
+        userAgent: request.get('user-agent') ?? null,
+      });
+    }
 
     return device;
   }

@@ -146,8 +146,13 @@ money arriving.
 
 ## 5. What is not built, and where it belongs
 
-Saying this plainly is the point of the table above. None of the following
-exists, and none of it is stubbed:
+Saying this plainly is the point of the table above.
+
+**This section had gone stale, which is worse than being incomplete.** It still
+said webhooks, IP rules, an admin device view and production API documentation
+did not exist, months after each was built — and a document that under-reports
+what a platform can do gets the work done twice. Corrected below; the items
+that really are absent keep their entry and their reason.
 
 - **Fees as a section.** Commission and swap are editable per instrument on the
   Instruments screen, which is the only place they can be set. There is no fee
@@ -162,16 +167,23 @@ exists, and none of it is stubbed:
 - **Alerts.** `Alert` (price alerts) is Phase 8, with the notification
   channels. Admin alert _rules_ — thresholds that raise something when a figure
   moves — do not exist and are not designed.
-- **Security: devices and IP rules.** Device management is self-service only;
-  there is no admin view. There is no IP allow/deny concept anywhere in the
-  platform: addresses are recorded on sessions, audit rows and security events,
-  and are never used as a control. Adding one is a security feature with real
-  lock-out risk, and belongs with Phase 10.
+- **~~Security: devices and IP rules.~~ Both built.** Tenant IP rules are a
+  control (§46), enforced by a guard and audited. Staff can see a person's
+  devices and revoke one from their record — and a staff revocation survives
+  the handset re-registering, which the person's own revocation deliberately
+  does not. What is still missing here is narrower: revoking a device ends no
+  **session**, because sessions are not bound to devices in this platform.
+  `sign-out` is the control that ends sessions, and the two are meant to be
+  used together; binding them would be a schema change and a phase of its own.
 - **Branding / white label.** Nothing exists. The `Tenant` model carries no
   visual field. Phase 14 lists white label behind a feature flag; the feature
   it would flag has not been written.
-- **Webhooks.** Phase 12. The Phase 3 outbox is what they will be delivered
-  from — `OutboxRelayService` already takes a destination.
-- **API documentation.** Swagger is mounted at `/docs`, but only when
-  `NODE_ENV` is not production, so **there is no API documentation in
-  production**, and nothing in the console links to it.
+- **~~Webhooks.~~ Built** (§49): registered per firm, signed, retried,
+  auto-disabled, SSRF-vetted, with `security.alert` and
+  `reconciliation.mismatch` among the events. See `webhooks.md`.
+- **~~API documentation.~~ Built.** The OpenAPI document is generated in every
+  environment and served at `/developer/openapi.json` behind a session — with
+  `/developer/conventions` stating the facts a reference page must not get
+  wrong. Swagger's own UI stays a development convenience, because it mounts
+  outside Nest's guards and the full route surface is not for anyone who can
+  reach the host.

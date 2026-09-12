@@ -77,6 +77,37 @@ export const SECURITY_KINDS: Readonly<Record<string, SecurityKind>> = {
    * WARNING for all three, including removal. A rule taken away is a control
    * weakened, which is what an attacker does second.
    */
+  /**
+   * A device the account has never been seen on. WARNING, and for the same
+   * reason as a sign-in from a new device: it is what somebody who has taken a
+   * password does next, and it is a thing the rightful owner can recognise as
+   * not theirs.
+   *
+   * This reaches the feed *only* for a genuinely new installation. The app
+   * re-registers on every launch and those write no audit row at all, which is
+   * what makes this entry worth having — a WARNING per app launch would be
+   * noise the owner learns to scroll past.
+   */
+  DEVICE_REGISTERED: { kind: 'DEVICE_REGISTERED', severity: 'WARNING', subject: 'actor' },
+  /** A device the person had revoked, back because they signed in on it again. */
+  DEVICE_REVIVED: { kind: 'DEVICE_REVIVED', severity: 'WARNING', subject: 'actor' },
+  DEVICE_DEACTIVATED: { kind: 'DEVICE_REVOKED', severity: 'NOTICE', subject: 'actor' },
+  /**
+   * Staff acted on somebody's device. `resource`, so it lands in the owner's
+   * feed rather than the staff member's — the same reasoning as break-glass:
+   * it is their handset and their business, and a revocation nobody outside
+   * the office can see is indistinguishable from one that never happened.
+   */
+  'user.device_revoked': {
+    kind: 'DEVICE_REVOKED_BY_STAFF',
+    severity: 'NOTICE',
+    subject: 'resource',
+  },
+  'user.device_restored': {
+    kind: 'DEVICE_RESTORED_BY_STAFF',
+    severity: 'NOTICE',
+    subject: 'resource',
+  },
   IP_RULE_CREATED: { kind: 'IP_RULE_CHANGED', severity: 'WARNING', subject: 'actor' },
   IP_RULE_ENABLED: { kind: 'IP_RULE_CHANGED', severity: 'WARNING', subject: 'actor' },
   IP_RULE_DISABLED: { kind: 'IP_RULE_CHANGED', severity: 'WARNING', subject: 'actor' },

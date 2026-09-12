@@ -6,8 +6,9 @@ import { DevicesService } from './devices.service';
 
 /**
  * Exports `DevicesService` because the notification fan-out needs
- * `pushTargets`. Nothing else outside this module has a reason to reach a
- * device row, and nothing outside it can reach a push token.
+ * `pushTargets`, and the admin module needs the staff-facing list and
+ * revocation (§13-14). Nothing outside this module can reach a push token: the
+ * admin methods return the same `toDto` shape the owner's own list uses.
  */
 @Module({
   imports: [CryptoModule, AuditModule],

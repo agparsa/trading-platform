@@ -139,10 +139,31 @@ API down first, because the running instance is still writing the old shape.
 
 ### Rolling back
 
-Roll back the **image**, not the migration. Every migration in this repository is
-additive so far, so an older image runs against a newer schema. Reversing a
-migration means deciding what happens to the rows it created, and that is a
-decision to make deliberately rather than at 3am.
+Roll back the **image**, not the migration. Reversing a migration means deciding
+what happens to the rows it created, and that is a decision to make
+deliberately rather than at 3am.
+
+**How far back is safe: to any image released after
+`20260831140000_multi_tenancy`.** An older image runs against a newer schema
+and writes the *older* shape of every row, so this works exactly as long as
+every migration in between is additive. Two are not — they add `NOT NULL` to
+columns that already existed:
+
+| Migration | What narrowed |
+| --- | --- |
+| `20260824190000_trade_commission_breakdown` | `trades.entry_commission`, `trades.exit_commission` |
+| `20260831140000_multi_tenancy` | `tenant_id` on every scoped table |
+
+An image from before either of those writes rows without those columns, and the
+insert is refused — so a rollback across one turns a bad deploy into a broken
+one. Rolling back that far means restoring a backup, not pulling an older tag.
+
+This used to read "every migration in this repository is additive so far",
+which was simply wrong, and wrong in the direction that costs you an outage.
+`scripts/migrations.test.ts` now fails the build if a migration narrows the
+schema without being recorded, and fails it again if the floor named above
+stops being the newest one — so this paragraph cannot go stale without somebody
+being told.
 
 ### Draining
 

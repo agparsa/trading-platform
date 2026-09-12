@@ -24,6 +24,8 @@ import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypt
 import { base32Decode, codeForStep, stepFor } from '../../src/auth/totp';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { RolesService } from '../../src/permissions/roles.service';
+import { DevicesService } from '../../src/devices/devices.service';
+import { SecretBoxService } from '../../src/common/crypto/crypto.module';
 import { redisStub } from './redis-stub';
 import {
   createAccount,
@@ -126,6 +128,7 @@ suite('Administration (integration)', () => {
 
     const config = new ConfigService<Record<string, unknown>, true>({
       TOTP_ISSUER: 'Trading Platform',
+      SECRET_ENCRYPTION_KEYS: KEY,
     } as never);
     const audit = new AuditService(prismaService);
     secrets = new SecretBox(parseEncryptionKeys(KEY));
@@ -144,6 +147,7 @@ suite('Administration (integration)', () => {
       sessions,
       new RolesService(prismaService, redisStub().service, audit),
       new RiskHierarchyService(prismaService, audit),
+      new DevicesService(prismaService, new SecretBoxService(config as never)),
     );
     adjustments = new AdjustmentsService(prismaService, new LedgerService(), audit, totp);
     auditQuery = new AuditQueryService(prismaService);
@@ -281,6 +285,96 @@ suite('Administration (integration)', () => {
       expect((await prisma.user.findUniqueOrThrow({ where: { id: trader.userId } })).isActive).toBe(
         true,
       );
+    });
+  });
+
+  describe("a person's devices", () => {
+    const anIphone = async (userId: string) =>
+      (
+        await new DevicesService(
+          prismaService,
+          new SecretBoxService(
+            new ConfigService({ SECRET_ENCRYPTION_KEYS: KEY } as never) as never,
+          ),
+        ).register(userId, {
+          platform: 'IOS' as never,
+          installationId: `installation-${randomUUID()}`,
+          pushToken: `token-${randomUUID()}`,
+          model: 'iPhone 15 Pro',
+        })
+      ).device;
+
+    it('lists them for staff without ever showing a token', async () => {
+      const trader = await createAccount(prisma);
+      const device = await anIphone(trader.userId);
+
+      const listed = await admin.userDevices(trader.userId);
+      expect(listed).toHaveLength(1);
+      expect(listed[0]?.id).toBe(device.id);
+      expect(listed[0]?.model).toBe('iPhone 15 Pro');
+      expect(Object.keys(listed[0] ?? {})).not.toContain('pushToken');
+    });
+
+    /**
+     * The revocation lands in the **owner's** security feed, not the staff
+     * member's. Somebody else switching off your phone is your business, and a
+     * revocation only the office can see is indistinguishable from one that
+     * never happened — the same reasoning as break-glass.
+     */
+    it('revokes one, records who and why, and tells the owner', async () => {
+      const actor = await anAdministrator();
+      const trader = await createAccount(prisma);
+      const device = await anIphone(trader.userId);
+
+      await admin.revokeDevice(actor.id, trader.userId, device.id, 'Handset reported stolen');
+
+      const row = await prisma.device.findUniqueOrThrow({ where: { id: device.id } });
+      expect(row.isActive).toBe(false);
+      expect(row.pushToken).toBeNull();
+      expect(row.revokedByStaffAt).not.toBeNull();
+
+      const entry = await prisma.auditLog.findFirstOrThrow({
+        where: { action: 'user.device_revoked' },
+      });
+      expect(entry.actorId).toBe(actor.id);
+      expect(entry.resourceId).toBe(trader.userId);
+      expect(entry.after).toMatchObject({ reason: 'Handset reported stolen', deviceId: device.id });
+
+      const event = await prisma.securityEvent.findFirstOrThrow({
+        where: { kind: 'DEVICE_REVOKED_BY_STAFF' },
+      });
+      expect(event.userId).toBe(trader.userId);
+      expect(event.actorId).toBe(actor.id);
+    });
+
+    it('restores one, and records that too', async () => {
+      const actor = await anAdministrator();
+      const trader = await createAccount(prisma);
+      const device = await anIphone(trader.userId);
+      await admin.revokeDevice(actor.id, trader.userId, device.id, 'Reported stolen');
+
+      await admin.restoreDevice(actor.id, trader.userId, device.id, 'Turned up in a drawer');
+
+      const row = await prisma.device.findUniqueOrThrow({ where: { id: device.id } });
+      expect(row.revokedByStaffAt).toBeNull();
+      const event = await prisma.securityEvent.findFirstOrThrow({
+        where: { kind: 'DEVICE_RESTORED_BY_STAFF' },
+      });
+      expect(event.userId).toBe(trader.userId);
+    });
+
+    /**
+     * "No such user" and "no such device" are different answers, and staff
+     * chasing a lost phone deserve to know which one they are looking at.
+     */
+    it('says which of the two is missing', async () => {
+      const actor = await anAdministrator();
+      const trader = await createAccount(prisma);
+      await expect(admin.userDevices(randomUUID())).rejects.toThrow(/user/i);
+      await expect(
+        admin.revokeDevice(actor.id, trader.userId, randomUUID(), 'why'),
+      ).rejects.toThrow(/device/i);
+      expect(await prisma.auditLog.count({ where: { action: 'user.device_revoked' } })).toBe(0);
     });
   });
 

@@ -223,6 +223,55 @@ on the token means a rotation creates a second row and the trader hears
 everything twice. The token itself is sealed with AES-256-GCM bound to its own
 row, and never appears in any API response.
 
+### Registering, reviving, and refreshing
+
+The app calls `POST /devices` **on every launch**, so three quite different
+things arrive at the same endpoint, and `register` reports which:
+
+| Outcome | What happened | Audited as |
+| --- | --- | --- |
+| `REGISTERED` | An installation this account had never been seen on | `DEVICE_REGISTERED`, and a WARNING in the person's feed |
+| `REVIVED` | A device the person had revoked, back because they signed in on it | `DEVICE_REVIVED`, WARNING |
+| `REFRESHED` | An app launch, or a rotated token | **nothing** |
+| `REFUSED_REVIVAL` | A staff-revoked handset asking to come back | `DEVICE_REVIVAL_REFUSED` |
+
+`REFRESHED` writing nothing is the point of the table. Every launch used to be
+audited as `DEVICE_REGISTERED`, so the log counted launches while claiming to
+count registrations and the one row that meant "a phone this account had never
+been seen on" was somewhere in the thousands. `lastSeenAt` already records that
+the app ran; a record nobody can read is not a record.
+
+### Revocation, and the one a relaunch cannot undo
+
+A person revoking their own device and staff revoking it are deliberately not
+the same act.
+
+- **The person's own** (`DELETE /devices/:id`) is lifted by signing in on that
+  device again. Re-registering revives it, which is right: they revoked their
+  phone and then picked it up, and that is consent expressed by action.
+- **Staff's** (`POST /admin/users/:id/devices/:deviceId/revoke`, `users.manage`)
+  stamps `revokedByStaffAt`, and a relaunch refreshes the row without reviving
+  it or taking its token. This is the lost-phone case, and the revival rule
+  above is exactly wrong for it: staff revoke the handset, the thief opens the
+  app, and the revocation is undone by the act it was meant to defend
+  against — quietly, with notifications about this person's money resuming on
+  the stolen device. A person cannot route round it either; their own
+  revocation leaves the stamp alone.
+
+`POST .../restore` lifts the stamp but leaves the device off and tokenless: the
+handset must register again itself. Putting a token back on staff's say-so
+would re-arm a device nobody has confirmed is in the right hands.
+
+**Neither ends a session.** Sessions are not bound to devices in this platform,
+and an administrator who believed a revocation signed the thief out would stop
+looking. `POST /admin/users/:id/sign-out` is the control that ends sessions;
+the two are meant to be used together, and the admin screen says so under the
+button.
+
+Staff read the list at `GET /admin/users/:id/devices` (`users.read_any`), which
+returns the same `toDto` shape the owner's own list uses plus `revokedByStaffAt`
+— so there is no admin-only branch that could one day return a push token.
+
 ### The APNs failures that must not delete a token
 
 Apple's reason strings, and one of them is genuinely dangerous:

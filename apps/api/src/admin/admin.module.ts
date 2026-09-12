@@ -9,11 +9,12 @@ import { AuditQueryService } from './audit-query.service';
 import { RiskHierarchyService } from './risk-hierarchy.service';
 import { BlotterService } from './blotter.service';
 import { RiskConsoleService } from './risk-console.service';
+import { DevicesModule } from '../devices/devices.module';
 import { MarketModule } from '../market/market.module';
 import { AdminInstrumentsService } from './instruments.service';
 
 @Module({
-  imports: [AccountsModule, AuthModule, TradingModule, MarketModule],
+  imports: [AccountsModule, AuthModule, TradingModule, MarketModule, DevicesModule],
   controllers: [AdminController],
   providers: [
     AdminService,

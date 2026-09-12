@@ -73,8 +73,14 @@ Both are version-neutral, so moving the API from v1 to v2 does not break probes.
 ## Migrations
 
 `prisma migrate deploy` runs before new application containers accept traffic.
-Migrations are forward-only and additive within a release; a destructive change
-is split across two releases so a rollback never strands data.
+Migrations are forward-only, and additive *as a rule* — a destructive change is
+split across two releases so a rollback never strands data.
+
+The rule has two recorded exceptions, both `NOT NULL` on columns that already
+existed, and they set the floor an image may be rolled back to. The list, and
+what it means for an incident, is in
+[runbook.md](./runbook.md#rolling-back); `scripts/migrations.test.ts` fails the
+build if a third appears without being written down.
 
 The production schema is never edited by hand.
 

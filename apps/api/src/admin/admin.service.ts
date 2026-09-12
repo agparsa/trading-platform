@@ -6,6 +6,7 @@ import { AuditService } from '../common/audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionsService } from '../auth/sessions.service';
 import { RiskHierarchyService } from './risk-hierarchy.service';
+import { DevicesService } from '../devices/devices.service';
 import { RolesService } from '../permissions/roles.service';
 import { requireTenantId } from '@tp/tenancy';
 
@@ -33,6 +34,7 @@ export class AdminService {
     private readonly sessions: SessionsService,
     private readonly roles: RolesService,
     private readonly hierarchy: RiskHierarchyService,
+    private readonly devices: DevicesService,
   ) {}
 
   /**
@@ -192,6 +194,83 @@ export class AdminService {
    * A different act from suspending: this is what a stolen laptop needs. The
    * user signs in again and carries on.
    */
+  /**
+   * Somebody's devices, for staff investigating. Read-only and audited
+   * nowhere: looking at a list is not an act, and an audit row per page view
+   * would bury the acts that are.
+   */
+  async userDevices(userId: string) {
+    await this.requireUser(userId);
+    return this.devices.listFor(userId);
+  }
+
+  /**
+   * Staff revoke a device — the lost-phone case (§13-14).
+   *
+   * Audited against the **user**, not the device, so it lands in that person's
+   * own security feed: a revocation only the office can see is
+   * indistinguishable from one that never happened. The same reasoning as
+   * break-glass.
+   *
+   * Note for whoever reads the audit row later: this stops notifications and
+   * takes the push token back. It does not end a session, because sessions are
+   * not bound to devices here — pair it with `sign-out` when the handset is in
+   * the wrong hands.
+   */
+  async revokeDevice(
+    actorId: string,
+    userId: string,
+    deviceId: string,
+    reason: string,
+  ): Promise<{ userId: string; deviceId: string }> {
+    await this.requireUser(userId);
+    await this.devices.revokeForUser(userId, deviceId);
+    await this.audit.record({
+      actorId,
+      actorType: 'ADMIN',
+      action: 'user.device_revoked',
+      resourceType: 'user',
+      resourceId: userId,
+      after: { reason, deviceId },
+    });
+    return { userId, deviceId };
+  }
+
+  /** Staff put one back: the phone turned up, or it was revoked in error. */
+  async restoreDevice(
+    actorId: string,
+    userId: string,
+    deviceId: string,
+    reason: string,
+  ): Promise<{ userId: string; deviceId: string }> {
+    await this.requireUser(userId);
+    await this.devices.restoreForUser(userId, deviceId);
+    await this.audit.record({
+      actorId,
+      actorType: 'ADMIN',
+      action: 'user.device_restored',
+      resourceType: 'user',
+      resourceId: userId,
+      after: { reason, deviceId },
+    });
+    return { userId, deviceId };
+  }
+
+  /**
+   * That the person exists, before acting on something of theirs.
+   *
+   * Without this a device id belonging to another tenant's user would answer
+   * "no such device" — true, but it answers the same way for a user who does
+   * not exist at all, and staff chasing a lost phone deserve to know which of
+   * the two they are looking at.
+   */
+  private async requireUser(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (user === null) {
+      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'No such user', { userId });
+    }
+  }
+
   async forceSignOut(
     actorId: string,
     userId: string,

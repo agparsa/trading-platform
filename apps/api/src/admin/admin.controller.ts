@@ -302,6 +302,45 @@ export class AdminController {
     return this.admin.forceSignOut(actor.id, id, body.reason);
   }
 
+  @RequirePermissions(Permission.USERS_READ_ANY)
+  @Get('users/:id/devices')
+  @ApiOperation({ summary: "The phones, tablets and browsers on a person's account" })
+  userDevices(@Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.userDevices(id);
+  }
+
+  /**
+   * The lost-phone route. Stops notifications, takes the push token back, and
+   * — unlike the person's own revocation — cannot be undone by the handset
+   * re-registering on its next launch.
+   *
+   * It ends no session: sessions are not bound to devices here. Use
+   * `sign-out` alongside it when the device is in the wrong hands.
+   */
+  @RequirePermissions(Permission.USERS_MANAGE)
+  @Post('users/:id/devices/:deviceId/revoke')
+  @ApiOperation({ summary: "Stop notifications to one of a person's devices, and keep it stopped" })
+  revokeDevice(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('deviceId', ParseUUIDPipe) deviceId: string,
+    @Body() body: ReasonDto,
+  ) {
+    return this.admin.revokeDevice(actor.id, id, deviceId, body.reason);
+  }
+
+  @RequirePermissions(Permission.USERS_MANAGE)
+  @Post('users/:id/devices/:deviceId/restore')
+  @ApiOperation({ summary: 'Lift a staff revocation; the device must register again itself' })
+  restoreDevice(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('deviceId', ParseUUIDPipe) deviceId: string,
+    @Body() body: ReasonDto,
+  ) {
+    return this.admin.restoreDevice(actor.id, id, deviceId, body.reason);
+  }
+
   @RequirePermissions(Permission.ROLES_ASSIGN)
   @Post('users/:id/role')
   @ApiOperation({ summary: 'Put a person into a role. Ends their sessions.' })

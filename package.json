@@ -43,6 +43,7 @@
     "pentest": "tsx --env-file-if-exists=.env scripts/pentest.ts",
     "soak": "tsx --env-file-if-exists=.env scripts/soak.ts",
     "restore:rehearse": "tsx --env-file-if-exists=.env scripts/restore-rehearsal.ts",
+    "migrate:rehearse": "tsx --env-file-if-exists=.env scripts/migration-rehearsal.ts",
     "chaos": "tsx --env-file-if-exists=.env scripts/failure-injection.ts"
   },
   "devDependencies": {

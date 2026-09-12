@@ -1753,6 +1753,18 @@ model Device {
   locale String?
 
   isActive   Boolean  @default(true) @map("is_active")
+
+  /// Set when **staff** revoked this device, cleared when staff restore it.
+  ///
+  /// The difference matters because re-registering revives a device, and the
+  /// app re-registers on every launch. A person who revokes their own phone
+  /// and then picks it up again has consented by action, so that revival is
+  /// right. A lost phone that staff revoked has a thief holding it, and their
+  /// next app launch would otherwise undo the revocation — quietly, and while
+  /// the notifications resume on the stolen handset. So a staff revocation is
+  /// a control: a relaunch cannot lift it.
+  revokedByStaffAt DateTime? @map("revoked_by_staff_at") @db.Timestamptz(6)
+
   lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -2462,6 +2474,21 @@ enum SecurityEventKind {
   /// against the actor: a stolen staff session would widen the allow-list, and
   /// the rightful holder is the one person certain to see that it happened.
   IP_RULE_CHANGED
+  /// A phone, tablet or browser this account had never been seen on before.
+  /// WARNING: it is what an attacker does after taking a password, and it is
+  /// the event a person can recognise as not theirs.
+  DEVICE_REGISTERED
+  /// A device the person had revoked, back again because they signed in on it.
+  /// WARNING for the same reason, and louder in effect: it undoes a control
+  /// somebody deliberately applied.
+  DEVICE_REVIVED
+  /// The person stopped notifications to one of their own devices.
+  DEVICE_REVOKED
+  /// Staff did it for them — the lost-phone case. Filed in the *subject's*
+  /// feed: it is their device and their business.
+  DEVICE_REVOKED_BY_STAFF
+  /// Staff put a revoked device back.
+  DEVICE_RESTORED_BY_STAFF
 }
 
 enum SecuritySeverity {
