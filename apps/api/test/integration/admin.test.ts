@@ -147,7 +147,7 @@ suite('Administration (integration)', () => {
       sessions,
       new RolesService(prismaService, redisStub().service, audit),
       new RiskHierarchyService(prismaService, audit),
-      new DevicesService(prismaService, new SecretBoxService(config as never)),
+      new DevicesService(prismaService, new SecretBoxService(config as never), sessions),
     );
     adjustments = new AdjustmentsService(prismaService, new LedgerService(), audit, totp);
     auditQuery = new AuditQueryService(prismaService);
@@ -296,6 +296,7 @@ suite('Administration (integration)', () => {
           new SecretBoxService(
             new ConfigService({ SECRET_ENCRYPTION_KEYS: KEY } as never) as never,
           ),
+          new SessionsService(prismaService, new AuditService(prismaService), new SilentEmailAdapter()),
         ).register(userId, {
           platform: 'IOS' as never,
           installationId: `installation-${randomUUID()}`,

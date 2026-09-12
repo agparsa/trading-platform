@@ -390,6 +390,19 @@ model RefreshToken {
   revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(6)
   userAgent  String?   @map("user_agent")
   ipAddress  String?   @map("ip_address")
+
+  /// Which installation signed in, when the client says.
+  ///
+  /// The mobile app knows its own installation id before it has a session — it
+  /// comes from the OS — and sends it with the credentials. Revoking that
+  /// device then ends these sessions too, which is what a person means by
+  /// "this phone is not mine". A browser sends nothing and is unaffected.
+  ///
+  /// Set once, at sign-in, and copied forward by rotation from the row being
+  /// replaced — never re-read from the request. A refresh that could relabel
+  /// which device a session belongs to would be a way to dodge the revocation.
+  installationId String? @map("installation_id")
+
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -399,6 +412,8 @@ model RefreshToken {
   @@index([userId, revokedAt])
   @@index([familyId])
   @@index([tenantId])
+  /// Revoking a device asks "which live sessions belong to this installation?"
+  @@index([userId, installationId, revokedAt])
   @@map("refresh_tokens")
 }
 

@@ -30,7 +30,23 @@ export const registerSchema = z
   })
   .strict();
 
-export const loginSchema = z.object({ email, password: z.string().min(1).max(256) }).strict();
+/**
+ * Which installation is signing in, when the client knows its own.
+ *
+ * Optional, because a browser has no such thing and must keep working exactly
+ * as it does. Bounded for the same reason the device registration bounds it:
+ * it is a client-supplied string that lands in an indexed column, and an
+ * unbounded one there is an invitation to fill the index.
+ */
+const installationId = z.string().min(8).max(200);
+
+export const loginSchema = z
+  .object({
+    email,
+    password: z.string().min(1).max(256),
+    installationId: installationId.nullish(),
+  })
+  .strict();
 
 /**
  * The token is optional in the body because the browser sends it as a cookie.
@@ -72,7 +88,14 @@ export class ChangePasswordDto extends createZodDto(changePasswordSchema) {}
 const secondFactor = z.string().min(6).max(32);
 
 export const twoFactorLoginSchema = z
-  .object({ challengeToken: z.string().min(1).max(4096), code: secondFactor })
+  .object({
+    challengeToken: z.string().min(1).max(4096),
+    code: secondFactor,
+    // The second half of the same sign-in, so it carries the same fact. A
+    // phone with two-factor on must not end up with a session that belongs to
+    // no device — it would survive the revocation of the handset it is on.
+    installationId: installationId.nullish(),
+  })
   .strict();
 
 export const twoFactorActivateSchema = z.object({ code: z.string().regex(/^[0-9]{6}$/) }).strict();

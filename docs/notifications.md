@@ -262,11 +262,27 @@ the same act.
 handset must register again itself. Putting a token back on staff's say-so
 would re-arm a device nobody has confirmed is in the right hands.
 
-**Neither ends a session.** Sessions are not bound to devices in this platform,
-and an administrator who believed a revocation signed the thief out would stop
-looking. `POST /admin/users/:id/sign-out` is the control that ends sessions;
-the two are meant to be used together, and the admin screen says so under the
-button.
+**Both end the sessions that device holds** — and until recently neither did.
+
+A handset that stops receiving notifications but keeps its access is still a
+handset with access to somebody's money: the screen said "removed", the
+notifications stopped, and whoever had the phone carried on trading. Sessions
+carry an installation now. The mobile app knows its own — it comes from the OS
+— and sends it with the credentials at sign-in and at the second factor;
+`RefreshToken.installationId` records it, and revoking the device revokes every
+live token naming that installation.
+
+Two properties worth keeping:
+
+- **Rotation copies the installation from the row it replaces**, never from the
+  request. A session belongs to the device it was created on for its whole
+  life; if a refresh could relabel it, somebody holding a stolen token would
+  walk out of the revocation by the ordinary act of staying signed in.
+- **A browser is untouched.** It names no installation, and there is no way to
+  tell which browser session belongs to which device row. Guessing would sign
+  people out of machines they are sitting at.
+  `POST /admin/users/:id/sign-out` remains the control for a compromised
+  account rather than a lost handset.
 
 Staff read the list at `GET /admin/users/:id/devices` (`users.read_any`), which
 returns the same `toDto` shape the owner's own list uses plus `revokedByStaffAt`

@@ -63,6 +63,13 @@ interface DeviceSummary {
  * registration are different records. Both are revocable from here, and
  * revoking either is immediate.
  *
+ * The card used to be titled "Devices receiving notifications" and its button
+ * said "Remove", which was the truth at the time and a trap: revoking a device
+ * stopped its notifications and left it signed in. Somebody seeing a handset
+ * they did not recognise and tapping the button would have believed they had
+ * shut it out. Revoking a device now ends the sessions that device holds, so
+ * the card is titled for access and the button says what it does.
+ *
  * ## Verification
  *
  * §17 of the specification wants verification states on this screen. Until
@@ -257,7 +264,7 @@ export default function ProfileScreen(): React.ReactElement {
           )}
         </Card>
 
-        <Card title="Devices receiving notifications">
+        <Card title="Devices with access">
           {devices.length === 0 ? (
             <Text style={styles.note}>No devices registered.</Text>
           ) : (
@@ -278,7 +285,7 @@ export default function ProfileScreen(): React.ReactElement {
                 </View>
                 {device.isActive ? (
                   <Button
-                    label="Remove"
+                    label="Revoke"
                     variant="quiet"
                     busy={busy === device.id}
                     onPress={() => void revokeDevice(device)}

@@ -29,6 +29,34 @@ What is **not** covered, and is therefore still unknown:
 Naming those is the honest version of a pass. A suite that reported "9/9
 accessible" would be worse than having none, because it would end the question.
 
+### And a narrower limit, found by breaking it
+
+There is a fourth category beside pass, fail and "not machine-checkable":
+**cases axe declines to judge.** It reports them as `incomplete`, and this
+audit discarded them for months.
+
+What that cost was measured rather than guessed. A price colour in the
+watchlist was changed to a genuinely unreadable dark grey, the web build was
+rebuilt, and the audit **passed**. The defect had not been missed by the rule —
+it had been filed as `incomplete`, because the cell sits on a semi-transparent
+row background and axe will not guess at a composited colour. On a dark UI
+built largely from translucent surfaces, that is not a rare case: one screen
+alone had thirteen.
+
+They are now counted and printed on every run. They do not fail it — most are
+unresolvable without changing the design to suit the tool, which is the wrong
+way round — but the number is the honest measure of how much of a screen the
+audit actually covered. A screen reporting no violations and twenty
+undetermined elements has not been checked in the way the green line suggests.
+
+The audit also **freezes CSS transitions** before measuring. The terminal
+colours a price for 300 ms when it ticks, and axe was computing contrast on
+whatever blend the cell happened to be showing at that instant — producing a
+violation that appeared and vanished between runs on an element whose settled
+colours both pass comfortably. An intermittent gate teaches people to re-run it
+rather than look. What that gives up: a transition that passes through an
+unreadable colour will not be caught.
+
 ## Why it runs in the browser suite
 
 These faults live in the rendered page, not in the components: a contrast ratio

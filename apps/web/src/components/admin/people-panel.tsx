@@ -274,9 +274,15 @@ export function UserDetail({ userId }: { userId: string }) {
  *
  * Revoking here is **not** the same as the person doing it themselves: it
  * survives the handset re-registering on its next launch, which the person's
- * own revocation deliberately does not. The note under the button says so,
- * because an operator who thinks a revocation signed the thief out would stop
- * looking — it ends no session, and `Sign out` is the control that does.
+ * own revocation deliberately does not.
+ *
+ * Both now end the sessions that installation holds. When this screen was
+ * first built they did not, and the note under the button said so — an
+ * operator who believed a revocation had signed the thief out would have
+ * stopped looking. Sessions carry their installation now. What a revocation
+ * still cannot reach is a *browser* session, which names no device, so the
+ * note says that instead: `Sign out` is the control for a compromised account
+ * rather than a lost handset.
  */
 function DevicesSection({ userId, email }: { userId: string; email: string }) {
   const devices = useAdminUserDevices(userId);
@@ -369,8 +375,9 @@ function DevicesSection({ userId, email }: { userId: string; email: string }) {
             />
           </label>
           <p className="mt-1 text-[10px] text-terminal-muted">
-            Revoking stops notifications to the device and survives the app restarting. It does not
-            end a session — use Sign out for that.
+            Revoking stops notifications, ends the sessions that device holds, and survives the app
+            restarting. It cannot reach a browser session, which names no device — use Sign out when
+            the account itself is compromised rather than one handset.
           </p>
           {revoke.error !== null ? <ErrorLine error={revoke.error} /> : null}
         </div>

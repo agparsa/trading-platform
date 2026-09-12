@@ -191,9 +191,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
 
   const signIn = useCallback(
     async (email: string, password: string) => {
+      /**
+       * The installation goes with the credentials.
+       *
+       * It is what binds this session to this handset, so that revoking the
+       * device — by its owner, or by staff when it is lost — ends the session
+       * too. Without it the phone keeps its access after being "removed", which
+       * is the state the platform was in until this was added.
+       *
+       * Read from the OS, so it is available before there is any session to
+       * read it with.
+       */
+      const installationId = await installationIdentifier();
       const result = await api.post<SignInResponse>(
         '/auth/login',
-        { email, password },
+        { email, password, installationId },
         { idempotencyKey: `login:${email}:${Date.now()}` },
       );
       if (result.twoFactorRequired === true) return { twoFactorRequired: true };
@@ -209,9 +221,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
 
   const completeTwoFactor = useCallback(
     async (challengeId: string, code: string) => {
+      // The half that issues the session carries the installation, or a phone
+      // with two-factor on would end up with a session belonging to no device.
+      const installationId = await installationIdentifier();
       const result = await api.post<Required<SignInResponse>>(
         '/auth/2fa/verify',
-        { challengeId, code },
+        { challengeId, code, installationId },
         { idempotencyKey: `2fa:${challengeId}` },
       );
       await tokens.save(toTokens(result));

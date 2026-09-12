@@ -299,6 +299,30 @@ async function visit(
  */
 async function auditAccessibility(page: Page, label: string): Promise<void> {
   await page.addScriptTag({ path: AXE_PATH });
+
+  /**
+   * Transitions off, so the audit measures colours a person actually reads.
+   *
+   * The terminal colours a price green or red for 300 ms when it ticks, and
+   * axe computes contrast on whatever the colour happens to be at that
+   * instant. On a live feed that means a *blend* between two settled colours —
+   * a state that exists for a fraction of a second and that nobody reads a
+   * number in. The result was a contrast violation that appeared and vanished
+   * between runs, on an element whose settled colours both pass comfortably.
+   *
+   * An intermittent gate is worse than no gate: it teaches whoever sees it red
+   * to run it again rather than to look. So the audit freezes animation and
+   * measures the settled state, which is the one the standard is about.
+   *
+   * This deliberately does *not* hide a real defect — the settled colour is
+   * the real colour. What it gives up is any ability to catch a transition
+   * that passes through an unreadable colour, which `accessibility.md` records
+   * along with everything else axe cannot see.
+   */
+  const frozen = await page.addStyleTag({
+    content: '*, *::before, *::after { transition: none !important; animation: none !important; }',
+  });
+
   const violations = await page.evaluate(async () => {
     const axe = (globalThis as unknown as { axe: { run: (o: unknown) => Promise<unknown> } }).axe;
     const result = (await axe.run({
@@ -307,20 +331,82 @@ async function auditAccessibility(page: Page, label: string): Promise<void> {
       // opinion beside a failing standard makes both easy to ignore.
       runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
     })) as {
+      incomplete: Array<{ id: string; nodes: Array<{ target: string[] }> }>;
       violations: Array<{
         id: string;
         impact: string | null;
         help: string;
-        nodes: Array<{ target: string[] }>;
+        nodes: Array<{
+          target: string[];
+          any?: Array<{
+            data?: { fgColor?: string; bgColor?: string; contrastRatio?: number; expectedContrastRatio?: string };
+          }>;
+        }>;
       }>;
     };
-    return result.violations.map((violation) => ({
-      id: violation.id,
-      impact: violation.impact ?? 'unknown',
-      help: violation.help,
-      count: violation.nodes.length,
-      first: violation.nodes[0]?.target.join(' ') ?? '',
-    }));
+    (globalThis as unknown as { __incomplete: unknown }).__incomplete = result.incomplete.map(
+      (item) => `${item.id}×${item.nodes.length} (${item.nodes[0]?.target.join(' ') ?? ''})`,
+    );
+    return result.violations.map((violation) => {
+      /**
+       * The measurement, not only the selector.
+       *
+       * A contrast failure reported as a CSS selector alone cannot be acted
+       * on: whoever reads it has no way to tell a real defect from an
+       * element caught mid-transition, and the tempting response is to
+       * assume the latter. axe already knows both colours and the ratio it
+       * wanted, so the report carries them.
+       */
+      const data = violation.nodes[0]?.any?.find((check) => check.data?.contrastRatio !== undefined)
+        ?.data;
+      return {
+        id: violation.id,
+        impact: violation.impact ?? 'unknown',
+        help: violation.help,
+        count: violation.nodes.length,
+        first: violation.nodes[0]?.target.join(' ') ?? '',
+        measured:
+          data === undefined
+            ? ''
+            : ` — ${data.fgColor ?? '?'} on ${data.bgColor ?? '?'} is ${String(
+                data.contrastRatio ?? '?',
+              )}:1, wants ${data.expectedContrastRatio ?? '?'}`,
+      };
+    });
+  });
+
+  /**
+   * What axe could not decide, said out loud.
+   *
+   * These were discarded until a mutation exposed what that cost: a price
+   * colour was changed to a genuinely unreadable dark grey, the build was
+   * rebuilt, and the audit passed. The failure had not been missed — it had
+   * been filed under `incomplete`, because the cell sits on a semi-transparent
+   * row background and axe will not guess at a composited colour.
+   *
+   * So a gate reporting nine green screens was also throwing away every case
+   * it could not judge, on a dark UI built largely from translucent surfaces.
+   * They do not fail the run — most are unresolvable without changing the
+   * design to suit the tool — but they are counted and printed, because the
+   * number is the honest measure of how much of this screen the audit actually
+   * covered. `docs/accessibility.md` says the same in words.
+   */
+  const incomplete = (await page.evaluate(
+    () => (globalThis as unknown as { __incomplete: string[] }).__incomplete,
+  )) as string[];
+  if (incomplete.length > 0) {
+    const total = incomplete.reduce((sum, item) => {
+      const match = /×(\d+)/.exec(item);
+      return sum + (match === null ? 1 : Number(match[1]));
+    }, 0);
+    console.log(
+      `      (${total} element(s) axe could not judge — semi-transparent or composited ` +
+        `backgrounds; not a pass, not a failure: ${incomplete.slice(0, 3).join('; ')})`,
+    );
+  }
+
+  await frozen.evaluate((node) => {
+    node.remove();
   });
 
   /**
@@ -335,7 +421,10 @@ async function auditAccessibility(page: Page, label: string): Promise<void> {
     (violation) => violation.impact === 'serious' || violation.impact === 'critical',
   );
   const detail = blocking
-    .map((violation) => `${violation.id}×${violation.count} (${violation.first})`)
+    .map(
+      (violation) =>
+        `${violation.id}×${violation.count} (${violation.first})${violation.measured}`,
+    )
     .join('; ');
   ok(blocking.length === 0, `${label} has no serious accessibility violations`, detail);
   if (blocking.length > 0) problems.push(`${label}: ${detail}`);

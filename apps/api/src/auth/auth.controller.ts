@@ -126,7 +126,10 @@ export class AuthController {
     @Req() request: RequestWithContext,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const result = await this.auth.login(body.email, body.password, contextOf(request));
+    const result = await this.auth.login(body.email, body.password, {
+      ...contextOf(request),
+      installationId: body.installationId ?? null,
+    });
     if (result.kind === 'twoFactorRequired') {
       // No cookie is set and no access token is returned: nobody has signed in
       // yet. The challenge is the only thing that crosses, and on its own it
@@ -161,11 +164,10 @@ export class AuthController {
     @Req() request: RequestWithContext,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const pair = await this.auth.completeTwoFactor(
-      body.challengeToken,
-      body.code,
-      contextOf(request),
-    );
+    const pair = await this.auth.completeTwoFactor(body.challengeToken, body.code, {
+      ...contextOf(request),
+      installationId: body.installationId ?? null,
+    });
     setRefreshCookie(response, pair.refreshToken, this.cookieOptions());
     return { accessToken: pair.accessToken, expiresIn: pair.expiresIn };
   }

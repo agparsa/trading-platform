@@ -5,6 +5,11 @@ import { withTenant } from '@tp/tenancy';
 import { DevicesService } from '../../src/devices/devices.service';
 import { DevicesController } from '../../src/devices/devices.controller';
 import { AuditService } from '../../src/common/audit/audit.service';
+import { SessionsService } from '../../src/auth/sessions.service';
+import { TokenService } from '../../src/auth/token.service';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { EmailPort } from '../../src/auth/email/email.port';
 import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 import {
@@ -17,6 +22,24 @@ import {
 } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
+
+/** Sessions need an email port for the "signed in from a new device" notice; nothing here reads mail. */
+class SilentEmailAdapter extends EmailPort {
+  async send(): Promise<void> {
+    return undefined;
+  }
+}
+
+/** A real token service, so these tests rotate the way production rotates. */
+function buildTokens(prismaService: PrismaService): TokenService {
+  const config = new ConfigService({
+    JWT_ACCESS_SECRET: 'test-access-secret-test-access-secret',
+    JWT_REFRESH_SECRET: 'test-refresh-secret-test-refresh-secret',
+    JWT_ACCESS_TTL: '15m',
+    JWT_REFRESH_TTL: '30d',
+  } as never);
+  return new TokenService(new JwtService({}), config as never, prismaService);
+}
 
 const IPHONE = 'installation-iphone-0001';
 const IPAD = 'installation-ipad-0002';
@@ -42,7 +65,11 @@ suite('Devices and push tokens (integration)', () => {
     prisma = createTestClient();
     await prisma.$connect();
     secrets = new SecretBox(parseEncryptionKeys(generateEncryptionKey('test')));
-    devices = new DevicesService(prisma as unknown as PrismaService, secrets as never);
+    devices = new DevicesService(
+      prisma as unknown as PrismaService,
+      secrets as never,
+      new SessionsService(prisma as unknown as PrismaService, new AuditService(prisma as unknown as PrismaService), new SilentEmailAdapter()),
+    );
   });
 
   afterAll(async () => {
@@ -432,6 +459,91 @@ suite('Devices and push tokens (integration)', () => {
     const events = await prisma.securityEvent.findMany({ where: { userId } });
     expect(events.map((event) => event.kind)).toEqual(['DEVICE_REGISTERED']);
     expect(events[0]?.severity).toBe('WARNING');
+  });
+
+  /**
+   * The half that was missing until now.
+   *
+   * A handset that stops receiving notifications but keeps its access is still
+   * a handset with access to somebody's money: the screen said "removed", the
+   * notifications stopped, and whoever had the phone carried on trading.
+   */
+  it('ends the sessions a revoked device holds, and leaves other devices signed in', async () => {
+    const tokens = buildTokens(prisma as unknown as PrismaService);
+    const user = { id: userId, email: 'trader@test.local', role: 'USER' as const };
+
+    const phone = await tokens.issuePair(user, { installationId: IPHONE });
+    const tablet = await tokens.issuePair(user, { installationId: IPAD });
+    const browser = await tokens.issuePair(user, {}); // no installation: a browser
+
+    const { device } = await devices.register(userId, {
+      platform: DevicePlatform.IOS,
+      installationId: IPHONE,
+      pushToken: TOKEN_A,
+    });
+
+    const outcome = await devices.revokeForUser(userId, device.id);
+    expect(outcome.sessionsEnded).toBe(1);
+
+    // The phone is out.
+    await expect(tokens.rotate(phone.refreshToken)).rejects.toThrow();
+    // Everything else is untouched — signing somebody out of the machine they
+    // are sitting at is its own incident.
+    await expect(tokens.rotate(tablet.refreshToken)).resolves.toBeDefined();
+    await expect(tokens.rotate(browser.refreshToken)).resolves.toBeDefined();
+  });
+
+  it("a person revoking their own phone signs that phone out too", async () => {
+    const tokens = buildTokens(prisma as unknown as PrismaService);
+    const user = { id: userId, email: 'trader@test.local', role: 'USER' as const };
+    const phone = await tokens.issuePair(user, { installationId: IPHONE });
+    const { device } = await devices.register(userId, {
+      platform: DevicePlatform.IOS,
+      installationId: IPHONE,
+      pushToken: TOKEN_A,
+    });
+
+    const outcome = await devices.deactivate(userId, device.id);
+    expect(outcome.sessionsEnded).toBe(1);
+    await expect(tokens.rotate(phone.refreshToken)).rejects.toThrow();
+  });
+
+  /**
+   * The way round the control, if rotation trusted the request.
+   *
+   * A session belongs to the device it was created on for its whole life. If a
+   * refresh could carry a new installation id, somebody holding a stolen token
+   * could relabel the session and walk out of the revocation meant to end it —
+   * defeated by the ordinary act of staying signed in.
+   */
+  it('keeps a session on the device it was created on, however often it rotates', async () => {
+    const tokens = buildTokens(prisma as unknown as PrismaService);
+    const user = { id: userId, email: 'trader@test.local', role: 'USER' as const };
+    const first = await tokens.issuePair(user, { installationId: IPHONE });
+
+    // Rotate twice, each time claiming to be a different installation.
+    const second = await tokens.rotate(first.refreshToken, { installationId: IPAD });
+    const third = await tokens.rotate(second.refreshToken, { installationId: 'installation-elsewhere' });
+
+    const { device } = await devices.register(userId, {
+      platform: DevicePlatform.IOS,
+      installationId: IPHONE,
+      pushToken: TOKEN_A,
+    });
+    const outcome = await devices.revokeForUser(userId, device.id);
+
+    expect(outcome.sessionsEnded).toBe(1);
+    await expect(tokens.rotate(third.refreshToken)).rejects.toThrow();
+  });
+
+  it('revoking a device nobody has signed in on ends nothing, and says so', async () => {
+    const { device } = await devices.register(userId, {
+      platform: DevicePlatform.ANDROID,
+      installationId: IPAD,
+      pushToken: TOKEN_B,
+    });
+    const outcome = await devices.deactivate(userId, device.id);
+    expect(outcome.sessionsEnded).toBe(0);
   });
 
   it('drops a device the provider has rejected', async () => {

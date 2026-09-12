@@ -198,6 +198,27 @@ export class SessionsService {
   }
 
   /**
+   * Ends every live session that belongs to one installation.
+   *
+   * The other half of revoking a device. A lost handset that stops receiving
+   * notifications but keeps its access is still a lost handset with access to
+   * somebody's money — and that was the state of things until this existed: the
+   * screen said "removed", the notifications stopped, and the thief carried on
+   * trading.
+   *
+   * Returns how many were ended so the caller can say so. Nothing is thrown for
+   * a device with no sessions: a browser-only account, or a phone signed out
+   * already, is a perfectly ordinary case and not a failure to report.
+   */
+  async revokeByInstallation(userId: string, installationId: string): Promise<{ revoked: number }> {
+    const result = await this.prisma.refreshToken.updateMany({
+      where: { userId, installationId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return { revoked: result.count };
+  }
+
+  /**
    * Ends one session.
    *
    * Scoped by `userId` in the same query that finds it, so a family id belonging

@@ -185,6 +185,35 @@ suite('Auth (integration)', () => {
       expect(claims.typ).toBe('access');
     });
 
+    /**
+     * The chain that makes a device revocation able to end a session.
+     *
+     * The mobile app knows its installation id before it has a session — it
+     * comes from the OS — and sends it with the credentials. If it stops
+     * arriving anywhere along the way, the phone's session belongs to no
+     * device, and revoking the handset leaves it signed in. Nothing about that
+     * failure is visible until somebody loses a phone.
+     */
+    it('records which installation signed in, when the client says', async () => {
+      await register();
+      await auth.login('trader@test.local', PASSWORD, {
+        installationId: 'installation-iphone-0001',
+      });
+      const row = await prisma.refreshToken.findFirstOrThrow({
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(row.installationId).toBe('installation-iphone-0001');
+    });
+
+    it('leaves it null for a browser, which has no installation to name', async () => {
+      await register();
+      await auth.login('trader@test.local', PASSWORD);
+      const row = await prisma.refreshToken.findFirstOrThrow({
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(row.installationId).toBeNull();
+    });
+
     it('gives the same error for a wrong password and an unknown address', async () => {
       await register();
       const wrongPassword = await auth

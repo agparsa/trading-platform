@@ -9,6 +9,7 @@ import {
 import { requireTenantId } from '@tp/tenancy';
 import { PrismaService } from '../prisma/prisma.service';
 import { SecretBoxService } from '../common/crypto/crypto.module';
+import { SessionsService } from '../auth/sessions.service';
 
 /**
  * The phones, tablets and browsers a person has signed in from.
@@ -37,6 +38,7 @@ export class DevicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly secrets: SecretBoxService,
+    private readonly sessions: SessionsService,
   ) {}
 
   /**
@@ -192,7 +194,11 @@ export class DevicesService {
    * by revoking and re-registering, which would otherwise be the obvious way
    * round the control above.
    */
-  async deactivate(userId: string, deviceId: string): Promise<{ id: string }> {
+  async deactivate(userId: string, deviceId: string): Promise<{ id: string; sessionsEnded: number }> {
+    const device = await this.prisma.device.findFirst({
+      where: { id: deviceId, userId },
+      select: { installationId: true },
+    });
     const result = await this.prisma.device.updateMany({
       where: { id: deviceId, userId },
       data: {
@@ -201,13 +207,42 @@ export class DevicesService {
         pushTokenFingerprint: null,
       },
     });
-    if (result.count === 0) {
+    if (result.count === 0 || device === null) {
       // Scoped by userId in the same statement, so somebody else's device id is
       // "not found" rather than "found and refused". The two are
       // indistinguishable to the caller, which is the point.
       throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'No such device');
     }
-    return { id: deviceId };
+    const { revoked } = await this.endSessionsOn(userId, device.installationId);
+    return { id: deviceId, sessionsEnded: revoked };
+  }
+
+  /**
+   * Revoking a device ends the sessions that device holds.
+   *
+   * This is the half that was missing. A handset that stops receiving
+   * notifications but keeps its access is still a handset with access to
+   * somebody's money — the screen said "removed", the notifications stopped,
+   * and whoever had the phone carried on trading.
+   *
+   * Only sessions that *named* this installation at sign-in are ended, which
+   * means in practice the mobile app's. A browser sends no installation id and
+   * is untouched: there is no way to tell which browser session belongs to
+   * which device row, and guessing would sign people out of machines they are
+   * sitting at.
+   */
+  private async endSessionsOn(
+    userId: string,
+    installationId: string,
+  ): Promise<{ revoked: number }> {
+    const { revoked } = await this.sessions.revokeByInstallation(userId, installationId);
+    if (revoked > 0) {
+      this.logger.warn(
+        { userId, revoked },
+        'Revoking a device ended the sessions it held',
+      );
+    }
+    return { revoked };
   }
 
   /**
@@ -236,13 +271,23 @@ export class DevicesService {
    * revocation, and additionally stamps `revokedByStaffAt` so the next app
    * launch on that handset cannot undo it.
    *
-   * It does **not** end any session. Sessions are not bound to devices in this
-   * platform, and pretending otherwise would be worse than saying so: an
-   * administrator who thinks this signed the thief out would stop looking.
-   * `POST /admin/users/:id/sign-out` is the one that ends sessions, and the
-   * two are meant to be used together.
+   * It **also ends the sessions that installation holds**, which it did not
+   * when this was first written — the comment here used to say so, and say why
+   * an administrator should not assume otherwise. Sessions carry the
+   * installation they were created on now, so the assumption is true and the
+   * caveat is gone.
+   *
+   * One caveat remains and is worth keeping in mind: only sessions that named
+   * an installation at sign-in can be matched, so a *browser* session is not
+   * ended by this. `POST /admin/users/:id/sign-out` still ends everything, and
+   * is the right tool when the account itself is compromised rather than one
+   * handset.
    */
-  async revokeForUser(userId: string, deviceId: string): Promise<{ id: string }> {
+  async revokeForUser(userId: string, deviceId: string): Promise<{ id: string; sessionsEnded: number }> {
+    const device = await this.prisma.device.findFirst({
+      where: { id: deviceId, userId },
+      select: { installationId: true },
+    });
     const result = await this.prisma.device.updateMany({
       where: { id: deviceId, userId },
       data: {
@@ -252,10 +297,11 @@ export class DevicesService {
         revokedByStaffAt: new Date(),
       },
     });
-    if (result.count === 0) {
+    if (result.count === 0 || device === null) {
       throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'No such device');
     }
-    return { id: deviceId };
+    const { revoked } = await this.endSessionsOn(userId, device.installationId);
+    return { id: deviceId, sessionsEnded: revoked };
   }
 
   /**

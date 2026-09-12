@@ -16,6 +16,13 @@ import type {
 export interface IssueContext {
   readonly userAgent?: string;
   readonly ipAddress?: string;
+  /**
+   * Which installation is signing in, when the client knows.
+   *
+   * Only meaningful on a *first* issue. Rotation deliberately ignores it and
+   * copies the value from the row being replaced — see `rotate`.
+   */
+  readonly installationId?: string | null;
 }
 
 /**
@@ -86,6 +93,7 @@ export class TokenService {
         expiresAt: this.refreshExpiry(),
         userAgent: context.userAgent ?? null,
         ipAddress: context.ipAddress ?? null,
+        installationId: context.installationId ?? null,
       },
     });
 
@@ -212,9 +220,18 @@ export class TokenService {
       throw new DomainError(TradingErrorCode.FORBIDDEN, 'This account is disabled');
     }
 
+    /**
+     * The installation comes from the row being replaced, not from the request.
+     *
+     * A session belongs to the device it was created on, for its whole life.
+     * If a refresh could carry a new installation id, somebody holding a stolen
+     * token could relabel the session as a different device and walk straight
+     * out of the revocation that was meant to end it — the control would be
+     * defeated by the ordinary act of staying signed in.
+     */
     const pair = await this.issuePair(
       { id: stored.userId, email: stored.user.email, role: stored.user.role },
-      context,
+      { ...context, installationId: stored.installationId },
       stored.familyId,
     );
 
