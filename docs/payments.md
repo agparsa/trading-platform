@@ -78,7 +78,7 @@ bookkeeping around that single fact.
 
 Two mechanisms, because either alone has a hole.
 
-1. **`payment_events(provider, provider_event_id)` is unique**, and the row is
+1. **`payment_events(tenant_id, provider, provider_event_id)` is unique**, and the row is
    written _inside the same transaction as the credit_. A provider that
    re-delivers an event collides on the insert, before any money moves, and the
    whole transaction rolls back. A check in code could not do this: two

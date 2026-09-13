@@ -49,8 +49,11 @@ week**, and that compounds into a real number on a large book.
 Each accrual carries a ledger idempotency key of `swap:{positionId}:{tradingDay}`.
 Two things enforce single-charging, and they are not redundant:
 
-- The **unique index** on `balance_ledger.idempotency_key` is the guarantee. It
-  holds even if the application forgets to check.
+- The **unique index** on `balance_ledger.(tenant_id, idempotency_key)` is the
+  guarantee. It holds even if the application forgets to check. The firm is part
+  of the key on purpose: a unique index is enforced across the rows row-level
+  security hides, so a global one would let one firm's swap key refuse
+  another's. See `docs/database.md`.
 - The **in-transaction lookup** is what makes a retry a quiet no-op rather than a
   failed transaction and an alarming log line.
 

@@ -75,7 +75,11 @@ a position nobody can find.
 
 `clientOrderId` is minted here (`tp-<uuid>`), sent with the order, and stored
 on the row. It is the only handle the platform has on an order it cannot see,
-so it is `@unique` and it is never reused.
+so it is unique — `@@unique([tenantId, clientOrderId])` — and it is never
+reused. Per firm rather than platform-wide because the column also holds
+references a *caller* chose, and two firms both reaching for `order-1` must not
+collide; the ids this file mints are UUIDs, which would not have collided
+either way.
 
 ---
 

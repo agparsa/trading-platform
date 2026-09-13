@@ -11,7 +11,10 @@ export interface LedgerPosting {
   readonly amount: Money;
   readonly referenceType?: string;
   readonly referenceId?: string;
-  /** Makes the posting safe to retry. Unique across the whole ledger. */
+  /**
+   * Makes the posting safe to retry. Unique **within the firm**, not across
+   * the platform: two firms retrying their own `payout-42` must both succeed.
+   */
   readonly idempotencyKey?: string;
   readonly description?: string;
   /** Set on an ADJUSTMENT that reverses an earlier entry. */
@@ -78,8 +81,23 @@ export class LedgerService {
 
   async post(tx: Prisma.TransactionClient, posting: LedgerPosting): Promise<LedgerResult> {
     if (posting.idempotencyKey !== undefined) {
+      /**
+       * The tenant is named, because the key is only unique within one.
+       *
+       * It used to be a bare `findUnique({ idempotencyKey })` against a global
+       * unique index. The read was narrowed by the tenancy extension and so was
+       * safe, but the *constraint* was not — a unique index is enforced across
+       * rows that row-level security hides — so a firm whose caller happened to
+       * choose a key another firm had used was refused the posting with a raw
+       * constraint violation, for a row it could not see and could not explain.
+       */
       const existing = await tx.balanceLedger.findUnique({
-        where: { idempotencyKey: posting.idempotencyKey },
+        where: {
+          tenantId_idempotencyKey: {
+            tenantId: requireTenantId(),
+            idempotencyKey: posting.idempotencyKey,
+          },
+        },
       });
       if (existing !== null) {
         // Already posted. Return the original result rather than double-crediting.

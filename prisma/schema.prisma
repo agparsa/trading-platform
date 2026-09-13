@@ -403,7 +403,7 @@ model RefreshToken {
   /// which device a session belongs to would be a way to dodge the revocation.
   installationId String? @map("installation_id")
 
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -753,7 +753,12 @@ model Order {
   /// The id **we** minted for this order before it left, and the venue's own.
   /// `clientOrderId` is the idempotency key at the venue and the key the
   /// recovery query asks by; it exists only for externally executed orders.
-  clientOrderId   String? @unique @map("client_order_id")
+  ///
+  /// Unique **per firm**, not platform-wide: the reference is chosen by the
+  /// caller, so two firms both reaching for `order-1` is Tuesday rather than an
+  /// edge case — and a global unique would have refused the second one for a
+  /// row it cannot see.
+  clientOrderId   String? @map("client_order_id")
   externalOrderId String? @map("external_order_id")
 
   version   Int       @default(0)
@@ -769,6 +774,7 @@ model Order {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
+  @@unique([tenantId, clientOrderId])
   @@index([accountId, status])
   @@index([accountId, createdAt(sort: Desc)])
   /// Partial index for the trigger engine's hot query: resting orders only.
@@ -808,9 +814,11 @@ model Position {
   status PositionStatus @default(OPEN)
 
   /// The venue's own id, when this position lives at a venue rather than only
-  /// here. Unique: two platform positions pointing at one venue position
-  /// would each close the other's.
-  externalPositionId String? @unique @map("external_position_id")
+  /// here. Unique **per firm**: within one firm, two platform positions
+  /// pointing at one venue position would each close the other's — but two
+  /// firms on two brokers can be handed the same id, and neither should block
+  /// the other.
+  externalPositionId String? @map("external_position_id")
 
   volume        Decimal @db.Decimal(18, 8)
   initialVolume Decimal @map("initial_volume") @db.Decimal(18, 8)
@@ -845,6 +853,7 @@ model Position {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
+  @@unique([tenantId, externalPositionId])
   @@index([accountId, status])
   @@index([symbolId, status])
   @@index([tenantId])
@@ -882,9 +891,10 @@ model Execution {
   volume Decimal   @db.Decimal(18, 8)
   price  Decimal   @db.Decimal(28, 10)
 
-  /// The venue's own id for this fill, when the venue executed it. Unique so
-  /// a redelivered event cannot book the same fill twice.
-  externalExecutionId String? @unique @map("external_execution_id")
+  /// The venue's own id for this fill, when the venue executed it. Unique
+  /// **per firm**, so a redelivered event cannot book the same fill twice
+  /// without one firm's venue ids colliding with another's.
+  externalExecutionId String? @map("external_execution_id")
 
   quoteBid Decimal  @map("quote_bid") @db.Decimal(28, 10)
   quoteAsk Decimal  @map("quote_ask") @db.Decimal(28, 10)
@@ -897,6 +907,7 @@ model Execution {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
+  @@unique([tenantId, externalExecutionId])
   @@index([accountId, executedAt(sort: Desc)])
   @@index([orderId])
   @@index([tenantId])
@@ -986,8 +997,11 @@ model BalanceLedger {
   /// Set on an ADJUSTMENT that reverses an earlier entry.
   compensatesId String? @map("compensates_id") @db.Uuid
 
-  /// Deduplication key. A retried webhook or job cannot double-credit.
-  idempotencyKey String? @unique @map("idempotency_key")
+  /// Deduplication key, derived from the caller's `Idempotency-Key` and so
+  /// unique only within the firm that chose it. A retried webhook or job
+  /// cannot double-credit an account; another firm's choice of the same key
+  /// cannot refuse this one.
+  idempotencyKey String? @map("idempotency_key")
 
   description String?
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -996,6 +1010,7 @@ model BalanceLedger {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
+  @@unique([tenantId, idempotencyKey])
   @@index([accountId, createdAt(sort: Desc)])
   @@index([referenceType, referenceId])
   @@index([tenantId])
@@ -1767,7 +1782,7 @@ model Device {
   /// The locale the device asked for, so a notification can be written in it.
   locale String?
 
-  isActive   Boolean  @default(true) @map("is_active")
+  isActive Boolean @default(true) @map("is_active")
 
   /// Set when **staff** revoked this device, cleared when staff restore it.
   ///
@@ -2084,7 +2099,8 @@ model WalletTransaction {
   compensatesId String? @map("compensates_id") @db.Uuid
 
   /// Deduplication. A retried transfer or webhook cannot double-credit.
-  idempotencyKey String? @unique @map("idempotency_key")
+  /// Per firm, for the same reason as `BalanceLedger.idempotencyKey`.
+  idempotencyKey String? @map("idempotency_key")
 
   description String?
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -2092,6 +2108,7 @@ model WalletTransaction {
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
+  @@unique([tenantId, idempotencyKey])
   @@index([walletId, createdAt(sort: Desc)])
   @@index([accountId])
   @@index([tenantId])
@@ -2159,7 +2176,11 @@ model PaymentIntent {
   tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   events PaymentEvent[]
 
-  @@unique([provider, providerReference])
+  /// Per firm: each firm has its own merchant account at the provider, and a
+  /// provider's reference is unique within *that* account, not across every
+  /// account it has ever opened. A global unique here would let one firm's
+  /// reference refuse another firm's payment.
+  @@unique([tenantId, provider, providerReference])
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
   @@index([tenantId])
@@ -2177,10 +2198,12 @@ enum PaymentStatus {
 
 /// One webhook delivery, kept whether or not it changed anything.
 ///
-/// `(provider, providerEventId)` is unique, and that constraint is the whole
-/// safety mechanism: a provider *will* deliver the same event twice — after a
-/// timeout, after a retry, after its own outage — and the second insert fails
-/// rather than the second credit succeeding.
+/// `(tenantId, provider, providerEventId)` is unique, and that constraint is
+/// the whole safety mechanism: a provider *will* deliver the same event twice —
+/// after a timeout, after a retry, after its own outage — and the second insert
+/// fails rather than the second credit succeeding. The firm is part of the key
+/// because each firm has its own merchant account, and one firm's event id must
+/// never refuse another firm's payment.
 ///
 /// Deliveries that changed nothing are stored too. An operator asking "did they
 /// tell us?" needs the answer to be the record rather than a log line that has
@@ -2207,7 +2230,10 @@ model PaymentEvent {
   intent PaymentIntent @relation(fields: [intentId], references: [id], onDelete: Restrict)
   tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  @@unique([provider, providerEventId])
+  /// Per firm, for the same reason as `PaymentIntent`'s. Replay protection is
+  /// still exact: a redelivered webhook carries the same event id and lands in
+  /// the same firm.
+  @@unique([tenantId, provider, providerEventId])
   @@index([intentId, createdAt(sort: Desc)])
   @@index([tenantId])
   @@map("payment_events")

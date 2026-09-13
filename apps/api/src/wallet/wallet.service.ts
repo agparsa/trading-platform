@@ -170,8 +170,15 @@ export class WalletService {
     }
 
     if (movement.idempotencyKey !== undefined) {
+      // Per tenant: the key comes from the caller's `Idempotency-Key`, so it
+      // is only unique within the firm that chose it. See ledger.service.ts.
       const existing = await tx.walletTransaction.findUnique({
-        where: { idempotencyKey: movement.idempotencyKey },
+        where: {
+          tenantId_idempotencyKey: {
+            tenantId: requireTenantId(),
+            idempotencyKey: movement.idempotencyKey,
+          },
+        },
       });
       if (existing !== null) {
         /**

@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Money, swapAccrual, toDecimal, type SymbolSpec } from '@tp/financial-core';
 import { PrismaService } from '../prisma.service';
 import type { WorkerEnv } from '../env';
-import { withTenant, withoutTenantScope } from '@tp/tenancy';
+import { requireTenantId, withTenant, withoutTenantScope } from '@tp/tenancy';
 
 export interface SwapAccrualSummary {
   /** The trading day the accrual was booked for, as YYYY-MM-DD. */
@@ -163,7 +163,9 @@ export class SwapAccrualService {
     const idempotencyKey = `swap:${positionId}:${forDate}`;
 
     await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.balanceLedger.findUnique({ where: { idempotencyKey } });
+      const existing = await tx.balanceLedger.findUnique({
+        where: { tenantId_idempotencyKey: { tenantId: requireTenantId(), idempotencyKey } },
+      });
       if (existing !== null) return;
 
       const locked = await tx.$queryRaw<Array<{ balance: string; currency: string }>>`

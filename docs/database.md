@@ -52,8 +52,25 @@ ledger by a scheduled job. When the two disagree, the ledger wins.
 `balanceAfter` is stored on every entry so any historical balance is a single
 row read rather than a replay of the whole account.
 
-`idempotencyKey` on the ledger is unique: a retried webhook or job cannot
-double-credit an account.
+`idempotencyKey` on the ledger is unique **per firm** — `@@unique([tenantId,
+idempotencyKey])`, not a bare unique on the column. A retried webhook or job
+cannot double-credit an account, and one firm's choice of key cannot refuse
+another firm's posting.
+
+That second half is not a nicety. A unique index is enforced across every row
+in the table, including the rows row-level security hides, so a global unique
+on a tenant-scoped column is both a denial of service and an oracle: Firm B's
+posting is refused, with a constraint violation naming a row Firm B cannot see
+and cannot explain, and the refusal itself confirms that Firm A used that key.
+Every caller-supplied key in this schema is scoped the same way for the same
+reason — `Order.clientOrderId`, `WalletTransaction.idempotencyKey`,
+`Position.externalPositionId`, `Execution.externalExecutionId`, and the two
+payment-provider references. `tenant-unique-keys.test.ts` checks both halves.
+
+The exception is a value nobody chooses: a content hash, a UUID, an email
+address the platform treats as one identity. Those stay globally unique on
+purpose, because a collision there means the same thing, not two firms picking
+the same short string.
 
 ### Round once, then apply what was rounded
 
