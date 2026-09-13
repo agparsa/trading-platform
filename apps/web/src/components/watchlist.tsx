@@ -230,9 +230,24 @@ function WatchlistRow({
             }}
             aria-pressed={starred}
             aria-label={starred ? `Unstar ${symbol.code}` : `Star ${symbol.code}`}
+            /**
+             * The resting star is `muted`, not `border`.
+             *
+             * It was `text-terminal-border` — #232a35 on a #12161d row, which
+             * is **1.26:1**. The intent was "subtle until hovered" and the
+             * effect was invisible: the only way to favourite an instrument
+             * was a control most people cannot see is there. axe never said
+             * so, because the row background is semi-transparent and it files
+             * those as undetermined rather than failing them.
+             *
+             * `muted` is the token this UI already uses for secondary text, so
+             * the star stays quiet against the instrument code beside it while
+             * clearing 4.5:1. The three states remain distinct: quiet, brighter
+             * on hover, warning-coloured when set.
+             */
             className={cn(
               'text-[11px] leading-none transition-colors',
-              starred ? 'text-terminal-warning' : 'text-terminal-border hover:text-terminal-muted',
+              starred ? 'text-terminal-warning' : 'text-terminal-muted hover:text-terminal-text',
             )}
           >
             ★

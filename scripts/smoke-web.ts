@@ -297,8 +297,180 @@ async function visit(
  * `docs/accessibility.md` says which is which, so a green line here is not read
  * as a conformance claim.
  */
+interface UndeterminedContrast {
+  /** Elements axe would not judge that this could, and that read fine. */
+  readonly checked: number;
+  /** Elements axe would not judge that this could, and that do not. */
+  readonly failed: readonly { target: string; fg: string; bg: string; ratio: string; wants: number }[];
+  /** Elements neither could judge — a background image, or nothing opaque above. */
+  readonly stillUnknown: number;
+}
+
+/**
+ * The contrast axe declines to compute, computed.
+ *
+ * axe reports `incomplete` rather than a violation whenever text sits on a
+ * background it cannot resolve — most often a semi-transparent one, because
+ * the rendered colour depends on everything underneath. On a dark UI built
+ * from translucent surfaces that is not an edge case: one screen here had
+ * thirteen, and they were being discarded.
+ *
+ * Resolving them found a real defect on the first run: the watchlist's star
+ * buttons rendered at **1.26:1**, an interactive control most people cannot
+ * see is there, and the only way to favourite an instrument. Eight of them,
+ * on the busiest screen in the product, past every previous audit.
+ *
+ * The composite is not hard to do, so this does it: walk up from the element
+ * accumulating background layers until something opaque, blend them in order,
+ * blend the text colour over the result, and compare luminances. Where that
+ * succeeds the element is judged like any other and a failure fails the run.
+ * Where it cannot — a background image, a canvas, nothing opaque in the
+ * ancestry — it stays undetermined and is counted as such, because inventing
+ * an answer there would be worse than admitting the gap.
+ *
+ * The thresholds are WCAG's own: 4.5:1, or 3:1 for text at 24px, or at 18.66px
+ * when bold.
+ */
+async function resolveUndeterminedContrast(page: Page): Promise<UndeterminedContrast> {
+  return page.evaluate(() => {
+    /**
+     * The DOM, structurally.
+     *
+     * `scripts/tsconfig` has no DOM lib — these run in Node and are shipped
+     * into the page as source — so the handful of properties this needs are
+     * declared rather than imported. Narrow on purpose: anything wider would
+     * be `any` wearing a hat.
+     */
+    interface Styled {
+      readonly color: string;
+      readonly backgroundColor: string;
+      readonly backgroundImage: string;
+      readonly fontSize: string;
+      readonly fontWeight: string;
+    }
+    interface El {
+      readonly parentElement: El | null;
+    }
+    const win = globalThis as unknown as {
+      __incompleteTargets?: string[];
+      document: { querySelector: (selector: string) => El | null };
+      getComputedStyle: (element: El) => Styled;
+    };
+
+    const targets = win.__incompleteTargets;
+    if (targets === undefined) return { checked: 0, failed: [], stillUnknown: 0 };
+
+    const parse = (value: string): [number, number, number, number] | null => {
+      const match = /rgba?\(([^)]+)\)/.exec(value);
+      if (match === null) return null;
+      const parts = match[1]!.split(/[,\s/]+/).filter((p) => p !== '');
+      const [r, g, b] = [Number(parts[0]), Number(parts[1]), Number(parts[2])];
+      const a = parts[3] === undefined ? 1 : Number(parts[3]);
+      return Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b) ? null : [r, g, b, a];
+    };
+
+    const over = (
+      top: [number, number, number, number],
+      bottom: [number, number, number, number],
+    ): [number, number, number, number] => {
+      const a = top[3];
+      return [
+        top[0] * a + bottom[0] * (1 - a),
+        top[1] * a + bottom[1] * (1 - a),
+        top[2] * a + bottom[2] * (1 - a),
+        1,
+      ];
+    };
+
+    const luminance = ([r, g, b]: [number, number, number, number]): number => {
+      const channel = (c: number): number => {
+        const v = c / 255;
+        return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+    };
+
+    const failed: { target: string; fg: string; bg: string; ratio: string; wants: number }[] = [];
+    let checked = 0;
+    let stillUnknown = 0;
+
+    for (const target of targets) {
+      const element = win.document.querySelector(target);
+      if (element === null) continue;
+      const style = win.getComputedStyle(element);
+      const fg = parse(style.color);
+      if (fg === null) {
+        stillUnknown += 1;
+        continue;
+      }
+
+      // Every background layer from the element upwards, until one is opaque.
+      const layers: [number, number, number, number][] = [];
+      let node: El | null = element;
+      let opaque = false;
+      while (node !== null) {
+        const nodeStyle = win.getComputedStyle(node);
+        if (nodeStyle.backgroundImage !== 'none') break; // a picture; not ours to judge
+        const background = parse(nodeStyle.backgroundColor);
+        if (background !== null && background[3] > 0) {
+          layers.push(background);
+          if (background[3] === 1) {
+            opaque = true;
+            break;
+          }
+        }
+        node = node.parentElement;
+      }
+      if (!opaque) {
+        stillUnknown += 1;
+        continue;
+      }
+
+      // Bottom-most first, then each layer over it, then the text.
+      let composited = layers[layers.length - 1]!;
+      for (let i = layers.length - 2; i >= 0; i -= 1) composited = over(layers[i]!, composited);
+      const text = over(fg, composited);
+
+      const light = Math.max(luminance(text), luminance(composited));
+      const dark = Math.min(luminance(text), luminance(composited));
+      const ratio = (light + 0.05) / (dark + 0.05);
+
+      const size = Number.parseFloat(style.fontSize);
+      const bold = Number(style.fontWeight) >= 700;
+      const wants = size >= 24 || (bold && size >= 18.66) ? 3 : 4.5;
+
+      checked += 1;
+      if (ratio < wants) {
+        failed.push({
+          target,
+          fg: style.color,
+          bg: `rgb(${composited.slice(0, 3).map(Math.round).join(', ')})`,
+          ratio: ratio.toFixed(2),
+          wants,
+        });
+      }
+    }
+
+    return { checked, failed, stillUnknown };
+  });
+}
+
 async function auditAccessibility(page: Page, label: string): Promise<void> {
   await page.addScriptTag({ path: AXE_PATH });
+
+  /**
+   * esbuild's `__name` helper, which this file's own page functions reach for.
+   *
+   * `tsx` compiles with `keepNames`, so every `const fn = () => {}` becomes
+   * `__name(() => {}, "fn")` — including inside a function serialised and sent
+   * to the browser, where the helper does not exist. The symptom is a bare
+   * `ReferenceError: __name is not defined` from deep inside `page.evaluate`,
+   * which says nothing about the cause. Defining it in the page is the whole
+   * fix; it only ever returns its argument.
+   */
+  await page.addScriptTag({
+    content: 'globalThis.__name = globalThis.__name || function (fn) { return fn; };',
+  });
 
   /**
    * Transitions off, so the audit measures colours a person actually reads.
@@ -347,6 +519,10 @@ async function auditAccessibility(page: Page, label: string): Promise<void> {
     (globalThis as unknown as { __incomplete: unknown }).__incomplete = result.incomplete.map(
       (item) => `${item.id}×${item.nodes.length} (${item.nodes[0]?.target.join(' ') ?? ''})`,
     );
+    (globalThis as unknown as { __incompleteTargets: unknown }).__incompleteTargets =
+      result.incomplete
+        .filter((item) => item.id === 'color-contrast')
+        .flatMap((item) => item.nodes.map((node) => node.target.join(' ')));
     return result.violations.map((violation) => {
       /**
        * The measurement, not only the selector.
@@ -394,14 +570,19 @@ async function auditAccessibility(page: Page, label: string): Promise<void> {
   const incomplete = (await page.evaluate(
     () => (globalThis as unknown as { __incomplete: string[] }).__incomplete,
   )) as string[];
-  if (incomplete.length > 0) {
-    const total = incomplete.reduce((sum, item) => {
-      const match = /×(\d+)/.exec(item);
-      return sum + (match === null ? 1 : Number(match[1]));
-    }, 0);
+
+  const undetermined = await resolveUndeterminedContrast(page);
+  void incomplete;
+  if (undetermined.failed.length > 0) {
+    const detail = undetermined.failed
+      .map((item) => `${item.target} — ${item.fg} on ${item.bg} is ${item.ratio}:1, wants ${item.wants}`)
+      .join('; ');
+    ok(false, `${label} has readable text where axe could not judge`, detail);
+    problems.push(`${label}: ${detail}`);
+  } else if (undetermined.checked > 0) {
     console.log(
-      `      (${total} element(s) axe could not judge — semi-transparent or composited ` +
-        `backgrounds; not a pass, not a failure: ${incomplete.slice(0, 3).join('; ')})`,
+      `      (${undetermined.checked} element(s) axe could not judge, resolved here and readable` +
+        `${undetermined.stillUnknown > 0 ? `; ${undetermined.stillUnknown} genuinely undeterminable` : ''})`,
     );
   }
 

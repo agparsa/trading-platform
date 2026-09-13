@@ -35,19 +35,32 @@ There is a fourth category beside pass, fail and "not machine-checkable":
 **cases axe declines to judge.** It reports them as `incomplete`, and this
 audit discarded them for months.
 
-What that cost was measured rather than guessed. A price colour in the
-watchlist was changed to a genuinely unreadable dark grey, the web build was
-rebuilt, and the audit **passed**. The defect had not been missed by the rule —
-it had been filed as `incomplete`, because the cell sits on a semi-transparent
-row background and axe will not guess at a composited colour. On a dark UI
-built largely from translucent surfaces, that is not a rare case: one screen
-alone had thirteen.
+On a dark UI built largely from translucent surfaces this is not a rare case:
+one screen alone had thirteen, and they were thrown away.
 
-They are now counted and printed on every run. They do not fail it — most are
-unresolvable without changing the design to suit the tool, which is the wrong
-way round — but the number is the honest measure of how much of a screen the
-audit actually covered. A screen reporting no violations and twenty
-undetermined elements has not been checked in the way the green line suggests.
+So the audit now **resolves them itself**. It walks up from the element
+collecting background layers until it reaches something opaque, blends them in
+order, blends the text colour over the result, and compares luminances — the
+composite axe declines to guess at. Where that succeeds the element is judged
+like any other and a failure fails the run. Where it genuinely cannot — a
+background image, nothing opaque in the ancestry — it stays undetermined and is
+counted as such, because inventing an answer there would be worse than
+admitting the gap. On the terminal: eleven resolved, two still unknown.
+
+**The first run found a real defect.** The watchlist's star buttons were
+`#232a35` on a `#12161d` row — **1.26:1**. The intent was "subtle until
+hovered"; the effect was invisible. Eight of them, on the busiest screen in the
+product, and the only way to favourite an instrument. Every previous audit had
+passed it.
+
+A correction worth recording, because getting it wrong is the same mistake this
+document keeps warning about. This section first claimed the gap had been
+proved by a mutation — a price colour changed to an unreadable grey, the audit
+still passing. That mutation did survive, but **not for this reason**: the
+branch it changed only renders before an instrument's first tick, so by audit
+time nothing on screen used it. Mutating a cell that is always rendered is
+caught by axe directly. The `incomplete` gap is real and the star buttons are
+the evidence for it; the mutation was not.
 
 The audit also **freezes CSS transitions** before measuring. The terminal
 colours a price for 300 ms when it ticks, and axe was computing contrast on
