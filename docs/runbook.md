@@ -150,6 +150,27 @@ and is written to the audit log with the host's name; see
 for additive changes. A migration that drops or narrows a column is not; take the
 API down first, because the running instance is still writing the old shape.
 
+**A migration that stops the deploy has usually done its job.** The compose file
+runs migrations as a job every other container waits for, so a failure leaves
+the old containers serving and nothing half-applied. Two of them refuse
+deliberately rather than because something is broken:
+
+- `a_withdrawals_hold_must_exist` counts withdrawals naming a wallet movement
+  that does not exist, or one from another wallet, and stops with that count in
+  the message. Those rows are withdrawals whose money cannot be accounted for.
+  Investigate them; do not drop the constraint to get the deploy through.
+- `truncate_is_a_deletion_too` and `append_only_means_the_database_refuses` add
+  triggers, so they cannot fail on existing data — but afterwards `UPDATE`,
+  `DELETE` and `TRUNCATE` on the ledger and ten other tables raise `42501`. If
+  you find yourself reaching for `ALTER TABLE … DISABLE TRIGGER` to make a
+  problem go away, that is the moment to wake somebody else up instead.
+
+Run `pnpm migrate:rehearse` before a deploy. It applies the whole chain against
+a scratch database from a fresh install and from three "production is N behind"
+positions, and checks the result matches `schema.prisma`. It needs an owner
+connection, so it is a developer's command rather than something the deploy
+runs.
+
 ### Rolling back
 
 Roll back the **image**, not the migration. Reversing a migration means deciding

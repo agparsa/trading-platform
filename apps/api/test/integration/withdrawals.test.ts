@@ -720,5 +720,87 @@ suite('withdrawals', () => {
         /never deleted/,
       );
     });
+
+    /**
+     * The hold has to be a movement that happened, in this wallet, in this firm.
+     *
+     * `hold_transaction_id` was a bare `uuid` column with no foreign key of any
+     * kind. Both of these were accepted by the database before the composite
+     * key went in:
+     *
+     *   - a withdrawal naming a movement that does not exist at all;
+     *   - a withdrawal in one wallet naming a movement from *another* wallet —
+     *     money held from one person and paid to another.
+     *
+     * Neither is reachable through `request`, which writes the hold and the row
+     * in one transaction and takes the id from the movement it just made. That
+     * is the whole reason to constrain it: the service is what stands between
+     * these rows and the ledger today, and the second case costs somebody their
+     * money the first time a refactor gets it wrong.
+     *
+     * Written as raw SQL on purpose. The point is what the *database* accepts,
+     * and going through Prisma's relation would only prove that the generated
+     * client requires a field.
+     */
+    const insertWithdrawal = (over: {
+      walletId: string;
+      holdTransactionId: string;
+    }): Promise<unknown> =>
+      prisma.$executeRawUnsafe(
+        `INSERT INTO withdrawal_requests
+           (id, tenant_id, user_id, wallet_id, amount, currency, status, destination,
+            destination_hint, hold_transaction_id, provider, created_at, updated_at)
+         SELECT gen_random_uuid(), tenant_id, $1::uuid, $2::uuid, 10, 'USD', 'REQUESTED',
+                'sealed', '0000', $3::uuid, 'manual', now(), now()
+         FROM users WHERE id = $1::uuid`,
+        userId,
+        over.walletId,
+        over.holdTransactionId,
+      );
+
+    it('refuses a withdrawal whose hold never happened', async () => {
+      await expect(
+        insertWithdrawal({
+          walletId,
+          holdTransactionId: '00000000-0000-4000-8000-0000000000ff',
+        }),
+      ).rejects.toThrow(/foreign key/i);
+    });
+
+    it('refuses a withdrawal whose hold belongs to a different wallet', async () => {
+      // A second wallet for the same person — the cheapest way to have a
+      // movement that genuinely exists and genuinely is not this wallet's. The
+      // firm is in the key for the same reason, one level out.
+      const other = await wallets.ensure(userId, 'EUR');
+      const funded = await wallets.adjust({
+        walletId: other.id,
+        type: 'DEPOSIT',
+        amount: '100',
+        reason: 'a movement in the wrong wallet',
+        idempotencyKey: `other-${Math.random()}`,
+        actorId: financeId,
+      });
+      const movement = await prisma.walletTransaction.findFirstOrThrow({
+        where: { walletId: other.id },
+      });
+      expect(funded.id).toBe(other.id);
+
+      await expect(
+        insertWithdrawal({ walletId, holdTransactionId: movement.id }),
+        'the movement exists, so only the wallet in the composite key can catch this',
+      ).rejects.toThrow(/foreign key/i);
+    });
+
+    it('still accepts the hold the service actually writes', async () => {
+      // The other half: a constraint that refused the real path would be worse
+      // than no constraint, and `request` is the only thing that writes these.
+      const view = await request('250');
+      const row = await prisma.withdrawalRequest.findFirstOrThrow({ where: { id: view.id } });
+      const hold = await prisma.walletTransaction.findFirstOrThrow({
+        where: { id: row.holdTransactionId },
+      });
+      expect(hold.walletId).toBe(row.walletId);
+      expect(hold.amount.toString()).toBe('-250');
+    });
   });
 });

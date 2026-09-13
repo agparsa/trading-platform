@@ -76,11 +76,15 @@ const GLOBAL_ON_PURPOSE: Readonly<Record<string, string>> = {
   'OutboxEvent.eventId':
     'randomUUID() at the moment of record — see outbox.service.ts. Global uniqueness is the ' +
     'guarantee that a relay which ran twice did not produce two events.',
-  'WithdrawalRequest.holdTransactionId':
-    'the id of a WalletTransaction this platform created — a UUID, so two firms cannot ' +
-    'arrive at the same one. (It is a bare @db.Uuid with no @relation, which is a separate ' +
-    'thing worth fixing: nothing stops a withdrawal pointing at a transaction that is gone.)',
-  'WithdrawalRequest.releaseTransactionId': 'likewise, for the release leg.',
+  /**
+   * `WithdrawalRequest.holdTransactionId` and `releaseTransactionId` used to be
+   * listed here, with the note that they were bare `@db.Uuid` columns with no
+   * `@relation` — "a separate thing worth fixing". They are composite foreign
+   * keys to `WalletTransaction` now, so the parent-tenancy rule above covers
+   * them and this list refused to keep excusing them: the stale-entry half of
+   * the check failed the build until they were removed. That is the list doing
+   * what it was built to do.
+   */
   'CredentialUsage.kind+credentialId+day':
     'credentialId is the UUID of an ApiKey or ServiceToken, both tenant-scoped, so the id ' +
     'itself already belongs to exactly one firm. Polymorphic by `kind`, which is why there ' +

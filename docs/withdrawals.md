@@ -154,3 +154,23 @@ does not fire row-level triggers — for a fortnight this table refused `DELETE`
 with a clear error and let `TRUNCATE TABLE withdrawal_requests` empty it in
 silence. `append-only-tables.test.ts` now checks every table that refuses
 deletion for both.
+
+The hold and the release are foreign keys on **three** columns —
+`(tenant_id, wallet_id, hold_transaction_id)` against
+`wallet_transactions(tenant_id, wallet_id, id)` — and the extra two columns are
+the whole point. Until September they were bare `uuid` columns with no key at
+all, and the database accepted a withdrawal naming a movement that did not
+exist, *and* one naming a movement from another wallet: money held from one
+person and paid to another. A key on the id alone would only have caught the
+first. Neither was reachable through `request`, which writes the hold and the
+row in one transaction — but the service being correct today is not a
+constraint, and the second case is the expensive kind of mistake to make once.
+
+`release_transaction_id` is nullable, and a composite foreign key with a null
+column is not checked at all. Unchecked while the money has not gone back,
+fully checked the moment it has, which is the behaviour wanted.
+
+**If a deploy stops here**, the migration's own pre-flight check will have told
+you how many rows are wrong and in which way. Those are withdrawals whose money
+cannot be accounted for. Investigate them; do not drop the constraint to get
+the deploy through.

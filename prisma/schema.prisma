@@ -2108,7 +2108,15 @@ model WalletTransaction {
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
+  /// The withdrawals this movement is the hold or the release for.
+  heldFor    WithdrawalRequest[] @relation("WithdrawalHold")
+  releasedBy WithdrawalRequest[] @relation("WithdrawalRelease")
+
   @@unique([tenantId, idempotencyKey])
+  /// The target of the withdrawal composite foreign keys. `id` alone is already
+  /// unique; the firm and the wallet are here so a withdrawal cannot point at a
+  /// movement belonging to another wallet — see `WithdrawalRequest`.
+  @@unique([tenantId, walletId, id])
   @@index([walletId, createdAt(sort: Desc)])
   @@index([accountId])
   @@index([tenantId])
@@ -2392,8 +2400,20 @@ model WithdrawalRequest {
   destinationHint String @map("destination_hint")
 
   /// The wallet movement that took the money out at request time.
+  ///
+  /// A foreign key on `(tenantId, walletId, holdTransactionId)`, not on the id
+  /// alone, and the extra two columns are the point. Before it existed, a row
+  /// could name a movement that had never happened, or — worse — one belonging
+  /// to *another firm's wallet*: money held from one person and paid to
+  /// another. Both were accepted by the database; neither is reachable through
+  /// the service, which writes the hold and the request in one transaction, but
+  /// "the code currently gets this right" is not a constraint.
   holdTransactionId    String  @unique @map("hold_transaction_id") @db.Uuid
   /// The compensating movement that gave it back, if the request did not end PAID.
+  ///
+  /// Same composite key. Null until the money goes back, and a composite
+  /// foreign key with a null column is not checked, which is the behaviour
+  /// wanted here.
   releaseTransactionId String? @unique @map("release_transaction_id") @db.Uuid
 
   /// Which rail paid it: 'manual' for a person, or a provider's name.
@@ -2420,6 +2440,9 @@ model WithdrawalRequest {
   user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  holdTransaction WalletTransaction @relation("WithdrawalHold", fields: [tenantId, walletId, holdTransactionId], references: [tenantId, walletId, id], onDelete: Restrict)
+  releaseTransaction WalletTransaction? @relation("WithdrawalRelease", fields: [tenantId, walletId, releaseTransactionId], references: [tenantId, walletId, id], onDelete: Restrict)
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status, createdAt])
