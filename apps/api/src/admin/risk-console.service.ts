@@ -95,9 +95,15 @@ export class RiskConsoleService {
       if (rows.length >= limit) break;
     }
 
-    // Worst first. A list a risk manager has to sort themselves is a list whose
-    // first row was chosen by the query planner.
-    return rows.sort((a, b) => Number(a.marginLevel) - Number(b.marginLevel));
+    /**
+     * Worst first. A list a risk manager has to sort themselves is a list whose
+     * first row was chosen by the query planner.
+     *
+     * Compared as decimals, like the exposure sort below: this is the list
+     * somebody reads top-down when deciding who to look at first, and the only
+     * thing it promises is that the top of it is the top.
+     */
+    return rows.sort((a, b) => toDecimal(a.marginLevel).comparedTo(toDecimal(b.marginLevel)));
   }
 
   /**
@@ -142,8 +148,21 @@ export class RiskConsoleService {
       bySymbol.set(code, existing);
     }
 
-    return [...bySymbol.values()].sort(
-      (a, b) => Math.abs(Number(b.netVolume)) - Math.abs(Number(a.netVolume)),
+    /**
+     * Ordered by size of net exposure, biggest first — as decimals.
+     *
+     * This sorted on `Math.abs(Number(...))`, three lines after computing
+     * `netVolume` with `toDecimal().minus()` precisely so that it would not be
+     * a float. Right instinct, wrong tool, one line apart, which is what this
+     * class of defect looks like from the inside.
+     *
+     * The screen is a risk manager's list of where the firm is most exposed,
+     * and the only thing it promises is that the top of it is the top. A
+     * comparison that cannot separate two large exposures puts them in
+     * whatever order the sort happened to visit them in.
+     */
+    return [...bySymbol.values()].sort((a, b) =>
+      toDecimal(b.netVolume).abs().comparedTo(toDecimal(a.netVolume).abs()),
     );
   }
 

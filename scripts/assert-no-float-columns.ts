@@ -33,15 +33,30 @@ async function main(): Promise<void> {
     return;
   }
 
-  const numericCount = await prisma.$queryRaw<Array<{ count: bigint }>>`
-    SELECT count(*)::bigint AS count
+  /**
+   * Print the shapes, not just a total.
+   *
+   * `DATABASE_AUDIT.md` used to say "44 columns are Decimal(28, 10)". There
+   * were 54, and four other shapes it did not mention — the schema had grown
+   * and the sentence had not. A number in a document is a claim with a
+   * shelf life; this is the same number with none, so the document can point
+   * here instead of repeating it.
+   */
+  const shapes = await prisma.$queryRaw<
+    Array<{ precision: number; scale: number; count: bigint }>
+  >`
+    SELECT numeric_precision AS precision, numeric_scale AS scale, count(*)::bigint AS count
     FROM information_schema.columns
     WHERE table_schema = 'public' AND data_type = 'numeric'
+    GROUP BY 1, 2
+    ORDER BY count DESC, precision DESC
   `;
 
-  console.log(
-    `No floating-point columns found. ${numericCount[0]?.count ?? 0n} NUMERIC columns verified.`,
-  );
+  const total = shapes.reduce((sum, shape) => sum + shape.count, 0n);
+  console.log(`No floating-point columns found. ${total} NUMERIC columns verified:`);
+  for (const shape of shapes) {
+    console.log(`  ${String(shape.count).padStart(4)}  NUMERIC(${shape.precision},${shape.scale})`);
+  }
 }
 
 main()

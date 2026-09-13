@@ -1,4 +1,5 @@
 import { createZodDto } from 'nestjs-zod';
+import { toDecimal } from '@tp/financial-core';
 import { z } from 'zod';
 
 /**
@@ -14,7 +15,16 @@ const decimalString = z
   .regex(/^-?\d+(\.\d+)?$/, 'Must be a decimal string, e.g. "1.00"')
   .max(40);
 
-const positiveDecimal = decimalString.refine((value) => Number(value) > 0, {
+/**
+ * Greater than zero, decided in decimal.
+ *
+ * `Number(value) > 0` was almost right: the regex above bounds the string to 40
+ * characters with no exponent, so nothing here underflows to zero. But this is
+ * the gate every volume and price passes through on its way into the engine,
+ * and it is the wrong place to rely on "almost". `toDecimal` costs nothing and
+ * means the same thing at every magnitude the column can hold.
+ */
+const positiveDecimal = decimalString.refine((value) => toDecimal(value).gt(0), {
   message: 'Must be greater than zero',
 });
 

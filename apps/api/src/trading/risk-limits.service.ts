@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma, RiskLimitSet } from '@prisma/client';
+import { toDecimal } from '@tp/financial-core';
 import type { AccountRiskLimits } from '@tp/risk-core';
 import { withoutTenantScope } from '@tp/tenancy';
 import { PrismaService } from '../prisma/prisma.service';
@@ -175,14 +176,30 @@ export function isTighter(
 ): boolean {
   switch (field) {
     case 'maxOpenPositions':
+      // A count, and a small one. An integer is exact as a double, so this one
+      // is spelled plainly rather than dressed up as money.
       return Number(candidate) < Number(current);
     case 'maxPositionVolume':
     case 'maxGrossNotional':
     case 'maxSymbolNetVolume':
-      // Decimal strings: compared numerically, never lexically. '9' > '10' as
-      // text, and a ceiling compared as text is a ceiling that is sometimes
-      // the wrong way round.
-      return Number(candidate) < Number(current);
+      /**
+       * Decimal strings, compared as decimals — never lexically, and never as
+       * doubles.
+       *
+       * Lexically was the first bug: '9' sorts after '10' as text, and a
+       * ceiling compared as text is a ceiling that is sometimes the wrong way
+       * round. The fix for that was `Number()`, which trades one wrong answer
+       * for a rarer one: these columns are `Decimal(28,10)`, and two values
+       * agreeing in their first sixteen significant digits are the same
+       * double. `Number('100000000000000000001') === Number('…002')`.
+       *
+       * That matters most where this is read as a refusal.
+       * `RiskHierarchyService.refuseLooser` throws when the ceiling above is
+       * tighter than what is being asked for, so a false `false` here is a
+       * loosening that is not refused — a layer raising a ceiling set above it,
+       * which is precisely what the hierarchy exists to prevent.
+       */
+      return toDecimal(candidate).lessThan(toDecimal(current));
     default: {
       const never: never = field;
       throw new Error(`no tightening rule for ${String(never)}`);

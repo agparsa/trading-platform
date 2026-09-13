@@ -25,14 +25,35 @@ is the single most valuable structural decision in the repository.
 
 ## 2. Money
 
-**No floating-point arithmetic touches money anywhere.** `decimal.js` in code,
+**No floating-point arithmetic touches money.** `decimal.js` in code,
 `NUMERIC(28,10)` in the database, decimal **strings** on the wire so JSON cannot
 quietly reconstitute a float. Rounding is explicit — `financial-core/rounding.ts`
 exists precisely so that no rounding decision is made implicitly at a call site.
 `pnpm check:schema` interrogates `information_schema` on a live database and
-fails the build if a real or double-precision column ever appears.
+fails the build if a real or double-precision column ever appears, and CI runs
+it.
 
-This satisfies the specification's rule without qualification.
+**This paragraph used to end "without qualification", and that was not true.**
+The column half was enforced; the arithmetic half was enforced by nothing, and
+had decayed in four places — a risk-ceiling comparison, a gross-notional
+calculation feeding the fraud detector, an exposure sort, and two validations.
+None was catastrophic and one was reachable only at absurd magnitudes, which is
+exactly how a rule stated without qualification decays: one convenient
+`Number()` at a time, each defensible on its own, none of them noticed.
+
+`scripts/no-float-money.test.ts` is the check that was missing. It refuses
+`Number(x)` and `parseFloat(x)` in the money-handling trees when `x` names a
+monetary value, with an allow-list checked both ways, and it says plainly what
+it cannot see. There **are** qualifications now, and they are listed there
+rather than implied here:
+
+- `classifyRiskState` compares margin level against margin-call and stop-out
+  thresholds as numbers, deliberately and with the reason at the call site:
+  these drive a badge and a notification, and the stop-out that actually closes
+  a position is decided elsewhere in decimal.
+- `isTighter` compares `maxOpenPositions` as a number, because it is a count
+  and exact as a double. Its three decimal branches use
+  `toDecimal().lessThan()`.
 
 ## 3. Orders
 

@@ -31,9 +31,17 @@ database and fails the build if a real or double-precision column appears. The
 grep can be defeated by a type alias; the script cannot, because it asks Postgres
 what the column actually is.
 
-44 columns are `Decimal(28, 10)`. On the wire, money is a decimal **string**, so
-JSON never turns it back into a float. In application code it is `decimal.js`.
-This satisfies the specification's rule without exception.
+Money is `Decimal(28, 10)`; volumes, rates and a few derived figures use
+narrower shapes. `pnpm check:schema` prints the full breakdown, which is where
+to look rather than here — this paragraph used to say "44 columns are
+`Decimal(28, 10)`" and by September there were 54, plus four shapes it did not
+mention. On the wire, money is a decimal **string**, so JSON never turns it
+back into a float. In application code it is `decimal.js`.
+
+The columns are the half this document is about, and that half holds. The other
+half — arithmetic — is `scripts/no-float-money.test.ts`, added in September
+after four places were found doing money in binary. See `TRADING_AUDIT.md` for
+what they were and for the two exceptions that remain, each with its reason.
 
 ## 3. Time
 

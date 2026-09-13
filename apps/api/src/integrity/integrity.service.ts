@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { detectAll, type ActivityWindow, type Signal } from '@tp/integrity-core';
+import { toDecimal } from '@tp/financial-core';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
@@ -323,15 +324,29 @@ export class IntegrityService {
      * question being asked — "is most of this book in one instrument" — is about
      * what was taken on, not what it is worth this second.
      */
+    /**
+     * Decimal throughout, because `detectConcentration` is.
+     *
+     * This multiplied and accumulated with `Number`, then wrote the result back
+     * as a string with `toFixed(2)`. The detector it feeds is scrupulous —
+     * `toDecimal`, `.plus`, `.div`, `.mul` on every line — so the effect was a
+     * careful calculation performed on an input that had already lost
+     * precision, which is the least visible way to be wrong.
+     *
+     * Not hypothetical, and not at exotic magnitudes: 0.01 lots of an
+     * instrument at 3.175 with a contract size of 100 is 3.18, and the float
+     * path returned 3.17. A half-cent boundary is where the double sits just
+     * under the true value and `toFixed` rounds it the wrong way; the error is
+     * a cent per position and it accumulates across the book.
+     */
     const bySymbol = new Map<string, { symbol: string; grossNotional: string }>();
     for (const position of open) {
       const contractSize = position.symbol.spec?.contractSize.toString() ?? '1';
-      const notional =
-        Number(position.volume.toString()) *
-        Number(contractSize) *
-        Number(position.entryPrice.toString());
+      const notional = toDecimal(position.volume.toString())
+        .mul(contractSize)
+        .mul(position.entryPrice.toString());
       const code = position.symbol.code;
-      const running = Number(bySymbol.get(code)?.grossNotional ?? '0') + notional;
+      const running = toDecimal(bySymbol.get(code)?.grossNotional ?? '0').plus(notional);
       bySymbol.set(code, { symbol: code, grossNotional: running.toFixed(2) });
     }
 

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { toDecimal } from '@tp/financial-core';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { AuditService } from '../common/audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -407,7 +408,7 @@ export class AdminInstrumentsService {
      * A margin rate of zero means an unlimited position on an empty account.
      * There is no legitimate configuration where that is what somebody meant.
      */
-    if (data['marginRate'] !== undefined && Number(data['marginRate']) <= 0) {
+    if (data['marginRate'] !== undefined && toDecimal(String(data['marginRate'])).lte(0)) {
       throw new DomainError(
         TradingErrorCode.VALIDATION_FAILED,
         'A margin rate of zero would let an account open a position of any size against nothing.',

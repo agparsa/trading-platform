@@ -27,7 +27,7 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "clean": "rimraf \"packages/*/dist\" \"apps/*/dist\" \"apps/web/.next\" \"**/*.tsbuildinfo\"",
-    "verify": "pnpm build:packages && pnpm lint && pnpm typecheck && pnpm inventory --check && pnpm test && pnpm build",
+    "verify": "pnpm build:packages && pnpm lint && pnpm typecheck && pnpm inventory --check && pnpm check:schema && pnpm test && pnpm build",
     "prepare": "prisma generate",
     "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "check:schema": "tsx --env-file-if-exists=.env scripts/assert-no-float-columns.ts",

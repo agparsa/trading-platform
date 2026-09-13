@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { IntegrityService } from '../../src/integrity/integrity.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
+import { toDecimal } from '@tp/financial-core';
 import {
   createAccount,
   createTestClient,
@@ -372,5 +373,102 @@ suite('Integrity engine (integration)', () => {
         'RESOLVED',
       ),
     ).rejects.toThrow();
+  });
+
+  /**
+   * Exposure arithmetic, which is the input every concentration judgement is
+   * made from.
+   *
+   * `detectConcentration` is scrupulous — `toDecimal`, `.plus`, `.div`, `.mul`
+   * on every line. The loader that fed it was not: it multiplied volume by
+   * contract size by entry price with `Number`, accumulated with `+`, and wrote
+   * the running total back through `toFixed(2)` on each position. A careful
+   * calculation performed on an input that had already lost precision, which is
+   * the least visible way to be wrong.
+   *
+   * The values below are ordinary. 0.41 lots of an instrument at 975.635 with a
+   * contract size of 100 is 40001.04; the float path returned 40001.03, because
+   * the double sits a hair under the true value and `toFixed` rounds it down.
+   * A cent per position, compounding through the running total, on the numbers
+   * a fraud signal is raised from.
+   */
+  describe('exposure is computed in decimal', () => {
+    const VOLUME = '0.41';
+    const PRICE = '975.635';
+    /** 0.41 x 100 x 975.635, exactly. */
+    const EXACT_EACH = '40001.04';
+    const EXACT_TOTAL = '80002.08';
+
+    /**
+     * A second instrument small enough that the concentration is still in the
+     * first one. The seeded USDJPY has a contract size of 100,000, so a single
+     * minimum-volume position in it is larger than the whole book being tested.
+     */
+    async function seedTinySymbol() {
+      const symbol = await prisma.symbol.upsert({
+        where: { code: 'TINY' },
+        create: { code: 'TINY', description: 'A rounding error', category: 'Test', quoteCurrency: 'USD' },
+        update: {},
+      });
+      await prisma.symbolSpec.upsert({
+        where: { symbolId: symbol.id },
+        create: {
+          symbolId: symbol.id,
+          contractSize: '1',
+          tickSize: '0.01',
+          pricePrecision: 2,
+          volumeStep: '0.01',
+          volumePrecision: 2,
+          minVolume: '0.01',
+          maxVolume: '100',
+          marginRate: '0.01',
+          commissionPerLot: '0',
+          swapLongPerLot: '0',
+          swapShortPerLot: '0',
+        },
+        update: {},
+      });
+    }
+
+    async function openPosition(accountId: string, code: string, volume: string, price: string) {
+      const symbol = await prisma.symbol.findFirstOrThrow({ where: { code } });
+      await prisma.position.create({
+        data: {
+          tenantId: DEFAULT_TENANT_ID,
+          accountId,
+          symbolId: symbol.id,
+          side: 'BUY',
+          status: 'OPEN',
+          volume,
+          initialVolume: volume,
+          entryPrice: price,
+          margin: '1',
+        },
+      });
+    }
+
+    it('reports a notional the float path gets wrong by a cent', async () => {
+      const { accountId } = await createAccount(prisma, { balance: '1000000' });
+      // Two positions in the concentrated instrument, and a small one
+      // elsewhere so that "concentration" means something — one instrument is
+      // trivially all of itself, and the detector says so.
+      await openPosition(accountId, 'XAUUSD', VOLUME, PRICE);
+      await openPosition(accountId, 'XAUUSD', VOLUME, PRICE);
+      await seedTinySymbol();
+      await openPosition(accountId, 'TINY', '0.01', '1');
+
+      const signals = await integrity.scanAccount(accountId, NOW);
+      const concentration = signals.find((signal) => signal.code === 'CONCENTRATION');
+      expect(concentration, 'the book is 98% in one instrument').toBeDefined();
+
+      expect(
+        concentration?.evidence['notional'],
+        `the float path returned 40001.03 for each leg, so 80002.06 for the pair`,
+      ).toBe(EXACT_TOTAL);
+
+      // And the single-position figure, so a regression cannot pass by having
+      // two errors cancel.
+      expect(toDecimal(EXACT_TOTAL).div(2).toFixed(2)).toBe(EXACT_EACH);
+    });
   });
 });
