@@ -1,6 +1,14 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
-import { PROTECTED_TABLES, createTestClient, hasTestDatabase } from './harness';
+import { Money } from '@tp/financial-core';
+import { LedgerService } from '../../src/accounts/ledger.service';
+import {
+  PROTECTED_TABLES,
+  createAccount,
+  createTestClient,
+  hasTestDatabase,
+  resetDatabase,
+} from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 
@@ -117,5 +125,106 @@ suite('tables that refuse deletion', () => {
       await tx.$executeRawUnsafe(`TRUNCATE TABLE ${table}`);
     });
     await expect(attempt, `TRUNCATE TABLE ${table} was permitted`).rejects.toThrow();
+  });
+});
+
+/**
+ * The account ledger, which every other figure in the platform reconciles
+ * against, and which could be edited.
+ *
+ * `docs/database.md` said "`balance_ledger` is append-only. Nothing updates or
+ * deletes a row"; `docs/runbook.md` told whoever is on call not to edit it.
+ * Both were accurate descriptions of the application's behaviour and neither
+ * was a constraint. Measured against the live database before the fix:
+ *
+ *   DELETE FROM balance_ledger;         -- DELETE PERMITTED
+ *   UPDATE balance_ledger SET amount=0; -- UPDATE PERMITTED
+ *
+ * `docs/security.md` had already answered why that is not enough, about a
+ * different table: "a convention holds only for people who are following it …
+ * the person the requirement exists for is the one who has reached a database
+ * connection". The tell that this was an oversight rather than a decision is
+ * the asymmetry — `wallet_transactions`, the *second* ledger, has refused
+ * UPDATE and DELETE by trigger since the day it was created.
+ *
+ * Separate from the suite above because these need a row to exist: a row-level
+ * trigger does not fire for a statement that matches nothing, so `DELETE FROM
+ * balance_ledger` on an empty table succeeds and proves precisely nothing.
+ * That subtlety is why this is written as a test and not as a one-off psql
+ * check.
+ */
+suite('the account ledger refuses to be rewritten', () => {
+  let prisma: PrismaClient;
+  const ledger = new LedgerService();
+  let entryId: string;
+  let accountId: string;
+
+  beforeAll(async () => {
+    prisma = createTestClient();
+    await prisma.$connect();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  beforeEach(async () => {
+    await resetDatabase(prisma);
+    const created = await createAccount(prisma);
+    accountId = created.accountId;
+    const posted = await prisma.$transaction((tx) =>
+      ledger.post(tx, {
+        accountId,
+        type: 'DEPOSIT',
+        amount: Money.of('100', 'USD'),
+        description: 'opening',
+      }),
+    );
+    entryId = posted.entryId;
+  });
+
+  it('accepts the entry in the first place', async () => {
+    // Otherwise the two refusals below would pass against an empty table.
+    const entry = await prisma.balanceLedger.findUniqueOrThrow({ where: { id: entryId } });
+    expect(entry.amount.toString()).toBe('100');
+  });
+
+  it('refuses an UPDATE, however small', async () => {
+    await expect(
+      prisma.$executeRawUnsafe(
+        `UPDATE balance_ledger SET description = 'nothing to see' WHERE id = $1::uuid`,
+        entryId,
+      ),
+      'a description is the most harmless column on the table, and editing it is still editing history',
+    ).rejects.toThrow(/append-only/);
+  });
+
+  it('refuses a DELETE', async () => {
+    await expect(
+      prisma.$executeRawUnsafe(`DELETE FROM balance_ledger WHERE id = $1::uuid`, entryId),
+    ).rejects.toThrow(/append-only/);
+  });
+
+  /**
+   * The correction that is meant to be used instead, working.
+   *
+   * A refusal is only half an answer: if there were no way to fix a mistake,
+   * somebody would eventually reach for the trigger's off switch. `compensate`
+   * writes a new entry pointing at the old one, and the old one stays exactly
+   * as it was.
+   */
+  it('still lets a mistake be corrected the way it is supposed to be', async () => {
+    const compensating = await prisma.$transaction((tx) =>
+      ledger.compensate(tx, entryId, 'posted to the wrong account'),
+    );
+    expect(compensating.balanceAfter.toString()).toBe('0.00');
+
+    const original = await prisma.balanceLedger.findUniqueOrThrow({ where: { id: entryId } });
+    expect(original.amount.toString(), 'the original is untouched').toBe('100');
+
+    const correction = await prisma.balanceLedger.findFirstOrThrow({
+      where: { compensatesId: entryId },
+    });
+    expect(correction.amount.toString()).toBe('-100');
   });
 });

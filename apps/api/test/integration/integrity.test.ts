@@ -43,7 +43,6 @@ suite('Integrity engine (integration)', () => {
 
   beforeEach(async () => {
     await resetDatabase(prisma);
-    await prisma.integritySignalEvent.deleteMany();
     await prisma.integritySignal.deleteMany();
     await prisma.marketSession.deleteMany();
     await prisma.symbolSpec.deleteMany();

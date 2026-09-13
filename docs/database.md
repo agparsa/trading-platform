@@ -12,7 +12,14 @@ PostgreSQL 16, Prisma 6. Schema: `prisma/schema.prisma`.
   - percentages → `NUMERIC(10,4)` / `NUMERIC(18,6)`
 - All timestamps are `TIMESTAMPTZ`, stored UTC.
 - Rows the engine races on carry a `version` column for optimistic concurrency.
-- `*_events` tables and `balance_ledger` are append-only.
+- `balance_ledger`, `order_events`, `position_events`, `risk_events` and
+  `integrity_signal_events` are append-only, **refused by trigger** rather than
+  by convention — see "The ledger is the truth" below. `audit_logs`,
+  `security_events`, `payment_events` and `broker_inbound_events` are too.
+  `outbox_events` is deliberately different: its content is frozen and the
+  relay's bookkeeping still moves. `trades`, `executions` and
+  `account_snapshots` are **not** append-only at the database; snapshots are
+  upserted by design.
 
 ## Entity map
 
@@ -41,9 +48,20 @@ RiskRuleConfig
 
 ## The ledger is the truth
 
-`balance_ledger` is append-only. Nothing updates or deletes a row; a mistake is
-corrected with a compensating `ADJUSTMENT` entry that references the original
-via `compensatesId`.
+`balance_ledger` is append-only, and the database refuses `UPDATE`, `DELETE`
+and `TRUNCATE` on it with `42501`. A mistake is corrected with a compensating
+`ADJUSTMENT` entry that references the original via `compensatesId` — and that
+correction path is tested alongside the refusals, because a rule with no way to
+fix a mistake is a rule somebody eventually switches off.
+
+Until September this paragraph said only "Nothing updates or deletes a row",
+which was an accurate description of the application and not a constraint at
+all: both statements succeeded against the live database. `docs/security.md`
+had already given the reason that is not enough, about the audit log — "a
+convention holds only for people who are following it … the person the
+requirement exists for is the one who has reached a database connection". The
+tell was the asymmetry: `wallet_transactions`, the second ledger, had refused
+both since the day it was written.
 
 `accounts.balance` is a **cache** of the ledger's running total, kept current
 inside the same transaction that writes the entry, and reconciled against the

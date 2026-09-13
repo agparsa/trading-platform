@@ -110,11 +110,24 @@ export async function createTenant(
 /**
  * The tables whose rows are meant to outlive everything, listed once.
  *
- * `scripts/append-only-tables.test.ts` checks this list against the database:
- * a table given a no-delete trigger and left out of here would make the reset
- * fail on whichever suite ran first, which is a confusing way to find out.
+ * `append-only-tables.test.ts` checks this list against the database — a table
+ * given a no-delete trigger and left out of here would make the reset fail on
+ * whichever suite ran first, which is a confusing way to find out. It is the
+ * check that told me to add the five at the top of this list, rather than a
+ * hundred unrelated tests failing with a trigger error.
+ *
+ * That the *account ledger* had to be added in September, and the wallet ledger
+ * below it never did, is the whole of the defect the append-only migration
+ * fixes: the second ledger was protected at the database from the day it was
+ * written, and the first one — the record of every movement of customer money —
+ * was protected only by everybody agreeing not to touch it.
  */
 export const PROTECTED_TABLES = [
+  'balance_ledger',
+  'order_events',
+  'position_events',
+  'risk_events',
+  'integrity_signal_events',
   'audit_logs',
   'security_events',
   'broker_inbound_events',

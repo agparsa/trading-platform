@@ -8,6 +8,12 @@ editing it.** It is append-only, and a correcting entry is how a mistake is
 fixed. A `balance` that disagrees with the sum of its entries is evidence; erasing
 it destroys the only record of what went wrong.
 
+The database now enforces this rather than asking you to remember it: `UPDATE`,
+`DELETE` and `TRUNCATE` on `balance_ledger` raise `42501` and tell you to post a
+compensating entry. If you find yourself reaching for `ALTER TABLE … DISABLE
+TRIGGER` at three in the morning, that is the moment to wake somebody else up
+instead.
+
 ## First five minutes
 
 ```bash

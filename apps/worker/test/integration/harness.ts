@@ -50,6 +50,11 @@ export const DEFAULT_TENANT_SLUG = 'test-tenant';
  * database, by `scripts/append-only-tables.test.ts`.
  */
 export const PROTECTED_TABLES = [
+  'balance_ledger',
+  'order_events',
+  'position_events',
+  'risk_events',
+  'integrity_signal_events',
   'audit_logs',
   'security_events',
   'broker_inbound_events',
