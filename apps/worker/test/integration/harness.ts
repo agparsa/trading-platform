@@ -43,17 +43,36 @@ export function createTestClient(): PrismaClient {
 export const DEFAULT_TENANT_ID = '00000000-0000-4000-8000-0000000000ff';
 export const DEFAULT_TENANT_SLUG = 'test-tenant';
 
+/**
+ * The tables whose rows are meant to outlive everything.
+ *
+ * Kept in step with the API harness's list of the same name — and with the
+ * database, by `scripts/append-only-tables.test.ts`.
+ */
+export const PROTECTED_TABLES = [
+  'audit_logs',
+  'security_events',
+  'broker_inbound_events',
+  'api_keys',
+  'service_tokens',
+  'broker_credentials',
+  'kyc_documents',
+  'payment_events',
+  'resolution_records',
+  'wallet_transactions',
+  'withdrawal_requests',
+] as const;
+
 export async function resetDatabase(prisma: PrismaClient): Promise<string> {
   /**
-   * `audit_logs` refuses UPDATE, DELETE and TRUNCATE — see the
-   * `audit_log_append_only` migration. Emptying it between runs therefore takes
-   * an explicit, privileged act rather than an ordinary statement, and the two
-   * lines below are precisely the work an attacker would have to do. They need
-   * ownership of the table to do it.
+   * Every table that refuses UPDATE, DELETE and TRUNCATE, unlocked for the
+   * length of one reset. Emptying one takes an explicit, privileged act rather
+   * than an ordinary statement, and the loop below is precisely the work an
+   * attacker would have to do. It needs ownership of each table to do it.
    */
-  await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs DISABLE TRIGGER USER`);
-  await prisma.$executeRawUnsafe(`ALTER TABLE security_events DISABLE TRIGGER USER`);
-  await prisma.$executeRawUnsafe(`ALTER TABLE broker_inbound_events DISABLE TRIGGER USER`);
+  for (const table of PROTECTED_TABLES) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER USER`);
+  }
   try {
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
@@ -72,9 +91,9 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
       RESTART IDENTITY CASCADE
     `);
   } finally {
-    await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs ENABLE TRIGGER USER`);
-    await prisma.$executeRawUnsafe(`ALTER TABLE security_events ENABLE TRIGGER USER`);
-    await prisma.$executeRawUnsafe(`ALTER TABLE broker_inbound_events ENABLE TRIGGER USER`);
+    for (const table of PROTECTED_TABLES) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE ${table} ENABLE TRIGGER USER`);
+    }
   }
 
   const tenant = await prisma.tenant.create({

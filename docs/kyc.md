@@ -112,9 +112,15 @@ review impossible, and the delay is the platform's, not the person's.
 
 A database trigger holds this in place: a document's identity (kind, hash,
 size, upload time) cannot be edited after upload, bytes can be cleared once and
-never replaced, and rows are never deleted. `resetDatabase` in the test harness
-truncates the table, which the row triggers do not see; nothing in the
-application does.
+never replaced, and rows are never deleted or truncated.
+
+This paragraph used to end differently, and the ending is worth keeping in
+view: "`resetDatabase` in the test harness truncates the table, which the row
+triggers do not see; nothing in the application does." The gap was seen, written
+down as a remark about the test harness, and not followed to its conclusion —
+that the same statement was available to anything else holding the connection.
+It is closed now, by a `BEFORE TRUNCATE` trigger, and the harness has to
+disable it explicitly like every other protected table.
 
 ## Validity
 

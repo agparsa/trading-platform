@@ -148,3 +148,9 @@ A trigger holds what was asked for fixed after the asking — amount, currency,
 wallet, destination, the hold — so every later decision is about the same
 thing; lets the release be recorded once and never replaced; and refuses to
 delete a row. A withdrawal is a financial record: it ends, it is not removed.
+
+**And refuses to truncate one.** That is a separate trigger, because TRUNCATE
+does not fire row-level triggers — for a fortnight this table refused `DELETE`
+with a clear error and let `TRUNCATE TABLE withdrawal_requests` empty it in
+silence. `append-only-tables.test.ts` now checks every table that refuses
+deletion for both.

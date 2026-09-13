@@ -89,6 +89,28 @@ there are two ways:
    survives an attacker who owns the whole database, and it is the only thing
    that does.
 
+### The same applies to every table that refuses deletion
+
+Eleven tables now refuse `DELETE` and `TRUNCATE` by trigger: `audit_logs`,
+`security_events`, `broker_inbound_events`, `api_keys`, `service_tokens`,
+`broker_credentials`, `kyc_documents`, `payment_events`, `resolution_records`,
+`wallet_transactions` and `withdrawal_requests`.
+
+Nine of them refused only `DELETE` until `truncate_is_a_deletion_too`. The
+statement-level rule is written out two paragraphs above and was applied to
+`audit_logs` in August; every append-only migration written afterwards copied
+the row-level half and not the statement-level half, so each new table arrived
+with a locked front door and an open back one. `TRUNCATE TABLE
+withdrawal_requests` emptied it in silence while `DELETE` raised `42501`.
+
+Nothing catches that by reading a migration, because the migration that is
+wrong looks exactly like the nine before it. So it is checked against the live
+database instead: `append-only-tables.test.ts` asks `pg_trigger` which tables
+refuse `DELETE`, fails if any of them permits `TRUNCATE`, and then actually
+attempts a `TRUNCATE` on each — because a trigger can be present and still let
+the statement through, which is how the venue-evidence one behaved before it
+was corrected.
+
 Neither is done here. Recorded so it is a known limit rather than an assumed
 guarantee.
 

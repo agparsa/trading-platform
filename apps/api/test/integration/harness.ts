@@ -108,6 +108,27 @@ export async function createTenant(
 }
 
 /**
+ * The tables whose rows are meant to outlive everything, listed once.
+ *
+ * `scripts/append-only-tables.test.ts` checks this list against the database:
+ * a table given a no-delete trigger and left out of here would make the reset
+ * fail on whichever suite ran first, which is a confusing way to find out.
+ */
+export const PROTECTED_TABLES = [
+  'audit_logs',
+  'security_events',
+  'broker_inbound_events',
+  'api_keys',
+  'service_tokens',
+  'broker_credentials',
+  'kyc_documents',
+  'payment_events',
+  'resolution_records',
+  'wallet_transactions',
+  'withdrawal_requests',
+] as const;
+
+/**
  * Empties every table the tests write to.
  *
  * Order matters only in that TRUNCATE ... CASCADE handles the foreign keys for
@@ -116,18 +137,25 @@ export async function createTenant(
  */
 export async function resetDatabase(prisma: PrismaClient): Promise<string> {
   /**
-   * `audit_logs` refuses UPDATE, DELETE and TRUNCATE — see the
-   * `audit_log_append_only` migration. Emptying it between runs therefore takes
-   * an explicit, privileged act rather than an ordinary statement, and that is
-   * the point: the two lines below are precisely the work an attacker would
-   * have to do, and they need ownership of the table to do it.
+   * Every table that refuses to be emptied, unlocked for the length of one
+   * reset.
    *
-   * Written out here rather than hidden behind a helper so that anybody reading
-   * the harness sees what the audit log's guarantee actually costs to break.
+   * These tables refuse UPDATE, DELETE *and* TRUNCATE by trigger. Emptying one
+   * between runs therefore takes an explicit, privileged act rather than an
+   * ordinary statement, and that is the point: the loop below is precisely the
+   * work an attacker would have to do, and it needs ownership of each table to
+   * do it.
+   *
+   * Written out rather than hidden behind a helper so that anybody reading the
+   * harness sees what these guarantees actually cost to break. The list grew
+   * from three to ten when `truncate_is_a_deletion_too` closed the back door on
+   * the seven tables that refused DELETE and allowed TRUNCATE — which is the
+   * clearest evidence the migration did something: before it, the reset did not
+   * need to name them.
    */
-  await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs DISABLE TRIGGER USER`);
-  await prisma.$executeRawUnsafe(`ALTER TABLE security_events DISABLE TRIGGER USER`);
-  await prisma.$executeRawUnsafe(`ALTER TABLE broker_inbound_events DISABLE TRIGGER USER`);
+  for (const table of PROTECTED_TABLES) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER USER`);
+  }
   try {
     await prisma.$executeRawUnsafe(`
       TRUNCATE TABLE
@@ -149,9 +177,9 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
       RESTART IDENTITY CASCADE
     `);
   } finally {
-    await prisma.$executeRawUnsafe(`ALTER TABLE audit_logs ENABLE TRIGGER USER`);
-    await prisma.$executeRawUnsafe(`ALTER TABLE security_events ENABLE TRIGGER USER`);
-    await prisma.$executeRawUnsafe(`ALTER TABLE broker_inbound_events ENABLE TRIGGER USER`);
+    for (const table of PROTECTED_TABLES) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE ${table} ENABLE TRIGGER USER`);
+    }
   }
 
   /**
