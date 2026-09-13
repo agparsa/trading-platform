@@ -51,6 +51,8 @@ export const DEFAULT_TENANT_SLUG = 'test-tenant';
  */
 export const PROTECTED_TABLES = [
   'balance_ledger',
+  'trades',
+  'executions',
   'order_events',
   'position_events',
   'risk_events',
@@ -67,6 +69,48 @@ export const PROTECTED_TABLES = [
   'wallet_transactions',
   'withdrawal_requests',
 ] as const;
+
+/**
+ * Break an append-only guarantee on purpose, for the length of one statement.
+ *
+ * A handful of tests exist to prove that a detector notices corruption — "a
+ * filled order whose execution never happened" cannot be produced by asking
+ * the service for it, because the service is what makes the two agree. The
+ * only way to write that test is to corrupt the data, and the tables involved
+ * now refuse to be corrupted.
+ *
+ * So this is the deliberate exception, in one place, with three properties
+ * that matter more than the convenience:
+ *
+ *  - **It is loud.** The call site reads `simulatingCorruption`, so nobody
+ *    reaches for it without noticing what they are doing, and a reviewer
+ *    grepping for it finds every instance.
+ *  - **It always puts the guard back**, in a `finally`, so a failing assertion
+ *    cannot leave a table unprotected for every test that follows.
+ *  - **It needs ownership of the table**, exactly as an attacker would.
+ *
+ * Use it only where the corruption *is* the subject of the test. If you are
+ * reaching for it to set up a scenario — a trade in the past, a stale row —
+ * build the scenario forward instead; there is almost always a seam. The
+ * `separates today from the account lifetime` test in `account-figures.test.ts`
+ * was rewritten that way rather than brought here, and is better for it.
+ */
+export async function simulatingCorruption<T>(
+  prisma: PrismaClient,
+  tables: readonly string[],
+  corrupt: () => Promise<T>,
+): Promise<T> {
+  for (const table of tables) {
+    await prisma.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER USER`);
+  }
+  try {
+    return await corrupt();
+  } finally {
+    for (const table of tables) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE ${table} ENABLE TRIGGER USER`);
+    }
+  }
+}
 
 export async function resetDatabase(prisma: PrismaClient): Promise<string> {
   /**

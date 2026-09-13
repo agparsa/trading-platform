@@ -15,6 +15,7 @@ import {
   seedSymbols,
   DEFAULT_TENANT_ID,
   createTenant,
+  simulatingCorruption,
 } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
@@ -662,7 +663,15 @@ suite('Worker jobs (integration)', () => {
      */
     it('detects a filled order whose execution never happened', async () => {
       const { accountId, positionId } = await openPosition('BUY', '1.00');
-      await prisma.execution.deleteMany({ where: { accountId } });
+      /**
+       * The corruption *is* the subject here: a filled order with no execution
+       * cannot be produced by asking the service for one, because the service
+       * is what makes the two agree. `executions` refuses DELETE now, so the
+       * guard comes off for exactly this statement and goes straight back on.
+       */
+      await simulatingCorruption(prisma, ['executions'], () =>
+        prisma.execution.deleteMany({ where: { accountId } }),
+      );
 
       const summary = await service().check();
       const codes = summary.reports[0]?.findings.map((f) => f.code) ?? [];

@@ -91,10 +91,12 @@ there are two ways:
 
 ### The same applies to every table that refuses deletion
 
-Eleven tables now refuse `DELETE` and `TRUNCATE` by trigger: `audit_logs`,
+Eighteen tables now refuse `DELETE` and `TRUNCATE` by trigger: `audit_logs`,
 `security_events`, `broker_inbound_events`, `api_keys`, `service_tokens`,
 `broker_credentials`, `kyc_documents`, `payment_events`, `resolution_records`,
-`wallet_transactions` and `withdrawal_requests`.
+`wallet_transactions`, `withdrawal_requests`, `balance_ledger`, `trades`,
+`executions`, `order_events`, `position_events`, `risk_events` and
+`integrity_signal_events`.
 
 Nine of them refused only `DELETE` until `truncate_is_a_deletion_too`. The
 statement-level rule is written out two paragraphs above and was applied to
@@ -111,8 +113,21 @@ attempts a `TRUNCATE` on each — because a trigger can be present and still let
 the statement through, which is how the venue-evidence one behaved before it
 was corrected.
 
-Neither is done here. Recorded so it is a known limit rather than an assumed
-guarantee.
+**Neither of the two deployment options above is done here.** Recorded so it is
+a known limit rather than an assumed guarantee: everything in this section is
+the first line of defence and none of it survives an actor who owns the
+database. What it does buy is that a normal administrator, with a normal
+connection, cannot quietly alter the record — which is the threat it was
+written for.
+
+A test that needs to corrupt one of these tables, to prove a reconciliation
+detector fires, goes through `simulatingCorruption` in the test harness. It
+takes the guard off for one statement and restores it in a `finally`, and the
+name is deliberately conspicuous: grep for it and you have every place in the
+repository that deliberately breaks one of these guarantees — today that is one
+reconciliation test, plus the two cases that check the helper re-arms. No count
+is quoted here on purpose; the grep is the answer, and a number in a document
+is the kind of claim this section exists to be sceptical of.
 
 ## Rate limiting
 

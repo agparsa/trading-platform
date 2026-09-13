@@ -12,14 +12,21 @@ PostgreSQL 16, Prisma 6. Schema: `prisma/schema.prisma`.
   - percentages → `NUMERIC(10,4)` / `NUMERIC(18,6)`
 - All timestamps are `TIMESTAMPTZ`, stored UTC.
 - Rows the engine races on carry a `version` column for optimistic concurrency.
-- `balance_ledger`, `order_events`, `position_events`, `risk_events` and
-  `integrity_signal_events` are append-only, **refused by trigger** rather than
-  by convention — see "The ledger is the truth" below. `audit_logs`,
-  `security_events`, `payment_events` and `broker_inbound_events` are too.
-  `outbox_events` is deliberately different: its content is frozen and the
-  relay's bookkeeping still moves. `trades`, `executions` and
-  `account_snapshots` are **not** append-only at the database; snapshots are
-  upserted by design.
+- **Thirteen tables are append-only, refused by trigger rather than by
+  convention**: `balance_ledger`, `trades`, `executions`, `order_events`,
+  `position_events`, `risk_events`, `integrity_signal_events`, `audit_logs`,
+  `security_events`, `payment_events`, `broker_inbound_events`,
+  `wallet_transactions` and `withdrawal_requests`. `UPDATE`, `DELETE` and
+  `TRUNCATE` each raise `42501`; see "The ledger is the truth" below.
+  `append-only-tables.test.ts` checks the list against `pg_trigger` and then
+  attempts a real `TRUNCATE` on each, so neither half can rot.
+- Two are deliberately not: `outbox_events` freezes its content and lets the
+  relay's bookkeeping move, and `account_snapshots` is upserted because a day's
+  snapshot is revised as the day goes on.
+- A test that needs to corrupt one of the thirteen — to prove a reconciliation
+  detector fires — goes through `simulatingCorruption` in the test harness,
+  which takes the guard off for one statement and puts it back in a `finally`.
+  Grep for it to find every place that does.
 
 ## Entity map
 

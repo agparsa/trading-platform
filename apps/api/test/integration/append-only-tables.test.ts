@@ -8,7 +8,10 @@ import {
   createTestClient,
   hasTestDatabase,
   resetDatabase,
+  seedTradingSymbols,
+  simulatingCorruption,
 } from './harness';
+import { buildTradingStack, type TradingStack } from './trading-stack';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 
@@ -60,6 +63,25 @@ suite('tables that refuse deletion', () => {
   beforeAll(async () => {
     prisma = createTestClient();
     await prisma.$connect();
+
+    /**
+     * Start from a known state, because a killed test run does not leave one.
+     *
+     * `resetDatabase` disables these triggers, truncates, and re-enables them
+     * in a `finally`. A process killed in between — a timeout, a crash, ^C —
+     * never runs that `finally`, so the next run starts with the guards off
+     * and this suite fails with "trades actually refuses a TRUNCATE: promise
+     * resolved undefined". That reads like the migration is broken. It isn't;
+     * the schema is right and the residue is wrong, and an hour can go into
+     * telling those apart. (One did.)
+     *
+     * So the guards go on before anything is asserted. This suite is about what
+     * the schema guarantees, not about what the last run left behind.
+     */
+    for (const table of PROTECTED_TABLES) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE ${table} ENABLE TRIGGER USER`);
+    }
+
     /**
      * Read from `pg_trigger` rather than from the migration files: what matters
      * is the state of the database production will have, and a migration that
@@ -226,5 +248,130 @@ suite('the account ledger refuses to be rewritten', () => {
       where: { compensatesId: entryId },
     });
     expect(correction.amount.toString()).toBe('-100');
+  });
+});
+
+/**
+ * The trading record, which is what a trader would dispute.
+ *
+ * `executions` is every fill: the price they actually got, at the quote that
+ * was live. `trades` is what their profit and loss is summed from —
+ * `realized()` reads nothing else. Between them they are the evidence in any
+ * argument about what happened to somebody's money, and that argument only
+ * starts when somebody is already unhappy. A record that can be edited
+ * afterwards settles nothing.
+ *
+ * These were the last two tables left open, and they were left open for a
+ * stated reason: two tests corrupt them on purpose to prove the reconciliation
+ * detectors fire. One of those tests now goes through `simulatingCorruption`,
+ * which takes the guard off for one statement and puts it back in a `finally`;
+ * the other turned out not to need corrupting at all.
+ */
+suite('the trading record refuses to be rewritten', () => {
+  let prisma: PrismaClient;
+  let stack: TradingStack;
+  let tradeId: string;
+  let executionId: string;
+
+  beforeAll(async () => {
+    prisma = createTestClient();
+    await prisma.$connect();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  beforeEach(async () => {
+    await resetDatabase(prisma);
+    /**
+     * Symbols are not tenant-scoped, so `resetDatabase` leaves them alone and
+     * they carry whatever an earlier suite in the same run did to them —
+     * `seedSymbols` upserts with `update: {}`, so it will not put a changed
+     * instrument back. Run alone this suite passed; run after the others it
+     * failed with "XAUUSD is not currently tradeable". `trading.test.ts` has
+     * the same three lines for the same reason.
+     */
+    await prisma.marketSession.deleteMany();
+    await prisma.symbolSpec.deleteMany();
+    await prisma.symbol.deleteMany();
+    await seedTradingSymbols(prisma);
+    stack = await buildTradingStack(prisma);
+    await stack.publishQuote('XAUUSD', '2000.00', '2000.50');
+    const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
+    const opened = await stack.orders.openPosition(userId, {
+      accountId,
+      symbol: 'XAUUSD',
+      side: 'BUY',
+      volume: '1.00',
+    });
+    if (opened.positionId === null) throw new Error('the market order did not open a position');
+    await stack.publishQuote('XAUUSD', '2100.00', '2100.50');
+    await stack.positions.close(userId, opened.positionId, null);
+    tradeId = (await prisma.trade.findFirstOrThrow({ where: { accountId } })).id;
+    executionId = (await prisma.execution.findFirstOrThrow({ where: { accountId } })).id;
+  });
+
+  it('wrote a trade and its executions in the first place', () => {
+    // Otherwise the refusals below would be passing against nothing.
+    expect(tradeId).toBeTruthy();
+    expect(executionId).toBeTruthy();
+  });
+
+  it('refuses to change a trade’s profit', async () => {
+    await expect(
+      prisma.$executeRawUnsafe(`UPDATE trades SET net_pnl = 0 WHERE id = $1::uuid`, tradeId),
+      'the number a trader would argue about is the number that must not move',
+    ).rejects.toThrow(/append-only/);
+  });
+
+  it('refuses to delete a trade', async () => {
+    await expect(
+      prisma.$executeRawUnsafe(`DELETE FROM trades WHERE id = $1::uuid`, tradeId),
+    ).rejects.toThrow(/append-only/);
+  });
+
+  it('refuses to change the price a fill happened at', async () => {
+    await expect(
+      prisma.$executeRawUnsafe(`UPDATE executions SET price = 1 WHERE id = $1::uuid`, executionId),
+    ).rejects.toThrow(/append-only/);
+  });
+
+  it('refuses to delete a fill', async () => {
+    await expect(
+      prisma.$executeRawUnsafe(`DELETE FROM executions WHERE id = $1::uuid`, executionId),
+    ).rejects.toThrow(/append-only/);
+  });
+
+  /**
+   * The deliberate exception, working — and putting the guard back.
+   *
+   * The second half is the part worth testing. A helper that disabled a trigger
+   * and left it off on a thrown assertion would silently unprotect the table
+   * for every test that ran afterwards, and nothing would report it.
+   */
+  it('lets a test corrupt the record on purpose, and re-arms afterwards', async () => {
+    await simulatingCorruption(prisma, ['executions'], () =>
+      prisma.execution.deleteMany({ where: { id: executionId } }),
+    );
+    expect(await prisma.execution.count({ where: { id: executionId } })).toBe(0);
+
+    await expect(
+      prisma.$executeRawUnsafe(`DELETE FROM trades WHERE id = $1::uuid`, tradeId),
+      'the guard is back on immediately after',
+    ).rejects.toThrow(/append-only/);
+  });
+
+  it('re-arms even when the corruption throws', async () => {
+    await expect(
+      simulatingCorruption(prisma, ['trades'], () => {
+        throw new Error('the assertion inside failed');
+      }),
+    ).rejects.toThrow('the assertion inside failed');
+
+    await expect(
+      prisma.$executeRawUnsafe(`DELETE FROM trades WHERE id = $1::uuid`, tradeId),
+      'a thrown assertion must not leave the table unprotected for the rest of the run',
+    ).rejects.toThrow(/append-only/);
   });
 });

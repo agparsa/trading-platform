@@ -244,9 +244,20 @@ suite('Account figures (integration)', () => {
 
   /**
    * A trade closed before today counts in the lifetime figure and not in the
-   * daily one. Written by moving the trade's exit time rather than by waiting,
-   * which is the only way to test a day boundary in a suite that runs in
-   * seconds.
+   * daily one.
+   *
+   * Tested by moving **the clock**, not the trade. `realized()` takes `nowMs`,
+   * so the same closed trade can be asked about from a later day — which is
+   * what actually happens in production, where the trade stays put and the day
+   * rolls over.
+   *
+   * It used to drag the trade's `exitTime` backwards with an `updateMany`, and
+   * that only changed when `trades` became append-only at the database and the
+   * statement started being refused. The rewrite is better than what it
+   * replaced: a trade written by the service and then asked about later is the
+   * real scenario, where a trade edited into the past is a fiction that happens
+   * to produce the same numbers. Worth recording, because the constraint
+   * improved the test rather than costing it anything.
    */
   it('separates today from the account lifetime', async () => {
     const { userId, accountId, currency } = await createAccount(prisma, { balance: '100000' });
@@ -256,14 +267,14 @@ suite('Account figures (integration)', () => {
     expect(before.today.toString()).toBe(before.total.toString());
     expect(Number(before.total)).not.toBe(0);
 
-    await prisma.trade.updateMany({
-      where: { accountId },
-      data: { exitTime: new Date(before.since - 60_000) },
-    });
-
-    const after = await stack.accountState.realized(accountId, currency);
-    expect(after.today.toString()).toBe('0.00');
-    expect(after.total.toString()).toBe(before.total.toString());
+    // A full day past the boundary this trade was counted in, so the question
+    // is asked from the far side of at least one daily reset.
+    const nextDay = before.since + 25 * 60 * 60 * 1000;
+    const after = await stack.accountState.realized(accountId, currency, nextDay);
+    expect(after.today.toString(), 'yesterday’s profit is not today’s').toBe('0.00');
+    expect(after.total.toString(), 'but the lifetime figure keeps it').toBe(
+      before.total.toString(),
+    );
   });
 
   it('reports exposure and margin utilisation from the same valuation', async () => {
