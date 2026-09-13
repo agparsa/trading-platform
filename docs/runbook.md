@@ -166,10 +166,22 @@ deliberately rather than because something is broken:
   problem go away, that is the moment to wake somebody else up instead.
 
 Run `pnpm migrate:rehearse` before a deploy. It applies the whole chain against
-a scratch database from a fresh install and from three "production is N behind"
-positions, and checks the result matches `schema.prisma`. It needs an owner
-connection, so it is a developer's command rather than something the deploy
-runs.
+a scratch database from a fresh install **and from every "production is N
+behind" position**, and checks the result matches `schema.prisma`. Five or six
+minutes. It needs an owner connection, so it is a developer's command rather
+than something the deploy runs.
+
+It used to check the last three positions only, and in September production was
+eight migrations behind — so the position that actually mattered had never been
+rehearsed. Worse, the way it built a "behind" database did not work at all: it
+used `PRISMA_MIGRATIONS_PATH`, which Prisma ignores, so every one of those runs
+was a fresh full install reporting itself as something else. It now counts
+`_prisma_migrations` before and after and fails if the numbers disagree with
+what it claimed, so a setup step that quietly does something else stops the run
+instead of decorating it.
+
+`MIGRATION_REHEARSAL_CUTS=3` shortens it while iterating. The output says
+loudly when a run was partial; do not deploy on one.
 
 ### Rolling back
 

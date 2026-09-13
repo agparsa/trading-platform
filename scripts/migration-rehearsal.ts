@@ -23,20 +23,33 @@
  *      production attached to an unrelated change — which has already happened
  *      once in this repository, with eight index renames.
  *
- * ## Why the cut points are the last few, and not all of them
+ * ## Why every position, and not a sample
  *
- * Checking every prefix is forty-odd database builds for a property that only
- * varies near the end: the migrations production has *not* applied yet are the
- * recent ones, and an older prefix was proven by every deploy since. The last
- * few cover every plausible state of a production database that is behind,
- * which is the question being asked.
+ * This used to rehearse the last three positions only, justified like so:
+ * "checking every prefix is forty-odd database builds for a property that only
+ * varies near the end … the last few cover every plausible state of a
+ * production database that is behind."
+ *
+ * That was true when it was written and false by September, when production
+ * was **eight** migrations behind and the script checked three. The reasoning
+ * had not changed; the world had, and nothing was watching for it. A fixed
+ * sample is an assumption with an expiry date on it, and this one expired
+ * quietly.
+ *
+ * So: every position. It is one database build per migration, about five
+ * seconds each — five or six minutes for the whole chain, once, before a
+ * deploy. The original objection was cost, and the cost turns out to be
+ * cheaper than being wrong about which positions matter.
+ *
+ * `MIGRATION_REHEARSAL_CUTS` still shortens it to the last N while iterating.
+ * It is not what you run before deploying.
  *
  * Run it before a deploy. It needs an owner connection, so it is a developer's
  * command rather than something the deploy script calls.
  */
 import { execFile } from 'node:child_process';
 import { readdirSync } from 'node:fs';
-import { cp, mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -45,8 +58,16 @@ const exec = promisify(execFile);
 
 const SOURCE_URL = process.env['DATABASE_URL'] ?? '';
 const SCRATCH_DB = 'trading_platform_migration_rehearsal';
-/** How many "production is this far behind" positions to rehearse. */
-const CUT_POINTS = Number(process.env['MIGRATION_REHEARSAL_CUTS'] ?? '3');
+/**
+ * How many "production is this far behind" positions to rehearse.
+ *
+ * Every one of them unless told otherwise — see the header for why there is no
+ * default sample size any more.
+ */
+const CUT_POINTS =
+  process.env['MIGRATION_REHEARSAL_CUTS'] === undefined
+    ? Number.POSITIVE_INFINITY
+    : Number(process.env['MIGRATION_REHEARSAL_CUTS']);
 
 const ROOT = join(import.meta.dirname, '..');
 const MIGRATIONS_DIR = join(ROOT, 'prisma', 'migrations');
@@ -102,18 +123,53 @@ function migrationFolders(): string[] {
 }
 
 /**
- * A migrations directory holding only the first `count` migrations.
+ * A throwaway project holding only the first `count` migrations, and returns
+ * the path to its schema.
  *
- * `prisma migrate deploy` applies whatever is in the directory it is pointed
- * at, so a truncated copy is how a database "at an older release" is built
- * without checking out an older commit — and without any risk of the working
- * tree being left on one.
+ * This is how a database "at an older release" is built without checking out an
+ * older commit, and the shape matters. `prisma migrate deploy` resolves its
+ * migrations directory **relative to the schema it is given** — that is the
+ * documented behaviour and the only lever there is — so the schema is copied
+ * next to the truncated migrations and `--schema` points at the copy.
+ *
+ * The previous version tried to do this with `PRISMA_MIGRATIONS_PATH`, which is
+ * not a Prisma environment variable. Prisma ignored it, applied the repository's
+ * *whole* migrations directory, and succeeded — so the `.catch()` fallback never
+ * ran either. Every "a database N migration(s) behind" rehearsal this script
+ * ever reported was a fresh full install wearing a label. See `assertApplied`
+ * for the check that makes that impossible to repeat.
  */
-async function partialMigrations(count: number, into: string): Promise<void> {
-  await cp(join(MIGRATIONS_DIR, 'migration_lock.toml'), join(into, 'migration_lock.toml'));
+async function partialProject(count: number, into: string): Promise<string> {
+  const prisma = join(into, 'prisma');
+  const migrations = join(prisma, 'migrations');
+  await mkdir(migrations, { recursive: true });
+  await cp(join(ROOT, 'prisma', 'schema.prisma'), join(prisma, 'schema.prisma'));
+  await cp(join(MIGRATIONS_DIR, 'migration_lock.toml'), join(migrations, 'migration_lock.toml'));
   for (const folder of migrationFolders().slice(0, count)) {
-    await cp(join(MIGRATIONS_DIR, folder), join(into, folder), { recursive: true });
+    await cp(join(MIGRATIONS_DIR, folder), join(migrations, folder), { recursive: true });
   }
+  return join(prisma, 'schema.prisma');
+}
+
+/**
+ * How many migrations the scratch database believes it has applied.
+ *
+ * Zero for an empty database: Prisma creates `_prisma_migrations` when it first
+ * applies something, so "the table is not there" and "nothing has been applied"
+ * are the same state and must not be an error.
+ */
+async function appliedCount(
+  connect: readonly string[],
+  env: NodeJS.ProcessEnv,
+): Promise<number> {
+  const out = await run(
+    'psql',
+    [...connect, '-At', '-d', SCRATCH_DB, '-c',
+      `SELECT count(*) FROM _prisma_migrations WHERE to_regclass('_prisma_migrations') IS NOT NULL`],
+    { env },
+  ).catch(() => '0');
+  const count = Number(out.trim());
+  return Number.isFinite(count) ? count : 0;
 }
 
 async function main(): Promise<void> {
@@ -135,14 +191,20 @@ async function main(): Promise<void> {
 
   // Empty first, then increasingly-behind databases. `0` is the fresh-install
   // case; the rest are "production is N migrations behind".
-  const cuts = [0, ...Array.from({ length: CUT_POINTS }, (_, i) => all.length - 1 - i)]
+  const depth = Math.min(CUT_POINTS, all.length);
+  const cuts = [0, ...Array.from({ length: depth }, (_, i) => all.length - 1 - i)]
     .filter((n) => n >= 0 && n < all.length)
     .filter((n, i, list) => list.indexOf(n) === i)
     .sort((a, b) => a - b);
 
   console.log(
     `\n  Rehearsing ${all.length} migrations from ${cuts.length} starting points ` +
-      `into "${SCRATCH_DB}".\n`,
+      `into "${SCRATCH_DB}".` +
+      (Number.isFinite(CUT_POINTS)
+        ? `\n  MIGRATION_REHEARSAL_CUTS is set, so this is a partial sweep — the deepest\n` +
+          `  position checked is ${depth} migration(s) behind. Do not deploy on this alone.`
+        : '') +
+      `\n`,
   );
 
   let failures = 0;
@@ -161,43 +223,58 @@ async function main(): Promise<void> {
 
         if (cut > 0) {
           const partial = await mkdtemp(join(workspace, 'partial-'));
-          await partialMigrations(cut, partial);
-          await run('npx', ['prisma', 'migrate', 'deploy', '--schema', ROOT + '/prisma/schema.prisma'], {
-            // The truncated directory stands in for the older release. Prisma
-            // resolves migrations relative to the schema, so the schema is
-            // copied beside them.
-            env: { ...env, DATABASE_URL: url, PRISMA_MIGRATIONS_PATH: partial },
+          const schema = await partialProject(cut, partial);
+          /**
+           * Run from the repository, point `--schema` at the copy.
+           *
+           * `cwd` must stay here so `npx` resolves the repository's own Prisma
+           * rather than trying to fetch one into a temporary directory — which
+           * it does, and which fails. It is the `--schema` path that decides
+           * where the migrations are read from.
+           */
+          await run('npx', ['prisma', 'migrate', 'deploy', '--schema', schema], {
+            env: { ...env, DATABASE_URL: url },
             cwd: ROOT,
-          }).catch(async () => {
-            // Older Prisma has no PRISMA_MIGRATIONS_PATH; fall back to applying
-            // the SQL directly, which is the same statements in the same order.
-            for (const folder of all.slice(0, cut)) {
-              await run(
-                'psql',
-                [...connect, '-v', 'ON_ERROR_STOP=1', '-q', '-d', SCRATCH_DB, '-f',
-                  join(MIGRATIONS_DIR, folder, 'migration.sql')],
-                { env },
-              );
-            }
-            // The history table has to agree, or `migrate deploy` re-applies them.
-            for (const folder of all.slice(0, cut)) {
-              await run(
-                'psql',
-                [...connect, '-q', '-d', SCRATCH_DB, '-c',
-                  `INSERT INTO _prisma_migrations (id, checksum, migration_name, started_at, finished_at, applied_steps_count)
-                   VALUES (gen_random_uuid()::text, 'rehearsal', '${folder}', now(), now(), 1)
-                   ON CONFLICT DO NOTHING`],
-                { env },
-              ).catch(() => undefined);
-            }
           });
+          /**
+           * The setup has to have produced the state it claims to.
+           *
+           * This is the assertion whose absence let the old version report four
+           * successful rehearsals per run while never once building a database
+           * that was behind. A setup step that quietly does something else is
+           * worse than one that fails, because it takes the report down with it.
+           */
+          const staged = await appliedCount(connect, env);
+          if (staged !== cut) {
+            throw new Error(
+              `setup was asked for ${cut} migration(s) and produced ${staged}. ` +
+                `The "behind" state was not built, so this rehearsal would have ` +
+                `proved nothing.`,
+            );
+          }
         }
 
         // The exact command the deploy runs.
+        const before = await appliedCount(connect, env);
         const output = await run('npx', ['prisma', 'migrate', 'deploy'], {
           env: { ...env, DATABASE_URL: url },
           cwd: ROOT,
         });
+        const after = await appliedCount(connect, env);
+        /**
+         * What the deploy *did*, not what the arithmetic says it should have.
+         *
+         * The old report printed `all.length - cut` — a computed figure, never
+         * an observed one — so it read "1 applied" whether one migration had
+         * been applied or fifty-one.
+         */
+        const applied = after - before;
+        if (applied !== all.length - cut) {
+          throw new Error(
+            `expected this deploy to apply ${all.length - cut} migration(s) and it applied ` +
+              `${applied}. The database was not where this rehearsal thought it was.`,
+          );
+        }
 
         // And the result must be the schema the code expects.
         const drift = await run(
@@ -222,10 +299,10 @@ async function main(): Promise<void> {
           continue;
         }
 
-        const applied = (output.match(/migration(s)? (have|has) been applied/i) ?? []).length > 0;
+        void output;
         console.log(
-          `  ok        ${label} — ${all.length - cut} applied, schema matches` +
-            ` (${((Date.now() - started) / 1000).toFixed(1)}s)${applied ? '' : ''}`,
+          `  ok        ${label} — ${applied} applied, schema matches` +
+            ` (${((Date.now() - started) / 1000).toFixed(1)}s)`,
         );
       } catch (error) {
         failures += 1;
