@@ -11,7 +11,7 @@ import {
   type BrokerCapabilities,
   type BrokerCredentials,
 } from '@tp/broker-sdk';
-import { SecretBox, parseEncryptionKeys } from '@tp/crypto-core';
+import { SecretBox, idSealContext, parseEncryptionKeys } from '@tp/crypto-core';
 import { requireTenantId, withTenant, withoutTenantScope } from '@tp/tenancy';
 import { PrismaService } from '../prisma.service';
 import type { WorkerEnv } from '../env';
@@ -198,7 +198,7 @@ export class BrokerHealthService {
 
     let credentials: BrokerCredentials;
     try {
-      credentials = deserialiseCredentials(secrets.open(credentialRow.sealed, connection.id));
+      credentials = deserialiseCredentials(secrets.open(credentialRow.sealed, idSealContext(connection.id)));
     } catch (error) {
       /**
        * The sealed blob will not open: a rotated encryption key, or a row

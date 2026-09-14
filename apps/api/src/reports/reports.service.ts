@@ -9,6 +9,7 @@ import {
   readWindow,
   reportFilename,
 } from '@tp/reports-core';
+import { reportSealContext } from '@tp/crypto-core';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { requireTenantId } from '@tp/tenancy';
 import { PrismaService } from '../prisma/prisma.service';
@@ -18,10 +19,15 @@ import { QueuePublisher } from '../jobs/queue-publisher.service';
 import { QueueName } from '../jobs/queues';
 import { SecretBoxService } from '../common/crypto/crypto.module';
 
-/** The context a report seal is bound to, so a sealed file cannot be moved between rows. */
-export function reportSealContext(reportId: string): string {
-  return `report:${reportId}`;
-}
+/**
+ * The context a report seal is bound to, so a sealed file cannot be moved
+ * between rows.
+ *
+ * One definition, in `sealed-columns.ts`, re-exported at both ends. It used to
+ * be written out twice — here and in the worker — under a comment saying the
+ * two must match, which is a hope rather than a mechanism.
+ */
+export { reportSealContext };
 
 export interface ReportRequest {
   readonly kind: string;

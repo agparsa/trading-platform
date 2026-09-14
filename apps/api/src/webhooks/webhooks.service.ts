@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DomainError, Feature, OUTBOX_EVENT_TYPES, TradingErrorCode } from '@tp/shared-types';
 import { requireTenantId } from '@tp/tenancy';
+import { idSealContext } from '@tp/crypto-core';
 import { checkDestination, type DestinationRefusal } from '@tp/webhooks-core';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
@@ -123,7 +124,7 @@ export class WebhooksService {
       // Sealed under the id, so a sealed value copied to another row will not open.
       return tx.webhookEndpoint.update({
         where: { id: row.id },
-        data: { secretSealed: this.secrets.seal(secret, row.id) },
+        data: { secretSealed: this.secrets.seal(secret, idSealContext(row.id)) },
         select: {
           id: true,
           url: true,
@@ -189,7 +190,7 @@ export class WebhooksService {
     await this.prisma.webhookEndpoint.update({
       where: { id: args.id },
       data: {
-        secretSealed: this.secrets.seal(secret, args.id),
+        secretSealed: this.secrets.seal(secret, idSealContext(args.id)),
         secretHint: secret.slice(-4),
         previousSecretSealed: existing.secretSealed,
         previousSecretExpiresAt: new Date(Date.now() + ROTATION_OVERLAP_MS),

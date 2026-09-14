@@ -179,6 +179,41 @@ describe('SecretBox with bytes', () => {
     expect(SecretBox.keyIdOfBytes(sealed)).toBe(parseEncryptionKeys(KEY_A)[0]?.id);
   });
 
+  /**
+   * The byte twin of the text rotation, which did not exist until a rotation
+   * job needed it — and until then identity documents and built reports, the
+   * two largest sealed columns in the platform, could not be re-sealed at all.
+   */
+  it('re-seals old bytes and reports nothing to do for current ones', () => {
+    const rotated = boxWith(KEY_A, KEY_B);
+    const old = boxWith(KEY_B).sealBytes(document, 'kyc:doc:1');
+
+    const resealed = rotated.rotateBytes(old, 'kyc:doc:1');
+    expect(resealed).not.toBeNull();
+    expect(SecretBox.keyIdOfBytes(resealed ?? Buffer.alloc(0))).toBe(
+      parseEncryptionKeys(KEY_A)[0]?.id,
+    );
+    expect(rotated.openBytes(resealed ?? Buffer.alloc(0), 'kyc:doc:1').equals(document)).toBe(true);
+
+    expect(rotated.rotateBytes(resealed ?? Buffer.alloc(0), 'kyc:doc:1')).toBeNull();
+  });
+
+  /**
+   * A re-seal is bound to the same context or it is not a re-seal.
+   *
+   * Rotating under the wrong AAD would produce a value that looks perfectly
+   * healthy — right key id, right frame — and refuses to open in the row it
+   * came from. That is the failure mode a rotation must not have, because it is
+   * discovered later, one document at a time.
+   */
+  it('re-seals under the same context, not merely under the same key', () => {
+    const rotated = boxWith(KEY_A, KEY_B);
+    const old = boxWith(KEY_B).sealBytes(document, 'kyc:doc:1');
+    const resealed = rotated.rotateBytes(old, 'kyc:doc:1') ?? Buffer.alloc(0);
+
+    expect(() => rotated.openBytes(resealed, 'kyc:doc:2')).toThrow(SecretDecryptionError);
+  });
+
   it('refuses garbage rather than guessing at it', () => {
     const box = boxWith(KEY_A);
     for (const junk of [

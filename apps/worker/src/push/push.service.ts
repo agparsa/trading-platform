@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PushOutcome, resolveDelivery, DEFAULT_SETTINGS } from '@tp/push-core';
 import type { StoredPreference, StoredSettings } from '@tp/push-core';
 import { DevicePlatform, categoryForKind, type NotificationCategory } from '@tp/shared-types';
-import { SecretBox } from '@tp/crypto-core';
+import { SecretBox, deviceSealContext } from '@tp/crypto-core';
 import { PrismaService } from '../prisma.service';
 import { PushProvider, type PushEnvelope } from './push.port';
 
@@ -88,7 +88,7 @@ export class PushService {
       try {
         token = this.secrets.open(
           device.pushToken,
-          `device:${input.userId}:${device.installationId}`,
+          deviceSealContext(input.userId, device.installationId),
         );
       } catch (error) {
         // A token sealed under a retired key cannot be recovered. Skipping is

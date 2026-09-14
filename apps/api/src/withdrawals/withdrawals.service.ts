@@ -12,6 +12,7 @@ import {
   type WithdrawalPolicy,
 } from '@tp/withdrawals-core';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
+import { destinationSealContext } from '@tp/crypto-core';
 import { requireTenantId } from '@tp/tenancy';
 import type { Env } from '../config/env.schema';
 import { PrismaService } from '../prisma/prisma.service';
@@ -48,10 +49,12 @@ export interface WithdrawalTerms {
   readonly identityVerified: boolean;
 }
 
-/** The AAD a destination is sealed under: its own request and nothing else. */
-export function destinationSealContext(requestId: string): string {
-  return `withdrawal:destination:${requestId}`;
-}
+/**
+ * The AAD a destination is sealed under: its own request and nothing else.
+ *
+ * Defined in `sealed-columns.ts`, so the rotation job binds it the same way.
+ */
+export { destinationSealContext };
 
 /**
  * Money leaving a wallet, from the person's side.

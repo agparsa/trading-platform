@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
+import { totpSealContext } from '@tp/crypto-core';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { SecretBoxService } from '../common/crypto/crypto.module';
@@ -32,10 +33,13 @@ export interface TotpStatus {
   recoveryCodesRemaining: number;
 }
 
-/** How the sealed secret is bound to its row. Changing this invalidates every enrolment. */
-function contextFor(userId: string): string {
-  return `user:${userId}:totp`;
-}
+/**
+ * How the sealed secret is bound to its row. Changing this invalidates every
+ * enrolment — which is why it is declared in `sealed-columns.ts` rather than
+ * here: the rotation job needs the same string, and two copies of an AAD is two
+ * chances to re-seal a column into values that no longer open.
+ */
+const contextFor = totpSealContext;
 
 function hashRecoveryCode(code: string): string {
   return createHash('sha256').update(normaliseRecoveryCode(code)).digest('hex');

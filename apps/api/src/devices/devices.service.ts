@@ -7,6 +7,7 @@ import {
   type DevicePlatform,
 } from '@tp/shared-types';
 import { requireTenantId } from '@tp/tenancy';
+import { deviceSealContext } from '@tp/crypto-core';
 import { PrismaService } from '../prisma/prisma.service';
 import { SecretBoxService } from '../common/crypto/crypto.module';
 import { SessionsService } from '../auth/sessions.service';
@@ -407,9 +408,7 @@ export interface PushTarget {
  * pasted into another fails to open rather than decrypting into a token that
  * would deliver to the wrong person's phone.
  */
-function sealContext(userId: string, installationId: string): string {
-  return `device:${userId}:${installationId}`;
-}
+const sealContext = deviceSealContext;
 
 /** The last four characters, for support and logs. Not a secret. */
 function fingerprintOf(token: string): string {

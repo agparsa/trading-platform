@@ -15,6 +15,7 @@ import {
 } from '@tp/broker-sdk';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { requireTenantId } from '@tp/tenancy';
+import { idSealContext } from '@tp/crypto-core';
 import { AuditService } from '../common/audit/audit.service';
 import { SecretBoxService } from '../common/crypto/crypto.module';
 import { PrismaService } from '../prisma/prisma.service';
@@ -198,7 +199,7 @@ export class BrokerConnectionsService {
           tenantId,
           connectionId,
           kind: credentials.kind,
-          sealed: this.secrets.seal(serialiseCredentials(credentials), connectionId),
+          sealed: this.secrets.seal(serialiseCredentials(credentials), idSealContext(connectionId)),
           fingerprint: metadata.fingerprint,
           visible: metadata.visible as Prisma.InputJsonValue,
           createdById: actorId,
@@ -371,7 +372,7 @@ export class BrokerConnectionsService {
         { connectionId },
       );
     }
-    const credentials = deserialiseCredentials(this.secrets.open(row.sealed, connectionId));
+    const credentials = deserialiseCredentials(this.secrets.open(row.sealed, idSealContext(connectionId)));
     const adapter = this.registry.create(
       connection.adapterKind,
       connection.settings as Record<string, unknown>,

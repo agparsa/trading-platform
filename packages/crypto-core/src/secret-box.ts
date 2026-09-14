@@ -258,6 +258,13 @@ export class SecretBox {
     }
   }
 
+  /** Which key a sealed *text* value was written under, without opening it. */
+  static keyIdOfText(sealed: string): string | null {
+    const parts = sealed.split('.');
+    if (parts.length !== 5 || parts[0] !== FORMAT) return null;
+    return parts[1] ?? null;
+  }
+
   /** Which key a sealed byte string was written under, without opening it. */
   static keyIdOfBytes(sealed: Buffer): string | null {
     const keyIdLength = sealed[1];
@@ -276,6 +283,23 @@ export class SecretBox {
     const keyId = sealed.split('.')[1];
     if (keyId === this.active.id) return null;
     return this.seal(this.open(sealed, context), context);
+  }
+
+  /**
+   * Re-seals framed bytes under the active key, if they are not already.
+   *
+   * The byte twin of `rotate`, and it did not exist until a rotation job needed
+   * it — which meant the two largest and most consequential sealed columns in
+   * the system, identity documents and built reports, could not be re-sealed at
+   * all. The procedure in `encryption-at-rest.md` said to do it anyway, and its
+   * last step is "only then may the old key be dropped".
+   *
+   * Returns `null` when the row is already under the active key, so a rotation
+   * walk writes only what changed and can be run again without cost.
+   */
+  rotateBytes(sealed: Buffer, context: string): Buffer | null {
+    if (SecretBox.keyIdOfBytes(sealed) === this.active.id) return null;
+    return this.sealBytes(this.openBytes(sealed, context), context);
   }
 
   /** Constant-time comparison, for callers checking a decrypted secret. */

@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, type OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { OutboxEvent, Prisma, WebhookDelivery } from '@prisma/client';
-import { SecretBox, parseEncryptionKeys } from '@tp/crypto-core';
+import { SecretBox, idSealContext, parseEncryptionKeys } from '@tp/crypto-core';
 import { requireTenantId, withTenant, withoutTenantScope } from '@tp/tenancy';
 import {
   DEFAULT_RETRY,
@@ -232,13 +232,13 @@ export class WebhookDeliveryService implements OutboxDestination, OnModuleInit {
         lastError: 'this worker cannot open sealed secrets (SECRET_ENCRYPTION_KEYS)',
       });
     }
-    const secrets = [box.open(endpoint.secretSealed, endpoint.id)];
+    const secrets = [box.open(endpoint.secretSealed, idSealContext(endpoint.id))];
     if (
       endpoint.previousSecretSealed !== null &&
       endpoint.previousSecretExpiresAt !== null &&
       endpoint.previousSecretExpiresAt > now
     ) {
-      secrets.push(box.open(endpoint.previousSecretSealed, endpoint.id));
+      secrets.push(box.open(endpoint.previousSecretSealed, idSealContext(endpoint.id)));
     }
 
     const body: WebhookBody = {

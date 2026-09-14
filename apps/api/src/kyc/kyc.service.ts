@@ -11,6 +11,7 @@ import {
   submissionShortfalls,
 } from '@tp/kyc-core';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
+import { documentSealContext } from '@tp/crypto-core';
 import { requireTenantId } from '@tp/tenancy';
 import type { Env } from '../config/env.schema';
 import { PrismaService } from '../prisma/prisma.service';
@@ -45,10 +46,14 @@ export interface KycView {
   readonly documents: readonly DocumentView[];
 }
 
-/** The AAD every document is sealed under: its own row and nothing else. */
-export function documentSealContext(documentId: string): string {
-  return `kyc:document:${documentId}`;
-}
+/**
+ * The AAD every document is sealed under: its own row and nothing else.
+ *
+ * Defined in `sealed-columns.ts` and re-exported here, where readers of this
+ * file expect it. The rotation job needs the same string, and an AAD with two
+ * definitions is a column waiting to stop opening.
+ */
+export { documentSealContext };
 
 /**
  * A person's identity verification, from their side.

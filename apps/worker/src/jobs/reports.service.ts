@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
-import { SecretBox, parseEncryptionKeys } from '@tp/crypto-core';
+import { SecretBox, parseEncryptionKeys, reportSealContext } from '@tp/crypto-core';
 import {
   MAX_REPORT_ROWS,
   ReportKind,
@@ -13,10 +13,15 @@ import { withTenant, withoutTenantScope } from '@tp/tenancy';
 import { PrismaService } from '../prisma.service';
 import type { WorkerEnv } from '../env';
 
-/** Must match the API's `reportSealContext`, or a file cannot be opened again. */
-export function reportSealContext(reportId: string): string {
-  return `report:${reportId}`;
-}
+/**
+ * The context a report seal is bound to, so a sealed file cannot be moved
+ * between rows.
+ *
+ * One definition, in `sealed-columns.ts`, re-exported at both ends. It used to
+ * be written out twice — here and in the worker — under a comment saying the
+ * two must match, which is a hope rather than a mechanism.
+ */
+export { reportSealContext };
 
 /** Rows are fetched in pages, so one report is not one enormous result set. */
 const PAGE = 5_000;

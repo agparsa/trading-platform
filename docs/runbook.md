@@ -252,6 +252,21 @@ run in half.
 | Redis      | Yes, with a caveat | It carries no financial truth — quotes are re-published on the next tick and clients re-snapshot. In-flight WebSocket fan-out is lost. |
 | PostgreSQL | Only deliberately  | It _is_ the financial truth. Restore from backup rather than improvising.                                                              |
 
+## Rotating the encryption key
+
+The full procedure is in
+[encryption-at-rest.md](./encryption-at-rest.md#rotating-a-key). The one line
+worth carrying here, because getting it wrong is unrecoverable:
+
+```bash
+pnpm rotate:secrets --assert-current   # must exit 0 before any key is dropped
+```
+
+A key dropped while rows are still sealed under it makes those rows unreadable
+for good, and the failure appears weeks later, one person at a time. The check
+opens nothing and needs no key, so it is safe to run at any time by anybody who
+can reach the database.
+
 ## Backups
 
 The `backup` service dumps the database every six hours by default and writes a
