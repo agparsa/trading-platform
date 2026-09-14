@@ -32,6 +32,7 @@
     "@tp/payments-core": "workspace:*",
     "@tp/push-core": "workspace:*",
     "@tp/reconciliation-core": "workspace:*",
+    "@tp/reports-core": "workspace:*",
     "@tp/risk-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
     "@tp/tenancy": "workspace:*",

@@ -106,6 +106,7 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'BrokerInstrumentMapping',
   'OutboxEvent',
   'BrokerInboundEvent',
+  'Report',
 ]);
 
 /**

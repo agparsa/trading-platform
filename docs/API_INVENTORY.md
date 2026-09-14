@@ -348,6 +348,15 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/reconciliation/resolutions` | `resolve` | RECONCILIATION_MANAGE |
 | `GET` | `/reconciliation/resolutions` | `resolutions` | RECONCILIATION_READ |
 
+### `reports/reports.controller.ts` — base `/reports`
+
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/reports/kinds` | `kinds` | REPORTS_RUN |
+| `GET` | `/reports` | `list` | REPORTS_RUN |
+| `POST` | `/reports` | `request` | REPORTS_RUN |
+| `GET` | `/reports/:id/download` | `download` | REPORTS_RUN |
+
 ### `security/admin-security.controller.ts` — base `/admin/security`
 
 | Verb | Path | Handler | Requires |
@@ -474,7 +483,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals` | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel` | WITHDRAWALS_REQUEST |
 
-**230 routes:** 115 `GET`, 98 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**234 routes:** 118 `GET`, 99 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

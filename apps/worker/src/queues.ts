@@ -23,6 +23,8 @@ export const QueueName = {
   OUTBOX_RELAY: 'outbox-relay',
   /** Sends what the outbox relay recorded as owed to each firm's webhook endpoints. */
   WEBHOOK_DELIVERY: 'webhook-delivery',
+  /** Produces a requested report: query, CSV, seal, store. */
+  REPORTS: 'reports',
 } as const;
 export type QueueName = (typeof QueueName)[keyof typeof QueueName];
 

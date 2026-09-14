@@ -300,6 +300,9 @@ importers:
       '@tp/reconciliation-core':
         specifier: workspace:*
         version: link:../../packages/reconciliation-core
+      '@tp/reports-core':
+        specifier: workspace:*
+        version: link:../../packages/reports-core
       '@tp/risk-core':
         specifier: workspace:*
         version: link:../../packages/risk-core
@@ -579,6 +582,9 @@ importers:
       '@tp/reconciliation-core':
         specifier: workspace:*
         version: link:../../packages/reconciliation-core
+      '@tp/reports-core':
+        specifier: workspace:*
+        version: link:../../packages/reports-core
       '@tp/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
@@ -805,6 +811,22 @@ importers:
       '@tp/financial-core':
         specifier: workspace:*
         version: link:../financial-core
+      '@tp/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
+    devDependencies:
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.3
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.12)(yaml@2.9.0)
+
+  packages/reports-core:
+    dependencies:
       '@tp/shared-types':
         specifier: workspace:*
         version: link:../shared-types

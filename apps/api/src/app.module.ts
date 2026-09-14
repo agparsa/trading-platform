@@ -39,6 +39,7 @@ import { IntegrityModule } from './integrity/integrity.module';
 import { OperationsModule } from './operations/operations.module';
 import { AdminModule } from './admin/admin.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
+import { ReportsModule } from './reports/reports.module';
 import { MarketModule } from './market/market.module';
 import { TradingModule } from './trading/trading.module';
 import { IdempotencyModule } from './common/idempotency/idempotency.module';
@@ -136,6 +137,7 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
     OperationsModule,
     AdminModule,
     ReconciliationModule,
+    ReportsModule,
     MarketModule,
     TradingModule,
     RealtimeModule,

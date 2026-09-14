@@ -17,6 +17,7 @@ import { ReconciliationService } from './jobs/reconciliation.service';
 import { BrokerHealthService } from './jobs/broker-health.service';
 import { OutboxRelayService } from './jobs/outbox-relay.service';
 import { WebhookDeliveryService } from './jobs/webhook-delivery.service';
+import { ReportsService } from './jobs/reports.service';
 import { MaintenanceService } from './jobs/maintenance.service';
 import { NotificationsService } from './jobs/notifications.service';
 
@@ -45,6 +46,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly brokerHealth: BrokerHealthService,
     private readonly outbox: OutboxRelayService,
     private readonly webhooks: WebhookDeliveryService,
+    private readonly reports: ReportsService,
   ) {
     // Decided in the constructor so a bad WORKER_QUEUES refuses to boot at
     // once, with a message, rather than after Redis is connected.
@@ -89,11 +91,15 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
       documents: await this.maintenance.purgeIdentityDocuments(
         this.config.getOrThrow('KYC_DOCUMENT_RETENTION_DAYS', { infer: true }),
       ),
+      reports: await this.maintenance.purgeExpiredReports(),
     }));
     this.attach(QueueName.NOTIFICATIONS, async (job) => this.notifications.deliver(job.data));
     this.attach(QueueName.BROKER_HEALTH, async () => this.brokerHealth.sweep());
     this.attach(QueueName.OUTBOX_RELAY, async () => this.outbox.relay());
     this.attach(QueueName.WEBHOOK_DELIVERY, async () => this.webhooks.deliverDue());
+    this.attach(QueueName.REPORTS, async (job) => ({
+      outcome: await this.reports.build(String((job.data as { reportId?: string }).reportId ?? '')),
+    }));
 
     if (this.assignment.schedules) await this.schedule();
 

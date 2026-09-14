@@ -1469,6 +1469,32 @@ async function main(): Promise<void> {
       featuresText.replace(/\s+/g, ' ').slice(0, 160),
     );
 
+    /**
+     * Reports: the screen an operator comes back to.
+     *
+     * Checked for the empty state rather than by producing one, because
+     * producing one needs a worker and this suite does not run the worker.
+     * `reports.test.ts` covers the file; what is verified here is that the page
+     * loads, offers the kinds the API actually defines, and says plainly that
+     * nothing is there yet — the failure this catches is a screen that renders
+     * an empty table and leaves somebody wondering whether it worked.
+     */
+    await visit(adminPage, '/admin/reports', {
+      url: '/admin/reports',
+      text: /Ask for a report/i,
+    });
+    const reportsText = await adminPage.innerText('body');
+    ok(
+      /Closed trades/i.test(reportsText) && /Balance ledger/i.test(reportsText),
+      'the reports page offers the kinds the API defines',
+      reportsText.replace(/\s+/g, ' ').slice(0, 160),
+    );
+    ok(
+      /No reports yet/i.test(reportsText),
+      'an empty reports list says so, rather than showing an empty table',
+      reportsText.replace(/\s+/g, ' ').slice(0, 160),
+    );
+
     await visit(adminPage, '/admin/webhooks', {
       url: '/admin/webhooks',
       text: /Register endpoint/i,

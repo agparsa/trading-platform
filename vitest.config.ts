@@ -20,6 +20,7 @@ export default defineConfig({
       '@tp/integrity-core': pkg('integrity-core'),
       '@tp/api-client': pkg('api-client'),
       '@tp/push-core': pkg('push-core'),
+      '@tp/reports-core': pkg('reports-core'),
       '@tp/webhooks-core': pkg('webhooks-core'),
       '@tp/chart-core': pkg('chart-core'),
       '@tp/ui': pkg('ui'),

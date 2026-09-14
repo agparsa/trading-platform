@@ -55,8 +55,9 @@ support agent the whole firm's book while looking like a successful search.
 ### Export is of the page, and says so
 
 The button reads "Export this page". An export that silently handed over one
-screen of a hundred thousand rows would be worse than none. Whole-dataset
-export is a server-side job and is **not built** — see §5.
+screen of a hundred thousand rows would be worse than none. The whole result
+set is a different thing and is now a different screen: `/admin/reports` runs
+it as a job and hands back a file. See `reports.md`.
 
 ---
 
@@ -136,11 +137,11 @@ money arriving.
 | Security                                    | `/admin/security` — the event feed                             |
 | Developer: API keys                         | `/admin/credentials`                                           |
 | **Fees**                                    | **no section** — commission and swap are edited on Instruments |
-| **Reports**                                 | **not built**                                                  |
+| Reports                                     | `/admin/reports` — **new this phase**                          |
 | **Alerts**                                  | **not built**                                                  |
-| **Security: devices, IP rules**             | **not built**                                                  |
+| Security: devices, IP rules                 | built — see §5                                                 |
 | **Branding**                                | **not built**                                                  |
-| **Developer: webhooks, API docs**           | **not built** / non-production only                            |
+| Developer: webhooks, API docs               | built — see §5                                                 |
 
 ---
 
@@ -160,10 +161,17 @@ that really are absent keep their entry and their reason.
   no report of fees charged — though the dashboard now shows commission earned
   in the last day, and the closed-trades tab shows what each round trip cost.
   Spread is not configurable at all: it comes from the feed.
-- **Reports.** There is no server-side export and no statement generator. What
-  exists is client-side CSV of the page on screen, on Audit, the book, and the
-  trader's own history. A real reporting surface is a job queue, a file store
-  and a retention policy — a phase of its own, not a button.
+- **~~Reports.~~ Built** (§13). A job queue, a sealed file store and a retention
+  policy, which is what this entry said it would take. `/admin/reports` asks for
+  one, the worker produces it, and the file is downloaded once — per kind
+  permission checked at both ends, scoped to the firm by the row rather than the
+  job payload, and bounded at 366 days and 250,000 rows. See `reports.md`.
+
+  What is still narrower here: two kinds (closed trades, balance ledger), CSV
+  only, no PDF statement, no scheduling, and a report belongs to whoever asked
+  for it rather than to the firm. The client-side CSV buttons on Audit, the book
+  and the trader's history stay — they are the right tool for the page on
+  screen, and are now the only thing claiming to be that.
 - **Alerts.** `Alert` (price alerts) is Phase 8, with the notification
   channels. Admin alert _rules_ — thresholds that raise something when a figure
   moves — do not exist and are not designed.

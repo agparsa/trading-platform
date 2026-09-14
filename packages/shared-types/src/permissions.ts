@@ -88,6 +88,21 @@ export const Permission = {
   RECONCILIATION_MANAGE: 'reconciliation.manage',
   RECONCILIATION_RUN: 'reconciliation.run',
 
+  /**
+   * Ask the platform to produce a report, and fetch one you asked for.
+   *
+   * Deliberately *not* enough on its own to read anything. A report is a way of
+   * reading rows, so every kind additionally requires the permission those rows
+   * would have needed on screen — `REPORT_DEFINITIONS` in `@tp/reports-core`
+   * names it per kind, and the API checks it when the report is requested and
+   * again when the file is fetched. Twice, because a role can change in between
+   * and the file outlives the request.
+   *
+   * What this permission decides on its own is narrower and still worth its own
+   * name: whether somebody may put minutes of database work into a queue.
+   */
+  REPORTS_RUN: 'reports.run',
+
   // --- master accounts ---
   MASTER_READ: 'master.read',
   MASTER_MANAGE: 'master.manage',
@@ -398,6 +413,7 @@ const ADMIN_PERMISSIONS: readonly Permission[] = [
   Permission.RECONCILIATION_READ,
   Permission.RECONCILIATION_MANAGE,
   Permission.RECONCILIATION_RUN,
+  Permission.REPORTS_RUN,
   Permission.BROKER_CONNECTIONS_READ,
   Permission.BROKER_CONNECTIONS_MANAGE,
   /**
@@ -485,6 +501,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.BROKER_CONNECTIONS_READ,
     Permission.RECONCILIATION_MANAGE,
     Permission.RECONCILIATION_RUN,
+    Permission.REPORTS_RUN,
     Permission.ROLES_READ,
     Permission.SYSTEM_OPERATIONS,
     Permission.SYSTEM_KILL_SWITCH,
@@ -587,6 +604,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
     Permission.RECONCILIATION_READ,
     Permission.BROKER_CONNECTIONS_READ,
     Permission.RECONCILIATION_RUN,
+    Permission.REPORTS_RUN,
     Permission.ROLES_READ,
     Permission.API_KEYS_READ_ANY,
     Permission.API_KEYS_REVOKE_ANY,

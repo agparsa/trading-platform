@@ -228,6 +228,7 @@ model Tenant {
   webhookEndpoints         WebhookEndpoint[]
   webhookDeliveries        WebhookDelivery[]
   features                 TenantFeature[]
+  reports                  Report[]
 
   @@map("tenants")
 }
@@ -332,6 +333,7 @@ model User {
   wallets                  Wallet[]
   kycRecord                KycRecord?
   withdrawals              WithdrawalRequest[]
+  reports                  Report[]
   apiKeys                  ApiKey[]
   /// Tokens this person minted, for the audit trail; the tokens belong to the firm.
   serviceTokensMinted      ServiceToken[]
@@ -2441,7 +2443,7 @@ model WithdrawalRequest {
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  holdTransaction WalletTransaction @relation("WithdrawalHold", fields: [tenantId, walletId, holdTransactionId], references: [tenantId, walletId, id], onDelete: Restrict)
+  holdTransaction    WalletTransaction  @relation("WithdrawalHold", fields: [tenantId, walletId, holdTransactionId], references: [tenantId, walletId, id], onDelete: Restrict)
   releaseTransaction WalletTransaction? @relation("WithdrawalRelease", fields: [tenantId, walletId, releaseTransactionId], references: [tenantId, walletId, id], onDelete: Restrict)
 
   @@index([userId, createdAt(sort: Desc)])
@@ -3380,4 +3382,81 @@ model TenantIpRule {
   @@unique([tenantId, cidr, scope])
   @@index([tenantId, enabled])
   @@map("tenant_ip_rules")
+}
+
+/// A report somebody asked the platform to produce, and the file it produced.
+///
+/// Reports exist because the panel's CSV buttons export *the page on screen*.
+/// That is honest for a hundred rows and useless for a quarter: an operator
+/// asked for "every closed trade in March" and got the fifty rows the table had
+/// paged in. A real export cannot run inside a request — it is minutes of
+/// query, megabytes of output, and a thing somebody comes back for later — so
+/// it is a job, a stored file, and a download.
+///
+/// The shape deliberately copies `KycDocument`, which had already solved the
+/// same problem: bytes sealed at rest, a hash and a size in the clear so the
+/// row stays useful after the bytes are gone, the sealing key recorded so a
+/// rotation can find rows without opening them, and a retention sweep that
+/// nulls the content rather than deleting the record. A report is evidence of
+/// what an operator was shown; the record outlives the file.
+model Report {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  kind   ReportKind
+  status ReportStatus @default(QUEUED)
+
+  /// The filters, exactly as the request made them: date range, account, symbol.
+  /// Stored so the file can be explained later, and so a duplicate request is
+  /// recognisable. Never contains a secret — see `reports.md`.
+  params Json
+
+  /// Who asked. The only person who may download it.
+  requestedById String @map("requested_by_id") @db.Uuid
+
+  /// Of the plaintext. Not secret, and the integrity check on download.
+  sha256    String? @db.VarChar(64)
+  sizeBytes Int?    @map("size_bytes")
+  rowCount  Int?    @map("row_count")
+
+  /// Sealed bytes. Null before the job runs and after the retention sweep.
+  content Bytes?
+
+  /// Which sealing key wrote `content`, copied out of the frame so a rotation
+  /// job can find rows to rewrite without opening each one.
+  sealedWithKeyId String? @map("sealed_with_key_id")
+
+  /// Why it failed, in words an operator can act on. Never a stack trace.
+  error String?
+
+  requestedAt DateTime  @default(now()) @map("requested_at") @db.Timestamptz(6)
+  startedAt   DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  /// After this the sweep clears the bytes. Set when the file is written.
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6)
+  purgedAt    DateTime? @map("purged_at") @db.Timestamptz(6)
+
+  requestedBy User   @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, requestedAt(sort: Desc)])
+  @@index([requestedById, requestedAt(sort: Desc)])
+  @@index([status])
+  @@map("reports")
+}
+
+enum ReportKind {
+  /// Every closed trade in the window: the statement backbone.
+  TRADES
+  /// Every balance-ledger entry in the window, with the running balance.
+  LEDGER
+}
+
+enum ReportStatus {
+  QUEUED
+  RUNNING
+  READY
+  FAILED
+  /// The bytes are gone; the record of what was asked for and produced remains.
+  EXPIRED
 }

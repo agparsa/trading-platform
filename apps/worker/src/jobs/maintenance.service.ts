@@ -176,4 +176,34 @@ export class MaintenanceService {
     }
     return result.count;
   }
+
+  /**
+   * Clears the bytes of reports past their expiry.
+   *
+   * The row stays, and keeps saying what was asked for, who asked, how many
+   * rows came back and what the file hashed to. Only the file goes. A report is
+   * evidence that an operator was shown a particular set of rows on a
+   * particular day, and that fact is worth keeping long after the megabytes are
+   * not — the same reasoning as `purgeIdentityDocuments` above, and the same
+   * shape.
+   *
+   * `expiresAt` is written by the job that produced the file, so retention is
+   * decided once, at production, rather than re-derived here from a setting
+   * that may since have changed. A file promised for fourteen days keeps its
+   * fourteen days.
+   */
+  async purgeExpiredReports(now: Date = new Date()): Promise<number> {
+    const result = await withoutTenantScope(
+      'retention runs on every firm’s reports on the same clock',
+      () =>
+        this.prisma.report.updateMany({
+          where: { status: 'READY', content: { not: null }, expiresAt: { not: null, lt: now } },
+          data: { status: 'EXPIRED', content: null, purgedAt: now },
+        }),
+    );
+    if (result.count > 0) {
+      this.logger.log(`Cleared the bytes of ${result.count} expired report(s)`);
+    }
+    return result.count;
+  }
 }

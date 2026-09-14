@@ -19,6 +19,7 @@ const SECTIONS = [
   { href: '/admin/kyc', label: 'Verification' },
   { href: '/admin/withdrawals', label: 'Withdrawals' },
   { href: '/admin/reconciliation', label: 'Reconciliation' },
+  { href: '/admin/reports', label: 'Reports' },
   { href: '/admin/roles', label: 'Roles' },
   { href: '/admin/credentials', label: 'Credentials' },
   { href: '/admin/connections', label: 'Connections' },

@@ -2282,3 +2282,67 @@ export function useRecordResolution() {
     onSuccess: () => void client.invalidateQueries({ queryKey: ['admin'] }),
   });
 }
+
+/** Reports: asked for here, produced by the worker, downloaded when ready. */
+export interface ReportKindRow {
+  kind: string;
+  title: string;
+  describes: string;
+  permission: string;
+  columns: string[];
+}
+
+export interface ReportRow {
+  id: string;
+  kind: string;
+  status: string;
+  title: string;
+  params: { fromMs?: number; toMs?: number; accountId?: string };
+  requestedById: string;
+  requestedAt: string;
+  completedAt: string | null;
+  expiresAt: string | null;
+  rowCount: number | null;
+  sizeBytes: number | null;
+  sha256: string | null;
+  error: string | null;
+  filename: string;
+}
+
+export function useReportKinds() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'report-kinds'],
+    queryFn: () => api.get<ReportKindRow[]>('/reports/kinds'),
+    enabled: accessToken !== null,
+    // The set of kinds changes when the platform is deployed, not while
+    // somebody is looking at it.
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useReports() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'reports'],
+    queryFn: () => api.get<ReportRow[]>('/reports'),
+    enabled: accessToken !== null,
+    /**
+     * A report finishes in the worker without telling the browser. Polling is
+     * the honest mechanism here: the alternative is a screen that says QUEUED
+     * until somebody navigates away and back, which is how an operator
+     * concludes the feature is broken.
+     */
+    refetchInterval: 5_000,
+  });
+}
+
+export function useRequestReport() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { kind: string; from: string; to: string; accountId?: string }) =>
+      api.post<ReportRow>('/reports', input, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['admin', 'reports'] }),
+  });
+}
