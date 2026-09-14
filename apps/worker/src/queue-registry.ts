@@ -92,6 +92,15 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
         this.config.getOrThrow('KYC_DOCUMENT_RETENTION_DAYS', { infer: true }),
       ),
       reports: await this.maintenance.purgeExpiredReports(),
+      /**
+       * Stalled reports, re-queued here rather than in the sweep.
+       *
+       * `MaintenanceService` has no queues and should not grow one for this:
+       * deciding *which* reports stopped is a question about rows, and is
+       * testable without a Redis. Putting them back on the queue is this
+       * class's job, because this class is what owns the queues.
+       */
+      stalled: await this.requeueStalledReports(),
     }));
     this.attach(QueueName.NOTIFICATIONS, async (job) => this.notifications.deliver(job.data));
     this.attach(QueueName.BROKER_HEALTH, async () => this.brokerHealth.sweep());
@@ -129,6 +138,16 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     const queue = this.queues.get(name);
     if (queue === undefined) throw new Error(`Queue '${name}' is not registered`);
     return queue;
+  }
+
+  /** Puts stalled reports back on the queue, and says how many. */
+  private async requeueStalledReports(): Promise<{ requeued: number; failed: number }> {
+    const { release, failed } = await this.maintenance.recoverStalledReports();
+    const queue = this.queue(QueueName.REPORTS);
+    for (const reportId of release) {
+      await queue.add('build', { reportId });
+    }
+    return { requeued: release.length, failed };
   }
 
   private attach(name: QueueName, run: (job: Job) => Promise<unknown>): void {

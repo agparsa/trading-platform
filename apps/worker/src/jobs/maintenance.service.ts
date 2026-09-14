@@ -178,6 +178,94 @@ export class MaintenanceService {
   }
 
   /**
+   * Reports that stopped, and what to do about each.
+   *
+   * Two ways a report stalls, and they need opposite treatments.
+   *
+   * **QUEUED with no job.** `ReportsService.request` writes the row, commits,
+   * then publishes — deliberately in that order, because a job with no row is
+   * invisible while a row with no job is at least on the screen. But if the
+   * publish fails, or Redis was down, or no worker was listening on `reports`
+   * at that moment, the row sits there forever looking like it is about to
+   * start. Its own comment in the API says "the sweep can re-queue it"; this is
+   * that sweep, written because a promise in a comment is not a mechanism.
+   *
+   * **RUNNING with no worker.** A process killed mid-build leaves the row
+   * claimed. Nothing can ever pick it up again: the claim is a conditional
+   * update from QUEUED, so a RUNNING row is permanently stuck by the very
+   * mechanism that makes retries safe. Releasing it back to QUEUED is what lets
+   * the next attempt claim it.
+   *
+   * Both are re-queued by the caller, which owns the queues; this decides
+   * *which*, so that the decision is testable without a Redis.
+   *
+   * And a bound, because "try again" cannot be the answer forever: a report
+   * that is still not finished long after it was asked for is marked FAILED
+   * with a reason somebody can act on. Bounded by the clock rather than by an
+   * attempt counter, which would be a column to carry for a case that resolves
+   * itself either way.
+   */
+  async recoverStalledReports(
+    now: Date = new Date(),
+    options: { readonly stallMs?: number; readonly giveUpMs?: number } = {},
+  ): Promise<{ readonly release: readonly string[]; readonly failed: number }> {
+    /** Comfortably longer than a full-sized report takes to build. */
+    const stallMs = options.stallMs ?? 30 * 60_000;
+    /** After this, something is wrong that retrying will not fix. */
+    const giveUpMs = options.giveUpMs ?? 6 * 3_600_000;
+
+    const abandoned = new Date(now.getTime() - stallMs);
+    const hopeless = new Date(now.getTime() - giveUpMs);
+
+    const givenUp = await withoutTenantScope(
+      'a stalled report blocks its own firm whichever one it belongs to',
+      () =>
+        this.prisma.report.updateMany({
+          where: { status: { in: ['QUEUED', 'RUNNING'] }, requestedAt: { lt: hopeless } },
+          data: {
+            status: 'FAILED',
+            completedAt: now,
+            error:
+              'This report never finished. The platform may have been restarted while it was ' +
+              'being produced. Ask for it again; if it happens twice, tell an administrator.',
+          },
+        }),
+    );
+    if (givenUp.count > 0) {
+      this.logger.error(
+        `Gave up on ${givenUp.count} report(s) still unfinished after ${Math.round(giveUpMs / 3_600_000)}h`,
+      );
+    }
+
+    /**
+     * Released first, then listed.
+     *
+     * A RUNNING row is moved back to QUEUED in one statement so that two sweeps
+     * racing cannot both decide to re-queue the same report — the second finds
+     * nothing in RUNNING to release. The QUEUED ones are only read, because
+     * they are already in the state the job needs.
+     */
+    await withoutTenantScope('as above', () =>
+      this.prisma.report.updateMany({
+        where: { status: 'RUNNING', startedAt: { not: null, lt: abandoned } },
+        data: { status: 'QUEUED', startedAt: null },
+      }),
+    );
+
+    const waiting = await withoutTenantScope('as above', () =>
+      this.prisma.report.findMany({
+        where: { status: 'QUEUED', requestedAt: { lt: abandoned } },
+        select: { id: true },
+        take: 100,
+      }),
+    );
+    if (waiting.length > 0) {
+      this.logger.warn(`Re-queueing ${waiting.length} report(s) that never started`);
+    }
+    return { release: waiting.map((row) => row.id), failed: givenUp.count };
+  }
+
+  /**
    * Clears the bytes of reports past their expiry.
    *
    * The row stays, and keeps saying what was asked for, who asked, how many

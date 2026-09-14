@@ -90,6 +90,42 @@ already READY is left alone rather than rebuilt — the file somebody downloaded
 must not change underneath them. No lock, no leader, and correct under a retry,
 a duplicate publish, and two workers racing.
 
+## When a report stops
+
+Two ways, and they need opposite treatments.
+
+**QUEUED with no job.** `request` writes the row, commits, then publishes —
+deliberately in that order, because a job with no row is invisible while a row
+with no job is at least on the screen. If the publish fails, or Redis was down,
+or no worker was listening on `reports` at that moment, the row sits there
+looking like it is about to start.
+
+**RUNNING with no worker.** A process killed mid-build leaves the row claimed,
+and *nothing can ever pick it up again*: the claim is a conditional update from
+QUEUED, so the mechanism that makes retries safe is exactly what makes a dead
+claim permanent. This is the sharper of the two and the one that does not
+resolve itself.
+
+`MaintenanceService.recoverStalledReports` handles both, on the existing
+retention schedule: a RUNNING row idle for 30 minutes goes back to QUEUED, and
+QUEUED rows older than that are re-queued by the queue registry, which owns the
+queues. Deciding *which* is a question about rows and is testable without a
+Redis; putting them back on the queue is not.
+
+After six hours a report that is still not finished is marked FAILED with words
+an operator can act on, because "try again" cannot be the answer forever. The
+bound is the clock rather than an attempt counter — a column to carry for a case
+that resolves itself either way.
+
+A finished report is never touched by any of this. A clock does not un-finish
+something.
+
+**This section exists because the service's own comment promised the sweep
+before the sweep was written.** "The sweep can re-queue it" sat in
+`reports.service.ts` justifying the commit-then-publish order, and there was no
+sweep. It is the same defect this codebase keeps finding in itself, committed
+here by the person who had spent the week finding it elsewhere.
+
 ## Bounds, and what happens at them
 
 - **Window**: at most 366 days. A tax year is the largest span anybody asks for

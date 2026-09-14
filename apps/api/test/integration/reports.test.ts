@@ -7,6 +7,7 @@ import { Permission, TradingErrorCode, UserRole } from '@tp/shared-types';
 import { withTenant } from '@tp/tenancy';
 import { ReportsService } from '../../src/reports/reports.service';
 import { ReportsService as ReportBuilder } from '../../../worker/src/jobs/reports.service';
+import { MaintenanceService } from '../../../worker/src/jobs/maintenance.service';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { RolesService } from '../../src/permissions/roles.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
@@ -45,6 +46,7 @@ suite('reports', () => {
   let prisma: PrismaClient;
   let reports: ReportsService;
   let builder: ReportBuilder;
+  let maintenance: MaintenanceService;
   let roles: RolesService;
   let secrets: SecretBox;
   let published: { name: string; payload: unknown }[];
@@ -88,6 +90,7 @@ suite('reports', () => {
       secrets as SecretBoxService,
     );
     builder = new ReportBuilder(prismaService as never, config() as never, secrets);
+    maintenance = new MaintenanceService(prismaService as never);
 
     admin = await createAccount(prisma, { balance: '10000', email: 'admin@alpha.test' });
     const betaId = await createTenant(prisma, 'beta-firm', 'beta-firm.example.test');
@@ -412,6 +415,138 @@ suite('reports', () => {
       const listed = await reports.list();
       expect(JSON.stringify(listed)).not.toContain('111');
       expect(listed[0]).not.toHaveProperty('content');
+    });
+  });
+
+
+  /**
+   * When a report stops, and what happens next.
+   *
+   * This suite exists because the service's own comment promised it. `request`
+   * writes the row, commits, then publishes — and the comment justifying that
+   * order says a failed publish "is visible on the screen as a report that
+   * never started, and the sweep can re-queue it". There was no such sweep. A
+   * promise in a comment is not a mechanism, and this is the mechanism.
+   *
+   * The RUNNING case is the sharper one. A worker killed mid-build leaves the
+   * row claimed, and nothing can ever pick it up again — the claim is a
+   * conditional update from QUEUED, so the mechanism that makes retries safe is
+   * exactly what makes a dead claim permanent.
+   */
+  describe('when a report stops', () => {
+    const HOUR = 3_600_000;
+
+    async function stall(reportId: string, patch: Record<string, unknown>) {
+      await prisma.report.update({ where: { id: reportId }, data: patch });
+    }
+
+    it('re-queues one that was never picked up', async () => {
+      const view = await reports.request(
+        { kind: ReportKind.LEDGER, ...window() },
+        ADMIN(admin.userId),
+      );
+      await stall(view.id, { requestedAt: new Date(Date.now() - 2 * HOUR) });
+
+      const { release, failed } = await maintenance.recoverStalledReports();
+      expect(release).toEqual([view.id]);
+      expect(failed).toBe(0);
+    });
+
+    it('leaves a report alone that has only just been asked for', async () => {
+      // The sweep runs on a schedule; it must not fight the worker for a job
+      // that is a second old.
+      const view = await reports.request(
+        { kind: ReportKind.LEDGER, ...window() },
+        ADMIN(admin.userId),
+      );
+      const { release } = await maintenance.recoverStalledReports();
+      expect(release).not.toContain(view.id);
+    });
+
+    /**
+     * The case that could not recover on its own.
+     */
+    it('releases one whose worker died mid-build, so it can be claimed again', async () => {
+      await ledgerEntry(admin.accountId, alpha.tenantId, '111');
+      const view = await reports.request(
+        { kind: ReportKind.LEDGER, ...window() },
+        ADMIN(admin.userId),
+      );
+      // Claimed, then the process went away.
+      await stall(view.id, {
+        status: 'RUNNING',
+        startedAt: new Date(Date.now() - 2 * HOUR),
+        requestedAt: new Date(Date.now() - 2 * HOUR),
+      });
+
+      // Before the sweep, the claim is permanent: a build finds nothing to take.
+      expect(await build(view.id)).toBe('skipped');
+
+      const { release } = await maintenance.recoverStalledReports();
+      expect(release).toEqual([view.id]);
+
+      // And now it builds, which is the whole point of releasing it.
+      expect(await build(view.id)).toBe('built');
+      const row = await prisma.report.findFirstOrThrow({ where: { id: view.id } });
+      expect(row.status).toBe('READY');
+    });
+
+    it('gives up on one that is still unfinished long afterwards, in words', async () => {
+      const view = await reports.request(
+        { kind: ReportKind.LEDGER, ...window() },
+        ADMIN(admin.userId),
+      );
+      await stall(view.id, { requestedAt: new Date(Date.now() - 12 * HOUR) });
+
+      const { failed, release } = await maintenance.recoverStalledReports();
+      expect(failed).toBe(1);
+      expect(release, 'a report given up on is not also re-queued').toEqual([]);
+
+      const row = await prisma.report.findFirstOrThrow({ where: { id: view.id } });
+      expect(row.status).toBe('FAILED');
+      expect(row.error).toContain('Ask for it again');
+      expect(row.error).not.toContain('undefined');
+    });
+
+    it('never touches a report that finished', async () => {
+      await ledgerEntry(admin.accountId, alpha.tenantId, '111');
+      const view = await reports.request(
+        { kind: ReportKind.LEDGER, ...window() },
+        ADMIN(admin.userId),
+      );
+      await build(view.id);
+      // Old enough to be given up on, had it not finished.
+      await stall(view.id, { requestedAt: new Date(Date.now() - 12 * HOUR) });
+
+      const { release, failed } = await maintenance.recoverStalledReports();
+      expect(release).toEqual([]);
+      expect(failed).toBe(0);
+      const row = await prisma.report.findFirstOrThrow({ where: { id: view.id } });
+      expect(row.status, 'a finished report is not un-finished by a clock').toBe('READY');
+    });
+
+    it('clears the bytes of an expired report and keeps the record', async () => {
+      await ledgerEntry(admin.accountId, alpha.tenantId, '111');
+      const view = await reports.request(
+        { kind: ReportKind.LEDGER, ...window() },
+        ADMIN(admin.userId),
+      );
+      await build(view.id);
+      await stall(view.id, { expiresAt: new Date(Date.now() - HOUR) });
+
+      expect(await maintenance.purgeExpiredReports()).toBe(1);
+
+      const row = await prisma.report.findFirstOrThrow({ where: { id: view.id } });
+      expect(row.status).toBe('EXPIRED');
+      expect(row.content).toBeNull();
+      expect(row.purgedAt).not.toBeNull();
+      // The record of what was produced outlives the file.
+      expect(row.sha256).not.toBeNull();
+      expect(row.rowCount).not.toBeNull();
+
+      await expect(reports.download(view.id, ADMIN(admin.userId))).rejects.toMatchObject({
+        code: TradingErrorCode.VALIDATION_FAILED,
+      });
     });
   });
 });

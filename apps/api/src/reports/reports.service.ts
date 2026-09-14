@@ -152,7 +152,12 @@ export class ReportsService {
      * row would find nothing and fail. The other order — row first, job second
      * — can leave a QUEUED row with no job if the publish fails, and that is
      * the better failure: it is visible on the screen as a report that never
-     * started, and the sweep can re-queue it. A job with no row is invisible.
+     * started. A job with no row is invisible.
+     *
+     * `MaintenanceService.recoverStalledReports` is what picks it up again.
+     * That sentence was in this comment before the sweep existed, which is the
+     * defect this codebase keeps finding in itself: a promise in a comment is
+     * not a mechanism. It is one now, and `reports.test.ts` holds it to it.
      */
     try {
       await this.queue.publish(QueueName.REPORTS, 'build', { reportId: report.id });
