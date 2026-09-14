@@ -21,6 +21,7 @@ import { Permission } from '@tp/shared-types';
 export const ReportKind = {
   TRADES: 'TRADES',
   LEDGER: 'LEDGER',
+  AUDIT: 'AUDIT',
 } as const;
 export type ReportKind = (typeof ReportKind)[keyof typeof ReportKind];
 
@@ -92,9 +93,49 @@ const LEDGER: ReportDefinition = {
   ],
 };
 
+/**
+ * The audit export, and the reason it is the third kind rather than the fifth.
+ *
+ * Until this one, every role holding `reports.run` also held the permission
+ * every kind needed, so the per-kind check was purely defensive — correct, and
+ * deciding nothing. `AUDIT` needs `audit.read`, and **`PLATFORM_OPERATOR` holds
+ * `reports.run` without it**. The check now refuses a real request from a real
+ * role, which is a better place for it to be than waiting for a role edit to
+ * make it matter.
+ *
+ * The columns are the audit screen's, in its order, for the same reason the
+ * trades columns are the blotter's: an export that disagrees with the screen it
+ * came from starts an argument nobody can settle.
+ *
+ * `before` and `after` are JSON, and they are already redacted of anything
+ * sensitive when the row is written — see `security.md`. This export adds
+ * nothing to them and removes nothing from them, which is the only defensible
+ * position for an audit trail: redacting at export would mean the file and the
+ * screen disagree about what happened.
+ */
+const AUDIT: ReportDefinition = {
+  kind: ReportKind.AUDIT,
+  title: 'Audit trail',
+  describes: 'One row per recorded action: who, what, and the before and after.',
+  permission: Permission.AUDIT_READ,
+  columns: [
+    'created_at',
+    'actor_id',
+    'actor_type',
+    'action',
+    'resource_type',
+    'resource_id',
+    'request_id',
+    'ip_address',
+    'before',
+    'after',
+  ],
+};
+
 export const REPORT_DEFINITIONS: Readonly<Record<ReportKind, ReportDefinition>> = {
   [ReportKind.TRADES]: TRADES,
   [ReportKind.LEDGER]: LEDGER,
+  [ReportKind.AUDIT]: AUDIT,
 };
 
 export const ALL_REPORT_KINDS: readonly ReportKind[] = Object.keys(

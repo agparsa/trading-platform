@@ -3450,6 +3450,8 @@ enum ReportKind {
   TRADES
   /// Every balance-ledger entry in the window, with the running balance.
   LEDGER
+  /// Every recorded action in the window, with its before and after.
+  AUDIT
 }
 
 enum ReportStatus {

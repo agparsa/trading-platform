@@ -32,6 +32,26 @@ particular day. The record outlives the file.
 | `params` | The filters as the request made them, so a file can be explained later. Never a secret. |
 | `sha256`, `size_bytes`, `row_count` | In the clear. What the file was, after it is gone. |
 | `content` | Sealed. Null before the job runs and after the sweep. |
+
+### The kinds
+
+| Kind | A row is | Needs |
+| --- | --- | --- |
+| `TRADES` | one closed trade: entry, exit, costs, net profit | `accounts.read_any` |
+| `LEDGER` | one ledger entry, with the balance after it | `accounts.read_any` |
+| `AUDIT` | one recorded action: who, what, before and after | `audit.read` |
+
+Each kind's columns are the matching screen's, in its order, deliberately: an
+export that disagrees with the screen it came from starts an argument nobody can
+settle.
+
+`AUDIT` ignores an account filter rather than applying one. An audit row is
+about an actor and a resource, and most have no account at all — silently
+treating an account filter as a row filter would produce a file that looks
+complete and is not, which is the failure this whole feature exists to stop. Its
+`before` and `after` go out as stored: they are redacted when the row is
+written, and redacting again at export would make the file and the audit screen
+disagree about what happened.
 | `expires_at` | Written by the job that produced the file, so retention is decided once at production rather than re-derived from a setting that may since have changed. A file promised for fourteen days keeps its fourteen days. |
 
 Three CHECK constraints keep the status honest: READY must have a file, a hash,
@@ -55,13 +75,17 @@ only at request time means Monday's export is still theirs on Friday, after the
 access it was based on is gone. The row is evidence they were once allowed; it
 is not a standing grant.
 
-Worth stating plainly what that check is and is not **today**: every built-in
-role holding `reports.run` also holds `accounts.read_any`, so for the two kinds
-that exist it never decides anything. It is there for the two cases that are
-coming — a kind whose permission is narrower (an audit export needing
-`audit.read`), and a role an administrator has narrowed, which `RolesService`
-allows at runtime. `reports.test.ts` exercises the second by taking the grant
-off the role in the database, which is exactly the state the roles screen
+**That check now decides something.** It was inert at first: every built-in role
+holding `reports.run` also held `accounts.read_any`, so for the trades and
+ledger kinds it never refused anybody. The audit kind changed that —
+`PLATFORM_OPERATOR` holds `reports.run` and **not** `audit.read`, so the check
+refuses a real request from a real role rather than waiting for a role edit to
+give it something to do. That is most of the argument for making `AUDIT` the
+third kind rather than the fifth.
+
+The other case it guards is a role an administrator has narrowed, which
+`RolesService` allows at runtime. `reports.test.ts` exercises that by taking the
+grant off the role in the database, which is exactly the state the roles screen
 produces.
 
 A report also belongs to **whoever asked for it**. Not a permission check — a
@@ -158,8 +182,8 @@ usable statement and a support ticket.
 
 ## What is not here
 
-- **Other kinds.** Trades and ledger today. Audit, positions and orders are the
-  obvious next three; each is a definition in `kinds.ts` and a query in the
+- **Other kinds.** Trades, ledger and audit today. Positions and orders are the
+  obvious next two; each is a definition in `kinds.ts` and a query in the
   worker.
 - **Formats.** CSV only. PDF statements are a different job with a layout
   problem attached.

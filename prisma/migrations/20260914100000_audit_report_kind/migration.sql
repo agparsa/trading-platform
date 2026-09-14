@@ -1,0 +1,14 @@
+-- A third kind of report: the audit trail.
+--
+-- Additive in the strictest sense — `ALTER TYPE ... ADD VALUE` only widens what
+-- the column accepts, so an older image writes the same two values it always
+-- did and reads this one only if somebody produced it. The rollback floor does
+-- not move.
+--
+-- Worth naming what this kind is *for*, because it is not simply a third query.
+-- Until now every role holding `reports.run` also held the permission every kind
+-- needed, so the per-kind check in `ReportsService` was correct and decided
+-- nothing. `AUDIT` needs `audit.read`, and `PLATFORM_OPERATOR` holds
+-- `reports.run` without it — so from here the check refuses a real request from
+-- a real role rather than waiting for a role edit to give it something to do.
+ALTER TYPE "ReportKind" ADD VALUE IF NOT EXISTS 'AUDIT';

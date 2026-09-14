@@ -292,6 +292,70 @@ suite('reports', () => {
     });
   });
 
+  /**
+   * The audit export, and the first kind whose permission decides something.
+   *
+   * Until this kind, every role holding `reports.run` also held the permission
+   * every kind needed — so the per-kind check was correct and inert.
+   * `PLATFORM_OPERATOR` holds `reports.run` and not `audit.read`, so this is
+   * the check refusing a real request from a real role rather than waiting for
+   * a role edit to give it something to do.
+   */
+  describe('the audit trail', () => {
+    const OPERATOR = (id: string) => ({ id, role: UserRole.PLATFORM_OPERATOR as string });
+
+    it('refuses a role that may run reports but may not read the audit trail', async () => {
+      const held = await roles.permissionsFor(UserRole.PLATFORM_OPERATOR);
+      expect(held.has(Permission.REPORTS_RUN), 'premise: may ask for reports').toBe(true);
+      expect(held.has(Permission.AUDIT_READ), 'premise: may not read the audit trail').toBe(false);
+
+      await expect(
+        reports.request({ kind: ReportKind.AUDIT, ...window() }, OPERATOR(admin.userId)),
+      ).rejects.toMatchObject({ code: TradingErrorCode.FORBIDDEN });
+
+      // And the same role may still have the kinds it can read.
+      await expect(
+        reports.request({ kind: ReportKind.LEDGER, ...window() }, OPERATOR(admin.userId)),
+      ).resolves.toBeDefined();
+    });
+
+    it('exports the rows with their before and after intact', async () => {
+      // Requesting a report writes an audit row, so there is always one to find.
+      const view = await reports.request(
+        { kind: ReportKind.AUDIT, ...window() },
+        ADMIN(admin.userId),
+      );
+      expect(await build(view.id)).toBe('built');
+
+      const text = (await reports.download(view.id, ADMIN(admin.userId))).bytes.toString('utf8');
+      expect(text).toContain('"created_at","actor_id"');
+      expect(text).toContain('report.requested');
+      // The payload is JSON in one cell, quotes doubled — not split across three.
+      expect(text).toMatch(/"\{""kind"":""AUDIT""/);
+    });
+
+    /**
+     * An audit export is a file of what people did, and `before`/`after` are
+     * redacted when the row is written. This pins that the export adds nothing:
+     * a password hash reaching a spreadsheet would be a breach with a paper
+     * trail attached.
+     */
+    it('carries nothing the audit row did not already carry', async () => {
+      const view = await reports.request(
+        { kind: ReportKind.AUDIT, ...window() },
+        ADMIN(admin.userId),
+      );
+      await build(view.id);
+      const text = (await reports.download(view.id, ADMIN(admin.userId))).bytes.toString('utf8');
+
+      const rows = await prisma.auditLog.findMany();
+      const stored = JSON.stringify(rows.map((row) => [row.before, row.after]));
+      expect(stored).not.toContain('passwordHash');
+      expect(text).not.toContain('passwordHash');
+      expect(text).not.toContain('not-a-real-hash');
+    });
+  });
+
   describe('the firm boundary', () => {
     /**
      * The property the whole design is arranged around.

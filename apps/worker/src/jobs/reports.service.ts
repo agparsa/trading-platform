@@ -190,6 +190,8 @@ export class ReportsService {
         return this.trades(params);
       case ReportKind.LEDGER:
         return this.ledger(params);
+      case ReportKind.AUDIT:
+        return this.audit(params);
       default: {
         const never: never = kind;
         throw new Error(`no builder for report kind ${String(never)}`);
@@ -267,6 +269,46 @@ export class ReportsService {
     );
   }
 
+  /**
+   * The audit trail.
+   *
+   * `accountId` is not a filter here and is deliberately ignored: an audit row
+   * is about an *actor* and a *resource*, and most of them have no account at
+   * all. Silently treating an account filter as a row filter would produce a
+   * file that looks complete and is not — the failure this whole feature exists
+   * to stop.
+   *
+   * `before` and `after` go out as JSON exactly as stored. They are redacted
+   * when the row is written; redacting again here would make the file and the
+   * audit screen disagree about what happened, which is the one thing an audit
+   * export may not do.
+   */
+  private async audit(params: { fromMs: number; toMs: number }): Promise<string[]> {
+    const where = { createdAt: { gte: new Date(params.fromMs), lte: new Date(params.toMs) } };
+    return this.paged(
+      (cursor) =>
+        this.prisma.auditLog.findMany({
+          where,
+          orderBy: { id: 'asc' },
+          take: PAGE,
+          ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 }),
+        }) as Promise<AuditRow[]>,
+      (row) => row.id,
+      (row) => [
+        row.createdAt.toISOString(),
+        row.actorId ?? '',
+        row.actorType,
+        row.action,
+        row.resourceType,
+        row.resourceId ?? '',
+        row.requestId ?? '',
+        row.ipAddress ?? '',
+        JSON.stringify(row.before ?? null),
+        JSON.stringify(row.after ?? null),
+      ],
+    );
+  }
+
   private async ledger(params: {
     fromMs: number;
     toMs: number;
@@ -318,6 +360,20 @@ interface TradeRow {
   closeReason: string | null;
   account: { number: string; currency: string } | null;
   symbol: { code: string } | null;
+}
+
+interface AuditRow {
+  id: string;
+  createdAt: Date;
+  actorId: string | null;
+  actorType: string;
+  action: string;
+  resourceType: string;
+  resourceId: string | null;
+  requestId: string | null;
+  ipAddress: string | null;
+  before: unknown;
+  after: unknown;
 }
 
 interface LedgerRow {
