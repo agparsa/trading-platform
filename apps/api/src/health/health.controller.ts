@@ -8,6 +8,7 @@ import {
   DatabaseHealthIndicator,
   MarketDataHealthIndicator,
   RedisHealthIndicator,
+  ScheduledJobsHealthIndicator,
 } from './health.indicators';
 
 /**
@@ -29,6 +30,7 @@ export class HealthController {
     private readonly database: DatabaseHealthIndicator,
     private readonly redis: RedisHealthIndicator,
     private readonly marketData: MarketDataHealthIndicator,
+    private readonly scheduledJobs: ScheduledJobsHealthIndicator,
   ) {}
 
   /**
@@ -72,6 +74,22 @@ export class HealthController {
   @HealthCheck()
   market() {
     return this.health.check([() => this.marketData.check()]);
+  }
+
+  /**
+   * Scheduled jobs, reported separately for the same reason as the feed.
+   *
+   * A stopped sweep is an incident and not a routing decision: the API can
+   * still take orders, serve history and pay out. What it cannot do is notice
+   * on its own that swap accrual has not run for three days, which is what this
+   * is for. Alert on it; do not route on it.
+   */
+  @Version(VERSION_NEUTRAL)
+  @Get('health/jobs')
+  @ApiOperation({ summary: 'Whether every scheduled job is still running on time' })
+  @HealthCheck()
+  jobs() {
+    return this.health.check([() => this.scheduledJobs.check()]);
   }
 }
 

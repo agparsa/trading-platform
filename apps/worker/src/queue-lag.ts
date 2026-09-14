@@ -31,3 +31,26 @@ export function queueLagMs(
    */
   return Math.max(0, startedAt - dueAt);
 }
+
+
+/**
+ * Whether this job counts as *the schedule having run*.
+ *
+ * BullMQ's job scheduler adds its jobs under the name `scheduled`. A manual
+ * reconciliation from the admin console, a boot run, and anything else arrives
+ * under a different name, and recording those would make the whole mechanism
+ * useless in the most misleading way available: an operator who presses "run
+ * now" **because** the numbers look stale would reset the clock and hide the
+ * dead scheduler they were reacting to. The screen would go green at the exact
+ * moment somebody noticed the problem.
+ *
+ * A function rather than a condition inside the worker because the worker needs
+ * Redis to exercise and this rule does not. It lives here beside `queueLagMs`,
+ * the other small decision the job wrapper makes.
+ */
+export function countsAsScheduledRun(
+  job: { readonly name: string },
+  isScheduledQueue: boolean,
+): boolean {
+  return isScheduledQueue && job.name === 'scheduled';
+}

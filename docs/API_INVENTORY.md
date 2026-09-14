@@ -220,6 +220,7 @@ handler is responsible for scoping the result to that user — which for
 | `GET` | `/health` | `live` | PUBLIC (class) |
 | `GET` | `/ready` | `ready` | PUBLIC (class) |
 | `GET` | `/health/market` | `market` | PUBLIC (class) |
+| `GET` | `/health/jobs` | `jobs` | PUBLIC (class) |
 
 ### `integrity/integrity.controller.ts` — base `/integrity`
 
@@ -483,7 +484,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals` | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel` | WITHDRAWALS_REQUEST |
 
-**234 routes:** 118 `GET`, 99 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**235 routes:** 119 `GET`, 99 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

@@ -6,6 +6,7 @@ import { PrismaService } from './prisma.service';
 import { QueueRegistry } from './queue-registry';
 import { SwapAccrualService } from './jobs/swap-accrual.service';
 import { ReconciliationService } from './jobs/reconciliation.service';
+import { ScheduleLogService } from './jobs/schedule-log.service';
 import { MaintenanceService } from './jobs/maintenance.service';
 import { NotificationsService } from './jobs/notifications.service';
 import { BrokerHealthService } from './jobs/broker-health.service';
@@ -41,6 +42,7 @@ import { PushModule } from './push/push.module';
     PrismaService,
     SwapAccrualService,
     ReconciliationService,
+    ScheduleLogService,
     MaintenanceService,
     NotificationsService,
     BrokerHealthService,

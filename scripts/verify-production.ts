@@ -157,6 +157,41 @@ async function main(): Promise<void> {
       : `database ${info['database']?.latencyMs ?? '?'}ms, redis ${info['redis']?.latencyMs ?? '?'}ms`,
   );
 
+  /**
+   * --- the work that happens without anybody asking ------------------------
+   *
+   * The only check here that can fail on a deployment where every other one
+   * passes. A platform with a healthy API, a healthy database and no worker
+   * registering schedules charges no overnight financing, runs no
+   * reconciliation, purges no identity document at its retention limit, and
+   * relays no event out of the outbox — and every probe above says it is fine,
+   * because they all ask about things that answer when spoken to.
+   */
+  const jobs = await get('/health/jobs');
+  const jobsBody = jobs === null ? null : json(jobs.body);
+  const jobsInfo = (jobsBody?.['data'] as Record<string, unknown> | undefined) ?? jobsBody ?? {};
+  const jobsDetail =
+    ((jobsInfo['info'] ?? jobsInfo['error']) as
+      | Record<string, { problems?: string[]; jobs?: number }>
+      | undefined)?.['scheduled-jobs'] ?? undefined;
+  const problems = jobsDetail?.problems ?? [];
+
+  if (jobs === null || (jobs.status !== 200 && jobs.status !== 503)) {
+    record(
+      'every scheduled job is still running on time',
+      false,
+      `got ${jobs?.status ?? 'no answer'} from /health/jobs — this deployment predates the probe`,
+    );
+  } else {
+    record(
+      'every scheduled job is still running on time',
+      jobs.status === 200,
+      problems.length === 0
+        ? `${String(jobsDetail?.jobs ?? 0)} schedules, all inside their own tolerance`
+        : problems.join('; '),
+    );
+  }
+
   // --- what must not be public ---------------------------------------------
   const metrics = await get('/metrics');
   record(

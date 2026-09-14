@@ -4,6 +4,8 @@ import {
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { judgeSchedule } from '@tp/scheduling-core';
 import { withoutTenantScope } from '@tp/tenancy';
 import { PrismaService } from '../prisma/prisma.service';
 import { QuoteService } from '../market/quote.service';
@@ -34,6 +36,7 @@ export class PlatformMetricsService implements OnApplicationBootstrap, OnApplica
     private readonly metrics: MetricsService,
     private readonly quotes: QuoteService,
     private readonly gateway: RealtimeGateway,
+    private readonly config: ConfigService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -135,6 +138,52 @@ export class PlatformMetricsService implements OnApplicationBootstrap, OnApplica
      * truth, and the reading somebody would page on.
      */
     this.metrics.marketFeedAge.set(this.quotes.newestTickAge() ?? -1);
+
+    await this.refreshScheduledJobs();
+  }
+
+  /**
+   * The schedules, judged against their own crons.
+   *
+   * Read from `scheduled_job_runs` rather than from BullMQ. Asking Redis "is
+   * this schedule registered" answers a different and weaker question — a
+   * registration exists whether or not anything ever consumed it, and it
+   * disappears with the Redis that lost it. The row says a job *ran and
+   * finished*, which is the only thing worth alerting on, and it is in the
+   * database that survives the incident.
+   */
+  private async refreshScheduledJobs(): Promise<void> {
+    const tz = this.config.get<string>('TRADING_SERVER_TIMEZONE') ?? 'UTC';
+    const rows = await withoutTenantScope('a schedule belongs to the deployment', () =>
+      this.prisma.scheduledJobRun.findMany({ orderBy: { name: 'asc' } }),
+    );
+
+    /**
+     * Reset, for the same reason as the gauges above and one more: a job
+     * removed from the schedule would otherwise sit at `late = 1` for ever and
+     * page somebody about work the platform no longer does.
+     */
+    this.metrics.scheduledJobAge.reset();
+    this.metrics.scheduledJobLate.reset();
+
+    const now = new Date();
+    for (const row of rows) {
+      const health = judgeSchedule(
+        {
+          name: row.name,
+          cron: row.cron,
+          lastFinishedAt: row.finishedAt,
+          lastOutcome: row.outcome,
+        },
+        tz,
+        now,
+      );
+      this.metrics.scheduledJobAge.set(
+        { job: row.name },
+        row.lastSucceededAt === null ? -1 : now.getTime() - row.lastSucceededAt.getTime(),
+      );
+      this.metrics.scheduledJobLate.set({ job: row.name }, health.verdict === 'ok' ? 0 : 1);
+    }
   }
 }
 

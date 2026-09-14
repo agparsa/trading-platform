@@ -3468,3 +3468,56 @@ enum ReportStatus {
   /// The bytes are gone; the record of what was asked for and produced remains.
   EXPIRED
 }
+
+/// When each scheduled job last ran, so that one going quiet is visible.
+///
+/// ## Why a row rather than a metric
+///
+/// Everything else that goes wrong in this platform announces itself. A
+/// schedule that stops announces nothing — the process that would have written
+/// the error is the one that never ran. The only evidence is an absence, and an
+/// absence has to be looked for against a record of what was expected.
+///
+/// It is in PostgreSQL rather than Redis on purpose. "When did reconciliation
+/// last run" is a question asked *after* an incident, and often after a Redis
+/// flush; an answer that is lost in the same event that caused the outage is
+/// not an answer. It is not tenant-scoped, because a schedule belongs to the
+/// deployment and not to a firm.
+///
+/// ## One row per job, not one per run
+///
+/// The outbox relay fires every minute — a row per run is one and a half
+/// million a year, guarded by a retention sweep that is itself one of the jobs
+/// this table exists to watch. So each job keeps a single upserted row: the
+/// last run, the totals since, and the last failure. Per-run history lives in
+/// the structured logs, which is where somebody reconstructing a night belongs
+/// anyway.
+model ScheduledJobRun {
+  /// The queue name, as `queues.ts` declares it.
+  name String @id
+
+  /// The cron pattern this job was last scheduled with, so lateness is judged
+  /// against the schedule actually in force rather than one written down here.
+  cron String
+
+  startedAt  DateTime  @map("started_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+  durationMs Int?      @map("duration_ms")
+
+  /// `OK` or `FAILED`. Null while a run is in flight.
+  outcome String?
+  /// Why the last failure failed, in words. Never a stack trace.
+  error   String?
+
+  runs     Int @default(0)
+  failures Int @default(0)
+
+  /// The last successful finish, kept separately: a job that has been failing
+  /// for a week has a recent `finishedAt` and a week-old success, and the
+  /// difference between those two is the whole story.
+  lastSucceededAt DateTime? @map("last_succeeded_at") @db.Timestamptz(6)
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("scheduled_job_runs")
+}

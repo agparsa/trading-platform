@@ -52,7 +52,8 @@
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:",
     "socket.io": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@tp/scheduling-core": "workspace:*"
   },
   "devDependencies": {
     "@nestjs/testing": "catalog:",

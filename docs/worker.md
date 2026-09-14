@@ -15,21 +15,76 @@ services, not the queues.
 
 ## Jobs
 
-| Queue               | Schedule (default) | What it does                                                      |
-| ------------------- | ------------------ | ----------------------------------------------------------------- |
-| `swap-accrual`      | `0 0 * * *`        | Charges or credits overnight financing on every open position     |
-| `reconciliation`    | `15 * * * *`       | Replays every ledger and compares it to the cached balance        |
-| `idempotency-sweep` | `30 * * * *`       | Deletes expired keys; releases claims abandoned by a dead process |
-| `account-snapshot`  | —                  | **No processor yet.** Needs live valuation; see below             |
-| `notifications`     | —                  | **No processor yet**                                              |
+| Queue               | Schedule (default) | What it does                                                      | Silence costs                       |
+| ------------------- | ------------------ | ----------------------------------------------------------------- | ----------------------------------- |
+| `swap-accrual`      | `0 0 * * *`        | Charges or credits overnight financing on every open position     | money, every night                  |
+| `reconciliation`    | `15 * * * *`       | Replays every ledger and compares it to the cached balance        | drift found by a person, not a check |
+| `idempotency-sweep` | `30 * * * *`       | Expired keys, abandoned claims, stale payments, identity-document retention, expired and stalled reports | a data-retention duty |
+| `broker-health`     | `* * * * *`        | Polls each venue connection and ages its credentials              | an expiry nobody sees coming        |
+| `outbox-relay`      | `* * * * *`        | Moves committed events out of the outbox                          | every event stops leaving           |
+| `webhook-delivery`  | `* * * * *`        | Delivers due webhook attempts                                     | deliveries stay due for ever        |
+| `reports`           | on demand          | Builds a requested export                                         | —                                   |
+| `notifications`     | on demand          | Delivers a push notification                                      | —                                   |
+| `account-snapshot`  | —                  | **No processor yet.** Needs live valuation; see below             | —                                   |
 
-Cron expressions are evaluated in `TRADING_SERVER_TIMEZONE`, not the host's.
+Cron expressions are evaluated in `TRADING_SERVER_TIMEZONE`, not the host's, and
+are **validated at boot**: a pattern with the wrong number of fields refuses to
+start the container. That is not fussiness. BullMQ's parser accepts some
+four-field patterns and shifts the fields — `0 3 * *`, written for "three in the
+morning", is accepted, first fires three weeks later and then runs every minute.
+Swap accrual charging overnight financing fourteen hundred times a day, with
+nothing in any log looking wrong.
+
 Schedules are registered with `upsertJobScheduler`, which is idempotent: a
 restart re-registers the same schedule instead of accumulating duplicates the way
 a plain repeatable `add` would.
 
 The startup log names the queues that have no processor. A queue that silently
 accepts jobs nothing will ever run is worse than one that says so.
+
+## A schedule that stops says nothing
+
+Every other failure in this platform announces itself. An order that cannot be
+placed returns an error; a webhook that will not deliver is retried and then
+marked failed; a migration that will not apply stops the deploy. **A schedule
+that stops produces no error, no failed job and no log line**, because the
+process that would have written them never ran. The only evidence is an absence.
+
+It is easy to arrange by accident. `WORKER_ROLE=processor` on every worker
+leaves nobody registering schedules, and no single process can detect that —
+each is behaving exactly as configured. A Redis flush that takes the scheduler
+keys, or a worker that never came back after a deploy, looks identical from
+inside: quiet.
+
+So every scheduled run is recorded in `scheduled_job_runs` — one row per job,
+holding the last start, the last finish, the last *success* kept separately, the
+outcome, and the totals. From those rows:
+
+| Where | What it gives you |
+| --- | --- |
+| `GET /health/jobs` | up or down, with a sentence per problem. Alert on it; do not route on it |
+| `tp_scheduled_job_age_ms{job}` | how long since that job last succeeded; `-1` means never |
+| `tp_scheduled_job_late{job}` | `1` when it is later than its own cron allows, failing, never run, or misconfigured |
+| `pnpm verify:production` | one check, the only one that can fail on a deployment where everything else passes |
+
+Three details worth knowing, because each was a decision:
+
+- **The tolerance comes from the job's own cron**, not from a constant. Three
+  minutes is catastrophic for the outbox relay and unremarkable for swap
+  accrual. It is three intervals plus five minutes of grace, and the interval is
+  the **longest** gap over the next few firings — otherwise a weekday schedule
+  would report a healthy job as stopped every Saturday.
+- **A manual run does not count.** Only the job BullMQ's scheduler adds is
+  recorded. Otherwise an operator pressing "run now" *because* the numbers look
+  stale would reset the clock and hide the dead scheduler they were reacting to.
+- **A failing job is not a quiet one, and is not healthy either.** The last
+  success is kept apart from the last finish, so a job that has run every minute
+  and thrown every time for a week reads as failing rather than fresh.
+
+An empty `scheduled_job_runs` reads as **down**, deliberately. That is exactly
+what a deployment with no scheduler looks like, and treating it as healthy would
+mean the one arrangement this exists to catch is the one it calls fine. A fresh
+deployment shows down until its first sweep lands.
 
 ## Swap accrual
 

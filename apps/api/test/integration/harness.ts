@@ -230,7 +230,12 @@ export async function resetDatabase(prisma: PrismaClient): Promise<string> {
         system_settings,
         invite_redemptions, invite_codes,
         role_permissions, roles,
-        totp_recovery_codes, refresh_tokens, users, idempotency_keys
+        totp_recovery_codes, refresh_tokens, users, idempotency_keys,
+        -- Neither of these has a route back to a tenant, so the cascade above
+        -- never reaches them. A leaked leader lease is the worse of the two: a
+        -- lease held by a previous suite's instance id is a loop that believes
+        -- somebody else is leader, in a suite that has no other instance.
+        scheduled_job_runs, leader_leases
       RESTART IDENTITY CASCADE
     `);
   } finally {

@@ -77,6 +77,14 @@ configuration this repository does not presume to write.
 
 `/health` — liveness, no dependencies touched.
 `/ready` — readiness, reports database and Redis status with measured latencies.
+`/health/market` — the feed. Alert on it; do not route on it.
+`/health/jobs` — the scheduled work. Alert on it; do not route on it.
+
+The last two are separate from readiness on purpose. A process pulled out of the
+load balancer because the upstream feed stopped, or because a nightly sweep did
+not run, is a process that can still serve history, account state and the
+ledger — and taking it away removes the screens people need in exactly the
+moment they need them.
 
 Health indicators report `error.name` rather than `error.message`, because
 driver messages contain connection strings.
@@ -90,9 +98,17 @@ driver messages contain connection strings.
 | `tp_market_ticks_total` flat              | The feed died; quotes are going stale                            |
 | Ledger vs `accounts.balance` drift        | Reconciliation found a discrepancy — the most serious alert here |
 | Dead-letter depth > 0                     | A financial job failed and is waiting for a human                |
+| `tp_scheduled_job_late` > 0               | A schedule has stopped, is failing, or was never registered — the one failure here that produces no error at all |
+| `tp_scheduled_job_age_ms` = -1            | That job has never succeeded. Usually nobody is registering schedules: check `WORKER_ROLE` |
 
 Failed jobs are retained deliberately (`removeOnFail: false`): a failed financial
 job must stay visible until someone has looked at it.
+
+The two scheduled-job signals are the ones worth adding first if this list is
+being implemented from scratch. Everything else here alerts on something going
+*wrong*; those two alert on something not happening at all, which is the failure
+mode nothing else in this platform can see. `docs/worker.md` has the mechanism
+and the three decisions behind it.
 
 ## Leadership (Phase 8)
 

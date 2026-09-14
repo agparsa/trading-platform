@@ -40,6 +40,8 @@ export class MetricsService {
   readonly openFindings: Gauge<'severity'>;
   readonly openSignals: Gauge<'severity'>;
   readonly marketFeedAge: Gauge<string>;
+  readonly scheduledJobAge: Gauge<'job'>;
+  readonly scheduledJobLate: Gauge<'job'>;
   /** 1 when this instance leads the loop, 0 when it does not. */
   readonly leaderLease: Gauge<'loop'>;
   readonly leaderTransitions: Counter<'loop' | 'transition'>;
@@ -249,6 +251,36 @@ export class MetricsService {
     this.marketFeedAge = new Gauge({
       name: 'tp_market_feed_age_ms',
       help: 'Age of the newest tick this instance holds. Rising means the feed, or this process, is behind — and the engine will start refusing orders with STALE_QUOTE.',
+      registers: [this.registry],
+    });
+
+    /**
+     * How long since each scheduled job last *succeeded*, and whether that is
+     * longer than its own schedule allows.
+     *
+     * Two gauges rather than one because they answer different questions. The
+     * age is for a graph — a sweep drifting from four minutes to nine is worth
+     * seeing before it breaks. `tp_scheduled_job_late` is for an alert, and it
+     * is computed here rather than in the alert rule because the threshold
+     * depends on the job's own cron: three minutes is catastrophic for the
+     * outbox relay and unremarkable for swap accrual, and a Prometheus rule
+     * would have to hard-code a number per job and then rot when one changes.
+     *
+     * `-1` for a job that has never succeeded. A gauge cannot say "never", and
+     * zero would read as "just succeeded" — the opposite of the truth, and the
+     * reading somebody would fail to page on.
+     */
+    this.scheduledJobAge = new Gauge({
+      name: 'tp_scheduled_job_age_ms',
+      help: 'Milliseconds since this scheduled job last succeeded. -1 means it never has, which usually means no worker is registering schedules.',
+      labelNames: ['job'] as const,
+      registers: [this.registry],
+    });
+
+    this.scheduledJobLate = new Gauge({
+      name: 'tp_scheduled_job_late',
+      help: '1 when this scheduled job is later than its own cron allows, has never run, is failing, or is configured with a pattern that cannot be read. Alert on any of it.',
+      labelNames: ['job'] as const,
       registers: [this.registry],
     });
 

@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { Queue, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { ALL_QUEUES, DEFAULT_JOB_OPTIONS, QueueName } from './queues';
-import { queueLagMs } from './queue-lag';
+import { countsAsScheduledRun, queueLagMs } from './queue-lag';
 import { workerAssignment, type WorkerAssignment } from './roles';
 import type { WorkerEnv } from './env';
 import { SwapAccrualService } from './jobs/swap-accrual.service';
@@ -20,6 +20,25 @@ import { WebhookDeliveryService } from './jobs/webhook-delivery.service';
 import { ReportsService } from './jobs/reports.service';
 import { MaintenanceService } from './jobs/maintenance.service';
 import { NotificationsService } from './jobs/notifications.service';
+import { ScheduleLogService } from './jobs/schedule-log.service';
+
+/**
+ * Which queues are fed by a schedule, and which setting carries the pattern.
+ *
+ * One list, read by both halves of this class: `schedule()` registers these,
+ * and `attach()` records a run for these and for nothing else. Two lists would
+ * drift, and the direction of the drift is the bad one — a job scheduled but
+ * not recorded is a job whose silence nobody notices, which is the failure this
+ * whole mechanism exists to remove.
+ */
+const SCHEDULED: ReadonlyArray<readonly [QueueName, keyof WorkerEnv]> = [
+  [QueueName.SWAP_ACCRUAL, 'SWAP_ACCRUAL_CRON'],
+  [QueueName.RECONCILIATION, 'RECONCILIATION_CRON'],
+  [QueueName.IDEMPOTENCY_SWEEP, 'MAINTENANCE_CRON'],
+  [QueueName.BROKER_HEALTH, 'BROKER_HEALTH_CRON'],
+  [QueueName.OUTBOX_RELAY, 'OUTBOX_RELAY_CRON'],
+  [QueueName.WEBHOOK_DELIVERY, 'WEBHOOK_DELIVERY_CRON'],
+];
 
 /**
  * Owns the BullMQ connections, the workers attached to each queue, and the
@@ -47,6 +66,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly outbox: OutboxRelayService,
     private readonly webhooks: WebhookDeliveryService,
     private readonly reports: ReportsService,
+    private readonly scheduleLog: ScheduleLogService,
   ) {
     // Decided in the constructor so a bad WORKER_QUEUES refuses to boot at
     // once, with a message, rather than after Redis is connected.
@@ -150,6 +170,17 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     return { requeued: release.length, failed };
   }
 
+  /** The pattern this queue is scheduled with, as configured right now. */
+  private cronFor(name: QueueName): string {
+    const found = SCHEDULED.find(([queue]) => queue === name);
+    if (found === undefined) throw new Error(`${name} is not a scheduled queue`);
+    return this.config.getOrThrow(found[1] as never, { infer: true }) as string;
+  }
+
+  private isScheduled(name: QueueName): boolean {
+    return SCHEDULED.some(([queue]) => queue === name);
+  }
+
   private attach(name: QueueName, run: (job: Job) => Promise<unknown>): void {
     // Not this process's queue: no Worker, so no blocking connection is held
     // open for work it would never take.
@@ -169,12 +200,46 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
          * See `queueLagMs` for why "due" is not "created".
          */
         const lagMs = queueLagMs(job, startedAt);
-        const result = await run(job);
-        this.logger.log(
-          { queue: name, lagMs, ms: Date.now() - startedAt, result },
-          'Job completed',
-        );
-        return result;
+
+        /**
+         * Only the job the *scheduler* added counts as the schedule running.
+         *
+         * BullMQ's job scheduler adds its jobs under the name `scheduled`; a
+         * manual reconciliation from the admin console, or a boot run, arrives
+         * under another. Recording those would be the one mistake that makes
+         * this whole mechanism useless: an operator pressing "run now" because
+         * the numbers look stale would reset the clock and hide the dead
+         * scheduler they were reacting to.
+         */
+        const isScheduledRun = countsAsScheduledRun(job, this.isScheduled(name));
+        const at = new Date(startedAt);
+        if (isScheduledRun) await this.scheduleLog.started(name, this.cronFor(name), at);
+
+        try {
+          const result = await run(job);
+          if (isScheduledRun) await this.scheduleLog.finished(name, 'OK', { startedAt: at });
+          this.logger.log(
+            { queue: name, lagMs, ms: Date.now() - startedAt, result },
+            'Job completed',
+          );
+          return result;
+        } catch (error) {
+          /**
+           * Recorded as failed, then rethrown unchanged.
+           *
+           * Swallowing it here would turn a failing job into a successful one
+           * as far as BullMQ is concerned — no retry, no failed count, nothing
+           * in the dead-letter set. The record is an observation, not a
+           * handler.
+           */
+          if (isScheduledRun) {
+            await this.scheduleLog.finished(name, 'FAILED', {
+              startedAt: at,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+          throw error;
+        }
       },
       {
         connection: this.connection,
@@ -205,19 +270,8 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
   private async schedule(): Promise<void> {
     const tz = this.config.getOrThrow('TRADING_SERVER_TIMEZONE', { infer: true });
 
-    const schedules: Array<[QueueName, string]> = [
-      [QueueName.SWAP_ACCRUAL, this.config.getOrThrow('SWAP_ACCRUAL_CRON', { infer: true })],
-      [QueueName.RECONCILIATION, this.config.getOrThrow('RECONCILIATION_CRON', { infer: true })],
-      [QueueName.IDEMPOTENCY_SWEEP, this.config.getOrThrow('MAINTENANCE_CRON', { infer: true })],
-      [QueueName.BROKER_HEALTH, this.config.getOrThrow('BROKER_HEALTH_CRON', { infer: true })],
-      [QueueName.OUTBOX_RELAY, this.config.getOrThrow('OUTBOX_RELAY_CRON', { infer: true })],
-      [
-        QueueName.WEBHOOK_DELIVERY,
-        this.config.getOrThrow('WEBHOOK_DELIVERY_CRON', { infer: true }),
-      ],
-    ];
-
-    for (const [name, pattern] of schedules) {
+    for (const [name] of SCHEDULED) {
+      const pattern = this.cronFor(name);
       await this.queue(name).upsertJobScheduler(
         `${name}-schedule`,
         { pattern, tz },

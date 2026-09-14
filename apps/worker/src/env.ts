@@ -1,4 +1,28 @@
 import { z } from 'zod';
+import { isCronPattern } from '@tp/scheduling-core';
+
+/**
+ * A cron setting, refused at boot if it is not one.
+ *
+ * `cron-parser` — which is BullMQ's, and therefore the thing that decides when
+ * these actually fire — accepts some four-field patterns and shifts the fields.
+ * `0 3 * *`, written by somebody who meant "three in the morning" and
+ * miscounted, is accepted, first fires three weeks later, and then runs **every
+ * minute**: swap accrual charging overnight financing fourteen hundred times a
+ * day, with nothing in any log looking wrong. See the measured table in
+ * `scheduling-core/src/lateness.ts`.
+ *
+ * A validator here turns that into a container that will not start, which is
+ * the only version of this failure anybody would notice.
+ */
+const cron = (fallback: string) =>
+  z
+    .string()
+    .default(fallback)
+    .refine(isCronPattern, {
+      message:
+        'is not a cron pattern (five fields, or six with seconds). A four-field pattern parses and fires every minute.',
+    });
 
 /** The worker needs strictly less configuration than the API. Same discipline. */
 export const workerEnvSchema = z.object({
@@ -30,21 +54,21 @@ export const workerEnvSchema = z.object({
   SWAP_TRIPLE_DAY: z.coerce.number().int().min(-1).max(6).default(3),
 
   // Cron expressions are evaluated in TRADING_SERVER_TIMEZONE, not the host's.
-  SWAP_ACCRUAL_CRON: z.string().default('0 0 * * *'),
-  RECONCILIATION_CRON: z.string().default('15 * * * *'),
-  MAINTENANCE_CRON: z.string().default('30 * * * *'),
+  SWAP_ACCRUAL_CRON: cron('0 0 * * *'),
+  RECONCILIATION_CRON: cron('15 * * * *'),
+  MAINTENANCE_CRON: cron('30 * * * *'),
   // Every minute: a venue that has been down for fifty seconds is worth
   // knowing about, and the monitor's breaker is what stops this hammering.
-  BROKER_HEALTH_CRON: z.string().default('* * * * *'),
+  BROKER_HEALTH_CRON: cron('* * * * *'),
   // The outbox relay. Frequent, because it is the durable copy of events a
   // subscriber is waiting on; the backoff lives on the row, not here.
-  OUTBOX_RELAY_CRON: z.string().default('* * * * *'),
+  OUTBOX_RELAY_CRON: cron('* * * * *'),
   OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(5000).default(200),
   OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(100).default(10),
 
   // Webhook deliveries (§49). Every minute like the relay; the backoff between
   // attempts lives on the row. See docs/webhooks.md.
-  WEBHOOK_DELIVERY_CRON: z.string().default('* * * * *'),
+  WEBHOOK_DELIVERY_CRON: cron('* * * * *'),
   WEBHOOK_BATCH_SIZE: z.coerce.number().int().min(1).max(2000).default(100),
   /** Attempts per delivery, the first included. */
   WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(8),

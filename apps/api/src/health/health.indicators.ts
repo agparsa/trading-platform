@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { HealthIndicatorResult, HealthIndicatorService } from '@nestjs/terminus';
+import { overdueSchedules, type ScheduledRun } from '@tp/scheduling-core';
+import { withoutTenantScope } from '@tp/tenancy';
 import { MarketIntegrityService } from '../market/market-integrity.service';
 import { QuoteService } from '../market/quote.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -106,3 +109,76 @@ export class MarketDataHealthIndicator {
  * quiet market.
  */
 const STALE_FEED_MS = 60_000;
+
+/**
+ * Scheduled jobs, and whether any of them has gone quiet.
+ *
+ * ## The failure nothing else here can see
+ *
+ * Every probe above answers "is a dependency up". None of them answers the
+ * question that actually goes unanswered in this platform: *is the work that is
+ * supposed to happen on a schedule still happening?* A deployment where every
+ * worker is `WORKER_ROLE=processor` has a healthy database, a healthy Redis, a
+ * healthy feed, and no swap accrual, no reconciliation, no retention sweep and
+ * no outbox relay. Nothing anywhere would say so, because the process that
+ * would have complained is the one that never ran.
+ *
+ * So the worker records each scheduled run, and this reads those rows.
+ *
+ * Reported on its own probe, like the feed, and for the same reason: a stopped
+ * sweep is an incident, not a reason to pull an API process out of the load
+ * balancer. Alert on this; do not route on it.
+ *
+ * ## Why an empty table is `down`, not `up`
+ *
+ * "No rows" is exactly what a deployment with no scheduler looks like, and it
+ * is also what a brand-new database looks like. Treating it as healthy would
+ * mean the one arrangement this probe exists to catch is the one it reports as
+ * fine. A fresh deployment shows this as down until its first sweep lands,
+ * which is a few minutes of honest noise in exchange for the thing being
+ * visible at all.
+ */
+@Injectable()
+export class ScheduledJobsHealthIndicator {
+  constructor(
+    private readonly health: HealthIndicatorService,
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
+
+  async check(key = 'scheduled-jobs'): Promise<HealthIndicatorResult> {
+    const indicator = this.health.check(key);
+    const tz = this.config.get<string>('TRADING_SERVER_TIMEZONE') ?? 'UTC';
+
+    const rows = await withoutTenantScope('a schedule belongs to the deployment', () =>
+      this.prisma.scheduledJobRun.findMany({ orderBy: { name: 'asc' } }),
+    );
+
+    if (rows.length === 0) {
+      return indicator.down({
+        jobs: 0,
+        problems: ['no scheduled job has ever recorded a run'],
+        note: 'usually no worker is registering schedules — check WORKER_ROLE',
+      });
+    }
+
+    const runs: ScheduledRun[] = rows.map((row) => ({
+      name: row.name,
+      cron: row.cron,
+      // A run that is still in flight has no finish; judged on its last one.
+      lastFinishedAt: row.finishedAt,
+      lastOutcome: row.outcome,
+    }));
+    const problems = overdueSchedules(runs, tz);
+
+    const detail = {
+      jobs: rows.length,
+      oldestAgeMs: Math.max(
+        ...rows.map((row) => Date.now() - (row.lastSucceededAt ?? row.startedAt).getTime()),
+      ),
+      problems: problems.map((one) => one.says),
+    };
+
+    return problems.length === 0 ? indicator.up(detail) : indicator.down(detail);
+  }
+}

@@ -31,7 +31,8 @@
     "pino": "catalog:",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@tp/scheduling-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
