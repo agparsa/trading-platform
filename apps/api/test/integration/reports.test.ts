@@ -21,6 +21,7 @@ import {
   createTestClient,
   hasTestDatabase,
   resetDatabase,
+  seedSymbols,
 } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
@@ -353,6 +354,195 @@ suite('reports', () => {
       expect(stored).not.toContain('passwordHash');
       expect(text).not.toContain('passwordHash');
       expect(text).not.toContain('not-a-real-hash');
+    });
+  });
+
+  /**
+   * Orders and positions: the two kinds whose **window** is the whole design.
+   *
+   * A closed trade is settled — it has one time that matters and one set of
+   * numbers that will never change again. An order and a position do not. Each
+   * carries several timestamps, only one of which is immutable, and each can
+   * still be in flight when the report is built. Getting that wrong does not
+   * produce an error; it produces a file that looks complete.
+   */
+  describe('orders and positions', () => {
+    let symbolId: string;
+
+    beforeEach(async () => {
+      await seedSymbols(prisma);
+      symbolId = (await prisma.symbol.findFirstOrThrow({ where: { code: 'XAUUSD' } })).id;
+    });
+
+    const ago = (days: number) => new Date(Date.now() - days * 86_400_000);
+
+    async function order(over: Record<string, unknown> = {}) {
+      return prisma.order.create({
+        data: {
+          tenantId: alpha.tenantId,
+          accountId: admin.accountId,
+          symbolId,
+          side: 'BUY',
+          type: 'MARKET',
+          volume: '1',
+          ...over,
+        } as never,
+      });
+    }
+
+    async function position(over: Record<string, unknown> = {}) {
+      return prisma.position.create({
+        data: {
+          tenantId: alpha.tenantId,
+          accountId: admin.accountId,
+          symbolId,
+          side: 'BUY',
+          volume: '1',
+          initialVolume: '1',
+          entryPrice: '1900.50',
+          margin: '190.05',
+          ...over,
+        } as never,
+      });
+    }
+
+    const fileOf = async (kind: string) => {
+      const view = await reports.request({ kind, ...window() }, ADMIN(admin.userId));
+      expect(await build(view.id)).toBe('built');
+      const file = await reports.download(view.id, ADMIN(admin.userId));
+      return file.bytes.toString('utf8');
+    };
+
+    /**
+     * The rejected order is the reason this kind exists.
+     *
+     * It leaves no trade and no position behind, so the closed-trade report
+     * cannot find it and neither can anybody reconciling from one. "Why did my
+     * order not go through" is the question an operator is actually asked.
+     */
+    it('carries a rejected order and the code that explains it', async () => {
+      await order({ status: 'REJECTED', rejectionCode: 'INSUFFICIENT_MARGIN' });
+
+      const text = await fileOf(ReportKind.ORDERS);
+      expect(text).toContain('"rejection_code"');
+      expect(text).toContain('"INSUFFICIENT_MARGIN"');
+      expect(text).toContain('"REJECTED"');
+    });
+
+    /**
+     * The window is when the order was **placed**, not when it last moved.
+     *
+     * `updatedAt` moves on every fill, amendment and expiry, so a window
+     * anchored to it would select a different set of rows every time the same
+     * question was asked. This is the test that pins the choice: an order
+     * placed long before the window but touched inside it stays out.
+     */
+    it('windows orders on when they were placed, not when they last changed', async () => {
+      const old = await order({ status: 'NEW' });
+      // Placed 40 days ago, touched a moment ago — exactly the row an
+      // `updatedAt` window would wrongly include.
+      await prisma.$executeRawUnsafe(
+        'UPDATE orders SET created_at = $1, updated_at = now() WHERE id = $2::uuid',
+        ago(40),
+        old.id,
+      );
+      const recent = await order({ status: 'FILLED', filledVolume: '1' });
+
+      const text = await fileOf(ReportKind.ORDERS);
+      expect(text).toContain(recent.id);
+      expect(text).not.toContain(old.id);
+    });
+
+    /**
+     * A position still open belongs in the window it was opened in.
+     *
+     * Windowing on `closedAt` would have produced a tidier file — every row
+     * complete — that answered a different question and said nothing about the
+     * rows it had dropped. The open position is in the file with its close
+     * columns **empty**, because an empty cell says "still open" and an absent
+     * row says nothing at all.
+     */
+    it('includes a position that is still open, with its close columns empty', async () => {
+      const open = await position({ status: 'OPEN' });
+      const closed = await position({
+        status: 'CLOSED',
+        closedAt: new Date(),
+        closeReason: 'MANUAL',
+        realizedPnl: '42.5',
+      });
+
+      const text = await fileOf(ReportKind.POSITIONS);
+      const lines = text.split('\r\n');
+      const openLine = lines.find((line) => line.includes(open.id));
+      const closedLine = lines.find((line) => line.includes(closed.id));
+
+      expect(openLine, 'an open position opened in the window belongs in it').toBeDefined();
+      expect(closedLine).toBeDefined();
+      // ...,opened_at,closed_at,close_reason,external_position_id
+      expect(openLine).toMatch(/,"",""(,"")?$/);
+      expect(closedLine).toContain('"MANUAL"');
+      expect(closedLine).toContain('"42.5"');
+    });
+
+    /**
+     * No unrealized profit, and this is the test that keeps it that way.
+     *
+     * The platform knows the last price it marked a position at, so the column
+     * would be easy to add and would be wrong in a specific way: true at the
+     * instant the file was built and never again, printed under a heading that
+     * says March. `current_price` is in the file because a mark is evidence; a
+     * derived profit figure with no date on it is a trap.
+     */
+    it('states the mark but computes no unrealized profit', async () => {
+      await position({ currentPrice: '1950.00' });
+
+      const header = (await fileOf(ReportKind.POSITIONS)).split('\r\n')[0] ?? '';
+      expect(header).toContain('"current_price"');
+      expect(header).toContain('"realized_pnl"');
+      expect(header).not.toMatch(/unrealized|floating|open_pnl/i);
+    });
+
+    it('refuses both kinds to a role that may run reports but not read accounts', async () => {
+      await narrowRole(UserRole.ADMIN);
+
+      for (const kind of [ReportKind.ORDERS, ReportKind.POSITIONS]) {
+        await expect(
+          reports.request({ kind, ...window() }, ADMIN(admin.userId)),
+        ).rejects.toMatchObject({ code: TradingErrorCode.FORBIDDEN });
+      }
+    });
+
+    /** The firm boundary again, for the two kinds that did not exist when it was written. */
+    it('keeps one firm’s orders and positions out of another firm’s file', async () => {
+      await order();
+      await position();
+      await withTenant(beta, async () => {
+        await prisma.order.create({
+          data: {
+            tenantId: beta.tenantId,
+            accountId: betaAdmin.accountId,
+            symbolId,
+            side: 'SELL',
+            type: 'MARKET',
+            volume: '3',
+          } as never,
+        });
+      });
+
+      const betaOrders = await withTenant(beta, async () => {
+        const view = await reports.request(
+          { kind: ReportKind.ORDERS, ...window() },
+          ADMIN(betaAdmin.userId),
+        );
+        await build(view.id);
+        const file = await reports.download(view.id, ADMIN(betaAdmin.userId));
+        return file.bytes.toString('utf8');
+      });
+
+      expect(betaOrders).toContain('"3"');
+      expect(betaOrders).not.toContain(admin.accountId);
+      const rows = betaOrders.split('\r\n').filter((line) => line.length > 0);
+      expect(rows.length, 'a header and beta’s one order').toBe(2);
     });
   });
 

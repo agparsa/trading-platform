@@ -192,6 +192,10 @@ export class ReportsService {
         return this.ledger(params);
       case ReportKind.AUDIT:
         return this.audit(params);
+      case ReportKind.ORDERS:
+        return this.orders(params);
+      case ReportKind.POSITIONS:
+        return this.positions(params);
       default: {
         const never: never = kind;
         throw new Error(`no builder for report kind ${String(never)}`);
@@ -309,6 +313,121 @@ export class ReportsService {
     );
   }
 
+  /**
+   * Orders placed in the window.
+   *
+   * `createdAt` is the window, and `kinds.ts` carries the argument for it: it
+   * is the one timestamp on an order that never moves, so the same window
+   * always selects the same rows. What those rows *say* can still change while
+   * an order is resting, and the definition says that out loud rather than
+   * leaving somebody to discover it by diffing two exports.
+   *
+   * Prices are nullable — a market order has no limit price, and only a stop
+   * order has a stop price. They go out empty rather than as `0`, because a
+   * zero in a price column is a price.
+   */
+  private async orders(params: {
+    fromMs: number;
+    toMs: number;
+    accountId?: string;
+  }): Promise<string[]> {
+    const where = {
+      createdAt: { gte: new Date(params.fromMs), lte: new Date(params.toMs) },
+      ...(params.accountId === undefined ? {} : { accountId: params.accountId }),
+    };
+    return this.paged(
+      (cursor) =>
+        this.prisma.order.findMany({
+          where,
+          orderBy: { id: 'asc' },
+          take: PAGE,
+          ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 }),
+          include: { account: { select: { number: true } }, symbol: true },
+        }) as Promise<OrderRow[]>,
+      (row) => row.id,
+      (row) => [
+        row.id,
+        row.account?.number ?? '',
+        row.symbol?.code ?? '',
+        row.side,
+        row.type,
+        row.status,
+        row.timeInForce,
+        row.volume.toString(),
+        row.filledVolume.toString(),
+        row.price?.toString() ?? '',
+        row.stopPrice?.toString() ?? '',
+        row.stopLoss?.toString() ?? '',
+        row.takeProfit?.toString() ?? '',
+        row.createdAt.toISOString(),
+        row.updatedAt.toISOString(),
+        row.expiresAt?.toISOString() ?? '',
+        row.rejectionCode ?? '',
+        row.positionId ?? '',
+        row.clientOrderId ?? '',
+        row.externalOrderId ?? '',
+      ],
+    );
+  }
+
+  /**
+   * Positions opened in the window, whether or not they have closed.
+   *
+   * `openedAt` is the window, so a position opened in March and still open in
+   * June is in a March report with its close columns empty. Windowing on
+   * `closedAt` would have produced a tidier file that answered a different
+   * question and gave no sign it had — see `kinds.ts`.
+   *
+   * There is no unrealized-profit column, and this builder does not compute
+   * one. `currentPrice` is the last mark the engine recorded; multiplying it
+   * out here would stamp a figure that is true at build time onto a file headed
+   * with last month's dates. What goes out otherwise is what is settled about
+   * the position: commission, swap, realized profit, and the margin held.
+   */
+  private async positions(params: {
+    fromMs: number;
+    toMs: number;
+    accountId?: string;
+  }): Promise<string[]> {
+    const where = {
+      openedAt: { gte: new Date(params.fromMs), lte: new Date(params.toMs) },
+      ...(params.accountId === undefined ? {} : { accountId: params.accountId }),
+    };
+    return this.paged(
+      (cursor) =>
+        this.prisma.position.findMany({
+          where,
+          orderBy: { id: 'asc' },
+          take: PAGE,
+          ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 }),
+          include: { account: { select: { number: true, currency: true } }, symbol: true },
+        }) as Promise<PositionRow[]>,
+      (row) => row.id,
+      (row) => [
+        row.id,
+        row.account?.number ?? '',
+        row.symbol?.code ?? '',
+        row.side,
+        row.status,
+        row.volume.toString(),
+        row.initialVolume.toString(),
+        row.entryPrice.toString(),
+        row.currentPrice?.toString() ?? '',
+        row.stopLoss?.toString() ?? '',
+        row.takeProfit?.toString() ?? '',
+        row.margin.toString(),
+        row.commission.toString(),
+        row.swap.toString(),
+        row.realizedPnl.toString(),
+        row.account?.currency ?? '',
+        row.openedAt.toISOString(),
+        row.closedAt?.toISOString() ?? '',
+        row.closeReason ?? '',
+        row.externalPositionId ?? '',
+      ],
+    );
+  }
+
   private async ledger(params: {
     fromMs: number;
     toMs: number;
@@ -387,4 +506,49 @@ interface LedgerRow {
   referenceId: string | null;
   description: string | null;
   account: { number: string } | null;
+}
+
+interface OrderRow {
+  id: string;
+  side: string;
+  type: string;
+  status: string;
+  timeInForce: string;
+  volume: { toString(): string };
+  filledVolume: { toString(): string };
+  price: { toString(): string } | null;
+  stopPrice: { toString(): string } | null;
+  stopLoss: { toString(): string } | null;
+  takeProfit: { toString(): string } | null;
+  createdAt: Date;
+  updatedAt: Date;
+  expiresAt: Date | null;
+  rejectionCode: string | null;
+  positionId: string | null;
+  clientOrderId: string | null;
+  externalOrderId: string | null;
+  account: { number: string } | null;
+  symbol: { code: string } | null;
+}
+
+interface PositionRow {
+  id: string;
+  side: string;
+  status: string;
+  volume: { toString(): string };
+  initialVolume: { toString(): string };
+  entryPrice: { toString(): string };
+  currentPrice: { toString(): string } | null;
+  stopLoss: { toString(): string } | null;
+  takeProfit: { toString(): string } | null;
+  margin: { toString(): string };
+  commission: { toString(): string };
+  swap: { toString(): string };
+  realizedPnl: { toString(): string };
+  openedAt: Date;
+  closedAt: Date | null;
+  closeReason: string | null;
+  externalPositionId: string | null;
+  account: { number: string; currency: string } | null;
+  symbol: { code: string } | null;
 }

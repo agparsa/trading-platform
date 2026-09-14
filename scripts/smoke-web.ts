@@ -1509,9 +1509,13 @@ async function main(): Promise<void> {
     });
     const reportsText = await adminPage.innerText('body');
     ok(
-      /Closed trades/i.test(reportsText) && /Balance ledger/i.test(reportsText),
-      'the reports page offers the kinds the API defines',
-      reportsText.replace(/\s+/g, ' ').slice(0, 160),
+      /Closed trades/i.test(reportsText) &&
+        /Balance ledger/i.test(reportsText) &&
+        /Audit trail/i.test(reportsText) &&
+        /\bOrders\b/.test(reportsText) &&
+        /\bPositions\b/.test(reportsText),
+      'the reports page offers all five kinds the API defines',
+      reportsText.replace(/\s+/g, ' ').slice(0, 200),
     );
     ok(
       /No reports yet/i.test(reportsText),

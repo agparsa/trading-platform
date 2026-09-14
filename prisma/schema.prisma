@@ -3452,6 +3452,12 @@ enum ReportKind {
   LEDGER
   /// Every recorded action in the window, with its before and after.
   AUDIT
+  /// Every order **placed** in the window, whatever became of it. Windowed on
+  /// creation because that is the only timestamp on an order that never moves.
+  ORDERS
+  /// Every position **opened** in the window, including ones still open —
+  /// which is why the close columns may be empty rather than the row absent.
+  POSITIONS
 }
 
 enum ReportStatus {

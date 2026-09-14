@@ -32,14 +32,17 @@ particular day. The record outlives the file.
 | `params` | The filters as the request made them, so a file can be explained later. Never a secret. |
 | `sha256`, `size_bytes`, `row_count` | In the clear. What the file was, after it is gone. |
 | `content` | Sealed. Null before the job runs and after the sweep. |
+| `expires_at` | Written by the job that produced the file, so retention is decided once at production rather than re-derived from a setting that may since have changed. A file promised for fourteen days keeps its fourteen days. |
 
 ### The kinds
 
-| Kind | A row is | Needs |
-| --- | --- | --- |
-| `TRADES` | one closed trade: entry, exit, costs, net profit | `accounts.read_any` |
-| `LEDGER` | one ledger entry, with the balance after it | `accounts.read_any` |
-| `AUDIT` | one recorded action: who, what, before and after | `audit.read` |
+| Kind | A row is | Windowed on | Needs |
+| --- | --- | --- | --- |
+| `TRADES` | one closed trade: entry, exit, costs, net profit | exit | `accounts.read_any` |
+| `LEDGER` | one ledger entry, with the balance after it | entry | `accounts.read_any` |
+| `AUDIT` | one recorded action: who, what, before and after | record | `audit.read` |
+| `ORDERS` | one order placed, whatever became of it | **placement** | `accounts.read_any` |
+| `POSITIONS` | one position opened, open ones included | **opening** | `accounts.read_any` |
 
 Each kind's columns are the matching screen's, in its order, deliberately: an
 export that disagrees with the screen it came from starts an argument nobody can
@@ -52,7 +55,47 @@ complete and is not, which is the failure this whole feature exists to stop. Its
 `before` and `after` go out as stored: they are redacted when the row is
 written, and redacting again at export would make the file and the audit screen
 disagree about what happened.
-| `expires_at` | Written by the job that produced the file, so retention is decided once at production rather than re-derived from a setting that may since have changed. A file promised for fourteen days keeps its fourteen days. |
+
+### The window column is the design, for the last two
+
+The first three kinds are settled things. A closed trade has one time that
+matters and numbers that will never change again; so does a ledger entry and an
+audit record. An order and a position are not settled, and each carries several
+timestamps. Which one the window means is the whole design, and getting it wrong
+does not produce an error — it produces a file that looks complete.
+
+**`ORDERS` is windowed on placement.** `created_at` is the only timestamp on an
+order that never moves. Anchor the window to `updated_at` instead and asking for
+March on the 1st of April and again on the 1st of May returns different rows for
+a window that did not change. "Every order placed in March" is a sentence an
+operator can act on.
+
+What still moves is said out loud rather than hidden: the *set* of rows is fixed
+by that choice, the *contents* are not. An order placed on the 31st and still
+resting has a `status` and a `filled_volume` that will differ tomorrow. Two
+exports of the same window can therefore disagree, and that is the difference
+between "which orders were placed" and "what became of them" — for the second,
+the closed-trade report is settled by construction.
+
+`rejection_code` is in the file on purpose. A rejected order leaves no trade and
+no position behind, so nothing else in this feature can find it, and "why did my
+order not go through" is the question an operator is actually asked.
+
+**`POSITIONS` is windowed on opening, so open positions are in the file.**
+Windowing on `closed_at` would have been tidier — every row complete, every
+number settled — and would quietly answer a different question. A position
+opened in March and still open in June belongs in a March report; dropping it
+produces a file that balances against nothing and gives no sign of what is
+missing. An empty `closed_at` says "still open"; an absent row says nothing.
+
+**There is no unrealized-profit column, and there will not be one.** The
+platform knows `current_price` — the last price the engine marked the position
+at — so the column would be easy to add and wrong in a specific way: true at the
+instant the file was built and never again, printed under a heading that says
+March and read in June as a March figure. `current_price` itself is in the file,
+because a mark whose date is on the page is evidence. What else goes out is what
+is *settled* about the position: commission, swap, realized profit, margin held.
+`reports.test.ts` fails if an unrealized column appears.
 
 Three CHECK constraints keep the status honest: READY must have a file, a hash,
 a size, a row count and both timestamps; FAILED must say why; EXPIRED must have
@@ -182,9 +225,10 @@ usable statement and a support ticket.
 
 ## What is not here
 
-- **Other kinds.** Trades, ledger and audit today. Positions and orders are the
-  obvious next two; each is a definition in `kinds.ts` and a query in the
-  worker.
+- **Other kinds.** Five today. A sixth is a definition in `kinds.ts`, a query in
+  the worker, and an `ALTER TYPE ... ADD VALUE` — the panel and the API need no
+  change, because both read the definitions. Deposits and withdrawals as their
+  own kind, and a per-account statement, are the obvious candidates.
 - **Formats.** CSV only. PDF statements are a different job with a layout
   problem attached.
 - **Scheduling.** Every report is asked for by a person. A monthly statement

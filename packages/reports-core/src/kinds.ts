@@ -22,6 +22,8 @@ export const ReportKind = {
   TRADES: 'TRADES',
   LEDGER: 'LEDGER',
   AUDIT: 'AUDIT',
+  ORDERS: 'ORDERS',
+  POSITIONS: 'POSITIONS',
 } as const;
 export type ReportKind = (typeof ReportKind)[keyof typeof ReportKind];
 
@@ -132,10 +134,123 @@ const AUDIT: ReportDefinition = {
   ],
 };
 
+/**
+ * Orders, windowed on when they were **placed**.
+ *
+ * ## Which timestamp the window means, and why it is not negotiable
+ *
+ * An order has several: placed, last changed, expires. Only `created_at` is
+ * immutable, and a window must be anchored to something immutable or the
+ * report is not reproducible — ask for March on the 1st of April and again on
+ * the 1st of May and `updated_at` would have moved rows in and out of a window
+ * that did not change. "Every order placed in March" is a sentence an operator
+ * can act on; "every order touched in March" is one they cannot.
+ *
+ * ## What still moves, said plainly rather than hidden
+ *
+ * The *set* of rows is fixed by that choice. The *contents* are not: an order
+ * placed on the 31st and still resting has a `status` and a `filled_volume`
+ * that will be different tomorrow. Two exports of the same window can therefore
+ * differ, and that is not a defect — it is the difference between "which orders
+ * were placed" and "what became of them". Anybody reconciling fills should use
+ * the closed-trade report, which is settled by construction.
+ *
+ * `rejection_code` is here on purpose. A rejected order is the one an operator
+ * most often wants to explain, and it is the row that leaves no trade behind to
+ * find it by.
+ */
+const ORDERS: ReportDefinition = {
+  kind: ReportKind.ORDERS,
+  title: 'Orders',
+  describes: 'One row per order placed in the window, whatever became of it.',
+  permission: Permission.ACCOUNTS_READ_ANY,
+  columns: [
+    'order_id',
+    'account_number',
+    'symbol',
+    'side',
+    'type',
+    'status',
+    'time_in_force',
+    'volume',
+    'filled_volume',
+    'price',
+    'stop_price',
+    'stop_loss',
+    'take_profit',
+    'created_at',
+    'updated_at',
+    'expires_at',
+    'rejection_code',
+    'position_id',
+    'client_order_id',
+    'external_order_id',
+  ],
+};
+
+/**
+ * Positions, windowed on when they were **opened**.
+ *
+ * ## Open positions are in the file, and that is the point
+ *
+ * Windowing on `closed_at` would have been the tidier choice — every row
+ * complete, every number settled — and it would quietly answer a different
+ * question than the one asked. A position opened in March and still open in
+ * June belongs in a March report; leaving it out produces a file that looks
+ * complete, balances against nothing, and gives no sign of what is missing.
+ * That is this feature's own failure mode, and it is worth refusing twice.
+ *
+ * So `closed_at` and `close_reason` are empty for a position that is still
+ * open. An empty cell says "still open"; an absent row says nothing at all.
+ *
+ * ## What is deliberately **not** in the file
+ *
+ * There is no unrealized-profit column. The platform knows `current_price` —
+ * the last price the engine marked the position at — and multiplying it out
+ * would give a number that is true at the instant the report is built and never
+ * again. Printed in a file headed "March" and opened in June it reads as a
+ * March figure, which it is not, and nothing on the page would say so.
+ *
+ * `current_price` itself is included, because a mark somebody can see the date
+ * of is evidence; a derived profit figure with no date on it is a trap. What is
+ * in the file otherwise is what is *settled* about the position — the money
+ * already taken or given: commission, swap, realized profit, margin held.
+ */
+const POSITIONS: ReportDefinition = {
+  kind: ReportKind.POSITIONS,
+  title: 'Positions',
+  describes: 'One row per position opened in the window, open ones included.',
+  permission: Permission.ACCOUNTS_READ_ANY,
+  columns: [
+    'position_id',
+    'account_number',
+    'symbol',
+    'side',
+    'status',
+    'volume',
+    'initial_volume',
+    'entry_price',
+    'current_price',
+    'stop_loss',
+    'take_profit',
+    'margin',
+    'commission',
+    'swap',
+    'realized_pnl',
+    'currency',
+    'opened_at',
+    'closed_at',
+    'close_reason',
+    'external_position_id',
+  ],
+};
+
 export const REPORT_DEFINITIONS: Readonly<Record<ReportKind, ReportDefinition>> = {
   [ReportKind.TRADES]: TRADES,
   [ReportKind.LEDGER]: LEDGER,
   [ReportKind.AUDIT]: AUDIT,
+  [ReportKind.ORDERS]: ORDERS,
+  [ReportKind.POSITIONS]: POSITIONS,
 };
 
 export const ALL_REPORT_KINDS: readonly ReportKind[] = Object.keys(
