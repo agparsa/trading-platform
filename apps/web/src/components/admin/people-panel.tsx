@@ -431,6 +431,7 @@ function RoleCell({
   return (
     <div className="flex flex-wrap items-center gap-1" data-user={userId}>
       <select
+        aria-label="Role"
         className={cn(inputClass, 'w-36 py-1 text-xs')}
         value={next}
         onChange={(event) => setNext(event.target.value)}
@@ -442,6 +443,7 @@ function RoleCell({
         ))}
       </select>
       <input
+        aria-label="Why this role changes"
         className={cn(inputClass, 'w-48 py-1 text-xs')}
         placeholder="Why — their sessions will end"
         value={reason}

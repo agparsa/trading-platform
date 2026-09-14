@@ -905,6 +905,7 @@ async function main(): Promise<void> {
       'the alert the trader set is listed back to them',
       alertsPanel.replace(/\s+/g, ' ').slice(0, 200),
     );
+    await auditAccessibility(page, 'the alerts tab');
 
     await visit(page, '/account', { url: '/account', text: /Account/i });
     await auditAccessibility(page, 'the account screen');
@@ -1068,6 +1069,9 @@ async function main(): Promise<void> {
       url: `/admin/people/${people.userId}`,
       text: new RegExp(people.trader.email.replace(/[.@+]/g, '.')),
     });
+    await auditAccessibility(page, 'the developer screen');
+    await auditAccessibility(page, 'the verification screen');
+    await auditAccessibility(adminPage, 'the admin overview');
     await visit(adminPage, '/admin/accounts', { url: '/admin/accounts' });
     if (people.accountId !== null) {
       await visit(adminPage, `/admin/accounts/${people.accountId}`, {
@@ -1100,15 +1104,22 @@ async function main(): Promise<void> {
       'the venue tab distinguishes "nothing disagrees" from "nobody has looked"',
       venueBody.replace(/\s+/g, ' ').slice(0, 220),
     );
+    await auditAccessibility(adminPage, 'the venue-disagreement tab');
     await visit(adminPage, '/admin/payments', {
       url: '/admin/payments',
       text: /Awaiting confirmation/i,
     });
+    await auditAccessibility(adminPage, 'the payments screen');
+    await auditAccessibility(adminPage, 'the accounts screen');
+    await auditAccessibility(adminPage, 'the reconciliation screen');
+    await auditAccessibility(adminPage, 'the risk console');
     await visit(adminPage, '/admin/kyc', { url: '/admin/kyc', text: /Awaiting review/i });
     await visit(adminPage, '/admin/withdrawals', {
       url: '/admin/withdrawals',
       text: /In flight/i,
     });
+    await auditAccessibility(adminPage, 'the withdrawals queue');
+    await auditAccessibility(adminPage, 'the verification queue');
     /**
      * The firm's book. What is checked is not that a table renders but that it
      * shows *another* account's order — the whole point of the screen is that
@@ -1187,6 +1198,8 @@ async function main(): Promise<void> {
 
     await visit(adminPage, '/admin/audit', { url: '/admin/audit' });
 
+    await auditAccessibility(adminPage, 'the audit screen');
+
     /**
      * Desks: create one, delegate an account to it as a named preset, and
      * check the screen shows what was actually stored.
@@ -1200,6 +1213,7 @@ async function main(): Promise<void> {
     const traderRow = await prisma.user.findFirstOrThrow({
       where: { email: people.trader.email },
     });
+    await auditAccessibility(adminPage, 'the desks screen');
     const traderAccount = await prisma.account.findFirstOrThrow({
       where: { userId: traderRow.id },
     });
@@ -1276,6 +1290,7 @@ async function main(): Promise<void> {
       'a firm ceiling can be set from the risk console and is shown back',
       ceilingBody.replace(/\s+/g, ' ').slice(0, 200),
     );
+    await auditAccessibility(adminPage, 'the risk ceilings tab');
     await visit(adminPage, '/admin/roles', { url: '/admin/roles', text: /Administrator/i });
 
     /**
@@ -1294,6 +1309,8 @@ async function main(): Promise<void> {
       url: '/admin/credentials',
       text: new RegExp(people.trader.email.replace(/[.@+]/g, '.')),
     });
+    await auditAccessibility(adminPage, 'the credentials screen');
+    await auditAccessibility(adminPage, 'the roles screen');
     await adminPage.getByRole('tab', { name: /Service tokens/i }).click();
     const tokensBody = await adminPage.locator('body').innerText();
     ok(
@@ -1301,6 +1318,7 @@ async function main(): Promise<void> {
       'the credentials screen offers service tokens with reads across the tenant',
       tokensBody.slice(0, 200),
     );
+    await auditAccessibility(adminPage, 'the service tokens tab');
 
     /**
      * Connections: the screen exists, the mock connector is offered, and the
@@ -1312,6 +1330,7 @@ async function main(): Promise<void> {
       url: '/admin/connections',
       text: /Mock venue|No venue is connected/i,
     });
+    await auditAccessibility(adminPage, 'the connections screen');
     /**
      * A fresh name each run. The suite does not empty the database, and a
      * fixed name meant the second run found the connection already made, with
@@ -1435,6 +1454,8 @@ async function main(): Promise<void> {
     );
 
     await visit(adminPage, '/admin/security', { url: '/admin/security', text: /SIGN_IN/ });
+
+    await auditAccessibility(adminPage, 'the security feed');
     const securityFeed = await adminPage.getByTestId('security-feed').innerText();
     ok(
       new RegExp(people.trader.email.replace(/[.@+]/g, '.')).test(securityFeed) &&
@@ -1460,8 +1481,11 @@ async function main(): Promise<void> {
       'the IP rules screen leads with the address the caller is coming from',
       ipRules.replace(/\s+/g, ' ').slice(0, 160),
     );
+    await auditAccessibility(adminPage, 'the IP rules tab');
 
     await visit(adminPage, '/admin/features', { url: '/admin/features', text: /Trailing stops/i });
+
+    await auditAccessibility(adminPage, 'the features screen');
     const featuresText = await adminPage.getByTestId('features').innerText();
     ok(
       /set by the platform/i.test(featuresText) && /by the server/i.test(featuresText),
@@ -1494,11 +1518,13 @@ async function main(): Promise<void> {
       'an empty reports list says so, rather than showing an empty table',
       reportsText.replace(/\s+/g, ' ').slice(0, 160),
     );
+    await auditAccessibility(adminPage, 'the reports screen');
 
     await visit(adminPage, '/admin/webhooks', {
       url: '/admin/webhooks',
       text: /Register endpoint/i,
     });
+    await auditAccessibility(adminPage, 'the webhooks screen');
     const webhooks = await adminPage.getByTestId('webhooks').innerText();
     ok(
       /No endpoints/i.test(webhooks),
@@ -1518,6 +1544,7 @@ async function main(): Promise<void> {
       where: { id: adminRow.id },
       data: { role: 'PLATFORM_SUPER_ADMIN' },
     });
+    await auditAccessibility(adminPage, 'the brokers screen');
     // The role travels in the token: end the session and sign in again.
     await prisma.refreshToken.updateMany({
       where: { userId: adminRow.id, revokedAt: null },

@@ -5,9 +5,14 @@ this does **not** claim.
 
 ## The claim, stated narrowly
 
-Nine screens are audited by `axe-core` on every `pnpm smoke:web` run, against
-the WCAG 2.1 A and AA rule set, in a real browser with real data. Serious and
-critical violations fail the run; moderate and minor ones are printed.
+**Thirty-three views** are audited by `axe-core` on every `pnpm smoke:web` run,
+against the WCAG 2.1 A and AA rule set, in a real browser with real data.
+Serious and critical violations fail the run; moderate and minor ones are
+printed.
+
+Thirty-three *views*, not thirty-three pages: five of them are tab panels that
+share a URL with a page already audited. That distinction is the whole of the
+next section.
 
 That is a **machine-checkable subset of WCAG, and it is a minority of it** —
 roughly a third of the success criteria can be determined by a tool at all. A
@@ -26,7 +31,7 @@ What is **not** covered, and is therefore still unknown:
   not, and no automated rule will say so;
 - anything that needs a person with the assistive technology they actually use.
 
-Naming those is the honest version of a pass. A suite that reported "9/9
+Naming those is the honest version of a pass. A suite that reported "33/33
 accessible" would be worse than having none, because it would end the question.
 
 ### And a narrower limit, found by breaking it
@@ -69,6 +74,60 @@ violation that appeared and vanished between runs on an element whose settled
 colours both pass comfortably. An intermittent gate teaches people to re-run it
 rather than look. What that gives up: a transition that passes through an
 unreadable colour will not be caught.
+
+## Coverage was narrower than the count suggested
+
+The audit ran on nine screens while the suite visited twenty-eight. The other
+nineteen were rendered, asserted against, and never audited — and the count in
+this document was the only place anybody would have noticed.
+
+Auditing all twenty-eight found exactly one serious violation: the security
+feed's severity filter was a `<select>` with no `aria-label`, no
+`aria-labelledby` and no wrapping `<label>`. A screen reader announced it as
+"combo box" and nothing else.
+
+### A survey that was wrong, and a mutation that proved it
+
+Finding one offender raised the obvious question — how many more? The first
+answer was produced by a script that read each `<select ... >` by scanning to
+the first `>`. An `onChange={(event) => ...}` supplies a `>` of its own, so the
+scan stopped before `aria-label` was reached, and the script reported 24
+unnamed selects — including one that demonstrably had `aria-label="Severity"`.
+Acting on that number would have meant 24 edits to fix one bug.
+
+A scanner that tracks JSX brace depth and quoting gives the real figure: of 29
+selects, **six** had no accessible name of their own and were not wrapped in a
+`<label>` or the `Field` helper. All six now carry an `aria-label`, as do the
+placeholder-only text inputs beside them:
+
+| File | Control |
+| --- | --- |
+| `verification/page.tsx` | document type |
+| `admin/features-panel.tsx` | broker |
+| `admin/ip-rules-panel.tsx` | allow/deny, scope, address, reason |
+| `admin/people-panel.tsx` | role, reason |
+| `admin/security-panel.tsx` | severity, event kind |
+
+### And the coverage gap under the coverage gap
+
+Removing `aria-label="Allow or deny"` from the IP rules panel to check the
+audit would catch it — **it did not.** The run passed.
+
+The IP rules panel is a *tab* inside `/admin/security`, and the audit for that
+URL runs before the tab is switched. Four other panels were hidden the same
+way: the alerts tab on the terminal, the venue-disagreement tab on
+reconciliation, the ceilings tab on the risk console, and the service-tokens
+tab on credentials. Each is now audited after its tab is opened, which is where
+the count of thirty-three comes from.
+
+With the audit in place the same mutation fails the run —
+`FAIL the IP rules tab has no serious accessibility violations — select-name×1`
+— and passes again when the label is restored.
+
+The lesson is not about selects. A screen counted as audited was audited; a
+*view* that only exists after a click was not, and no number in this document
+distinguished the two. Anything reached by a tab, a dialog, or a disclosure is
+invisible to a per-URL audit unless somebody opens it first.
 
 ## Why it runs in the browser suite
 

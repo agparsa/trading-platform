@@ -109,6 +109,7 @@ export default function VerificationPage() {
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <select
+                  aria-label="Document type"
                   className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-[11px] text-terminal-text"
                   value={kind}
                   onChange={(event) => setKind(event.target.value)}

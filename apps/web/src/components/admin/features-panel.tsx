@@ -39,6 +39,7 @@ export function FeaturesPanel() {
             Acting as the platform. Set a broker’s platform flags:
           </span>
           <select
+            aria-label="Broker"
             className={cn(inputClass, 'w-auto py-1 text-xs')}
             value={brokerId ?? ''}
             onChange={(event) => setBrokerId(event.target.value === '' ? null : event.target.value)}

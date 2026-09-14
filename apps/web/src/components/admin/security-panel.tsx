@@ -24,6 +24,7 @@ export function SecurityPanel() {
     <div className="flex flex-col" data-testid="security-feed">
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
         <select
+          aria-label="Severity"
           className={cn(inputClass, 'w-auto py-1 text-xs')}
           value={severity}
           onChange={(event) => setSeverity(event.target.value as Severity)}
@@ -34,6 +35,7 @@ export function SecurityPanel() {
           <option value="INFO">Info</option>
         </select>
         <input
+          aria-label="Event kind"
           className={cn(inputClass, 'max-w-xs py-1 text-xs')}
           value={kind}
           placeholder="Kind, e.g. SIGN_IN_FAILED"

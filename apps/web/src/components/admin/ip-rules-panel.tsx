@@ -84,12 +84,14 @@ function Rules({ data }: { data: NonNullable<ReturnType<typeof useIpRules>['data
     <>
       <div className="flex flex-wrap items-center gap-2 border-b border-terminal-border px-3 py-2">
         <input
+          aria-label="Address or range"
           className={cn(inputClass, 'w-44 py-1 text-xs')}
           placeholder="Address or range, e.g. 203.0.113.0/24"
           value={cidr}
           onChange={(event) => setCidr(event.target.value)}
         />
         <select
+          aria-label="Allow or deny"
           className={cn(inputClass, 'w-auto py-1 text-xs')}
           value={kind}
           onChange={(event) => setKind(event.target.value as 'ALLOW' | 'DENY')}
@@ -98,6 +100,7 @@ function Rules({ data }: { data: NonNullable<ReturnType<typeof useIpRules>['data
           <option value="DENY">Deny</option>
         </select>
         <select
+          aria-label="Who the rule applies to"
           className={cn(inputClass, 'w-auto py-1 text-xs')}
           value={scope}
           onChange={(event) => setScope(event.target.value as 'STAFF' | 'EVERYONE')}
@@ -106,6 +109,7 @@ function Rules({ data }: { data: NonNullable<ReturnType<typeof useIpRules>['data
           <option value="EVERYONE">Everyone, customers included</option>
         </select>
         <input
+          aria-label="Why this rule exists"
           className={cn(inputClass, 'min-w-48 flex-1 py-1 text-xs')}
           placeholder="Why — the Amsterdam office, a range we saw stuffing from…"
           value={note}
