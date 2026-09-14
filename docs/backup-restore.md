@@ -49,8 +49,11 @@ exist, because an execution belongs to an _order_. That is the whole argument
 against a second definition of a financial invariant (§80), demonstrated on
 itself.
 
-It now runs the real `ReconciliationService` — the same eight checks the scheduled
-job runs every night — against the restored copy.
+It now runs the real `ReconciliationService` — the same checks the scheduled job
+runs hourly — against the restored copy. (This sentence said "every night" for
+as long as it existed. `RECONCILIATION_CRON` is `15 * * * *`. Nothing turned on
+the difference, but a document that is wrong about a schedule is a document
+somebody plans an incident around.)
 
 ## The rehearsal was tested by breaking the backup
 
@@ -92,3 +95,40 @@ hardware. The rehearsal is the thing that tells you; running it is the point.
   backup that lives on the same disk as the database is not a backup; offsite
   copying, retention and encryption at rest are the deployment platform's job and
   are described in [deployment.md](./deployment.md).
+
+## The backup answers where somebody can hear it
+
+The dumps were careful and the *answer* was not reachable. `backup.sh` verified
+every dump with `pg_restore --list` before renaming it into place and pruned
+older files only after that passed — both right — and then wrote its verdict to
+a one-line `status` file beside the dumps. The runbook said to go and read it.
+
+Which is to say: during an incident, after the backups have already been
+silently absent for a week. The backup container is the one scheduled thing in
+this deployment that is not a worker job, so the watchdog built for those did
+not cover it either.
+
+It now writes into `scheduled_job_runs` like every other schedule, so a backup
+that stops or starts failing appears on `GET /health/jobs`, in
+`tp_scheduled_job_late`, and in `pnpm verify:production`. Three details:
+
+- **Its schedule is recorded as `every:21600`, not as a cron.** The loop dumps,
+  sleeps six hours and dumps again, so a restart shifts every subsequent run and
+  there are no fixed slots to be late for. A cron pattern in that column would
+  have been a small lie that a reader acts on later, wondering why the dumps do
+  not land on the hour.
+- **A failure keeps the last success.** The distance between `finished_at` and
+  `last_succeeded_at` is how long the backups have been broken, which is the
+  only number that answers "how much would we lose".
+- **The recording never fails the backup.** A dump that refused to run because
+  its bookkeeping row was locked would be a watchdog that eats what it watches.
+  If the database is unreachable, no row is written and the existing one goes
+  stale — which reads as late, correctly.
+
+The `status` file is still written. Somebody on the host at three in the morning
+should not have to query anything.
+
+`backup-script.test.ts` runs the actual shell script against a real database,
+including the failure path — `pg_dump` replaced with something that exits
+non-zero, which is what a full disk, a dead primary or a revoked role look like
+from in there.

@@ -173,6 +173,16 @@ export class ScheduledJobsHealthIndicator {
 
     const detail = {
       jobs: rows.length,
+      /**
+       * Named, not just counted.
+       *
+       * A count cannot answer "is the backup among them", and a schedule that
+       * has never run once leaves no row at all — which is exactly what a
+       * missing scheduler or an unstarted backup container looks like. The
+       * probe reports what it has; whoever knows what this deployment is
+       * *supposed* to have compares the two. `verify:production` does.
+       */
+      names: rows.map((row) => row.name),
       oldestAgeMs: Math.max(
         ...rows.map((row) => Date.now() - (row.lastSucceededAt ?? row.startedAt).getTime()),
       ),

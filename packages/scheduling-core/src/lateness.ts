@@ -65,7 +65,11 @@ export const GRACE_MS = 5 * 60_000;
 
 export interface ScheduledRun {
   readonly name: string;
-  /** The cron pattern as configured, so the tolerance is the real one. */
+  /**
+   * How this job is scheduled, as configured — so the tolerance is the real
+   * one. Either a cron pattern, or `every:<seconds>` for something that runs on
+   * a sleep loop rather than a clock. See `intervalOf`.
+   */
   readonly cron: string;
   /** When the last run *finished*, successfully or not. Null means it never has. */
   readonly lastFinishedAt: Date | null;
@@ -169,6 +173,30 @@ export function isCronPattern(value: string): boolean {
 }
 
 /** The age at which a schedule with this interval is considered to have stopped. */
+/**
+ * The interval of any schedule spec, cron or otherwise.
+ *
+ * ## Why there is a second form
+ *
+ * Not everything on a schedule is on a cron. The backup container runs a sleep
+ * loop — dump, sleep six hours, dump — which is genuinely different from a cron
+ * in a way that matters here: a restart shifts every subsequent run, so there
+ * are no fixed slots to be late for. Writing `0 *&#47;6 * * *` in its row would
+ * have been a small lie that a reader would later act on, wondering why the
+ * dumps do not land on the hour.
+ *
+ * So a spec is either a cron pattern or `every:<seconds>`, and the second says
+ * what it means. Anything else is refused rather than guessed at.
+ */
+export function intervalOf(spec: string, tz: string, from: Date = new Date()): number | null {
+  const every = /^every:(\d+)$/.exec(spec.trim());
+  if (every !== null) {
+    const seconds = Number(every[1]);
+    return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
+  }
+  return cronIntervalMs(spec, tz, from);
+}
+
 export function toleranceFor(intervalMs: number): number {
   return intervalMs * LATE_FACTOR + GRACE_MS;
 }
@@ -194,7 +222,7 @@ function human(ms: number): string {
  * would let it fail all week.
  */
 export function judgeSchedule(run: ScheduledRun, tz: string, now: Date = new Date()): ScheduleHealth {
-  const intervalMs = cronIntervalMs(run.cron, tz, now);
+  const intervalMs = intervalOf(run.cron, tz, now);
   if (intervalMs === null) {
     return {
       name: run.name,
@@ -202,7 +230,7 @@ export function judgeSchedule(run: ScheduledRun, tz: string, now: Date = new Dat
       ageMs: null,
       intervalMs: null,
       toleranceMs: null,
-      says: `'${run.cron}' is not a cron pattern this platform can read, so ${run.name} is not scheduled at all.`,
+      says: `'${run.cron}' is not a schedule this platform can read, so ${run.name} is not scheduled at all.`,
     };
   }
 

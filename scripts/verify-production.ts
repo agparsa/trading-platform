@@ -190,6 +190,40 @@ async function main(): Promise<void> {
         ? `${String(jobsDetail?.jobs ?? 0)} schedules, all inside their own tolerance`
         : problems.join('; '),
     );
+
+    /**
+     * And that the ones this deployment is supposed to have are *there*.
+     *
+     * The probe judges the rows it finds. A job that has never run once leaves
+     * no row at all, so it is invisible to a check that only reads rows — and
+     * "never ran" is precisely what a missing scheduler, or a backup container
+     * that was never started, looks like. The expected set lives here rather
+     * than in the platform because it is a fact about this deployment's shape:
+     * a development machine with no backup container is not broken.
+     */
+    const named = Object.keys(
+      ((jobsInfo['info'] ?? jobsInfo['error']) as Record<string, unknown> | undefined) ?? {},
+    );
+    const seen = (jobsDetail as unknown as { names?: string[] } | undefined)?.names ?? [];
+    const EXPECTED = [
+      'swap-accrual',
+      'reconciliation',
+      'idempotency-sweep',
+      'broker-health',
+      'outbox-relay',
+      'webhook-delivery',
+      'backup',
+    ];
+    const absent = EXPECTED.filter((name) => !seen.includes(name));
+    record(
+      'every schedule this deployment should have has run at least once',
+      seen.length > 0 && absent.length === 0,
+      seen.length === 0
+        ? `/health/jobs did not name its schedules (probe present: ${named.join(', ') || 'none'})`
+        : absent.length === 0
+          ? `${String(seen.length)} present`
+          : `never run: ${absent.join(', ')} — a schedule with no row has never fired once`,
+    );
   }
 
   // --- what must not be public ---------------------------------------------

@@ -1,5 +1,6 @@
 export {
   cronIntervalMs,
+  intervalOf,
   isCronPattern,
   toleranceFor,
   judgeSchedule,

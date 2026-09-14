@@ -269,9 +269,14 @@ can reach the database.
 
 ## Backups
 
-The `backup` service dumps the database every six hours by default and writes a
-one-line `status` file beside the dumps; `FAILED` there, or a stale file, is the
-first thing to check. The restore, in order and with the measured numbers, is
+The `backup` service dumps the database every six hours by default. It writes a
+one-line `status` file beside the dumps **and** a row in `scheduled_job_runs`,
+so you do not have to be on the host to find out: a backup that stops or starts
+failing shows up on `GET /health/jobs`, in `tp_scheduled_job_late{job="backup"}`
+and in `pnpm verify:production`, like any other schedule.
+
+If you are already on the host, `status` is still the fastest answer; `FAILED`
+there, or a stale file, is the first thing to check. The restore, in order and with the measured numbers, is
 [disaster-recovery.md](./disaster-recovery.md). What matters here: a restore has
 to be **rehearsed** (`pnpm restore:rehearse`), and the rehearsal has to include
 replaying the ledger against the restored `accounts` table. A backup nobody has

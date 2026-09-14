@@ -4,6 +4,7 @@ import {
   GRACE_MS,
   LATE_FACTOR,
   cronIntervalMs,
+  intervalOf,
   isCronPattern,
   judgeSchedule,
   overdueSchedules,
@@ -91,6 +92,46 @@ describe('cronIntervalMs', () => {
     expect(gap).toBe(86_400_000);
     const acrossTheChange = cronIntervalMs('30 2 * * *', 'Europe/London', at('2026-03-29T03:00:00Z'));
     expect(acrossTheChange).toBe(86_400_000);
+  });
+});
+
+describe('intervalOf', () => {
+  /**
+   * The backup container is not on a cron. It dumps, sleeps six hours and dumps
+   * again, so a restart shifts every subsequent run and there are no fixed
+   * slots to be late for. Writing an hourly-step cron in its row would have
+   * been a small lie that somebody would later act on, wondering why the dumps
+   * do not land on the hour.
+   */
+  it('reads an interval schedule as well as a cron', () => {
+    expect(intervalOf('every:21600', TZ)).toBe(6 * 3_600_000);
+    expect(intervalOf('every:60', TZ)).toBe(60_000);
+    expect(intervalOf('15 * * * *', TZ, at('2026-03-01T00:00:00Z'))).toBe(3_600_000);
+  });
+
+  it('refuses a spec in neither form rather than guessing', () => {
+    for (const spec of ['every:', 'every:0', 'every:-5', 'every:soon', 'six hours', '']) {
+      expect(intervalOf(spec, TZ), spec).toBeNull();
+    }
+  });
+
+  it('judges an interval schedule the same way it judges a cron', () => {
+    const now = at('2026-03-01T12:00:00Z');
+    const judge = (hoursAgo: number) =>
+      judgeSchedule(
+        {
+          name: 'backup',
+          cron: 'every:21600',
+          lastFinishedAt: new Date(now.getTime() - hoursAgo * 3_600_000),
+          lastOutcome: 'OK',
+        },
+        TZ,
+        now,
+      ).verdict;
+
+    expect(judge(6)).toBe('ok');
+    expect(judge(18)).toBe('ok'); // three intervals plus the grace
+    expect(judge(19)).toBe('late');
   });
 });
 

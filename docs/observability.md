@@ -100,6 +100,8 @@ driver messages contain connection strings.
 | Dead-letter depth > 0                     | A financial job failed and is waiting for a human                |
 | `tp_scheduled_job_late` > 0               | A schedule has stopped, is failing, or was never registered — the one failure here that produces no error at all |
 | `tp_scheduled_job_age_ms` = -1            | That job has never succeeded. Usually nobody is registering schedules: check `WORKER_ROLE` |
+| `tp_scheduled_job_late{job="backup"}`     | The backup container has stopped or is failing. Its dumps are the only thing standing between a lost primary and a lost business |
+| A job **missing** from `/health/jobs`     | It has never run once — no row exists. `verify:production` checks the expected set; a gauge cannot, because there is nothing to label |
 
 Failed jobs are retained deliberately (`removeOnFail: false`): a failed financial
 job must stay visible until someone has looked at it.
