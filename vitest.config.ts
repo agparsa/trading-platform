@@ -9,6 +9,26 @@ export default defineConfig({
      * Tests resolve workspace packages to their TypeScript sources, not to the
      * built `dist`. A stale build would otherwise let a test pass against code
      * that no longer exists.
+     *
+     * ## This was true of thirteen packages out of twenty
+     *
+     * The seven it was not true of were `crypto-core`, `tenancy`,
+     * `payments-core`, `withdrawals-core`, `kyc-core`, `broker-sdk` and
+     * `scheduling-core`: sealing and key rotation, the firm boundary, money in
+     * and money out, identity documents, and the venue adapters. Every test
+     * that named one of those was running against a compiled artefact, and the
+     * comment above said otherwise.
+     *
+     * Proven rather than argued. The `scope === undefined` guard — layer one of
+     * tenant isolation, the throw that stops a query with no firm in scope —
+     * was removed from `tenancy/src` without rebuilding, and **all eighteen
+     * isolation tests passed**. Earlier the same day a mutation to
+     * `crypto-core` "survived" twice for the same reason and was killed the
+     * moment the package was rebuilt.
+     *
+     * `scripts/vitest-aliases.test.ts` now checks this list against the
+     * packages directory, because a hand-written list of twenty is an
+     * assumption with an expiry date, and this one had expired.
      */
     alias: {
       '@tp/shared-types': pkg('shared-types'),
@@ -23,6 +43,13 @@ export default defineConfig({
       '@tp/reports-core': pkg('reports-core'),
       '@tp/webhooks-core': pkg('webhooks-core'),
       '@tp/chart-core': pkg('chart-core'),
+      '@tp/crypto-core': pkg('crypto-core'),
+      '@tp/tenancy': pkg('tenancy'),
+      '@tp/payments-core': pkg('payments-core'),
+      '@tp/withdrawals-core': pkg('withdrawals-core'),
+      '@tp/kyc-core': pkg('kyc-core'),
+      '@tp/broker-sdk': pkg('broker-sdk'),
+      '@tp/scheduling-core': pkg('scheduling-core'),
       '@tp/ui': pkg('ui'),
       // The web app's own path alias, so its pure modules can be tested without
       // a Next.js build. Only non-React modules are included below.

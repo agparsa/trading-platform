@@ -255,6 +255,37 @@ a stale binary is the worst failure mode there is.
   the real reconciliation engine over the copy. A backup nobody has restored is a
   hypothesis. See [backup-restore.md](./backup-restore.md).
 
+### Tests run against source, and for seven packages they did not
+
+`vitest.config.ts` aliases each workspace package to its TypeScript source, with
+a comment saying why: *a stale build would otherwise let a test pass against
+code that no longer exists.* The list was hand-written, and it covered thirteen
+packages out of twenty.
+
+The seven it missed were `crypto-core`, `tenancy`, `payments-core`,
+`withdrawals-core`, `kyc-core`, `broker-sdk` and `scheduling-core` — sealing and
+key rotation, the firm boundary, money in and money out, identity documents, and
+the venue adapters. Every test naming one of those imported a compiled
+artefact.
+
+Measured rather than argued. The `scope === undefined` guard in `tenancy` —
+layer one of tenant isolation, the throw that stops a query running with no firm
+in scope — was removed from the source **without rebuilding the package**, and
+all eighteen isolation tests passed. With the alias added, four of them fail at
+once. Earlier the same day a mutation to `crypto-core` appeared to survive twice
+and was killed the moment the package was rebuilt by hand; that was put down to
+the mutation tooling, and it was this.
+
+Nothing had actually diverged: with all twenty aliased, the suite is green. The
+exposure was the point — a `dist` a day out of date would have been invisible,
+and the packages it was invisible for are the ones holding the money and the
+tenant boundary.
+
+`scripts/vitest-aliases.test.ts` now checks the list against the packages
+directory in both directions, and that each package publishes the name the alias
+uses — a mismatched name means the alias silently does not apply, which is the
+same failure wearing a different hat.
+
 `scripts/declared-dependencies.test.ts` reads every bare import in `apps/api`
 and `apps/worker` and requires each to be in that application's own
 `package.json`. The workspace hoists, so an import of a transitive dependency
