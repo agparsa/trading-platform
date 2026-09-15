@@ -162,7 +162,56 @@ const FINGERPRINTS: ReadonlyArray<{ name: string; sql: string }> = [
     name: 'notifications (id, kind, read)',
     sql: `SELECT md5(string_agg(id::text || kind || coalesce(read_at::text, '-'), '|' ORDER BY id)) AS f FROM notifications`,
   },
+  /**
+   * The wallet, which is money and was not being compared at all.
+   *
+   * `accounts.balance` and `balance_ledger` are the *trading* account. A
+   * customer's deposited money lives in `wallets`, moves through
+   * `wallet_transactions`, arrives through `payment_intents` and leaves through
+   * `withdrawal_requests` — four tables, none of them fingerprinted, and none
+   * of them reachable from the eight reconciliation questions either, which ask
+   * about ledgers and positions.
+   *
+   * A restore that brought back every trade and dropped a cent from a wallet
+   * would have printed "the restored copy is identical to the original".
+   */
+  {
+    name: 'wallets (id, user, currency, balance, status)',
+    sql: `SELECT md5(string_agg(id::text || user_id::text || currency || balance::text || status::text, '|' ORDER BY id)) AS f FROM wallets`,
+  },
+  {
+    name: 'wallet_transactions (id, type, amount, balance after)',
+    sql: `SELECT md5(string_agg(id::text || type::text || amount::text || balance_after::text, '|' ORDER BY id)) AS f FROM wallet_transactions`,
+  },
+  {
+    name: 'payment_intents (id, status, amount, currency)',
+    sql: `SELECT md5(string_agg(id::text || status::text || amount::text || currency, '|' ORDER BY id)) AS f FROM payment_intents`,
+  },
+  {
+    name: 'withdrawal_requests (id, status, amount, currency)',
+    sql: `SELECT md5(string_agg(id::text || status::text || amount::text || currency, '|' ORDER BY id)) AS f FROM withdrawal_requests`,
+  },
 ];
+
+/**
+ * Tables whose numeric columns are not somebody's money.
+ *
+ * `moneyTablesAreFingerprinted` in `restore-rehearsal.test.ts` asks the database
+ * which tables have numeric columns and requires each to be fingerprinted by
+ * *value* — these are the ones exempted, each with the reason. Reference data
+ * and configuration are restored or they are not; a cent wrong in one is a
+ * misconfiguration, not a loss.
+ */
+export const NOT_MONEY: Record<string, string> = {
+  symbol_specs: 'instrument reference data: contract sizes and tick sizes',
+  broker_instrument_mappings: 'a venue’s name for an instrument, and its multipliers',
+  tenant_symbol_terms: 'a firm’s commission and swap terms — configuration, not a balance',
+  risk_limit_sets: 'ceilings, which are limits rather than holdings',
+  account_settings: 'per-account risk settings',
+  candles: 'market history, re-derivable from the feed',
+  price_alerts: 'a price somebody asked to be told about',
+  account_snapshots: 'derived end-of-day figures; counted, and recomputable from the ledger',
+};
 
 const COUNTED = [
   'users',
@@ -206,6 +255,36 @@ async function counts(prisma: PrismaClient): Promise<Map<string, number>> {
       `SELECT count(*)::bigint AS n FROM ${table}`,
     );
     results.set(table, Number(row?.n ?? 0));
+  }
+  return results;
+}
+
+/**
+ * Every table, counted — the list nobody has to maintain.
+ *
+ * `COUNTED` above names twenty-three tables and the schema has sixty-eight. A
+ * table missing from it is a table a restore could lose while this rehearsal
+ * printed "identical": `wallets`, `payment_intents`, `kyc_documents`,
+ * `broker_credentials`, `api_keys` and forty others were in exactly that
+ * position. The named list stays because its order is the order somebody reads
+ * during an incident; this is the sweep underneath it, generated from
+ * `pg_tables`, so a table added next year is covered the day it exists.
+ *
+ * A count is weaker than a fingerprint and that is the point: it is the check
+ * that needs no knowledge of what a table means, so it can cover every table
+ * without anybody deciding anything.
+ */
+async function everyTableCount(prisma: PrismaClient): Promise<Map<string, number>> {
+  const tables = await prisma.$queryRawUnsafe<Array<{ tablename: string }>>(
+    `SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+       AND tablename <> '_prisma_migrations' ORDER BY tablename`,
+  );
+  const results = new Map<string, number>();
+  for (const { tablename } of tables) {
+    const [row] = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(
+      `SELECT count(*)::bigint AS n FROM "${tablename}"`,
+    );
+    results.set(tablename, Number(row?.n ?? 0));
   }
   return results;
 }
@@ -308,6 +387,38 @@ async function main(): Promise<void> {
       );
       if (a !== b) problems.push(`${table}: ${a} rows became ${b}`);
     }
+
+    /**
+     * And every other table, by count.
+     *
+     * Printed only when something differs — sixty-eight lines of agreement is
+     * how a report stops being read. A table present in one database and absent
+     * from the other is reported as such, because that is the failure the named
+     * list could not see.
+     */
+    const [sourceAll, restoredAll] = await Promise.all([
+      everyTableCount(sourcePrisma),
+      everyTableCount(restoredPrisma),
+    ]);
+    const everyTable = new Set([...sourceAll.keys(), ...restoredAll.keys()]);
+    let swept = 0;
+    for (const table of [...everyTable].sort()) {
+      if (COUNTED.includes(table as (typeof COUNTED)[number])) continue;
+      swept += 1;
+      const a = sourceAll.get(table);
+      const b = restoredAll.get(table);
+      if (a === undefined) {
+        problems.push(`${table} exists in the copy and not in the original`);
+        console.log(`   ! ${table.padEnd(20)} absent → ${String(b)}`);
+      } else if (b === undefined) {
+        problems.push(`${table} is in the original and missing from the copy`);
+        console.log(`   ! ${table.padEnd(20)} ${String(a)} → absent`);
+      } else if (a !== b) {
+        problems.push(`${table}: ${a} rows became ${b}`);
+        console.log(`   ! ${table.padEnd(20)} ${String(a).padStart(8)} → ${String(b).padStart(8)}`);
+      }
+    }
+    console.log(`     and ${swept} further table(s) counted; only differences are printed.`);
 
     console.log('');
     const [sourcePrints, restoredPrints] = await Promise.all([

@@ -34,8 +34,41 @@ every row and one account a cent short passes that test, and it has lost money.
 
 So the comparison is over **values**: every account's balance, every account's
 ledger sum, and an ordered checksum over the identifying and monetary columns of
-orders, positions, trades, executions, users and audit logs. Two databases that
-agree on all of that agree in the way that matters.
+orders, positions, trades, executions, users and audit logs.
+
+### And for a long time it did not include the wallet
+
+Twelve fingerprints and twenty-three row counts, against a schema of sixty-eight
+tables. Among the forty-five nothing looked at were **`wallets`,
+`wallet_transactions`, `payment_intents` and `withdrawal_requests`**: a
+customer's deposited money, every movement of it, how it arrives and how it
+leaves.
+
+`accounts.balance` and `balance_ledger` are the _trading_ account. The wallet is
+a separate ledger, and the reconciliation questions asked afterwards are about
+ledgers and positions, so they did not reach it either. **A restore that brought
+back every trade and dropped a cent from a wallet printed "the restored copy is
+identical to the original."**
+
+Two things changed, doing different jobs:
+
+- **Every table is counted now**, generated from `pg_tables` rather than from a
+  list. A count needs no knowledge of what a table means, which is exactly why
+  it can cover all sixty-eight — so a table a restore loses cannot be invisible,
+  including one added next year. Only differences are printed; agreement is a
+  single line.
+- **The four money tables are fingerprinted by value**, because a count cannot
+  see a cent. Proved against the live database: changing one wallet balance by
+  0.01 changes the checksum, and rolling back restores it.
+
+`restore-rehearsal-cover.test.ts` asks the _database_ which tables have numeric
+columns and requires each to be fingerprinted, with reference and configuration
+tables exempted by name and reason. The exemption list is pinned in two files —
+found by mutation, when adding `wallets` to the script's own list silenced the
+check and nothing failed. An escape hatch with no second opinion is a way of
+turning the test off.
+
+Two databases that agree on all of that agree in the way that matters.
 
 ## Why the reconciliation engine runs on the copy
 
@@ -98,7 +131,7 @@ hardware. The rehearsal is the thing that tells you; running it is the point.
 
 ## The backup answers where somebody can hear it
 
-The dumps were careful and the *answer* was not reachable. `backup.sh` verified
+The dumps were careful and the _answer_ was not reachable. `backup.sh` verified
 every dump with `pg_restore --list` before renaming it into place and pruned
 older files only after that passed — both right — and then wrote its verdict to
 a one-line `status` file beside the dumps. The runbook said to go and read it.
