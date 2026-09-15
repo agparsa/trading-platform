@@ -34,15 +34,15 @@ of errors.
 
 ## The refusals
 
-| Refused                                           | Because                                                                                                                               |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Presenting a grant without `security.break_glass` | A caller whose permission was taken away must be told, not quietly served their own view while believing they see somebody else's.    |
-| **Any non-GET request carrying a grant**          | The one check that makes "read-only" a property of the system rather than a hope about which routes were remembered.                  |
-| A grant on an API key or service token            | A long-lived secret in a config file has no eyes and cannot be asked why it looked.                                                   |
-| A subject in another tenant                       | A broker's staff cannot reach the platform's users or another firm's traders. Refused by the service and again by row-level security. |
-| A subject with staff powers the actor lacks       | Otherwise support tooling is a route to reading the platform through a super administrator's eyes.                                    |
-| Breaking glass on yourself                        | Always either a mistake or an attempt to make an ordinary action look supervised.                                                     |
-| A reason under eight characters                   | Enforced by a database CHECK as well as the API.                                                                                      |
+| Refused                                           | Because                                                                                                                                     |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Presenting a grant without `security.break_glass` | A caller whose permission was taken away must be told, not quietly served their own view while believing they see somebody else's.          |
+| **Any non-GET request carrying a grant**          | The one check that makes "read-only" a property of the system rather than a hope about which routes were remembered.                        |
+| A grant on an API key or service token            | A long-lived secret in a config file has no eyes and cannot be asked why it looked. **This table said so before the code did** — see below. |
+| A subject in another tenant                       | A broker's staff cannot reach the platform's users or another firm's traders. Refused by the service and again by row-level security.       |
+| A subject with staff powers the actor lacks       | Otherwise support tooling is a route to reading the platform through a super administrator's eyes.                                          |
+| Breaking glass on yourself                        | Always either a mistake or an attempt to make an ordinary action look supervised.                                                           |
+| A reason under eight characters                   | Enforced by a database CHECK as well as the API.                                                                                            |
 
 ### "Upward" means staff powers, not any difference
 
@@ -124,3 +124,33 @@ A support person placing a trade as a customer needs controls a firm has to
 decide on — who approves it, for how long, what remains forbidden even then, and
 how the customer is told. Inventing those here would be inventing a policy
 nobody agreed to.
+
+## What the gate was not catching
+
+The refusals above are three `if`s in one guard. In September 2026 each was
+removed in turn from a compiled build and the sixty-two-attack penetration suite
+run against it. **The read-only rule — the one this document calls "the one
+check that makes read-only a property of the system rather than a hope" — was
+removed and every attack still passed.**
+
+The probe existed. It posted an order carrying a grant header and asserted a 403. An administrator **cannot place an order at all**, so that request answers
+403 whether or not break-glass is read-only, and the assertion could not tell
+the two apart. Its companion check deleted `/accounts/:id`, a route with no
+DELETE handler, and accepted `403 || 404` — the 404 came from routing, before
+any guard ran.
+
+Both now use a route the administrator _may_ use — opening and closing a grant —
+and compare the answer with and without the header, so the difference is
+attributable to the grant and nothing else. The refusal message is asserted too,
+because any 403 would otherwise do.
+
+The same exercise found that the row above was **aspirational**: the credential
+branch of the guard returned before a grant was ever examined, so an API key
+presenting `x-break-glass` was served a cheerful 200 full of its own data. No
+escalation in it — and wrong in the way this guard already argues against one
+bullet earlier: somebody who cannot use a grant must be **told**, not quietly
+served their own view while believing they are seeing somebody else's. It
+refuses now, and an attack covers it.
+
+Removing any of the three fails the suite today. That is the claim this section
+is willing to make; it was not true a day ago.

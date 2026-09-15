@@ -4,6 +4,7 @@ import type { PrismaClient } from '@prisma/client';
 import { UserRole } from '@tp/shared-types';
 import { withTenant } from '@tp/tenancy';
 import { BreakGlassService } from '../../src/security/break-glass.service';
+import { breakGlassRefusal } from '../../src/common/guards/bearer-auth.guard';
 import { AuditService } from '../../src/common/audit/audit.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 import {
@@ -287,6 +288,76 @@ suite('break-glass', () => {
 
       const row = await prisma.breakGlassGrant.findUniqueOrThrow({ where: { id: grant.id } });
       expect(row.endedAt).toBeNull();
+    });
+  });
+
+  /**
+   * The three rules that live in the guard rather than in this service.
+   *
+   * Everything above tests grants: who may open one, for how long, whose it is.
+   * None of it touches the rules that decide what a request carrying one may
+   * *do* — and those were, until September 2026, enforced by three `if`s and
+   * tested by nothing. Removing the read-only rule from a compiled build left
+   * every one of the penetration suite's sixty-two attacks passing, because the
+   * probe aimed at a request that is refused for another reason anyway.
+   *
+   * The suite covers them now. So does this, at the level where the decision is
+   * actually made, because a rule with one test in one gate is a rule that goes
+   * quiet the first time that gate is skipped.
+   */
+  describe('what a request carrying a grant may do', () => {
+    const asking = (over: Partial<Parameters<typeof breakGlassRefusal>[0]> = {}) =>
+      breakGlassRefusal({
+        grantId: 'a5d9d0f2-0000-4000-8000-000000000001',
+        method: 'GET',
+        principal: 'session',
+        role: UserRole.ADMIN,
+        ...over,
+      });
+
+    it('lets an administrator look', () => {
+      expect(asking()).toBeNull();
+    });
+
+    it('ignores a request that carries no grant at all', () => {
+      expect(asking({ grantId: '', method: 'POST', role: UserRole.USER })).toBeNull();
+    });
+
+    /**
+     * The one check that makes "read-only" a property of the system rather than
+     * a hope about which routes were remembered.
+     */
+    it.each(['POST', 'PUT', 'PATCH', 'DELETE'])('refuses a %s carrying a grant', (method) => {
+      expect(asking({ method })).toMatch(/may not touch/i);
+    });
+
+    it('allows HEAD, which is a GET that returns less', () => {
+      expect(asking({ method: 'HEAD' })).toBeNull();
+    });
+
+    /**
+     * Told, not quietly served their own view. Somebody who sends this header
+     * is acting on a belief about whose data they are about to read.
+     */
+    it('refuses a trader who presents one', () => {
+      expect(asking({ role: UserRole.USER })).toMatch(/may not open/i);
+    });
+
+    /**
+     * A key in a config file has no eyes and cannot be asked afterwards why it
+     * looked. This one was documented as a refusal long before it was one.
+     */
+    it.each(['api_key', 'service_token'])('refuses a grant presented by a %s', (principal) => {
+      expect(asking({ principal })).toMatch(/belongs to a person/i);
+    });
+
+    /**
+     * The method is checked before the grant is looked up, on purpose: a caller
+     * must not be able to learn whether a grant id is real by which refusal
+     * they get.
+     */
+    it('refuses the write before it would have to know whether the grant exists', () => {
+      expect(asking({ method: 'POST', grantId: 'not-a-uuid-at-all' })).toMatch(/may not touch/i);
     });
   });
 });

@@ -213,15 +213,30 @@ a stale binary is the worst failure mode there is.
   minted from the security page is shown once and never again. Set
   `PLAYWRIGHT_CHROMIUM_PATH` where Chromium is provisioned outside Playwright's
   own download.
-- `pnpm pentest` — 62 attacks attempted against the compiled binary; an attack
-  that succeeds fails the run. It was itself tested by breaking the API four
-  times to see whether the probes noticed — two did not, and both gaps are now
-  closed. Three of the attacks aim at the money path: confirming your own
-  deposit, crediting one with an unsigned webhook, and reading another person's
+- `pnpm pentest` — 63 attacks attempted against the compiled binary; an attack
+  that succeeds fails the run.
+
+  **It is tested by breaking what it defends.** Four defences were removed the
+  first time; two were not noticed, and both gaps were closed. Seven more were
+  removed in September 2026, and the one that got through is the one worth
+  recording: **break-glass being read-only** — the single check that makes a
+  support session unable to write as the customer — was deleted from a compiled
+  build and all sixty-two attacks still passed. The probe existed and asserted a
+  403 on a request that answers 403 regardless, because an administrator cannot
+  place an order at all. The same pass found three probes wrapping their setup
+  in `if (status === 201)`: a failed precondition skipped every assertion inside
+  while the line still printed `refused`, and all three had been attacking
+  nothing since the seeded roles stopped giving ADMIN `api_keys.manage`. A probe
+  that cannot fail is worse than a missing one, because it occupies the place
+  where somebody would otherwise have noticed.
+
+  Three of the attacks aim at the money path: confirming your own deposit,
+  crediting one with an unsigned webhook, and reading another person's
   payments. Each of those refuses to run blind — if the setup step cannot even
   start a payment they throw, because a probe that passes without testing
   anything is worse than no probe. See
   [penetration-checklist.md](./penetration-checklist.md).
+
 - `pnpm soak` — a steady, modest rate held for ten minutes (or
   `SOAK_MINUTES=120`), sampling memory, event-loop lag, handles, database
   backends and per-window latency, watching sequence continuity throughout, and

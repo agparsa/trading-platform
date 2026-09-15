@@ -44,6 +44,43 @@ import { currentTenant } from '@tp/tenancy';
  * suspended trader must stop trading immediately, not when their access token
  * happens to expire.
  */
+/**
+ * Whether a request carrying a break-glass grant may proceed, and if not, why.
+ *
+ * The three refusals, as one pure decision, so they can be tested where they
+ * are made. They used to live inline in two branches of `canActivate` — one of
+ * them reachable only with a real token, a real credential and a real request
+ * object — which is why they were, until September 2026, defended by exactly
+ * one probe that could not fail. Removing the read-only rule from a compiled
+ * build left all sixty-two penetration attacks passing.
+ *
+ * Returns `null` when there is nothing to refuse: no grant presented, or a
+ * person with the permission making a read.
+ *
+ * The order matters. The method is checked **before** anything that depends on
+ * the grant existing, so a caller cannot learn whether a grant id is real from
+ * which refusal they get.
+ */
+export function breakGlassRefusal(request: {
+  readonly grantId: string;
+  readonly method: string;
+  readonly principal: string;
+  readonly role: UserRole;
+}): string | null {
+  if (request.grantId.trim() === '') return null;
+
+  if (request.principal !== 'session') {
+    return 'A break-glass grant belongs to a person, not to a key or a service token';
+  }
+  if (!roleHasPermissions(request.role, [Permission.SECURITY_BREAK_GLASS])) {
+    return 'You may not open a break-glass session';
+  }
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return 'A break-glass session may look and may not touch';
+  }
+  return null;
+}
+
 @Injectable()
 export class BearerAuthGuard implements CanActivate {
   constructor(
@@ -116,6 +153,33 @@ export class BearerAuthGuard implements CanActivate {
               permissions: principal.permissions,
             };
       noteActor(request.user.id);
+      /**
+       * A credential presenting a grant is **told**, not quietly served its own
+       * view.
+       *
+       * The refusal below used to be an omission: this branch returned before
+       * `attachBreakGlass` ran, so `x-break-glass` on an API key was silently
+       * ignored and the caller got a 200 full of the key's own data. Safe — no
+       * escalation — and wrong in the way this guard already argues against two
+       * bullets further down: *a caller who cannot use a grant needs to be
+       * told, not quietly served their own view while they believe they are
+       * seeing somebody else's.* Whoever sent that header was acting on a
+       * belief about whose data they were reading.
+       *
+       * `docs/break-glass.md` listed it under "The refusals" the whole time.
+       * The document was right and the code was not.
+       */
+      const credentialRefusal = breakGlassRefusal({
+        grantId: request.header('x-break-glass')?.trim() ?? '',
+        method: request.method,
+        principal: request.user.principal ?? 'credential',
+        role: request.user.role as UserRole,
+      });
+      if (credentialRefusal !== null) {
+        throw new DomainError(TradingErrorCode.FORBIDDEN, credentialRefusal, {
+          principal: request.user.principal,
+        });
+      }
       return true;
     }
 
@@ -181,18 +245,14 @@ export class BearerAuthGuard implements CanActivate {
     const grantId = request.header('x-break-glass')?.trim();
     if (grantId === undefined || grantId === '') return;
 
-    if (!roleHasPermissions(role, [Permission.SECURITY_BREAK_GLASS])) {
-      throw new DomainError(
-        TradingErrorCode.FORBIDDEN,
-        'You may not open a break-glass session',
-      );
-    }
-    if (request.method !== 'GET' && request.method !== 'HEAD') {
-      throw new DomainError(
-        TradingErrorCode.FORBIDDEN,
-        'A break-glass session may look and may not touch',
-        { method: request.method },
-      );
+    const refusal = breakGlassRefusal({
+      grantId,
+      method: request.method,
+      principal: 'session',
+      role,
+    });
+    if (refusal !== null) {
+      throw new DomainError(TradingErrorCode.FORBIDDEN, refusal, { method: request.method });
     }
 
     const grant = await this.breakGlass.resolve(request.user!.id, grantId);

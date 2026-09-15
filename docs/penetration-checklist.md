@@ -19,7 +19,7 @@ who knows what the system is supposed to refuse.
 
 ## What is attempted
 
-Sixty-two attacks, grouped by what the attacker is trying to be. The number is
+Sixty-three attacks, grouped by what the attacker is trying to be. The number is
 held equal to the script's own `attack:` labels by
 `scripts/pentest-checklist.test.ts`, so adding a probe without saying so here
 fails the gate.
@@ -79,8 +79,9 @@ fails the gate.
 
 - Do more with a stolen API key than it was minted for.
 - Mint a service token that can trade, or use one where a person must be.
-- Use a break-glass grant to write, or to look without the permission; open a
-  break-glass session with no reason, or on yourself.
+- Use a break-glass grant to write, or to look without the permission; use one
+  from an API key instead of a person; open a break-glass session with no
+  reason, or on yourself.
 - Read or rewrite the firm's IP rules as a trader, or with a machine credential.
 - Choose your own source address with `X-Forwarded-For`.
 - Switch on a platform-authority feature flag as a firm's administrator; set any
