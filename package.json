@@ -46,7 +46,8 @@
     "migrate:rehearse": "tsx --env-file-if-exists=.env scripts/migration-rehearsal.ts",
     "verify:production": "tsx --env-file-if-exists=.env scripts/verify-production.ts",
     "chaos": "tsx --env-file-if-exists=.env scripts/failure-injection.ts",
-    "rotate:secrets": "tsx --env-file-if-exists=.env scripts/rotate-secrets.ts"
+    "rotate:secrets": "tsx --env-file-if-exists=.env scripts/rotate-secrets.ts",
+    "verify:coverage": "pnpm build:packages && pnpm test:coverage"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

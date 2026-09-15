@@ -255,6 +255,46 @@ a stale binary is the worst failure mode there is.
   the real reconciliation engine over the copy. A backup nobody has restored is a
   hypothesis. See [backup-restore.md](./backup-restore.md).
 
+### The coverage thresholds had never been evaluated
+
+`vitest.config.ts` has carried coverage thresholds since the beginning, under a
+comment promising they would *"ratchet up as phases land"*. They were 70, and
+**nothing ever ran them**: `pnpm verify` runs `pnpm test`, CI ran `pnpm test`,
+and `pnpm test:coverage` sat in `package.json` and in no pipeline. Four numbers
+that nobody had ever compared anything against, reading — to anybody skimming
+the config — as a guarantee.
+
+The first coverage run this repository has ever done:
+
+| | Measured | Threshold was | Threshold is |
+| --- | --- | --- | --- |
+| Statements | **95.5%** | 70 | 92 |
+| Lines | **95.5%** | 70 | 92 |
+| Branches | **90.5%** | 70 | 87 |
+| Functions | **89.3%** | 70 | 85 |
+
+Twenty-five points of headroom on a gate that could not have fired. The new
+figures sit below the measured ones with enough room that an honest refactor
+does not trip them, and not so much that a package can be gutted quietly.
+
+CI runs `pnpm test:coverage` now, so they are evaluated on every push;
+`pnpm verify:coverage` is the same by hand. `scripts/coverage-thresholds.test.ts`
+checks the two things that made them meaningless — that a pipeline actually runs
+the coverage command, and that the numbers have not been quietly lowered back to
+decoration.
+
+The scope stays `packages/*`: pure domain logic, where a missing branch is a
+financial rule nobody exercised. The applications are covered by the integration
+suite, the browser suite and sixty-three attacks, none of which a line-coverage
+number describes usefully.
+
+One side effect worth recording: v8 instrumentation slows `resetDatabase` —
+forty tables truncated and the roles re-seeded between cases — past vitest's
+ten-second hook default, and the first coverage run failed twice in
+`withdrawals` for reasons that had nothing to do with withdrawals. `hookTimeout`
+is 40 seconds now. A gate that only fails when it is measuring itself teaches
+people to stop measuring.
+
 ### Tests run against source, and for seven packages they did not
 
 `vitest.config.ts` aliases each workspace package to its TypeScript source, with

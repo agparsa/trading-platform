@@ -63,6 +63,17 @@ export default defineConfig({
     // must not run in parallel with each other.
     fileParallelism: false,
     testTimeout: 20_000,
+    /**
+     * Hooks get longer than the default ten seconds.
+     *
+     * `resetDatabase` truncates forty tables and re-seeds the roles between
+     * cases. Ten seconds is comfortable normally and not comfortable under v8
+     * coverage instrumentation, which is how the first coverage run this
+     * repository has ever done produced two hook timeouts in `withdrawals` that
+     * had nothing to do with withdrawals. A gate that only fails when it is
+     * measuring itself teaches people to stop measuring.
+     */
+    hookTimeout: 40_000,
     include: [
       'packages/**/src/**/*.{test,spec}.ts',
       'apps/api/src/**/*.{test,spec}.ts',
@@ -90,17 +101,42 @@ export default defineConfig({
       'scripts/**/*.{test,spec}.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**'],
+    /**
+     * Coverage, and the four numbers that had never been evaluated.
+     *
+     * The thresholds below said 70 and carried a comment promising they would
+     * "ratchet up as phases land". Nothing ran them. `pnpm verify` runs
+     * `pnpm test`, CI ran `pnpm test`, and `pnpm test:coverage` was in
+     * `package.json` and in no pipeline — so for the whole life of the
+     * repository these were four numbers nobody had ever compared anything
+     * against.
+     *
+     * The first run put statements and lines at **95.5%**, branches at 90.5%
+     * and functions at 89.3%. Twenty-five points of headroom on a gate that was
+     * never going to fire.
+     *
+     * They are set below the measured figures now, with enough room that an
+     * honest refactor does not trip them and not so much that a package can be
+     * gutted quietly. CI runs `pnpm test:coverage`, so they are evaluated on
+     * every push; `pnpm verify:coverage` is the same thing by hand.
+     *
+     * The scope is `packages/*` on purpose: pure domain logic, where a missing
+     * branch is a financial rule nobody exercised. The applications are covered
+     * by the integration suite, the browser suite and sixty-three attacks, none
+     * of which a line-coverage number describes usefully.
+     */
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
       include: ['packages/*/src/**/*.ts'],
       exclude: ['**/index.ts', '**/*.d.ts', '**/*.{test,spec}.ts'],
       thresholds: {
-        // Financial correctness is non-negotiable; these ratchet up as phases land.
-        lines: 70,
-        functions: 70,
-        branches: 70,
-        statements: 70,
+        // Measured 95.5 / 90.5 / 89.3 / 95.5 on 15 Sep 2026. Raise these when a
+        // phase lifts the floor; never lower them to make a run pass.
+        lines: 92,
+        functions: 85,
+        branches: 87,
+        statements: 92,
       },
     },
   },

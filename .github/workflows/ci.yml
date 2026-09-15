@@ -83,8 +83,11 @@ jobs:
           PGPASSWORD=ci_password createdb -h localhost -U trading trading_platform_test
           DATABASE_URL="$TEST_DATABASE_URL" pnpm db:migrate:deploy
 
-      - name: Unit and integration tests
-        run: pnpm test
+      # Coverage rather than a plain run, because the thresholds in
+      # vitest.config.ts are only a claim if nothing evaluates them — and until
+      # September 2026 nothing did, here or anywhere else.
+      - name: Unit and integration tests, with coverage thresholds
+        run: pnpm test:coverage
 
       # The schema is the last line of defence for financial precision: a single
       # float column would silently corrupt every P&L calculation above it.
