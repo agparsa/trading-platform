@@ -392,7 +392,92 @@ async function waitForBoot(base: string): Promise<void> {
     } catch {
       /* not yet */
     }
-    if (Date.now() > deadline) throw new Error(`${base} did not become healthy`);
+    if (Date.now() > deadline) {
+      /**
+       * With what the instance actually said.
+       *
+       * `recent` exists precisely so a failure here is debuggable — the comment
+       * on it says so — and this path threw a one-line message and discarded
+       * every byte of it. A harness that collects the diagnosis and prints
+       * `did not become healthy` is worse than one that collects nothing,
+       * because it looks like there is nothing to find.
+       */
+      const tail = recent.join('').trim().split('\n').slice(-25).join('\n');
+      throw new Error(
+        `${base} did not become healthy in 90s. What the instance said:\n\n${
+          tail === '' ? '  (it printed nothing at all — check that apps/api/dist exists)' : tail
+        }`,
+      );
+    }
+    await sleep(500);
+  }
+}
+
+/**
+ * Waits until the serving instance is being told a price it would trust.
+ *
+ * ## Why this asks the probe and not the engine
+ *
+ * The first version of this placed a real order and waited for it to fill.
+ * That is the most direct question available and it is the wrong one to ask
+ * here: every fill on these accounts is compared against the harness's own
+ * idempotency keys, so an order placed outside that bookkeeping reads as a fill
+ * nobody can retry safely — an orphan. Four scenarios went from passing to
+ * "financial state did not survive", and the harness was right: the probe had
+ * created exactly the defect the invariant exists to detect.
+ *
+ * `/health/market` answers the same question with no side effect at all. It is
+ * the number the engine itself refuses on, so this is not a proxy for
+ * freshness; it is freshness.
+ */
+/**
+ * Waits until the serving instance is quoting again, then lets the burst decide.
+ *
+ * ## Three attempts at this, and what each one taught
+ *
+ * The scenario originally slept 1.5 seconds and asserted that orders fill. They
+ * did not: ten attempts, ten `STALE_QUOTE`, every one the engine correctly
+ * refusing to fill at a price it no longer trusted. Severing every Postgres
+ * connection cuts the *ingest* instance's too, and it needs longer than a
+ * second and a half to resume publishing — so the scenario was failing the
+ * platform for behaving exactly as §26 requires, under a message that named the
+ * one thing which *had* come back.
+ *
+ * The second attempt waited by placing a real order and watching for a fill.
+ * That is the most direct question available and the wrong one to ask from
+ * here: every fill on these accounts is reconciled against the harness's own
+ * idempotency keys, so an order placed outside that bookkeeping reads as a fill
+ * nobody can retry safely. Four scenarios went from passing to "financial state
+ * did not survive" — the invariant was right, and the probe had manufactured
+ * the very defect it exists to catch. **A harness that writes to the system it
+ * measures is measuring itself.**
+ *
+ * The third attempt polled `/health/market`, which reports `newestTickAgeMs`
+ * per process. Both instances answered "no tick yet" throughout a window in
+ * which orders were filling, so that gauge is not the quote the engine prices
+ * against and this is not the place to find out what it is.
+ *
+ * So: the harness's own `waitForQuotes`, which is read-only, already proven
+ * here, and asks the serving instance the question the scenario actually cares
+ * about — are there quotes to trade on. Then the burst itself decides, and on a
+ * failure it reports the codes rather than a conclusion.
+ */
+async function waitForQuotesBack(token: string, withinMs: number): Promise<void> {
+  const deadline = Date.now() + withinMs;
+  for (;;) {
+    const quotes = await call<Array<{ symbol: string }>>('/market/quotes', { token });
+    if ((quotes.body?.data?.length ?? 0) > 0) {
+      // Quoted, but the engine also wants the tick to be recent. One settle
+      // period beyond the first quote is cheap and removes the race.
+      await sleep(2_000);
+      return;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(
+        `the platform was not quoting again within ${String(withinMs / 1000)}s of the database ` +
+          `coming back — which is the feed recovering, not the pool`,
+      );
+    }
     await sleep(500);
   }
 }
@@ -563,12 +648,35 @@ async function main(): Promise<void> {
       const attempts = await inFlight;
       summarise('severed', attempts);
       assertCoded(attempts, false);
-      // The pool reconnects; the next burst must be ordinary.
-      await sleep(1_500);
+
+      /**
+       * Two things were severed, and they come back at different speeds.
+       *
+       * This waited 1.5 seconds and then asserted that orders fill again. They
+       * did not: ten attempts, ten `STALE_QUOTE`, every one of them the engine
+       * correctly refusing to fill at a price it no longer trusts. The database
+       * pool had reconnected fine — what had not come back was the **feed**,
+       * because severing every Postgres connection cuts the ingest instance's
+       * too, and it needs longer than a second and a half to resume publishing.
+       *
+       * So the scenario was failing the platform for behaving exactly as §26
+       * requires, and the failure message said "nothing fills after the
+       * database came back" — which named the one thing that *had* come back.
+       *
+       * Now the feed is waited for explicitly, on its own bound and with its
+       * own message, and only then is the pool asked to prove itself. A
+       * harness that cannot say which of two recoveries it is measuring is
+       * measuring neither.
+       */
+      await waitForQuotesBack(traders[0]!.token, 45_000);
       const after = await burst(traders, keys(10));
       summarise('afterwards', after);
-      if (after.filter((a) => a.ok).length === 0)
-        throw new Error('nothing fills after the database came back');
+      if (after.filter((a) => a.ok).length === 0) {
+        const codes = after.map((a) => a.code ?? '(no code)').join(', ');
+        throw new Error(
+          `nothing fills after the database came back, and the feed was fresh: ${codes}`,
+        );
+      }
       await checkInvariant(prisma, traders, allKeys, 'severed database');
     });
 

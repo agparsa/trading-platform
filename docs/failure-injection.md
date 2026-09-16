@@ -75,6 +75,50 @@ four orders were in flight on a slow database. At a local round trip it is
 invisible; at 5 ms — a managed database in another zone — it is a quarter of a
 second per order. Reported, not fixed.
 
+## The harness failed the platform three times before it was right
+
+`pnpm chaos` had not been run for a while. It failed — and the failure was the
+harness, three times over, each in a way worth keeping.
+
+**1. It blamed the database for the feed.** The severed-connections scenario
+slept 1.5 seconds and asserted that orders fill again. They did not: ten
+attempts, ten `STALE_QUOTE`, every one the engine correctly declining to fill at
+a price it no longer trusted. Severing every Postgres connection cuts the
+_ingest_ instance's connections too, and it takes longer than a second and a
+half to resume publishing. So the scenario failed the platform for doing exactly
+what §26 requires, under the message _"nothing fills after the database came
+back"_ — which named the one thing that had come back.
+
+**2. The fix wrote to the system it was measuring.** The obvious repair is to
+wait until an order fills. That is the most direct question available and the
+wrong one to ask from here: every fill on these accounts is reconciled against
+the harness's own idempotency keys, so an order placed outside that bookkeeping
+reads as a fill nobody can retry safely — an orphan. Four scenarios went from
+passing to **"financial state did not survive"**. The invariant was right: the
+probe had manufactured the very defect the run exists to catch. A harness that
+writes to the system it measures is measuring itself.
+
+**3. The next probe measured something else.** `/health/market` reports
+`newestTickAgeMs` per process, and both instances answered "no tick yet"
+throughout a window in which orders were filling. Whatever that gauge is, it is
+not the quote the engine prices against — so the third attempt was discarded
+rather than shipped half-understood.
+
+What works is the harness's own `waitForQuotes`: read-only, already proven here,
+and asking the serving instance the question the scenario cares about. Then the
+burst decides, and on a failure it prints the codes rather than a conclusion.
+**Seven of seven scenarios hold the invariant.**
+
+### And the diagnosis it was throwing away
+
+Before any of that, the run failed at boot with `did not become healthy` and
+nothing else. `spawnApi` collects every byte the instance prints into `recent`,
+under a comment saying it is kept because _"an INTERNAL_ERROR from the API is
+only debuggable from here"_ — and the boot-timeout path discarded all of it. A
+harness that collects the diagnosis and then prints one line is worse than one
+that collects nothing, because it looks like there is nothing to find. It prints
+the last 25 lines now.
+
 ## What is not here, and why
 
 - **Duplicate, missing and out-of-order broker events.** Exercised against the

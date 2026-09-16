@@ -255,10 +255,18 @@ a stale binary is the worst failure mode there is.
   the real reconciliation engine over the copy. A backup nobody has restored is a
   hypothesis. See [backup-restore.md](./backup-restore.md).
 
+  **Run again in September 2026 after a long gap, and it failed three times —
+  every one of them the harness.** It blamed the database for a feed that had
+  not come back; the repair placed real orders and manufactured the exact
+  orphaned-fill defect the invariant exists to catch; the next probe measured a
+  gauge that reads "no tick yet" while orders are filling. See
+  [failure-injection.md](./failure-injection.md). A harness that writes to the
+  system it measures is measuring itself.
+
 ### The coverage thresholds had never been evaluated
 
 `vitest.config.ts` has carried coverage thresholds since the beginning, under a
-comment promising they would *"ratchet up as phases land"*. They were 70, and
+comment promising they would _"ratchet up as phases land"_. They were 70, and
 **nothing ever ran them**: `pnpm verify` runs `pnpm test`, CI ran `pnpm test`,
 and `pnpm test:coverage` sat in `package.json` and in no pipeline. Four numbers
 that nobody had ever compared anything against, reading — to anybody skimming
@@ -266,12 +274,12 @@ the config — as a guarantee.
 
 The first coverage run this repository has ever done:
 
-| | Measured | Threshold was | Threshold is |
-| --- | --- | --- | --- |
-| Statements | **95.5%** | 70 | 92 |
-| Lines | **95.5%** | 70 | 92 |
-| Branches | **90.5%** | 70 | 87 |
-| Functions | **89.3%** | 70 | 85 |
+|            | Measured  | Threshold was | Threshold is |
+| ---------- | --------- | ------------- | ------------ |
+| Statements | **95.5%** | 70            | 92           |
+| Lines      | **95.5%** | 70            | 92           |
+| Branches   | **90.5%** | 70            | 87           |
+| Functions  | **89.3%** | 70            | 85           |
 
 Twenty-five points of headroom on a gate that could not have fired. The new
 figures sit below the measured ones with enough room that an honest refactor
@@ -298,8 +306,8 @@ people to stop measuring.
 ### Tests run against source, and for seven packages they did not
 
 `vitest.config.ts` aliases each workspace package to its TypeScript source, with
-a comment saying why: *a stale build would otherwise let a test pass against
-code that no longer exists.* The list was hand-written, and it covered thirteen
+a comment saying why: _a stale build would otherwise let a test pass against
+code that no longer exists._ The list was hand-written, and it covered thirteen
 packages out of twenty.
 
 The seven it missed were `crypto-core`, `tenancy`, `payments-core`,
