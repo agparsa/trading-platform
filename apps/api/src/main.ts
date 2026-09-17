@@ -13,6 +13,8 @@ import helmet from 'helmet';
 import { API_VERSION } from '@tp/shared-types';
 import { AppModule } from './app.module';
 import { HEALTH_ROUTES } from './health/health.controller';
+import { httpMetrics } from './common/http-metrics';
+import { MetricsService } from './metrics/metrics.service';
 import { corsOrigins, Env } from './config/env.schema';
 import { requestContext } from './common/request-context';
 import { DrainState } from './common/drain';
@@ -83,6 +85,12 @@ async function bootstrap(): Promise<void> {
           'Add an instance, or raise HTTP_MAX_IN_FLIGHT / HTTP_MAX_EVENT_LOOP_LAG_MS if this is not a burst.',
       ),
   });
+  /**
+   * Ahead of the drain, because a shed request never reaches anything mounted
+   * after it — and a shed request is exactly what the `RequestsShed` alert
+   * counts. See `http-metrics.ts`.
+   */
+  app.use(httpMetrics(app.get(MetricsService)));
   app.use(drain.middleware());
   app.use(requestContext({ trustedProxyHops: config.get('TRUSTED_PROXY_HOPS', { infer: true }) }));
   app.use(

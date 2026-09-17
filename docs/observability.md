@@ -26,9 +26,32 @@ existing names instead of inventing new ones and breaking dashboards.
 
 Plus Node defaults under the same `tp_` prefix (event-loop lag, heap, GC).
 
-`tp_execution_latency_seconds` measures acceptance → fill. It is the number that
-tells you whether the engine is healthy under load, and the one that will
-regress first.
+`tp_execution_latency_seconds` measures acceptance → fill, by instrument. It is
+the same span as `tp_order_stage_seconds{stage="executed"}` cut by symbol rather
+than by stage, and that is the point: one illiquid instrument dragging is
+invisible in an aggregate. It is the number that tells you whether the engine is
+healthy under load, and the one that will regress first.
+
+**Three of the six were declared and never fed** — `tp_http_requests_total`,
+`tp_http_request_duration_seconds` and `tp_execution_latency_seconds` — from the
+first phase until now. Six requests through a running instance produced a
+`# HELP` line and zero samples. That is worse than a missing metric: Prometheus
+answers a query against it with *no data* rather than an error, a panel draws an
+empty chart rather than a broken one, and an alert on a series that never exists
+never fires and never says why. `ExecutionLatencyHigh` and `RequestsShed` were
+both in that state, and four panels of the shipped dashboard.
+
+`declared-metrics.test.ts` now checks both directions: every metric declared in
+`MetricsService` has something that writes to it, and every metric the shipped
+alerts and dashboard query is one this build exports.
+
+The two HTTP metrics are recorded by Express middleware mounted **ahead of the
+drain**, not by a Nest interceptor: admission control answers a shed request
+itself without calling `next()`, and those 503s are exactly what `RequestsShed`
+counts. The `route` label is the route *pattern*, never the URL — a label value
+is a time series, and `/api/v1/accounts/<uuid>/positions` would mean one series
+per account for ever, with account identifiers inside a store that has its own
+access rules and its own retention.
 
 ## Dashboards and alerts (§63)
 

@@ -43,6 +43,28 @@ export class OrderTimeline {
   private readonly marks: Array<{ stage: OrderStage; at: number }> = [];
   private last: number;
 
+  /**
+   * The instrument this order is for, once the platform has recognised it.
+   *
+   * Not the symbol the client sent. `tp_execution_latency_seconds` is labelled
+   * by symbol, and a label value is a time series: an unauthenticated client
+   * posting ten thousand invented codes would otherwise create ten thousand
+   * series that never go away. This is set only after `SymbolsService.require`
+   * has resolved the code, so the label can only ever be an instrument this
+   * deployment actually lists.
+   */
+  private resolved: string | null = null;
+
+  /** Records which listed instrument this order turned out to be for. */
+  recognised(code: string): void {
+    this.resolved = code;
+  }
+
+  /** The listed instrument, or null if the order never got that far. */
+  get instrument(): string | null {
+    return this.resolved;
+  }
+
   constructor(readonly startedAt: number = Date.now()) {
     this.last = startedAt;
   }

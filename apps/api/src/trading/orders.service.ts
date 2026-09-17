@@ -289,7 +289,7 @@ export class OrdersService {
     try {
       return await this.submit(userId, request, timeline);
     } finally {
-      this.recordTimeline(timeline);
+      this.recordTimeline(timeline, timeline.instrument ?? undefined);
     }
   }
 
@@ -300,9 +300,29 @@ export class OrdersService {
    * never priced anything, and reporting a zero for it would put a spike of
    * zeros into the `priced` histogram and quietly move its median.
    */
-  private recordTimeline(timeline: OrderTimeline): void {
+  private recordTimeline(timeline: OrderTimeline, symbol?: string): void {
     for (const { stage, ms } of timeline.spans()) {
       this.metrics.orderStage.observe({ stage }, ms / 1000);
+
+      /**
+       * `tp_execution_latency_seconds` — acceptance to fill, by instrument.
+       *
+       * The same span as `tp_order_stage_seconds{stage="executed"}`, cut by
+       * symbol instead of by stage, and that is not an oversight to tidy away
+       * later: one illiquid instrument dragging is invisible in an aggregate
+       * and is what the shipped dashboard's three panels and the
+       * `ExecutionLatencyHigh` alert are drawn against. Until now that
+       * histogram had never had a sample, so all four were permanently blank —
+       * and `observability.md` calls this "the number that tells you whether
+       * the engine is healthy under load".
+       *
+       * Only when the order reached `executed`: an order refused at validation
+       * never executed anything, and a zero there would move the median of the
+       * one histogram somebody pages on.
+       */
+      if (stage === 'executed' && symbol !== undefined) {
+        this.metrics.executionLatency.observe({ symbol }, ms / 1000);
+      }
     }
     this.logger.debug({ ...timeline.toLog(), totalMs: timeline.totalMs() }, 'Order timeline');
   }
@@ -318,6 +338,9 @@ export class OrdersService {
     const now = timeline.startedAt;
     const symbolCode = request.symbol.toUpperCase();
     const instrument = this.symbols.require(symbolCode);
+    // Past `require`, so it is a listed instrument and safe as a metrics
+    // label — never the string the client sent. See OrderTimeline.
+    timeline.recognised(symbolCode);
     const spec = instrument.spec;
 
     const { account, masterAccountId } = await this.access.resolve(

@@ -55,6 +55,24 @@ suite('latency metrics', () => {
     return { count, sum };
   };
 
+  /** `tp_execution_latency_seconds_count` per instrument. */
+  const executionCounts = async (): Promise<Record<string, number>> => {
+    const all = await metrics.registry.getMetricsAsJSON();
+    const metric = all.find((entry) => entry.name === 'tp_execution_latency_seconds');
+    const values = (metric?.values ?? []) as Array<{
+      metricName?: string;
+      labels: { symbol?: string };
+      value: number;
+    }>;
+    const counts: Record<string, number> = {};
+    for (const value of values) {
+      if (value.metricName !== 'tp_execution_latency_seconds_count') continue;
+      const symbol = value.labels.symbol;
+      if (symbol !== undefined) counts[symbol] = value.value;
+    }
+    return counts;
+  };
+
   /** `tp_order_stage_seconds_count` per stage. */
   const stageCounts = async (): Promise<Record<string, number>> => {
     const all = await metrics.registry.getMetricsAsJSON();
@@ -228,6 +246,72 @@ suite('latency metrics', () => {
     expect(stages['validated']).toBe(1);
     expect(stages['priced']).toBe(1);
     expect(stages['executed']).toBe(1);
+  });
+
+  /**
+   * `tp_execution_latency_seconds` — acceptance to fill, by instrument.
+   *
+   * The same span as `tp_order_stage_seconds{stage="executed"}`, cut by symbol
+   * rather than by stage. It had never had a sample, which left the
+   * `ExecutionLatencyHigh` alert and three dashboard panels permanently blank —
+   * and `observability.md` calls it "the number that tells you whether the
+   * engine is healthy under load, and the one that will regress first".
+   */
+  it('records acceptance to fill per instrument, which the shipped alert needs', async () => {
+    const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
+    await stack.publishQuote('XAUUSD', '4583.58', '4583.72');
+
+    await stack.orders.openPosition(userId, {
+      accountId,
+      symbol: 'XAUUSD',
+      side: 'BUY',
+      volume: '1.00',
+    });
+
+    expect(await executionCounts()).toEqual({ XAUUSD: 1 });
+  });
+
+  /**
+   * A label value is a time series, and the label is taken from the instrument
+   * the platform resolved rather than from the string the client sent.
+   *
+   * Two risks, and the second is the one a first attempt at this test missed. A
+   * code the platform does not list never reaches the label because `require`
+   * throws first — which is true whichever string is used, so it proves
+   * nothing about where the label came from. **Casing does prove it:** the
+   * same instrument written four ways would otherwise be four series that never
+   * merge and never go away, and every dashboard query would silently see a
+   * quarter of the traffic.
+   */
+  it('labels by the resolved instrument, so one instrument is one series', async () => {
+    const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
+    await stack.publishQuote('XAUUSD', '4583.58', '4583.72');
+
+    for (const written of ['XAUUSD', 'xauusd', 'XauUsd']) {
+      await stack.orders.openPosition(userId, {
+        accountId,
+        symbol: written,
+        side: 'BUY',
+        volume: '0.10',
+      });
+    }
+
+    expect(await executionCounts()).toEqual({ XAUUSD: 3 });
+  });
+
+  it('mints no series for a symbol the platform does not list', async () => {
+    const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
+
+    await expect(
+      stack.orders.openPosition(userId, {
+        accountId,
+        symbol: 'NOTREAL',
+        side: 'BUY',
+        volume: '1.00',
+      }),
+    ).rejects.toThrow();
+
+    expect(Object.keys(await executionCounts())).not.toContain('NOTREAL');
   });
 
   /**
