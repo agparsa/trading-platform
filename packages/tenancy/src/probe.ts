@@ -84,3 +84,41 @@ export async function probeTenantIsolation(
     };
   }
 }
+
+/**
+ * How long to wait before asking again while the answer is still unknown.
+ *
+ * Only ever spent on a deployment with no rows in the probe table yet, and the
+ * callers are a metrics refresh and a housekeeping sweep rather than a request,
+ * so this is a floor against a health poll turning into a query per second —
+ * not a latency budget.
+ */
+export const ISOLATION_REPROBE_MS = 30_000;
+
+/**
+ * Whether to ask the database again.
+ *
+ * Two rules, and the first is the one the original design was missing.
+ *
+ * **An unknown answer is not an answer.** The probe reads `users`, chosen
+ * because that table "is never empty in a running deployment" — and it is empty
+ * at exactly one moment, a fresh install starting for the first time, which was
+ * the only moment anything asked. So a new deployment recorded *unknown* and
+ * kept it for ever, and the refusal the operator was promised could not fire on
+ * the deployment where getting it wrong costs the most.
+ *
+ * **A definite answer is final.** Table ownership and role membership do not
+ * change under a running process, so re-asking a settled question every fifteen
+ * seconds would be a query on the trading path's own pool for no new
+ * information. A role altered underneath a running deployment is a restart, and
+ * is out of scope on purpose rather than by omission.
+ */
+export function shouldReprobe(
+  state: IsolationState,
+  lastProbeAt: number,
+  now: number,
+  floorMs: number = ISOLATION_REPROBE_MS,
+): boolean {
+  if (state.enforced !== 'unknown') return false;
+  return now - lastProbeAt >= floorMs;
+}

@@ -219,6 +219,7 @@ handler is responsible for scoping the result to that user — which for
 | --- | --- | --- | --- |
 | `GET` | `/health` | `live` | PUBLIC (class) |
 | `GET` | `/ready` | `ready` | PUBLIC (class) |
+| `GET` | `/health/tenancy` | `tenancy` | PUBLIC (class) |
 | `GET` | `/health/market` | `market` | PUBLIC (class) |
 | `GET` | `/health/jobs` | `jobs` | PUBLIC (class) |
 
@@ -484,7 +485,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals` | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel` | WITHDRAWALS_REQUEST |
 
-**235 routes:** 119 `GET`, 99 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**236 routes:** 120 `GET`, 99 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

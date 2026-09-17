@@ -9,7 +9,30 @@ import {
   MarketDataHealthIndicator,
   RedisHealthIndicator,
   ScheduledJobsHealthIndicator,
+  TenantIsolationHealthIndicator,
 } from './health.indicators';
+
+/**
+ * Every path this controller serves, and the single source for the global
+ * prefix's exclusion list.
+ *
+ * It was a hand-written literal in `main.ts` and it went out of date the moment
+ * a probe was added. `/health/jobs` — the watchdog for a schedule that has
+ * stopped, the one check that can fail on a deployment where every other one
+ * passes — answered **404** at the path `verify:production`, `runbook.md`,
+ * `worker.md`, `backup-restore.md` and `observability.md` all call it by. It
+ * was being served under the prefix, at `/api/health/jobs`, and nothing
+ * compared the two lists.
+ *
+ * `health-routes.test.ts` now does, in both directions.
+ */
+export const HEALTH_ROUTES = [
+  'health',
+  'ready',
+  'health/market',
+  'health/jobs',
+  'health/tenancy',
+] as const;
 
 /**
  * Probes live outside the versioned API surface. An orchestrator's health
@@ -31,6 +54,7 @@ export class HealthController {
     private readonly redis: RedisHealthIndicator,
     private readonly marketData: MarketDataHealthIndicator,
     private readonly scheduledJobs: ScheduledJobsHealthIndicator,
+    private readonly tenantIsolation: TenantIsolationHealthIndicator,
   ) {}
 
   /**
@@ -57,7 +81,37 @@ export class HealthController {
   @ApiOperation({ summary: 'Readiness probe including database and Redis' })
   @HealthCheck()
   ready() {
-    return this.health.check([() => this.database.check(), () => this.redis.check()]);
+    return this.health.check([
+      () => this.database.check(),
+      () => this.redis.check(),
+      /**
+       * Isolation is a routing decision here, unlike the feed and the
+       * schedules, and only in one case: the operator set `DATABASE_URL_TENANT`
+       * and the policies do not apply. A deployment that asked to be isolated
+       * and is not should not take traffic — that is what the boot-time refusal
+       * means, kept by a process that is already running. Every other state
+       * reports up. See `TenantIsolationHealthIndicator`.
+       */
+      () => this.tenantIsolation.check(),
+    ]);
+  }
+
+  /**
+   * Tenant isolation, reported on its own because the interesting state is the
+   * one readiness deliberately ignores.
+   *
+   * On the single-role deployment — the default, and what `.env.example`
+   * ships — layer two is off and readiness says up, correctly: it is a posture
+   * its operator chose. That posture still needs to be visible somewhere other
+   * than a boot log written months ago, which is here, and in
+   * `tp_tenant_isolation`, and in `verify:production`.
+   */
+  @Version(VERSION_NEUTRAL)
+  @Get('health/tenancy')
+  @ApiOperation({ summary: 'Whether row-level security applies to this connection' })
+  @HealthCheck()
+  tenancy() {
+    return this.health.check([() => this.tenantIsolation.check()]);
   }
 
   /**

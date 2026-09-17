@@ -317,14 +317,49 @@ zero. Any other answer means the connection is exempt.
 - `DATABASE_URL_TENANT` set and the probe fails → **the process refuses to
   start**. A connection string that claims isolation and does not have it is the
   one people stop checking.
-- `DATABASE_URL_TENANT` unset → one warning at boot naming what is not protected.
+- `DATABASE_URL_TENANT` unset → the documented single-role posture, reported
+  rather than merely warned about.
 - `users` empty → reported as unknown, not as success. A check that reads "fine"
   on an empty database reads "fine" on a fresh deployment, which is exactly when
   somebody would believe it.
 
+### Asked again, and reported somewhere a person will see it
+
+The three lines above were all true and the reading was still not obtainable,
+for two reasons that only show up together.
+
+**The probe ran once, at boot.** It reads `users`, chosen because that table "is
+never empty in a running deployment" — and it is empty at exactly one moment, a
+fresh install starting for the first time, which was the only moment anything
+asked. A new deployment answered *unknown*, somebody registered a minute later,
+and nothing asked again. The refusal promised above could not fire on the
+deployment where getting it wrong costs the most. Both processes now keep asking
+while the answer is unknown, and stop the moment it is definite: the API from
+the metrics refresh, the worker from its sweep. Ownership and role membership do
+not change under a running process, so a settled answer is kept.
+
+**And the answer went to one log line.** On the default deployment that line is
+a warning nobody is meant to act on, which is how a reader learns to skip it.
+It is now:
+
+| Where | What it says |
+| --- | --- |
+| `GET /health/tenancy` | `enforced` and `configured`, and nothing else — the role name and the probe's reason are database internals and this route is public |
+| `GET /ready` | **down** only on the pair the platform promises to refuse: asked for and absent. Every other state is up |
+| `tp_tenant_isolation` | `1` enforced, `0` not, `-1` while there is nothing to prove it with |
+| `pnpm verify:production` | prints which posture this deployment is running, and fails on that same pair |
+
+**Unknown is up, deliberately.** A two-role deployment on a fresh database
+cannot prove the policies bite until a row exists, and taking readiness down
+there would stop the platform serving the request that creates its first user —
+so it could never become provable. The state is published and the probe keeps
+asking.
+
 The worker probes separately from the API on purpose: they read the same database
 but are configured, deployed and restarted independently, so "the API said it was
-fine" is not evidence about the worker.
+fine" is not evidence about the worker. It has no health endpoint to publish to,
+so its late answer is a log line — at `error`, not `warn`, when the operator
+asked for isolation and it is absent.
 
 Neither layer is sufficient alone and that is the point. A single mechanism that
 is "obviously correct" is a mechanism nobody checks.

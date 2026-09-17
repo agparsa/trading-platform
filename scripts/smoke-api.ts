@@ -113,6 +113,34 @@ const checks: Check[] = [
     },
   },
   {
+    /**
+     * The second isolation layer, reported where somebody can read it.
+     *
+     * It used to be one line in the boot log, and on the default deployment
+     * that line is a warning nobody is meant to act on. This asserts the state
+     * is published and that the payload carries no database internals — the
+     * route is public, and the probe's own reason names the role and why it is
+     * exempt.
+     */
+    name: 'tenant isolation reports its state, and no database internals',
+    run: async () => {
+      const { status, body } = await getJson('/health/tenancy');
+      assert(status === 200, `expected 200, got ${status}`);
+      const payload = body as {
+        data: { info: Record<string, { status: string; enforced: unknown; configured: unknown }> };
+      };
+      const isolation = payload.data.info['tenant-isolation'];
+      assert(isolation !== undefined, 'nothing reported the isolation state');
+      assert(
+        isolation.enforced === true || isolation.enforced === false || isolation.enforced === 'unknown',
+        `unexpected enforced value ${String(isolation.enforced)}`,
+      );
+      assert(typeof isolation.configured === 'boolean', 'did not say whether it was asked for');
+      const printed = JSON.stringify(payload);
+      assert(!/current_user|superuser|owns the table/.test(printed), 'leaked a probe reason');
+    },
+  },
+  {
     name: 'unknown route returns a coded failure envelope, not a stack trace',
     run: async () => {
       const { status, body } = await getJson('/api/v1/definitely-not-a-route');

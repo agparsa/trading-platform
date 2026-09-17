@@ -42,6 +42,7 @@ export class MetricsService {
   readonly marketFeedAge: Gauge<string>;
   readonly scheduledJobAge: Gauge<'job'>;
   readonly scheduledJobLate: Gauge<'job'>;
+  readonly tenantIsolation: Gauge<string>;
   /** 1 when this instance leads the loop, 0 when it does not. */
   readonly leaderLease: Gauge<'loop'>;
   readonly leaderTransitions: Counter<'loop' | 'transition'>;
@@ -281,6 +282,12 @@ export class MetricsService {
       name: 'tp_scheduled_job_late',
       help: '1 when this scheduled job is later than its own cron allows, has never run, is failing, or is configured with a pattern that cannot be read. Alert on any of it.',
       labelNames: ['job'] as const,
+      registers: [this.registry],
+    });
+
+    this.tenantIsolation = new Gauge({
+      name: 'tp_tenant_isolation',
+      help: '1 when row-level security applies to the connection this API uses, 0 when it does not, -1 while there are no rows to prove it either way. 0 on a single-role deployment is the documented posture; 0 with DATABASE_URL_TENANT set is a misconfiguration.',
       registers: [this.registry],
     });
 

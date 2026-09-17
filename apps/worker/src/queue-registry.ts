@@ -19,6 +19,7 @@ import { OutboxRelayService } from './jobs/outbox-relay.service';
 import { WebhookDeliveryService } from './jobs/webhook-delivery.service';
 import { ReportsService } from './jobs/reports.service';
 import { MaintenanceService } from './jobs/maintenance.service';
+import { PrismaService } from './prisma.service';
 import { NotificationsService } from './jobs/notifications.service';
 import { ScheduleLogService } from './jobs/schedule-log.service';
 
@@ -67,6 +68,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly webhooks: WebhookDeliveryService,
     private readonly reports: ReportsService,
     private readonly scheduleLog: ScheduleLogService,
+    private readonly prisma: PrismaService,
   ) {
     // Decided in the constructor so a bad WORKER_QUEUES refuses to boot at
     // once, with a message, rather than after Redis is connected.
@@ -104,6 +106,15 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
       );
     });
     this.attach(QueueName.IDEMPOTENCY_SWEEP, async () => ({
+      /**
+       * Not housekeeping, and here anyway: this sweep is the worker's only
+       * periodic tick, and the isolation probe needs one. It answers `unknown`
+       * on a database with no users yet — which is a fresh install at boot, the
+       * only moment anything used to ask. `resolveTenantIsolation` stops
+       * probing the moment the answer is definite, so on a settled deployment
+       * this reads a field.
+       */
+      tenantIsolation: (await this.prisma.resolveTenantIsolation()).enforced,
       expired: await this.maintenance.sweepIdempotencyKeys(),
       abandoned: await this.maintenance.releaseAbandonedClaims(),
       payments: await this.maintenance.expireStalePayments(),

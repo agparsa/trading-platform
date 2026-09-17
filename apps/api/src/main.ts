@@ -12,6 +12,7 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import helmet from 'helmet';
 import { API_VERSION } from '@tp/shared-types';
 import { AppModule } from './app.module';
+import { HEALTH_ROUTES } from './health/health.controller';
 import { corsOrigins, Env } from './config/env.schema';
 import { requestContext } from './common/request-context';
 import { DrainState } from './common/drain';
@@ -100,7 +101,10 @@ async function bootstrap(): Promise<void> {
   });
 
   app.setGlobalPrefix(config.get('API_GLOBAL_PREFIX', { infer: true }), {
-    exclude: ['health', 'health/market', 'ready', 'metrics'],
+    // Derived, not typed out. The literal that used to be here was missing
+    // `health/jobs`, so the scheduled-job watchdog was a 404 at the path every
+    // document and `verify:production` name — see `HEALTH_ROUTES`.
+    exclude: [...HEALTH_ROUTES, 'metrics'],
   });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: API_VERSION.replace('v', '') });
 

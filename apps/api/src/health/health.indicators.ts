@@ -192,3 +192,77 @@ export class ScheduledJobsHealthIndicator {
     return problems.length === 0 ? indicator.up(detail) : indicator.down(detail);
   }
 }
+
+/**
+ * Whether row-level security actually applies to the role this process
+ * connected as.
+ *
+ * Until now this was one line in the boot log, and on the default deployment
+ * (`DATABASE_URL_TENANT` unset) it is a *warning nobody was ever meant to act
+ * on* — which is how a reader learns to skip the line that matters. There was
+ * no probe, no gauge and no production check: the platform's own answer to its
+ * most important safety question was computed carefully and then whispered.
+ *
+ * **What is deliberately not in the payload.** `/health/*` is public, as an
+ * orchestrator's probe has to be. The role name and the probe's reason —
+ * "it owns the table, or it is a superuser, or the policy is missing" — are
+ * database internals and stay in the log. What is published is the state and
+ * whether the operator asked for the two-role setup, which is what somebody
+ * watching a deployment needs and is not a map of the way in.
+ */
+@Injectable()
+export class TenantIsolationHealthIndicator {
+  constructor(
+    private readonly health: HealthIndicatorService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  async check(key = 'tenant-isolation'): Promise<HealthIndicatorResult> {
+    const indicator = this.health.check(key);
+    const configured = this.prisma.tenantRoleConfigured;
+    const state = await this.prisma.resolveTenantIsolation();
+    const detail = { enforced: state.enforced, configured } as const;
+
+    if (state.enforced === true) return indicator.up(detail);
+
+    /**
+     * Unknown and asked for is **up**, and that is not a softening.
+     *
+     * Unknown means the probe table is empty, which on a two-role deployment is
+     * a brand-new install. Taking readiness down there would mean the platform
+     * could never serve the request that creates its first user, and would
+     * therefore never be able to prove the thing being checked. The state is
+     * published, the gauge carries it, and `resolveTenantIsolation` keeps
+     * asking until it is definite.
+     */
+    if (state.enforced === 'unknown') {
+      return indicator.up({
+        ...detail,
+        note: 'no rows to read yet, so the policies cannot be proved either way',
+      });
+    }
+
+    if (!configured) {
+      /**
+       * Not asked for, and correspondingly not a routing decision. This is the
+       * documented single-role posture: layer one alone, which every other test
+       * in the suite exercises. Alert on it; do not pull the deployment out of
+       * the load balancer for a choice its operator made.
+       */
+      return indicator.up({
+        ...detail,
+        note: 'relying on the Prisma extension alone; set DATABASE_URL_TENANT for the second layer',
+      });
+    }
+
+    /**
+     * Asked for, and definitely absent. `docs/multi-tenancy.md` promises the
+     * process refuses to start on this pair; refusing to *serve* is the same
+     * promise kept by a process that is already up.
+     */
+    return indicator.down({
+      ...detail,
+      note: 'DATABASE_URL_TENANT is set and row-level security does not apply to this connection',
+    });
+  }
+}

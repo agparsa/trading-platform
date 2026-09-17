@@ -140,6 +140,7 @@ export class PlatformMetricsService implements OnApplicationBootstrap, OnApplica
     this.metrics.marketFeedAge.set(this.quotes.newestTickAge() ?? -1);
 
     await this.refreshScheduledJobs();
+    await this.refreshTenantIsolation();
   }
 
   /**
@@ -152,6 +153,22 @@ export class PlatformMetricsService implements OnApplicationBootstrap, OnApplica
    * finished*, which is the only thing worth alerting on, and it is in the
    * database that survives the incident.
    */
+  /**
+   * Publishes the isolation state, and is what keeps asking while it is
+   * unknown.
+   *
+   * The refresh loop is the right caller: it already runs off the request path
+   * on a timer, and `resolveTenantIsolation` stops probing the moment the
+   * answer is definite — so on a settled deployment this costs one field read
+   * every fifteen seconds and no query at all.
+   */
+  private async refreshTenantIsolation(): Promise<void> {
+    const state = await this.prisma.resolveTenantIsolation();
+    this.metrics.tenantIsolation.set(
+      state.enforced === true ? 1 : state.enforced === false ? 0 : -1,
+    );
+  }
+
   private async refreshScheduledJobs(): Promise<void> {
     const tz = this.config.get<string>('TRADING_SERVER_TIMEZONE') ?? 'UTC';
     const rows = await withoutTenantScope('a schedule belongs to the deployment', () =>

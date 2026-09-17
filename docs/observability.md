@@ -79,6 +79,16 @@ configuration this repository does not presume to write.
 `/ready` — readiness, reports database and Redis status with measured latencies.
 `/health/market` — the feed. Alert on it; do not route on it.
 `/health/jobs` — the scheduled work. Alert on it; do not route on it.
+`/health/tenancy` — whether row-level security applies to the connection this
+API uses. Alert on `tp_tenant_isolation` reading `0` with `DATABASE_URL_TENANT`
+set; on a single-role deployment `0` is the documented posture.
+
+**These paths sit outside the API prefix, and that is a list somebody has to
+maintain.** It is `HEALTH_ROUTES` in `health.controller.ts`, and for a week it
+was a literal in `main.ts` that had not been updated — so `/health/jobs`
+answered 404 while the probe itself was alive at `/api/health/jobs`. A test
+compares the two lists in both directions now, and `verify:production` says so
+by name rather than reporting the 404 as an old build.
 
 The last two are separate from readiness on purpose. A process pulled out of the
 load balancer because the upstream feed stopped, or because a nightly sweep did

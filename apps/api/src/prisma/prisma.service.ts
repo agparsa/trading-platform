@@ -13,6 +13,7 @@ import {
   TenantClientRegistry,
   currentScope,
   probeTenantIsolation,
+  shouldReprobe,
   tenantScopeExtension,
   type IsolationState,
 } from '@tp/tenancy';
@@ -74,12 +75,14 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
   private readonly registry: TenantClientRegistry<PrismaClient>;
 
-  /** What the boot probe found. Exposed so the health endpoint can report it. */
+  /** What the last probe found. Exposed so the health endpoint can report it. */
   public isolation: IsolationState = {
     enforced: 'unknown',
     role: 'unknown',
     reason: 'not probed yet',
   };
+
+  private lastProbeAt = 0;
 
   constructor(@Inject(ConfigService) private readonly config: ConfigService<Env, true>) {
     const owner = config.get('DATABASE_URL', { infer: true });
@@ -207,28 +210,79 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     }, options as never);
   }
 
+  /** Whether the operator asked for the two-role deployment. */
+  get tenantRoleConfigured(): boolean {
+    return this.config.get('DATABASE_URL_TENANT', { infer: true }) !== undefined;
+  }
+
+  /**
+   * The isolation state, asked again while the answer is still unknown.
+   *
+   * The probe reads a tenant table with no tenant bound and expects zero rows —
+   * and says so itself: zero rows proves nothing when the table is empty. The
+   * table it uses is `users`, chosen because it "is never empty in a running
+   * deployment". It is empty at exactly one moment: **boot, on a fresh
+   * install** — which was the only moment anything asked.
+   *
+   * So a new deployment answered `unknown`, the first person registered a
+   * minute later, and nothing ever asked again. The promised refusal —
+   * `DATABASE_URL_TENANT` set and the policies not biting — could not fire on
+   * the deployment where getting it wrong costs the most.
+   *
+   * Once the answer is definite it is kept. Ownership and role membership do
+   * not change under a running process, and re-asking a settled question every
+   * fifteen seconds would be a query on the trading path's own pool for no new
+   * information.
+   */
+  async resolveTenantIsolation(): Promise<IsolationState> {
+    const now = Date.now();
+    if (!shouldReprobe(this.isolation, this.lastProbeAt, now)) return this.isolation;
+    this.lastProbeAt = now;
+
+    this.isolation = await probeTenantIsolation(
+      this.registry.unscopedClient(),
+      this.registry.privilegedClient(),
+    );
+    if (this.isolation.enforced !== 'unknown') this.announceIsolation();
+    return this.isolation;
+  }
+
   async onModuleInit(): Promise<void> {
+    this.lastProbeAt = Date.now();
     this.isolation = await probeTenantIsolation(
       this.registry.unscopedClient(),
       this.registry.privilegedClient(),
     );
     await this.reportConnectionBudget();
 
+    if (this.tenantRoleConfigured && this.isolation.enforced === false) {
+      // The operator asked for the two-role setup. Silently not having it is
+      // the failure this check exists to prevent. Refusing to boot is only
+      // available here; once the process is serving, the same discovery takes
+      // readiness down instead — see `TenantIsolationHealthIndicator`.
+      throw new Error(`DATABASE_URL_TENANT is set but ${this.isolation.reason}`);
+    }
+    this.announceIsolation();
+  }
+
+  /**
+   * Says what the probe found, once per distinct answer.
+   *
+   * At `error` rather than `warn` when the operator asked for isolation and it
+   * is not there, because that pair is a misconfiguration and not a posture.
+   */
+  private announceIsolation(): void {
     if (this.isolation.enforced === true) {
-      this.logger.log(`Database connection established; tenant isolation enforced at the database`);
+      this.logger.log('Database connection established; tenant isolation enforced at the database');
       return;
     }
-
-    const configured = this.config.get('DATABASE_URL_TENANT', { infer: true }) !== undefined;
     const message =
       `Tenant isolation is NOT enforced at the database: ${this.isolation.reason}. ` +
       'Row-level security exempts a table owner from its own policies, so the application ' +
       'is relying on the Prisma extension alone. See docs/multi-tenancy.md.';
-
-    if (configured && this.isolation.enforced === false) {
-      // The operator asked for the two-role setup. Silently not having it is
-      // the failure this check exists to prevent.
-      throw new Error(`DATABASE_URL_TENANT is set but ${this.isolation.reason}`);
+    if (this.tenantRoleConfigured && this.isolation.enforced === false) {
+      this.logger.error(`DATABASE_URL_TENANT is set but ${this.isolation.reason}`);
+      return;
     }
     this.logger.warn(message);
   }

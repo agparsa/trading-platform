@@ -180,7 +180,12 @@ async function main(): Promise<void> {
     record(
       'every scheduled job is still running on time',
       false,
-      `got ${jobs?.status ?? 'no answer'} from /health/jobs — this deployment predates the probe`,
+      jobs?.status === 404
+        ? 'got 404 from /health/jobs — either this deployment predates the probe, or the route is ' +
+          'being served under the API prefix. Try /api/health/jobs before concluding it is old: ' +
+          'that is what a missing entry in the global prefix exclusion list looks like, and it is ' +
+          'how this probe spent its first week invisible.'
+        : `got ${jobs?.status ?? 'no answer'} from /health/jobs — this deployment predates the probe`,
     );
   } else {
     record(
@@ -225,6 +230,38 @@ async function main(): Promise<void> {
           : `never run: ${absent.join(', ')} — a schedule with no row has never fired once`,
     );
   }
+
+  // --- the second isolation layer ------------------------------------------
+  /**
+   * The one safety property this deployment cannot be asked about any other
+   * way. It was reported in a single boot log line and nowhere else, so on any
+   * deployment older than a day the honest answer to "is row-level security
+   * actually applying?" was that nobody could say.
+   *
+   * Not a pass/fail on `enforced` alone: the single-role deployment is a
+   * documented posture and `.env.example` ships it. What fails is the pair the
+   * platform promises to refuse — asked for and absent — and what is always
+   * printed is which of the two this deployment is, so it is on the page rather
+   * than in somebody's memory.
+   */
+  const tenancy = await get('/health/tenancy');
+  const tenancyBody = tenancy === null ? null : json(tenancy.body);
+  const isolation = (tenancyBody?.['info'] ?? tenancyBody?.['error'] ?? {}) as Record<
+    string,
+    Record<string, unknown>
+  >;
+  const enforced = isolation['tenant-isolation']?.['enforced'];
+  const configured = isolation['tenant-isolation']?.['configured'] === true;
+  record(
+    'tenant isolation is not both asked for and absent',
+    tenancy !== null && !(configured && enforced === false),
+    enforced === undefined
+      ? `/health/tenancy answered ${tenancy?.status ?? 'nothing'} — this deployment predates the probe, ` +
+        'or the route is under the API prefix (see the note on /health/jobs above)'
+      : configured
+        ? `DATABASE_URL_TENANT is set; row-level security enforced: ${String(enforced)}`
+        : `single-role deployment (layer one only); row-level security enforced: ${String(enforced)}`,
+  );
 
   // --- what must not be public ---------------------------------------------
   const metrics = await get('/metrics');

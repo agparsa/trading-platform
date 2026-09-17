@@ -8,9 +8,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
 import {
+  type IsolationState,
   TenantClientRegistry,
   currentScope,
   probeTenantIsolation,
+  shouldReprobe,
   tenantScopeExtension,
 } from '@tp/tenancy';
 import type { WorkerEnv } from './env';
@@ -42,6 +44,15 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
   private readonly registry: TenantClientRegistry<PrismaClient>;
   private readonly tenantRoleConfigured: boolean;
+
+  /** What the last probe found; re-asked while it is unknown. */
+  public isolation: IsolationState = {
+    enforced: 'unknown',
+    role: 'unknown',
+    reason: 'not probed yet',
+  };
+
+  private lastProbeAt = 0;
 
   constructor(@Inject(ConfigService) config: ConfigService<WorkerEnv, true>) {
     const owner = config.get('DATABASE_URL', { infer: true });
@@ -89,20 +100,51 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
    * "the API said it was fine" is not evidence about this process.
    */
   async onModuleInit(): Promise<void> {
-    const isolation = await probeTenantIsolation(
+    this.lastProbeAt = Date.now();
+    this.isolation = await probeTenantIsolation(
       this.registry.unscopedClient(),
       this.registry.privilegedClient(),
     );
+    if (this.tenantRoleConfigured && this.isolation.enforced === false) {
+      throw new Error(`DATABASE_URL_TENANT is set but ${this.isolation.reason}`);
+    }
+    this.announceIsolation();
+  }
 
-    if (isolation.enforced === true) {
+  /**
+   * Asks again while the answer is still unknown — the probe reads `users`, and
+   * on a fresh install that table is empty at boot and only at boot.
+   *
+   * Called from the maintenance sweep, which is the worker's own periodic tick
+   * and is itself watched by `scheduled_job_runs`. A worker has no health
+   * endpoint to publish to, so a definite answer that arrives late is logged:
+   * at `error` when the operator asked for isolation and it is absent, which is
+   * the same pair `onModuleInit` refuses to boot on.
+   */
+  async resolveTenantIsolation(): Promise<IsolationState> {
+    const now = Date.now();
+    if (!shouldReprobe(this.isolation, this.lastProbeAt, now)) return this.isolation;
+    this.lastProbeAt = now;
+
+    this.isolation = await probeTenantIsolation(
+      this.registry.unscopedClient(),
+      this.registry.privilegedClient(),
+    );
+    if (this.isolation.enforced !== 'unknown') this.announceIsolation();
+    return this.isolation;
+  }
+
+  private announceIsolation(): void {
+    if (this.isolation.enforced === true) {
       this.logger.log('Database ready; tenant isolation enforced at the database');
       return;
     }
-    if (this.tenantRoleConfigured && isolation.enforced === false) {
-      throw new Error(`DATABASE_URL_TENANT is set but ${isolation.reason}`);
+    if (this.tenantRoleConfigured && this.isolation.enforced === false) {
+      this.logger.error(`DATABASE_URL_TENANT is set but ${this.isolation.reason}`);
+      return;
     }
     this.logger.warn(
-      `Tenant isolation is NOT enforced at the database: ${isolation.reason}. ` +
+      `Tenant isolation is NOT enforced at the database: ${this.isolation.reason}. ` +
         'Jobs are relying on the Prisma extension alone. See docs/multi-tenancy.md.',
     );
   }

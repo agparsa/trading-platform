@@ -7,6 +7,7 @@ import {
   MarketDataHealthIndicator,
   RedisHealthIndicator,
   ScheduledJobsHealthIndicator,
+  TenantIsolationHealthIndicator,
 } from './health.indicators';
 
 @Module({
@@ -17,6 +18,7 @@ import {
     MarketDataHealthIndicator,
     RedisHealthIndicator,
     ScheduledJobsHealthIndicator,
+    TenantIsolationHealthIndicator,
   ],
 })
 export class HealthModule {}
