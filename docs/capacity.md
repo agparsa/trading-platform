@@ -208,6 +208,31 @@ the accounts connected to it. Reported as a limit, not a defect.
 | Newest tick age, under load | ~200–300ms                                |
 | Frames, 200 sockets         | ~104,000 over the run, zero sequence gaps |
 
+## Run again on 17 September 2026, with 21,292 open positions
+
+The same harness, same two-CPU container, on a platform that had accumulated
+**21,292 open positions** — roughly twenty-eight times the ~750 the figures
+above were taken against. Per-tick cost scales with platform-wide open interest,
+so this is the interesting comparison:
+
+|                                 | ~750 positions   | 21,292 positions |
+| ------------------------------- | ---------------- | ---------------- |
+| One order, unloaded             | ~30 ms           | **54 ms**        |
+| Burst throughput                | ~134–185 /s      | **95 /s**        |
+| Steady phase                    | p50 ~1.1 s       | **p50 4.7 s**    |
+| Burst, 1000 simultaneous        | drains in ~7.5 s | **~10.5 s**      |
+| Newest tick age after the burst | ~200–300 ms      | **171 ms**       |
+| Frames, 200 sockets             | ~104,000         | 55,630           |
+
+Every correctness assertion held: gapless sequences, no socket errored, every
+socket received frames, the feed kept up, the platform came back, and **every
+refusal was a safe one** — `SERVICE_UNAVAILABLE` and `STALE_QUOTE`, the engine
+declining rather than filling at a price it did not trust, exactly as §26 asks.
+
+The reading is the one this document already predicted: **the feed kept up while
+per-order service time roughly doubled**. Open interest costs throughput, not
+correctness, and `tp_open_positions` remains the gauge to watch.
+
 ## What the run asserts, and what it deliberately does not
 
 It asserts: sequence numbers stayed gapless, every socket received frames, no

@@ -111,16 +111,38 @@ interface Trader {
 
 async function registerTrader(index: number): Promise<Trader> {
   const email = `load-${Date.now()}-${index}@test.local`;
-  await fetch(`${BASE}/api/v1/auth/register`, {
+  const registered = await fetch(`${BASE}/api/v1/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password: PASSWORD, displayName: `Load ${index}` }),
   });
+  /**
+   * Checked, because the next line depends on it.
+   *
+   * This response used to be discarded. When registration was refused — rate
+   * limited, or failing under the very load this harness applies — the login
+   * below answered `Invalid email or password`, and that is what the run
+   * reported: a message about credentials, for a failure that had nothing to do
+   * with them, with the actual status code already thrown away.
+   */
+  if (registered.status !== 201 && registered.status !== 202) {
+    const body = (await registered.text()).slice(0, 200);
+    throw new Error(
+      `trader ${index} could not register: HTTP ${registered.status} ${body}`,
+    );
+  }
   const login = await fetch(`${BASE}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password: PASSWORD }),
   });
+  if (!login.ok) {
+    const body = (await login.text()).slice(0, 200);
+    throw new Error(
+      `trader ${index} registered (HTTP ${registered.status}) and then could not sign in: ` +
+        `HTTP ${login.status} ${body}`,
+    );
+  }
   const { accessToken } = await json<{ accessToken: string }>(login);
   const accounts = await json<Array<{ id: string }>>(
     await fetch(`${BASE}/api/v1/accounts`, { headers: { Authorization: `Bearer ${accessToken}` } }),
@@ -130,7 +152,14 @@ async function registerTrader(index: number): Promise<Trader> {
   return { token: accessToken, accountId: accountId! };
 }
 
-async function waitForBoot(base: string = BASE): Promise<void> {
+/**
+ * Waits for one instance, and says what it was saying if it never arrives.
+ *
+ * `said` is the buffer belonging to *that* instance. Passing the wrong one is
+ * how a harness ends up telling somebody to read a file about a process that
+ * was fine.
+ */
+async function waitForBoot(base: string = BASE, said: readonly string[] = []): Promise<void> {
   const deadline = Date.now() + 60_000;
   for (;;) {
     try {
@@ -138,7 +167,14 @@ async function waitForBoot(base: string = BASE): Promise<void> {
     } catch {
       /* not listening yet */
     }
-    if (Date.now() > deadline) throw new Error(`${base} did not become healthy`);
+    if (Date.now() > deadline) {
+      const tail = said.join('').trim().split('\n').slice(-25).join('\n');
+      throw new Error(
+        `${base} did not become healthy in 60s. What that instance said:\n\n${
+          tail === '' ? '  (nothing at all — check that apps/api/dist exists and the port is free)' : tail
+        }`,
+      );
+    }
     await sleep(500);
   }
 }
@@ -291,8 +327,19 @@ async function main(): Promise<void> {
       TRIGGER_ENGINE_ENABLED: 'true',
     },
   });
-  ingest.stdout.on('data', () => undefined);
-  ingest.stderr.on('data', () => undefined);
+  /**
+   * Kept, not discarded.
+   *
+   * These two lines used to be `() => undefined`, which is a deliberate choice
+   * to throw away everything the ingest instance says — and the ingest instance
+   * is the first thing this harness waits for. When it failed to boot the run
+   * printed `did not become healthy` and pointed at *the serving instance's*
+   * log, which for a failure this early had not been written at all. The one
+   * process that could explain the failure was the one being silenced.
+   */
+  const ingestOutput: string[] = [];
+  ingest.stdout.on('data', (chunk: Buffer) => ingestOutput.push(chunk.toString()));
+  ingest.stderr.on('data', (chunk: Buffer) => ingestOutput.push(chunk.toString()));
 
   /**
    * The instance under test: it serves, and relays prices from the other one
@@ -332,8 +379,8 @@ async function main(): Promise<void> {
   };
 
   try {
-    await waitForBoot(`http://127.0.0.1:${INGEST_PORT}`);
-    await waitForBoot();
+    await waitForBoot(`http://127.0.0.1:${INGEST_PORT}`, ingestOutput);
+    await waitForBoot(BASE, output);
     console.log(
       `\n  one ingest instance on :${INGEST_PORT}, one serving instance on :${PORT},` +
         `\n  prices relayed between them over market:ticks — as production runs.\n`,
@@ -752,7 +799,10 @@ async function main(): Promise<void> {
       // than guessed.
       const dump = join(tmpdir(), `load-test-api-${process.pid}.log`);
       writeFileSync(dump, output.join(''));
+      const ingestDump = join(tmpdir(), `load-test-ingest-${process.pid}.log`);
+      writeFileSync(ingestDump, ingestOutput.join(''));
       console.error(`\n  the serving instance's full output is in ${dump}`);
+      console.error(`  the ingest instance's full output is in ${ingestDump}`);
     }
   }
 

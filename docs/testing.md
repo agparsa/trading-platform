@@ -263,6 +263,29 @@ a stale binary is the worst failure mode there is.
   [failure-injection.md](./failure-injection.md). A harness that writes to the
   system it measures is measuring itself.
 
+### Three harnesses in a row were throwing away their own diagnosis
+
+Running the gates nobody runs turned up the same defect three times, in three
+different scripts, and none of it was in the platform:
+
+- **`chaos`** collected every byte each instance printed into `recent`, under a
+  comment saying it was kept because _"an INTERNAL_ERROR from the API is only
+  debuggable from here"_ — and its boot-timeout path discarded all of it.
+- **`load`** went further: `ingest.stdout.on('data', () => undefined)` threw the
+  ingest instance's output away _deliberately_, and the ingest instance is the
+  first thing the harness waits for. On a boot failure it printed
+  `did not become healthy` and pointed at **the serving instance's** log file,
+  which at that point had not been written.
+- **`load` again**, one layer in: `registerTrader` discarded the response to
+  `POST /auth/register` entirely. When registration was refused the login on the
+  next line answered `Invalid email or password`, and that is what the run
+  reported — a message about credentials for a failure that had nothing to do
+  with them, with the real status already gone.
+
+All three now print what the failing component actually said. A harness that
+collects a diagnosis and then reports one line is worse than one that collects
+nothing, because it looks like there is nothing to find.
+
 ### The coverage thresholds had never been evaluated
 
 `vitest.config.ts` has carried coverage thresholds since the beginning, under a
