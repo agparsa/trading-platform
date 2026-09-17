@@ -191,14 +191,14 @@ deliberately rather than at 3am.
 
 **How far back is safe: to any image released after
 `20260831140000_multi_tenancy`.** An older image runs against a newer schema
-and writes the *older* shape of every row, so this works exactly as long as
+and writes the _older_ shape of every row, so this works exactly as long as
 every migration in between is additive. Two are not — they add `NOT NULL` to
 columns that already existed:
 
-| Migration | What narrowed |
-| --- | --- |
+| Migration                                   | What narrowed                                       |
+| ------------------------------------------- | --------------------------------------------------- |
 | `20260824190000_trade_commission_breakdown` | `trades.entry_commission`, `trades.exit_commission` |
-| `20260831140000_multi_tenancy` | `tenant_id` on every scoped table |
+| `20260831140000_multi_tenancy`              | `tenant_id` on every scoped table                   |
 
 An image from before either of those writes rows without those columns, and the
 insert is refused — so a rollback across one turns a bad deploy into a broken
@@ -210,6 +210,41 @@ which was simply wrong, and wrong in the direction that costs you an outage.
 schema without being recorded, and fails it again if the floor named above
 stops being the newest one — so this paragraph cannot go stale without somebody
 being told.
+
+#### The second floor: what an older image cannot _read_
+
+Narrowing is about writes. There is a second hazard, the opposite shape and just
+as final: **a migration that adds a value to an enum**. The schema gets wider,
+every write an old image makes still succeeds — and the moment one row carries
+the new value, an old image cannot read it.
+
+Measured rather than argued. A Prisma client generated from the schema as it
+stood before `ORDERS` existed, pointed at a database holding one report with
+`kind = 'ORDERS'`:
+
+|                         |                                   |
+| ----------------------- | --------------------------------- |
+| raw SQL                 | `[{"kind":"ORDERS"}]`             |
+| old client `findUnique` | `PrismaClientUnknownRequestError` |
+| old client `findMany`   | `PrismaClientUnknownRequestError` |
+
+`findMany` is the one that matters. It is not one unreadable row, it is the
+**whole list** — roll back across this with a single such report in the table
+and the reports screen does not degrade, it throws. And PostgreSQL has no
+`ALTER TYPE … DROP VALUE`, so the database half cannot be undone at all.
+
+**The newest of these is `20260914160000_orders_and_positions_report_kinds`
+(`ReportKind: ORDERS, POSITIONS`).** Twelve migrations since 26 August add enum
+values; `ADDS_ENUM_VALUES` in `scripts/migrations.test.ts` lists every one with
+what it introduces, checked both ways, and the build fails if this paragraph
+stops naming the newest.
+
+Unlike narrowing, this hazard is **data-dependent**, and the difference is worth
+keeping in mind at 3am: a narrowing migration breaks a rollback always; this one
+breaks it only once somebody has created a row using the new value. A platform
+where nobody has yet run an `ORDERS` report can still roll back past it. There
+is no way to check that from the image you are rolling back to, which is why the
+floor is stated at the migration rather than at the data.
 
 ### Draining
 

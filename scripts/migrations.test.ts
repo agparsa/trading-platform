@@ -58,13 +58,74 @@ const NARROWING: Readonly<Record<string, string>> = {
 };
 
 /** Statements that can make a write an older image would have made invalid. */
+/**
+ * Migrations an older image cannot read *past*, once a row uses the new value.
+ *
+ * ## A second kind of rollback hazard, and the one nothing was watching
+ *
+ * `NARROWING` above is about the schema getting *tighter*: an old image writes
+ * the old shape and the insert is refused. Adding a value to an enum is the
+ * opposite shape of problem and just as final. The schema gets *wider*, every
+ * write an old image makes still succeeds — and the moment one row carries the
+ * new value, an old image cannot **read** it.
+ *
+ * Measured, not assumed. A Prisma client generated from the schema as it stood
+ * before `ORDERS` existed, pointed at a database holding one report with
+ * `kind = 'ORDERS'`:
+ *
+ * ```
+ * raw SQL says            [{"kind":"ORDERS"}]
+ * old client findUnique   PrismaClientUnknownRequestError
+ * old client findMany     PrismaClientUnknownRequestError
+ * ```
+ *
+ * `findMany` is the one that matters: it is not one unreadable row, it is the
+ * **whole list**. Roll back across this with a single such report in the table
+ * and the reports screen does not degrade, it throws.
+ *
+ * And PostgreSQL has no `ALTER TYPE … DROP VALUE`, so the database half cannot
+ * be undone at all — only restored.
+ *
+ * ## Why it is a separate list
+ *
+ * Because the hazard is **data-dependent**, and saying so is the difference
+ * between a useful floor and a scary one. A narrowing migration breaks a
+ * rollback always; this breaks it only once somebody has created a row using
+ * the new value. `RISK_MANAGER` has been addable since August and costs nothing
+ * until a user actually holds that role.
+ */
+const ADDS_ENUM_VALUES: Readonly<Record<string, string>> = {
+  '20260826200000_risk_manager_role': 'UserRole: RISK_MANAGER',
+  '20260831170628_notification_devices_and_preferences': 'NotificationChannel: PUSH',
+  '20260901220000_withdrawals': 'UserRole: FINANCE',
+  '20260903090000_tenant_kind_and_role_groups':
+    'UserRole: BROKER_OWNER, BROKER_ANALYST, BROKER_DEVELOPER, PLATFORM_SUPER_ADMIN, ' +
+    'PLATFORM_OPERATOR, PLATFORM_SUPPORT, PLATFORM_AUDITOR, PLATFORM_DEVELOPER',
+  '20260903130000_account_status_pending_locked': 'AccountStatus: PENDING, LOCKED',
+  '20260904170000_order_unconfirmed': 'OrderStatus: UNCONFIRMED',
+  '20260906140500_price_alert_notification_category': 'NotificationCategory: PRICE_ALERT',
+  '20260909120500_break_glass_security_kinds':
+    'SecurityEventKind: BREAK_GLASS_OPENED, BREAK_GLASS_CLOSED',
+  '20260909150000_ip_rule_security_kind': 'SecurityEventKind: IP_RULE_CHANGED',
+  '20260912101638_device_staff_revocation':
+    'SecurityEventKind: DEVICE_REGISTERED, DEVICE_REVIVED, DEVICE_REVOKED, ' +
+    'DEVICE_REVOKED_BY_STAFF, DEVICE_RESTORED_BY_STAFF',
+  '20260914100000_audit_report_kind': 'ReportKind: AUDIT',
+  '20260914160000_orders_and_positions_report_kinds': 'ReportKind: ORDERS, POSITIONS',
+};
+
+const ADDS_ENUM_VALUE = /\bALTER\s+TYPE\b[\s\S]*?\bADD\s+VALUE\b/i;
+
 const NARROWINGS: readonly { readonly what: string; readonly pattern: RegExp }[] = [
   { what: 'drops a table', pattern: /\bDROP\s+TABLE\b/i },
   { what: 'drops a column', pattern: /\bDROP\s+COLUMN\b/i },
   // `ALTER INDEX … RENAME` is deliberately not this: an index's name is
   // invisible to the application, so renaming one narrows nothing.
   { what: 'renames a table or column', pattern: /\bALTER\s+TABLE\b[\s\S]*?\bRENAME\b/i },
-  { what: 'makes an existing column NOT NULL', pattern: /\bALTER\s+COLUMN\b[^;]*?\bSET\s+NOT\s+NULL\b/i },
+  {
+    what: 'makes an existing column NOT NULL',
+    pattern: /\bALTER\s+COLUMN\b[^;]*?\bSET\s+NOT\s+NULL\b/i,
+  },
   { what: "changes a column's type", pattern: /\bALTER\s+COLUMN\b[^;]*?\bTYPE\b/i },
   { what: 'drops a type', pattern: /\bDROP\s+TYPE\b/i },
 ];
@@ -91,10 +152,14 @@ function migrationFolders(): string[] {
     .sort();
 }
 
-function narrowingsIn(folder: string): string[] {
-  const sql = statements(
-    readFileSync(join(MIGRATIONS_DIR, folder, 'migration.sql'), 'utf8'),
+function addsEnumValues(folder: string): boolean {
+  return ADDS_ENUM_VALUE.test(
+    statements(readFileSync(join(MIGRATIONS_DIR, folder, 'migration.sql'), 'utf8')),
   );
+}
+
+function narrowingsIn(folder: string): string[] {
+  const sql = statements(readFileSync(join(MIGRATIONS_DIR, folder, 'migration.sql'), 'utf8'));
   return NARROWINGS.filter((rule) => rule.pattern.test(sql)).map((rule) => rule.what);
 }
 
@@ -128,6 +193,35 @@ describe('migrations', () => {
       stale,
       `NARROWING lists these, but they no longer narrow anything. Remove them.`,
     ).toEqual([]);
+  });
+
+  it('records every migration that adds an enum value, and nothing that does not', () => {
+    const found = migrationFolders().filter((folder) => addsEnumValues(folder));
+
+    const unlisted = found.filter((folder) => !(folder in ADDS_ENUM_VALUES));
+    expect(
+      unlisted,
+      `These migrations add a value to an enum and are not in ADDS_ENUM_VALUES:\n` +
+        unlisted.map((f) => `  ${f}`).join('\n') +
+        `\n\nAn image from before one of these throws — on findMany, not just on the ` +
+        `row — as soon as any row uses the new value, and PostgreSQL cannot drop an ` +
+        `enum value afterwards. Add it with the values it introduces, and move the ` +
+        `second rollback floor in docs/runbook.md.`,
+    ).toEqual([]);
+
+    const stale = Object.keys(ADDS_ENUM_VALUES).filter((folder) => !found.includes(folder));
+    expect(stale, `ADDS_ENUM_VALUES lists these, but they add no enum value.`).toEqual([]);
+  });
+
+  it('names the enum floor in the runbook, and keeps it the newest one', () => {
+    const newest = [...Object.keys(ADDS_ENUM_VALUES)].sort().at(-1);
+    expect(newest, 'ADDS_ENUM_VALUES is empty').toBeDefined();
+    const runbook = readFileSync(join(MIGRATIONS_DIR, '..', '..', 'docs', 'runbook.md'), 'utf8');
+    expect(
+      runbook.includes(newest as string),
+      `docs/runbook.md does not name ${String(newest)}, which is the newest migration that ` +
+        `adds an enum value and therefore the floor for reading rolled-back images.`,
+    ).toBe(true);
   });
 
   it('names the rollback floor in the runbook, and keeps it the newest narrowing', () => {
