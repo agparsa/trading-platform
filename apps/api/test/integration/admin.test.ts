@@ -17,7 +17,6 @@ import { RiskConsoleService } from '../../src/admin/risk-console.service';
 import { LedgerService } from '../../src/accounts/ledger.service';
 import { AuditService } from '../../src/common/audit/audit.service';
 import { EmailPort } from '../../src/auth/email/email.port';
-import { PasswordService } from '../../src/auth/password.service';
 import { SessionsService } from '../../src/auth/sessions.service';
 import { TotpService } from '../../src/auth/totp.service';
 import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
@@ -33,14 +32,17 @@ import {
   hasTestDatabase,
   resetDatabase,
   seedTradingSymbols,
-  DEFAULT_TENANT_ID,
-} from './harness';
+  DEFAULT_TENANT_ID, testPasswordService } from './harness';
 import { buildTradingStack, type TradingStack } from './trading-stack';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 const KEY = generateEncryptionKey('test');
 
 class SilentEmailAdapter extends EmailPort {
+  constructor() {
+    super('no-reply@test.local');
+  }
+
   async send(): Promise<void> {}
 }
 
@@ -135,7 +137,7 @@ suite('Administration (integration)', () => {
     totp = new TotpService(
       prismaService,
       secrets as never,
-      new PasswordService(),
+      testPasswordService(),
       audit,
       config as never,
     );

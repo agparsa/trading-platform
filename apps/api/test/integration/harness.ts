@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import { PasswordService } from '../../src/auth/password.service';
 import { enterTenantScope, tenantScopeExtension, withTenant } from '@tp/tenancy';
 import { seedTenantRoles } from '../../../../prisma/roles';
 
@@ -466,4 +468,22 @@ export async function seedJpySymbol(prisma: PrismaClient): Promise<void> {
       closeMinute: 1440,
     })),
   });
+}
+
+/**
+ * A `PasswordService` with the deployment's default Argon2 cost.
+ *
+ * The cost became configurable when it turned out `PASSWORD_HASH_MEMORY_COST`
+ * and `PASSWORD_HASH_TIME_COST` were printed in `.env.example` and read by
+ * nothing. Deliberately the real defaults rather than a cheap setting: a suite
+ * that hashes at a cost production never uses is not exercising the thing
+ * production runs.
+ */
+export function testPasswordService(): PasswordService {
+  return new PasswordService(
+    new ConfigService({
+      PASSWORD_HASH_MEMORY_COST: 19_456,
+      PASSWORD_HASH_TIME_COST: 2,
+    } as never) as never,
+  );
 }

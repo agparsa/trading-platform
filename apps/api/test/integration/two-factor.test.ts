@@ -8,7 +8,6 @@ import { InvitesService } from '../../src/auth/invites.service';
 import { TotpService } from '../../src/auth/totp.service';
 import { SessionsService } from '../../src/auth/sessions.service';
 import { TokenService } from '../../src/auth/token.service';
-import { PasswordService } from '../../src/auth/password.service';
 import { EmailPort } from '../../src/auth/email/email.port';
 import { AccountAccessService } from '../../src/accounts/account-access.service';
 import { AccountsService } from '../../src/accounts/accounts.service';
@@ -19,7 +18,7 @@ import { base32Decode, codeForStep, stepFor } from '../../src/auth/totp';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { RolesService } from '../../src/permissions/roles.service';
 import { redisStub } from './redis-stub';
-import { createTestClient, hasTestDatabase, resetDatabase } from './harness';
+import { createTestClient, hasTestDatabase, resetDatabase, testPasswordService } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 
@@ -27,6 +26,10 @@ const PASSWORD = 'a-sufficiently-long-passphrase';
 const KEY = generateEncryptionKey('test');
 
 class SilentEmailAdapter extends EmailPort {
+  constructor() {
+    super('no-reply@test.local');
+  }
+
   async send(): Promise<void> {}
 }
 
@@ -65,7 +68,7 @@ suite('Two-factor authentication (integration)', () => {
     } as never);
 
     const prismaService = prisma as unknown as PrismaService;
-    const passwords = new PasswordService();
+    const passwords = testPasswordService();
     const tokens = new TokenService(new JwtService({}), config as never, prismaService);
     const access = new AccountAccessService(prismaService);
     const accounts = new AccountsService(

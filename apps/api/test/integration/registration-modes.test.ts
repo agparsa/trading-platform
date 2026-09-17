@@ -8,7 +8,6 @@ import { InvitesService } from '../../src/auth/invites.service';
 import { TotpService } from '../../src/auth/totp.service';
 import { SessionsService } from '../../src/auth/sessions.service';
 import { TokenService } from '../../src/auth/token.service';
-import { PasswordService } from '../../src/auth/password.service';
 import { EmailPort } from '../../src/auth/email/email.port';
 import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import { AccountAccessService } from '../../src/accounts/account-access.service';
@@ -18,11 +17,15 @@ import { AuditService } from '../../src/common/audit/audit.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { RolesService } from '../../src/permissions/roles.service';
 import { redisStub } from './redis-stub';
-import { createTestClient, hasTestDatabase, resetDatabase, DEFAULT_TENANT_ID } from './harness';
+import { createTestClient, hasTestDatabase, resetDatabase, DEFAULT_TENANT_ID, testPasswordService } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 
 class SilentEmail extends EmailPort {
+  constructor() {
+    super('no-reply@test.local');
+  }
+
   async send(): Promise<void> {}
 }
 
@@ -58,7 +61,7 @@ suite('Registration modes (integration)', () => {
   function wire(mode: 'open' | 'invite' | 'closed') {
     const config = new ConfigService<Record<string, unknown>, true>(baseConfig(mode) as never);
     const prismaService = prisma as unknown as PrismaService;
-    const passwords = new PasswordService();
+    const passwords = testPasswordService();
     const audit = new AuditService(prismaService);
     const tokens = new TokenService(new JwtService({}), config as never, prismaService);
     const secrets = new SecretBox(

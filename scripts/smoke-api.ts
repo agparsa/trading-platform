@@ -1535,7 +1535,18 @@ const checks: Check[] = [
           data: {
             tenantId: tenant.id,
             email: adminEmail,
-            passwordHash: await new PasswordService().hash(password),
+            passwordHash: await new PasswordService(
+              /**
+               * The deployment's own defaults, so the smoke user is hashed the
+               * way a real registration would be. A stand-in rather than a
+               * ConfigService: this script is built against the root tsconfig
+               * and does not resolve Nest's packages.
+               */
+              {
+                get: (key: string) =>
+                  key === 'PASSWORD_HASH_MEMORY_COST' ? 19_456 : 2,
+              } as never,
+            ).hash(password),
             displayName: 'Smoke Inviter',
             role: 'ADMIN',
             emailVerified: true,

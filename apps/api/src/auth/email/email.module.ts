@@ -19,7 +19,8 @@ import { LoggingEmailAdapter, NoopEmailAdapter } from './logging-email.adapter';
               'Refusing to start in production. Implement EmailPort with a real provider, or set EMAIL_PROVIDER=none.',
           );
         }
-        return provider === 'log' ? new LoggingEmailAdapter() : new NoopEmailAdapter();
+        const from = config.get('EMAIL_FROM', { infer: true });
+        return provider === 'log' ? new LoggingEmailAdapter(from) : new NoopEmailAdapter(from);
       },
     },
   ],

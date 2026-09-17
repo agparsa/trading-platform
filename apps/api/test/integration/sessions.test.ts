@@ -8,7 +8,6 @@ import { InvitesService } from '../../src/auth/invites.service';
 import { SessionsService } from '../../src/auth/sessions.service';
 import { TotpService } from '../../src/auth/totp.service';
 import { TokenService } from '../../src/auth/token.service';
-import { PasswordService } from '../../src/auth/password.service';
 import { EmailPort, type EmailMessage } from '../../src/auth/email/email.port';
 import { AccountAccessService } from '../../src/accounts/account-access.service';
 import { AccountsService } from '../../src/accounts/accounts.service';
@@ -18,7 +17,7 @@ import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypt
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { RolesService } from '../../src/permissions/roles.service';
 import { redisStub } from './redis-stub';
-import { createTestClient, hasTestDatabase, resetDatabase } from './harness';
+import { createTestClient, hasTestDatabase, resetDatabase, testPasswordService } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 
@@ -31,6 +30,10 @@ const FIREFOX_LINUX = 'Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 
 const CHROME_MAC_OLDER = CHROME_MAC.replace('131.0.0.0', '120.0.0.0');
 
 class CapturingEmailAdapter extends EmailPort {
+  constructor() {
+    super('no-reply@test.local');
+  }
+
   readonly sent: EmailMessage[] = [];
   async send(message: EmailMessage): Promise<void> {
     this.sent.push(message);
@@ -74,7 +77,7 @@ suite('Sessions and device visibility (integration)', () => {
     } as never);
 
     const prismaService = prisma as unknown as PrismaService;
-    const passwords = new PasswordService();
+    const passwords = testPasswordService();
     tokens = new TokenService(new JwtService({}), config as never, prismaService);
     const audit = new AuditService(prismaService);
     const secrets = new SecretBox(parseEncryptionKeys(generateEncryptionKey('test')));
@@ -319,6 +322,10 @@ suite('Sessions and device visibility (integration)', () => {
       await signIn(CHROME_MAC);
 
       const failing = new (class extends EmailPort {
+        constructor() {
+          super('no-reply@test.local');
+        }
+
         async send(): Promise<void> {
           throw new Error('smtp is down');
         }

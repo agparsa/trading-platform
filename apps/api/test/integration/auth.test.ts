@@ -8,7 +8,6 @@ import { TotpService } from '../../src/auth/totp.service';
 import { SessionsService } from '../../src/auth/sessions.service';
 import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypto-core';
 import { TokenService } from '../../src/auth/token.service';
-import { PasswordService } from '../../src/auth/password.service';
 import { EmailPort } from '../../src/auth/email/email.port';
 import { AccountAccessService } from '../../src/accounts/account-access.service';
 import { AccountsService } from '../../src/accounts/accounts.service';
@@ -17,12 +16,16 @@ import { AuditService } from '../../src/common/audit/audit.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { RolesService } from '../../src/permissions/roles.service';
 import { redisStub } from './redis-stub';
-import { createTestClient, hasTestDatabase, resetDatabase } from './harness';
+import { createTestClient, hasTestDatabase, resetDatabase, testPasswordService } from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 
 /** Captures messages instead of sending them, so tests can read the token out. */
 class CapturingEmailAdapter extends EmailPort {
+  constructor() {
+    super('no-reply@test.local');
+  }
+
   readonly sent: Array<{ to: string; subject: string; text: string }> = [];
   async send(message: { to: string; subject: string; text: string }): Promise<void> {
     this.sent.push(message);
@@ -92,7 +95,7 @@ suite('Auth (integration)', () => {
     } as any);
 
     const prismaService = prisma as unknown as PrismaService;
-    const passwords = new PasswordService();
+    const passwords = testPasswordService();
     tokens = new TokenService(new JwtService({}), config as any, prismaService);
     const ledger = new LedgerService();
     const access = new AccountAccessService(prismaService);

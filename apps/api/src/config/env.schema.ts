@@ -205,6 +205,43 @@ export const envSchema = z
     // development stand-in and refuses to run under NODE_ENV=production.
     EMAIL_PROVIDER: z.enum(['log', 'none']).default('log'),
     EMAIL_FROM: z.string().default('no-reply@trading-platform.local'),
+    /**
+     * Argon2id cost, tuned to the hardware this runs on.
+     *
+     * These two names were printed in `.env.example`, in the security block
+     * directly under `SECRET_ENCRYPTION_KEYS`, with plausible OWASP values —
+     * and existed **nowhere else in the repository**. An operator hardening a
+     * deployment could raise the iteration count, restart, and have changed
+     * nothing, with no error to say so, because a name no schema knows is a
+     * name nothing rejects.
+     *
+     * **The floor is the OWASP baseline and the schema refuses to go under
+     * it.** A knob that can quietly weaken password hashing is worse than a
+     * fixed cost: the deployment that sets it to 1 looks exactly like the
+     * deployment that tuned it properly.
+     *
+     * The ceiling is arithmetic rather than taste. Argon2 allocates its memory
+     * for the duration of the hash, and sign-ins arrive together: at
+     * `HTTP_MAX_IN_FLIGHT` concurrent logins, 128 MiB each would ask for more
+     * memory than any sensible host has. Tune upward with that product in mind.
+     *
+     * Verification is unaffected either way — measured, not assumed. Argon2
+     * encodes `m`, `t` and `p` in the hash string itself, so every password
+     * stored under the old cost keeps verifying after a change, and only new
+     * hashes use the new one.
+     */
+    PASSWORD_HASH_MEMORY_COST: z.coerce
+      .number()
+      .int()
+      .min(19_456, 'below OWASP’s Argon2id baseline of 19456 KiB')
+      .max(131_072)
+      .default(19_456),
+    PASSWORD_HASH_TIME_COST: z.coerce
+      .number()
+      .int()
+      .min(2, 'below OWASP’s Argon2id baseline of 2 iterations')
+      .max(10)
+      .default(2),
     EMAIL_VERIFICATION_TTL_HOURS: z.coerce.number().int().min(1).default(24),
     PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).default(60),
     LOGIN_MAX_FAILED_ATTEMPTS: z.coerce.number().int().min(1).default(10),

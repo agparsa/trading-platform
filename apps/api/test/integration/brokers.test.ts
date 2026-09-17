@@ -11,7 +11,6 @@ import { LedgerService } from '../../src/accounts/ledger.service';
 import { AuthService } from '../../src/auth/auth.service';
 import { EmailPort } from '../../src/auth/email/email.port';
 import { InvitesService } from '../../src/auth/invites.service';
-import { PasswordService } from '../../src/auth/password.service';
 import { SessionsService } from '../../src/auth/sessions.service';
 import { TokenService } from '../../src/auth/token.service';
 import { TotpService } from '../../src/auth/totp.service';
@@ -25,13 +24,16 @@ import {
   DEFAULT_TENANT_SLUG,
   createTestClient,
   hasTestDatabase,
-  resetDatabase,
-} from './harness';
+  resetDatabase, testPasswordService } from './harness';
 import { redisStub } from './redis-stub';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 
 class SilentEmail extends EmailPort {
+  constructor() {
+    super('no-reply@test.local');
+  }
+
   async send(): Promise<void> {}
 }
 
@@ -89,7 +91,7 @@ suite('Brokers (integration)', () => {
     resolver = new TenantResolver(prismaService, config as never);
     brokers = new BrokersService(prismaService, audit, invites, resolver);
 
-    const passwords = new PasswordService();
+    const passwords = testPasswordService();
     const secrets = new SecretBox(parseEncryptionKeys(CONFIG.SECRET_ENCRYPTION_KEYS)) as never;
     auth = new AuthService(
       prismaService,

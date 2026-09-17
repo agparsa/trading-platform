@@ -11,7 +11,22 @@ Validation errors print **field names only**. Values are secrets.
 
 ## Credentials
 
-- Passwords: Argon2id. The plaintext never reaches the database or a log.
+- Passwords: Argon2id at OWASP's baseline — 19 MiB, two iterations, one lane.
+  The plaintext never reaches the database or a log. The cost is tunable per
+  deployment with `PASSWORD_HASH_MEMORY_COST` and `PASSWORD_HASH_TIME_COST`, and
+  the schema **refuses anything below the baseline**: a knob that can quietly
+  weaken hashing is worse than a fixed cost, because the deployment that set it
+  to 1 looks exactly like the one that tuned it properly. Raising it is safe for
+  everybody already registered — Argon2 records `m`, `t` and `p` inside each
+  hash and verification reads them from there, measured rather than assumed
+  before the cost was made configurable. Only new hashes use the new figure.
+
+  Both names were printed in `.env.example`, in this same block, from the first
+  phase until now, and **read by nothing**. An operator hardening a deployment
+  could raise the iteration count, restart, and have changed nothing, with no
+  error to say so — a name no schema knows is a name nothing rejects.
+  `scripts/env-example.test.ts` now checks every name in that file against the
+  two schemas.
 - Refresh tokens: only a SHA-256 hash is stored. A database leak yields no usable
   sessions.
 - Token rotation: each refresh issues a new token and records `replacedBy`. Reuse

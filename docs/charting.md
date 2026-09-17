@@ -13,7 +13,10 @@ Consequences for this codebase:
 
 - `apps/web/public/charting_library/` and `apps/web/public/datafeeds/` are
   git-ignored. Unpack the licensed library there.
-- `NEXT_PUBLIC_CHARTING_LIBRARY_PATH` points at it (`/charting_library/`).
+- `NEXT_PUBLIC_CHARTING_LIBRARY_PATH` is the name that will point at it
+  (`/charting_library/`). **Nothing reads it yet** — the loader that would is
+  part of the integration this section is waiting on. It is in `.env.example` so
+  the setting is not invented twice, marked there as reserved.
 - Nothing about the library is faked. The chart on screen is a different,
   Apache-2.0 renderer, and the panel says so.
 

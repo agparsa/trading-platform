@@ -5,7 +5,6 @@ import { parseCredential } from '@tp/crypto-core';
 import { DomainError, Permission, TradingErrorCode, UserRole } from '@tp/shared-types';
 import { withTenant } from '@tp/tenancy';
 import { AuditService } from '../../src/common/audit/audit.service';
-import { PasswordService } from '../../src/auth/password.service';
 import { CredentialsService } from '../../src/credentials/credentials.service';
 import type { NotificationsService } from '../../src/notifications/notifications.service';
 import { RolesService } from '../../src/permissions/roles.service';
@@ -17,8 +16,8 @@ import {
   createTenant,
   createTestClient,
   hasTestDatabase,
-  resetDatabase,
-} from './harness';
+  resetDatabase, testPasswordService } from './harness';
+import type { PasswordService } from '../../src/auth/password.service';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 const PASSWORD = 'correct horse battery staple 9';
@@ -63,7 +62,7 @@ suite('API keys and service tokens', () => {
     prisma = createTestClient();
     await prisma.$connect();
     prismaService = prisma as unknown as PrismaService;
-    passwords = new PasswordService();
+    passwords = testPasswordService();
   });
   afterAll(async () => {
     await prisma.$disconnect();

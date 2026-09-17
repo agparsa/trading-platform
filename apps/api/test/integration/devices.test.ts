@@ -25,6 +25,10 @@ const suite = hasTestDatabase ? describe : describe.skip;
 
 /** Sessions need an email port for the "signed in from a new device" notice; nothing here reads mail. */
 class SilentEmailAdapter extends EmailPort {
+  constructor() {
+    super('no-reply@test.local');
+  }
+
   async send(): Promise<void> {
     return undefined;
   }
