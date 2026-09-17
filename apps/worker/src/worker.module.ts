@@ -24,6 +24,13 @@ import { PushModule } from './push/push.module';
       envFilePath: ['.env'],
       validate: validateEnv,
     }),
+    /**
+     * No `redact` block, deliberately. The API's list is entirely made of
+     * `req.*` and `res.*` paths, and this process is a headless application
+     * context that serves no HTTP — there is no request here to redact, and
+     * copying the list across would be four more rules that remove nothing.
+     * `scripts/log-redaction.test.ts` pins that this stays true.
+     */
     LoggerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({

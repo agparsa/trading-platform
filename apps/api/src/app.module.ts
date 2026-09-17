@@ -47,6 +47,7 @@ import { EventsModule } from './realtime/events.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { PlatformMetricsModule } from './metrics/platform-metrics.module';
 import { BearerAuthGuard } from './common/guards/bearer-auth.guard';
+import { redactionOptions } from './common/logging';
 import { trackerFor } from './common/throttler-tracker';
 import { IpRulesGuard } from './security/ip-rules.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -69,19 +70,11 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
             config.get('NODE_ENV', { infer: true }) === 'development'
               ? { target: 'pino-pretty', options: { singleLine: true, colorize: true } }
               : undefined,
-          // Credentials and tokens must never reach a log aggregator.
-          redact: {
-            paths: [
-              'req.headers.authorization',
-              'req.headers.cookie',
-              'req.body.password',
-              'req.body.currentPassword',
-              'req.body.newPassword',
-              'req.body.totpCode',
-              'res.headers["set-cookie"]',
-            ],
-            remove: true,
-          },
+          // Credentials and tokens must never reach a log aggregator. The list
+          // lives in `common/logging.ts`, which says which of these rules
+          // remove something today and which are there for the day a body
+          // serialiser is added; `logging.test.ts` measures both.
+          redact: redactionOptions(),
         },
       }),
     }),

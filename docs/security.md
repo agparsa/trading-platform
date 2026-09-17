@@ -31,14 +31,44 @@ wildcard, so a stray comma cannot open the API to every origin.
 
 ## Logging
 
-Pino, structured. Redacted and **removed**, not masked:
+Pino, structured. The list lives in `apps/api/src/common/logging.ts` and is the
+only place to edit it.
+
+**No request body is ever serialised.** `pino-http`'s request serialiser emits
+id, method, url, query, params, headers, remoteAddress and remotePort, and
+nothing else. That is the guarantee, and `logging.test.ts` asserts it by sending
+a body full of credentials through a real pino stack **with the redaction turned
+off** and finding none of them.
+
+Three rules therefore have something to remove, and each is measured both ways —
+present in the log without the configuration, absent with it:
 
 ```
 req.headers.authorization
 req.headers.cookie
-req.body.password / currentPassword / newPassword / totpCode
 res.headers["set-cookie"]
 ```
+
+Removed rather than masked: a key left behind with `[Redacted]` still says which
+requests carried a credential.
+
+The body paths — `password`, `currentPassword`, `newPassword`, `totpCode`,
+`code`, `challengeToken`, `refreshToken`, `token`, `inviteCode`, `pushToken` —
+**remove nothing today**, and are kept because adding a body serialiser is the
+first thing anybody reaches for when a validation failure has to be diagnosed in
+production. `scripts/log-redaction.test.ts` checks that list against every zod
+schema in the API: a new field whose name looks like a credential must be
+redacted or exempted by name with a reason, and it must be at least as complete
+as the audit log's own list.
+
+**A query string cannot be redacted.** `req.url` is logged whole, and logged
+again by nginx and by anything else in front of it. The WebSocket gateway reads
+its token from the handshake `auth` rather than a query parameter for that
+reason; the same test holds every HTTP route to it.
+
+The worker has no redaction block and needs none: it is a headless application
+context and serves no HTTP, so there is no request to redact. A test pins that,
+because the day it grows an HTTP surface the question comes back.
 
 Health indicators report `error.name`, never `error.message` — a Postgres
 connection error message contains the connection string.
