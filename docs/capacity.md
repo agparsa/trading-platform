@@ -208,6 +208,32 @@ the accounts connected to it. Reported as a limit, not a defect.
 | Newest tick age, under load | ~200–300ms                                |
 | Frames, 200 sockets         | ~104,000 over the run, zero sequence gaps |
 
+## Run again on 18 September 2026, with 22,918 open positions
+
+Re-run after a week of changes to the request path — HTTP metrics middleware
+ahead of the drain, a rewritten day boundary, a report window resolver — to see
+whether any of it cost anything. It did not, and the figures moved only with
+open interest:
+
+|                                 | 21,292 positions | 22,918 positions |
+| ------------------------------- | ---------------- | ---------------- |
+| One order, unloaded             | 54 ms            | **52 ms**        |
+| Burst throughput                | 95 /s            | **76.7 /s**      |
+| Steady phase                    | p50 4.7 s        | **p50 2.3 s**    |
+| Newest tick age after the burst | 171 ms           | **495 ms**       |
+| Frames, 200 sockets             | 55,630           | 53,430           |
+
+**The one number worth reading is `Burst rejections: 506`.** Those are
+admission control shedding, `SERVICE_UNAVAILABLE` and `STALE_QUOTE` — the
+platform declining rather than filling at a price it did not trust. Until this
+week they were invisible: `tp_http_requests_total` was declared and never
+incremented, so the shipped `RequestsShed` alert queried a series that has never
+existed. It is fed now, which means a burst like this one would page somebody
+for the first time.
+
+Unloaded service time did not move, which is the thing the new middleware could
+have cost and did not: it records on `finish`, off the request's critical path.
+
 ## Run again on 17 September 2026, with 21,292 open positions
 
 The same harness, same two-CPU container, on a platform that had accumulated
