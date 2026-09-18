@@ -64,6 +64,38 @@ describe('health routes and the global prefix', () => {
   });
 
   /**
+   * And the layer this test originally stopped short of.
+   *
+   * Nest's exclusion list is only half of it: nginx decides what reaches the
+   * API at all, and its block read `location ~ ^/(health|ready)$`. The `$`
+   * after the group admitted those two exact paths and nothing else, so
+   * `/health/market` answered 404 from the internet — from the day it was
+   * written — while the container served it perfectly. The deploy is what
+   * found it, because the guard checked the application and stopped at its
+   * boundary.
+   */
+  it('is admitted by the nginx location block, for every probe path', () => {
+    const conf = readFileSync(
+      join(__dirname, '..', '..', '..', '..', 'docker', 'nginx', 'nginx.conf'),
+      'utf8',
+    );
+    const block = /location\s+~\s+\^([^\s]+)\s*\{/g;
+    const patterns = [...conf.matchAll(block)]
+      .map((match) => match[1])
+      .filter((pattern): pattern is string => pattern !== undefined)
+      .filter((pattern) => /health|ready/.test(pattern));
+    expect(patterns.length, 'no health location block found in nginx.conf').toBeGreaterThan(0);
+
+    const unreachable = HEALTH_ROUTES.filter(
+      (route) => !patterns.some((pattern) => new RegExp(`^${pattern}`).test(`/${route}`)),
+    );
+    expect(
+      unreachable,
+      'the API serves these and nginx does not pass them, so they 404 from the internet',
+    ).toEqual([]);
+  });
+
+  /**
    * The documents and the production verifier print these paths. If a route is
    * renamed, they have to move with it.
    */
