@@ -20,8 +20,15 @@ import { ReportsService } from './reports.service';
 const requestSchema = z
   .object({
     kind: z.enum(ALL_REPORT_KINDS as unknown as [string, ...string[]]),
-    from: z.string().datetime({ offset: true }),
-    to: z.string().datetime({ offset: true }),
+    /**
+     * An instant with an offset, or a plain date.
+     *
+     * A date is what a person means, and it is resolved to that trading day's
+     * edge in `TRADING_SERVER_TIMEZONE` — see `report-window.ts`. An instant is
+     * passed through, so an integration keeps the exact window it asked for.
+     */
+    from: z.union([z.string().datetime({ offset: true }), z.string().date()]),
+    to: z.union([z.string().datetime({ offset: true }), z.string().date()]),
     accountId: z.string().uuid().optional(),
   })
   .strict();

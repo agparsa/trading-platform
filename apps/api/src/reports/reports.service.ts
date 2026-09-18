@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import {
@@ -12,12 +13,14 @@ import {
 import { reportSealContext } from '@tp/crypto-core';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { requireTenantId } from '@tp/tenancy';
+import type { Env } from '../config/env.schema';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { RolesService } from '../permissions/roles.service';
 import { QueuePublisher } from '../jobs/queue-publisher.service';
 import { QueueName } from '../jobs/queues';
 import { SecretBoxService } from '../common/crypto/crypto.module';
+import { resolveWindowInput } from './report-window';
 
 /**
  * The context a report seal is bound to, so a sealed file cannot be moved
@@ -88,6 +91,7 @@ export class ReportsService {
     @Inject(RolesService) private readonly roles: RolesService,
     @Inject(QueuePublisher) private readonly queue: QueuePublisher,
     @Inject(SecretBoxService) private readonly secrets: SecretBoxService,
+    @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
   ) {}
 
   private async assertMayRead(kind: ReportKind, actor: { readonly role: string }): Promise<void> {
@@ -117,7 +121,17 @@ export class ReportsService {
     const kind: ReportKind = input.kind;
     await this.assertMayRead(kind, actor);
 
-    const parsed = readWindow(input.from, input.to);
+    /**
+     * A date means a trading day in the server's timezone, not a UTC one. The
+     * panel used to send UTC midnights for dates a person picked; see
+     * `report-window.ts` for what that cost on a non-UTC server.
+     */
+    const asked = resolveWindowInput(
+      this.config.getOrThrow('TRADING_SERVER_TIMEZONE', { infer: true }),
+      input.from,
+      input.to,
+    );
+    const parsed = readWindow(asked.from, asked.to);
     if ('problem' in parsed) {
       throw new DomainError(TradingErrorCode.VALIDATION_FAILED, explainWindow(parsed.problem), {
         from: input.from,

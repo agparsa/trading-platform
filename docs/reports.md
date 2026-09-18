@@ -56,6 +56,38 @@ complete and is not, which is the failure this whole feature exists to stop. Its
 written, and redacting again at export would make the file and the audit screen
 disagree about what happened.
 
+### Which day, as well as which timestamp
+
+The section below reasons about *which timestamp* a window is anchored on. It
+said nothing about *which timezone*, and the panel had quietly chosen one:
+
+```ts
+from: new Date(`${from}T00:00:00.000Z`).toISOString(),
+to:   new Date(`${to}T23:59:59.999Z`).toISOString(),
+```
+
+An operator picks 1–31 March in a date picker and gets **1 March 00:00 UTC to
+31 March 23:59:59.999 UTC**. Every other day in this platform — today's P&L, a
+DAY order's expiry, the swap accrual key — is midnight in
+`TRADING_SERVER_TIMEZONE`. On a server at UTC+9 those disagree by nine hours:
+the first nine hours of 1 March are **missing from a file headed March**, and
+nine hours of April are in it.
+
+`TRADING_SERVER_TIMEZONE` is `UTC` in both shipped examples, so this was latent
+rather than live — and it stops being latent the moment anybody sets the broker
+timezone the knob exists for, which for an FX venue is the normal case.
+
+**A request may now say a date.** `from` and `to` accept either an instant with
+an offset — passed through untouched, so an integration keeps exactly the window
+it asked for — or a plain `YYYY-MM-DD`, which is resolved to that trading day's
+edges in the server's timezone. The panel sends the dates a person picked; the
+browser has no business deciding which day the trading server is having.
+
+The end is one millisecond before the next midnight, because the worker's
+queries compare with `lte` and a row stamped exactly at midnight belongs to one
+report, not two. A month containing a clock change is 743 or 745 hours, and the
+tests assert that figure rather than 744.
+
 ### The window column is the design, for the last two
 
 The first three kinds are settled things. A closed trade has one time that

@@ -89,6 +89,7 @@ suite('reports', () => {
       roles,
       queue as never,
       secrets as SecretBoxService,
+      new ConfigService({ TRADING_SERVER_TIMEZONE: 'UTC' } as never) as never,
     );
     builder = new ReportBuilder(prismaService as never, config() as never, secrets);
     maintenance = new MaintenanceService(prismaService as never);

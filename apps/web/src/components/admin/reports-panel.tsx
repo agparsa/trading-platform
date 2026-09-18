@@ -145,8 +145,19 @@ export function ReportsPanel() {
               request.mutate({
                 kind: chosen.kind,
                 // The whole of the last day is wanted, not midnight at its start.
-                from: new Date(`${from}T00:00:00.000Z`).toISOString(),
-                to: new Date(`${to}T23:59:59.999Z`).toISOString(),
+                /**
+                 * The dates as picked, not UTC midnights built from them.
+                 *
+                 * This used to send `${from}T00:00:00.000Z`, which means a UTC
+                 * day — while every other day in the platform is midnight in
+                 * `TRADING_SERVER_TIMEZONE`. On a server at UTC+9 a report
+                 * headed "March" began nine hours into 1 March and ran nine
+                 * hours into April. The API resolves a date in the server's own
+                 * timezone; the browser has no business deciding which day the
+                 * trading server is having.
+                 */
+                from,
+                to,
               });
             }}
           >
