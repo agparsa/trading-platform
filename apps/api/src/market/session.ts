@@ -232,6 +232,25 @@ export function zonedDayAndMinute(atMs: number, timeZone: string): { day: number
  * Built from `zonedDayAndMinute` rather than date arithmetic because that is the
  * one function here that knows about daylight saving. On the day a zone shifts,
  * midnight is 23 or 25 hours away, not 24.
+ *
+ * **That last sentence was in this comment while the code below did the naive
+ * addition anyway.** Measured, on the arithmetic as shipped:
+ *
+ * ```text
+ * Europe/London    order 28/03/2027 00:30  ->  expiry 29/03/2027 01:00   +60 min
+ * Europe/London    order 25/10/2026 01:30  ->  expiry 25/10/2026 23:00   -60 min
+ * America/New_York order 14/03/2027 01:30  ->  expiry 15/03/2027 01:00   +60 min
+ * America/New_York order 01/11/2026 00:30  ->  expiry 01/11/2026 23:00   -60 min
+ * ```
+ *
+ * A DAY order placed in those hours outlived its day by an hour — able to fill
+ * after the trader was told it would be gone — or was cancelled an hour early
+ * without anyone being told. Twice a year, for the orders placed between
+ * midnight and the shift.
+ *
+ * The correction is the one `startOfTradingDay` does, applied in the other
+ * direction: land the naive candidate, read the zone back at it, and move by
+ * whatever the wall clock says is left over.
  */
 export function endOfTradingDay(timeZone: string, atMs: number): number {
   const { minute } = zonedDayAndMinute(atMs, timeZone);
@@ -239,7 +258,13 @@ export function endOfTradingDay(timeZone: string, atMs: number): number {
   // Snap to the minute first: the remaining seconds within the current minute
   // would otherwise push the expiry a fraction past midnight.
   const startOfMinute = Math.floor(atMs / 60_000) * 60_000;
-  return startOfMinute + minutesLeft * 60_000;
+  const candidate = startOfMinute + minutesLeft * 60_000;
+
+  const drift = zonedDayAndMinute(candidate, timeZone).minute;
+  if (drift === 0) return candidate;
+  // Landing after midnight means come back by the excess; landing before it
+  // (late in the day that is ending) means go on by the shortfall.
+  return candidate - (drift > 720 ? drift - 1440 : drift) * 60_000;
 }
 
 /**
@@ -252,8 +277,14 @@ export function endOfTradingDay(timeZone: string, atMs: number): number {
  *
  * The naive subtraction lands an hour off on the day a zone shifts, because a
  * daylight-saving day is 23 or 25 hours long while its wall clock still reads
- * 1440 minutes. One correction is always enough: offsets move by whole hours,
- * once per transition.
+ * 1440 minutes.
+ *
+ * One correction is always enough, and not for the reason first written here:
+ * the old comment said "offsets move by whole hours", which is not true —
+ * Australia/Lord_Howe shifts by thirty minutes. It holds because a transition
+ * moves the clock once and the correction is whatever the wall clock says is
+ * left over, of any size. Both zones are swept minute by minute across their
+ * transitions in `session.test.ts` rather than argued about here.
  */
 export function startOfTradingDay(timeZone: string, atMs: number): number {
   const { minute } = zonedDayAndMinute(atMs, timeZone);

@@ -178,6 +178,20 @@ disputing a fill can see exactly what happened rather than being told a number.
 | ----- | --------------------------------------------------------- |
 | `GTC` | Rests until filled or cancelled                           |
 | `DAY` | Expires at the next midnight in `TRADING_SERVER_TIMEZONE` |
+
+`DAY` is resolved to a timestamp once, when the order is placed, so nothing
+downstream has to decide what a day means and a server that changes timezone
+cannot reinterpret an order already resting.
+
+**That midnight is a wall-clock midnight, which is 23 or 25 hours away twice a
+year.** `endOfTradingDay` used to add the remaining minutes as if a day were
+always 1440 of them, so an order placed between midnight and a clock change
+expired an hour late — able to fill after the trader was told it would be gone —
+or an hour early, cancelled with nothing said. The comment above the function
+described the correction; the code did not do it. It does now, and
+`session.test.ts` sweeps every minute of six transition days in three zones,
+one of which (`Australia/Lord_Howe`) shifts by thirty minutes rather than an
+hour.
 | `GTD` | Expires at a supplied timestamp                           |
 
 `DAY` is resolved to a timestamp **once, at placement**, so nothing downstream

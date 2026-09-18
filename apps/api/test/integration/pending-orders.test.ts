@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { zonedDayAndMinute } from '../../src/market/session';
 import type { PrismaClient } from '@prisma/client';
 import { Money } from '@tp/financial-core';
 import { LedgerService } from '../../src/accounts/ledger.service';
@@ -432,6 +433,20 @@ suite('Resting orders (integration)', () => {
       });
       expect(order.expiresAt).not.toBeNull();
       expect(new Date(order.expiresAt!).getTime()).toBeGreaterThan(Date.now());
+
+      /**
+       * And it is the next *local midnight*, not merely some future instant.
+       *
+       * "In the future" was the whole of this assertion, and almost any answer
+       * satisfies it — including the one this platform actually produced on a
+       * daylight-saving day, which was an hour out in both directions. The
+       * stack runs in UTC, so this cannot exercise a shift; what it pins is the
+       * property the order path promises, so a regression in `resolveExpiry`
+       * shows up here and not only in the unit test for the arithmetic.
+       */
+      const expiry = new Date(order.expiresAt!);
+      expect(zonedDayAndMinute(expiry.getTime(), 'UTC').minute).toBe(0);
+      expect(expiry.getTime() - Date.now()).toBeLessThanOrEqual(25 * 3_600_000);
     });
   });
 

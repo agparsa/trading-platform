@@ -133,15 +133,83 @@ describe('endOfTradingDay', () => {
   });
 
   /**
-   * On the day a zone shifts, midnight is 23 or 25 hours away rather than 24.
-   * Date arithmetic would get this wrong; `zonedDayAndMinute` does not.
+   * The test that used to be here was named for this bug and could not detect
+   * it:
+   *
+   * ```ts
+   * const at = Date.UTC(2026, 9, 25, 1, 0, 0);
+   * const expiry = endOfTradingDay('Europe/London', at);
+   * expect(expiry - at).toBeLessThanOrEqual(25 * 3_600_000);
+   * expect(expiry - at).toBeGreaterThan(0);
+   * ```
+   *
+   * `minutesLeft` is at most 1440, so the gap is always between zero and
+   * twenty-four hours — **every answer the function can return passes both
+   * assertions**, including the wrong ones. It also picked 01:00 UTC, which on
+   * that date is just *after* the shift, so no transition lay between the
+   * instant and the midnight being computed: one of the few hours that day when
+   * the naive arithmetic is right by luck.
+   *
+   * Replaced with the instants where it can actually be wrong — placed before
+   * the shift, so the shift falls between the order and its expiry — and with a
+   * sweep that does not depend on choosing them well.
    */
-  it('handles a daylight-saving transition', () => {
-    // 2026-10-25 is the UK clock change; 01:00 UTC is 01:00 local after it.
-    const at = Date.UTC(2026, 9, 25, 1, 0, 0);
-    const expiry = endOfTradingDay('Europe/London', at);
-    expect(expiry - at).toBeLessThanOrEqual(25 * 3_600_000);
-    expect(expiry - at).toBeGreaterThan(0);
+  it('lands on local midnight when the shift falls between the order and its expiry', () => {
+    const cases = [
+      // Spring forward: the naive sum used to land at 01:00 the next day, so a
+      // DAY order outlived its day by an hour and could still fill.
+      ['Europe/London', Date.UTC(2027, 2, 28, 0, 30)],
+      ['America/New_York', Date.UTC(2027, 2, 14, 6, 30)],
+      // Fall back: it used to land at 23:00 the same day — cancelled an hour
+      // early, with nothing said.
+      ['Europe/London', Date.UTC(2026, 9, 25, 0, 30)],
+      ['America/New_York', Date.UTC(2026, 10, 1, 4, 30)],
+    ] as const;
+
+    for (const [zone, at] of cases) {
+      const expiry = endOfTradingDay(zone, at);
+      expect(zonedDayAndMinute(expiry, zone).minute, `${zone} @ ${at}`).toBe(0);
+      expect(expiry).toBeGreaterThan(at);
+      // And the day really was not 24 hours, so the case is exercising what it
+      // claims to: a test that passed here on a 1440-minute day proves nothing.
+      expect(expiry - at, `${zone} was not a shifting day`).not.toBe(
+        (1440 - zonedDayAndMinute(at, zone).minute) * 60_000,
+      );
+    }
+  });
+
+  /**
+   * The sweep, because choosing the failing instant by hand is how the last one
+   * missed. Every minute of both transition days in four zones — including
+   * Australia/Lord_Howe, whose shift is **thirty minutes**, which is the case
+   * that disproves the "offsets move by whole hours" reasoning the code used to
+   * lean on.
+   */
+  it('lands on local midnight for every minute of a transition day', () => {
+    const days: ReadonlyArray<readonly [string, number]> = [
+      ['Europe/London', Date.UTC(2027, 2, 28, 0, 0)],
+      ['Europe/London', Date.UTC(2026, 9, 25, 0, 0)],
+      ['America/New_York', Date.UTC(2027, 2, 14, 5, 0)],
+      ['America/New_York', Date.UTC(2026, 10, 1, 4, 0)],
+      ['Australia/Lord_Howe', Date.UTC(2026, 9, 3, 13, 0)],
+      ['Australia/Lord_Howe', Date.UTC(2027, 3, 3, 15, 0)],
+      // A control: an ordinary day must still come out right.
+      ['Europe/London', Date.UTC(2026, 8, 18, 0, 0)],
+    ];
+
+    for (const [zone, startOfDayUtc] of days) {
+      for (let offset = 0; offset < 26 * 60; offset += 1) {
+        const at = startOfDayUtc + offset * 60_000;
+        const expiry = endOfTradingDay(zone, at);
+        expect(
+          zonedDayAndMinute(expiry, zone).minute,
+          `${zone} at +${offset}m from ${new Date(startOfDayUtc).toISOString()}`,
+        ).toBe(0);
+        expect(expiry, `${zone} expiry not after the order`).toBeGreaterThan(at);
+        // Never more than a wall-clock day away.
+        expect(expiry - at).toBeLessThanOrEqual(25 * 3_600_000);
+      }
+    }
   });
 });
 
@@ -156,9 +224,39 @@ describe('startOfTradingDay', () => {
     for (const zone of ['UTC', 'Europe/London', 'America/New_York', 'Asia/Tokyo']) {
       const at = Date.UTC(2026, 6, 15, 13, 47, 31);
       const start = startOfTradingDay(zone, at);
-      expect(endOfTradingDay(zone, start)).toBe(start + 1440 * 60_000);
+      /**
+       * `+ 1440 * 60_000` was the assertion here, and on an ordinary day it is
+       * right. It is also the bug `endOfTradingDay` had, written down as the
+       * expectation — a day whose wall clock reads 1440 minutes is 23 or 25
+       * hours long twice a year. Asserting local midnight instead says the
+       * thing that is true every day.
+       */
+      const end = endOfTradingDay(zone, start);
+      expect(zonedDayAndMinute(end, zone).minute).toBe(0);
+      expect(end).toBeGreaterThan(start);
       expect(start).toBeLessThanOrEqual(at);
       expect(at - start).toBeLessThan(25 * 60 * 60_000);
+    }
+  });
+
+  /**
+   * The same pairing on the days it can come apart. A day must start at local
+   * midnight and end at the next one, whatever the clock did in between.
+   */
+  it('starts and ends a shifting day at local midnight', () => {
+    for (const [zone, at] of [
+      ['Europe/London', Date.UTC(2027, 2, 28, 12, 0)],
+      ['Europe/London', Date.UTC(2026, 9, 25, 12, 0)],
+      ['America/New_York', Date.UTC(2027, 2, 14, 12, 0)],
+      ['America/New_York', Date.UTC(2026, 10, 1, 12, 0)],
+      ['Australia/Lord_Howe', Date.UTC(2026, 9, 3, 20, 0)],
+    ] as const) {
+      const start = startOfTradingDay(zone, at);
+      const end = endOfTradingDay(zone, start);
+      expect(zonedDayAndMinute(start, zone).minute, `${zone} start`).toBe(0);
+      expect(zonedDayAndMinute(end, zone).minute, `${zone} end`).toBe(0);
+      expect(end - start).toBeGreaterThanOrEqual(23 * 3_600_000);
+      expect(end - start).toBeLessThanOrEqual(25 * 3_600_000);
     }
   });
 
