@@ -42,6 +42,21 @@ export interface FeatureDefinition {
   readonly authority: FeatureAuthority;
   readonly enforcement: FeatureEnforcement;
   readonly default: boolean;
+  /**
+   * Whether anything actually acts on this flag today.
+   *
+   * Structure rather than prose, because the check that keeps this honest has
+   * to be mechanical. `mobile_trading` carried CLIENT enforcement — which this
+   * file defines as *the client honours it* — and `feature-flags.md` named the
+   * mobile app in its "Where" column. Nothing in `apps/mobile` read
+   * `GET /features` at all, so an operator could switch it off, watch the
+   * switch move, and change nothing.
+   *
+   * `false` is allowed and is not a defect: a flag for a feature that is not
+   * built yet is how the gate gets designed in before the thing it gates
+   * exists. What is a defect is `false` that nobody has written down.
+   */
+  readonly honoured: boolean;
 }
 
 export const FEATURES: readonly FeatureDefinition[] = [
@@ -53,6 +68,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     authority: 'PLATFORM',
     enforcement: 'SERVER',
     default: false,
+    honoured: true,
   },
   {
     key: Feature.WEBHOOKS,
@@ -61,6 +77,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     authority: 'PLATFORM',
     enforcement: 'SERVER',
     default: true,
+    honoured: true,
   },
   {
     key: Feature.TRAILING_STOP,
@@ -69,6 +86,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     authority: 'FIRM',
     enforcement: 'SERVER',
     default: true,
+    honoured: true,
   },
   {
     key: Feature.QUICK_TRADING,
@@ -77,6 +95,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     authority: 'FIRM',
     enforcement: 'CLIENT',
     default: true,
+    honoured: true,
   },
   {
     key: Feature.MOBILE_TRADING,
@@ -85,6 +104,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     authority: 'FIRM',
     enforcement: 'CLIENT',
     default: true,
+    honoured: true,
   },
   {
     key: Feature.NEW_CHART,
@@ -93,6 +113,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     authority: 'PLATFORM',
     enforcement: 'CLIENT',
     default: false,
+    honoured: false,
   },
   {
     key: Feature.WHITE_LABEL,
@@ -101,6 +122,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     authority: 'PLATFORM',
     enforcement: 'CLIENT',
     default: false,
+    honoured: false,
   },
 ];
 

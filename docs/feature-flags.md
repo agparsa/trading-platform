@@ -39,9 +39,39 @@ can trade from the web.
 | `webhooks`           | PLATFORM  | server   | on      | `WebhooksService.create`                                                                                                |
 | `trailing_stop`      | FIRM      | server   | on      | `PositionsService.modify`: setting or changing a trail; clearing one is always allowed, existing trails keep ratcheting |
 | `quick_trading`      | FIRM      | client   | on      | the terminal disarms one-click and says why; the trader's own setting is kept for when it returns                       |
-| `mobile_trading`     | FIRM      | client   | on      | the mobile app                                                                                                          |
+| `mobile_trading`     | FIRM      | client   | on      | `useMobileTrading` in the app: the ticket refuses to open and says why. **Closing and modifying are never gated**       |
 | `new_chart`          | PLATFORM  | client   | off     | the terminal's chart choice — meaningless until the licence exists                                                      |
 | `white_label`        | PLATFORM  | client   | off     | branding, when it is built; the flag exists so nothing has to be redesigned to gate it                                  |
+
+### One of these was a switch that moved and did nothing
+
+The `Where` column above is a claim, and for `mobile_trading` it said "the
+mobile app" and was false: **nothing in `apps/mobile` fetched `GET /features` at
+all.** An operator could switch mobile trading off, watch the switch move in the
+panel, and change nothing. It is honoured now, and `scripts/feature-flags.test.ts`
+checks this table against the definitions row by row, and checks that every flag
+claiming to be honoured is acted on by the side responsible for honouring it —
+`apps/api` or `apps/worker` for SERVER, `apps/web` or `apps/mobile` for CLIENT.
+
+`new_chart` and `white_label` are acted on by nothing too, and that is correct:
+neither feature is built. They carry `honoured: false` in `features.ts` now, as
+structure rather than as prose a reader has to infer, and the same test requires
+their descriptions — which the admin screen renders — to say so.
+
+**Two decisions inside the mobile one, both stated because either could be got
+wrong quietly:**
+
+- **Closing is never gated.** The same reasoning that lets a trader clear a
+  trailing stop the firm will not let them set: switching a product off may
+  remove a way in, it may not remove the way out. A firm must not be able to
+  leave somebody holding a position they cannot exit from the device in their
+  hand.
+- **Unknown means allowed.** A flag that has not loaded, or a request that
+  failed, reads as *on* — matching the terminal's `!== false` for
+  `quick_trading`. Failing closed would stop a trader placing an order because
+  their phone briefly lost signal, in order to enforce a preference the server
+  refuses nothing for. That is only safe because this is not a control, which is
+  what the paragraph above this table already says.
 
 ## Reading on the order path
 

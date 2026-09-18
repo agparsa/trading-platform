@@ -5,6 +5,7 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { DomainError, type OrderSide } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
+import { useMobileTrading } from '../../lib/features';
 import { Button, Card, ErrorNote, Figure, Screen } from '../../components/ui';
 import { theme } from '../../lib/theme';
 
@@ -50,6 +51,12 @@ interface OrderPreview {
 export default function OrderTicket(): React.ReactElement {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const { api } = useSession();
+  /**
+   * The firm's `mobile_trading` flag, which this screen is the whole reason
+   * exists. Refused out loud rather than by hiding the button: an action that
+   * quietly stops being possible is worse than one that fails with a sentence.
+   */
+  const mobileTrading = useMobileTrading();
   const router = useRouter();
 
   // The account this ticket sends to — the one the app is on, not whichever
@@ -114,6 +121,13 @@ export default function OrderTicket(): React.ReactElement {
 
   const submit = async () => {
     if (request === null) return;
+    // Checked here as well as on the button: a disabled control is a rendering,
+    // and this is the line that actually posts.
+    if (!mobileTrading.mayOpen) {
+      setError(mobileTrading.reason);
+      setConfirming(false);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -200,6 +214,8 @@ export default function OrderTicket(): React.ReactElement {
           <ErrorNote message={[...preview.warnings, ...preview.violations].join('\n')} />
         ) : null}
 
+        {mobileTrading.mayOpen ? null : <ErrorNote message={mobileTrading.reason ?? ''} />}
+
         {confirming ? (
           <Card title="Confirm">
             <Text style={styles.confirm}>
@@ -213,7 +229,7 @@ export default function OrderTicket(): React.ReactElement {
               label="Place order"
               variant={side === 'SELL' ? 'danger' : 'primary'}
               busy={busy}
-              disabled={preview === null || !preview.wouldBeAccepted}
+              disabled={preview === null || !preview.wouldBeAccepted || !mobileTrading.mayOpen}
               onPress={() => void submit()}
             />
             <Button label="Cancel" variant="quiet" onPress={() => setConfirming(false)} />
@@ -221,7 +237,7 @@ export default function OrderTicket(): React.ReactElement {
         ) : (
           <Button
             label="Review order"
-            disabled={preview === null || !preview.wouldBeAccepted}
+            disabled={preview === null || !preview.wouldBeAccepted || !mobileTrading.mayOpen}
             onPress={() => setConfirming(true)}
           />
         )}
