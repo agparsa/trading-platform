@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -72,6 +72,119 @@ suite('the backup script', () => {
 
   afterAll(async () => {
     await prisma?.$disconnect();
+  });
+
+  /**
+   * The startup race, which production ran into twice before anyone looked.
+   *
+   * `docker-compose.prod.yml` has `depends_on: postgres: condition:
+   * service_healthy` — and that orders containers within one `compose up` and
+   * says nothing about an unsupervised restart. This container is
+   * `restart: unless-stopped`, so when the daemon restarts or postgres is
+   * recreated beneath it, the backup can come back first and dump into
+   * nothing:
+   *
+   * ```text
+   * 2026-09-16T02:37  connection to server at "postgres" ... Connection refused
+   * 2026-09-18T10:45  could not translate host name "postgres" to address
+   * ```
+   *
+   * Each wrote FAILED and then slept six hours, so a one-second race became a
+   * six-hour-old "the backups are broken" signal — and `record` needs the same
+   * database, so no row reached `scheduled_job_runs` either.
+   *
+   * Run in loop mode rather than `once`, because the wait is the loop's
+   * preamble and `once` is the on-demand path that must stay immediate.
+   */
+  const waitFor = (
+    over: Record<string, string>,
+  ): { ok: boolean; output: string; elapsedMs: number } => {
+    const startedAt = Date.now();
+    const result = spawnSync('sh', [script, 'wait'], {
+      env: env(over),
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+    return {
+      ok: result.status === 0,
+      output: `${result.stdout ?? ''}${result.stderr ?? ''}`,
+      elapsedMs: Date.now() - startedAt,
+    };
+  };
+
+  it('waits for the database before its first dump, rather than racing a restart', () => {
+    const { ok, output, elapsedMs } = waitFor({
+      PGHOST: 'postgres-that-does-not-exist.invalid',
+      BACKUP_STARTUP_WAIT_SECONDS: '6',
+    });
+
+    expect(ok, 'it reported the database as reachable').toBe(false);
+    // It waited rather than giving up on the first tick.
+    expect(elapsedMs, 'it did not wait at all').toBeGreaterThanOrEqual(6_000);
+    expect(output).toContain('did not answer in 6s');
+  });
+
+  /**
+   * The other half, which is what keeps this honest: bounded, and startup only.
+   * A database still unreachable when the wait expires produces the same loud
+   * failure it always did — waiting there would turn a real outage into
+   * silence.
+   */
+  it('gives up rather than hanging, so a real outage still fails', () => {
+    const { ok, elapsedMs } = waitFor({
+      PGHOST: 'postgres-that-does-not-exist.invalid',
+      BACKUP_STARTUP_WAIT_SECONDS: '4',
+    });
+    expect(ok).toBe(false);
+    expect(elapsedMs, 'it waited past its own ceiling').toBeLessThan(30_000);
+  });
+
+  it('does not spend the wait when the database is already there', () => {
+    const { ok, elapsedMs } = waitFor({ BACKUP_STARTUP_WAIT_SECONDS: '120' });
+    expect(ok).toBe(true);
+    // Nowhere near the ceiling: it asked once, got an answer, and went on.
+    expect(elapsedMs).toBeLessThan(5_000);
+  });
+
+  /**
+   * And that the loop actually calls it.
+   *
+   * The three tests above drive `wait_for_database` through the `wait`
+   * subcommand, which proves the function and says nothing about the wiring —
+   * deleting the call from the loop leaves all three passing. That is the same
+   * shape as every other guard that tested a decision and not the place the
+   * decision is made, so it is asserted here: the wait happens before the loop,
+   * once, and not inside it.
+   */
+  it('runs the wait before the loop, not merely defines it', () => {
+    const source = readFileSync(script, 'utf8');
+    const loopAt = source.indexOf('while :; do');
+    const callAt = source.indexOf('wait_for_database || true');
+    expect(loopAt, 'the loop has moved').toBeGreaterThan(0);
+    expect(callAt, 'nothing calls wait_for_database before the loop').toBeGreaterThan(0);
+    expect(callAt, 'the wait is inside the loop, so it runs before every dump').toBeLessThan(loopAt);
+  });
+
+  /**
+   * `once` is the on-demand path and must stay immediate.
+   *
+   * With a healthy database this proves nothing — the wait would return at once
+   * anyway, and a first version of this test passed happily against a `once`
+   * that *did* wait. The claim only bites when the database is slow, so that is
+   * where it is asserted: an unreachable host, a thirty-second ceiling, and a
+   * failure that arrives in a fraction of it.
+   */
+  it('does not make an on-demand dump wait, even when the database is unreachable', () => {
+    const startedAt = Date.now();
+    const { ok, output } = run({
+      PGHOST: 'postgres-that-does-not-exist.invalid',
+      BACKUP_STARTUP_WAIT_SECONDS: '30',
+    });
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(ok).toBe(false);
+    expect(output).toContain('backup FAILED');
+    expect(elapsedMs, 'the on-demand path spent the startup wait').toBeLessThan(15_000);
   });
 
   it('records a dump where the platform can see it, not only in a file on the host', async () => {

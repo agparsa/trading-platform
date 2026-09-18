@@ -47,6 +47,8 @@ set -eu
 INTERVAL_HOURS="${BACKUP_INTERVAL_HOURS:-6}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
 DIR="${BACKUP_DIR:-/backups}"
+# How long to wait for the database at startup, before the first dump only.
+STARTUP_WAIT_SECONDS="${BACKUP_STARTUP_WAIT_SECONDS:-120}"
 
 mkdir -p "$DIR"
 
@@ -86,6 +88,46 @@ ON CONFLICT (name) DO UPDATE SET
 SQL
 }
 
+# Waits for the database to answer, at startup and only at startup.
+#
+# `docker-compose.prod.yml` already has `depends_on: postgres: condition:
+# service_healthy`, and that is not enough — which is the whole reason this
+# exists. `depends_on` orders containers within one `compose up`. It says
+# nothing about an unsupervised restart, and this container is
+# `restart: unless-stopped`: when the daemon restarts, or postgres is recreated
+# under a running backup container, this one can come back first and dump
+# immediately into nothing.
+#
+# It happened twice on production before anyone looked:
+#
+#   2026-09-16T02:37  connection to server at "postgres" ... Connection refused
+#   2026-09-18T10:45  could not translate host name "postgres" to address
+#
+# The second is the telling one — the name did not resolve at all, so the
+# postgres container did not yet exist. Each failure wrote FAILED to `status`
+# and then slept six hours, so a one-second race became a six-hour-old
+# "the backups are broken" signal. Worse, `record` needs the same database, so
+# no row reached `scheduled_job_runs` either: the platform could not even see
+# the failure it was reporting on disk.
+#
+# **Bounded, and startup only.** A dump six hours in that cannot reach the
+# database is a real outage and must still fail loudly — waiting there would
+# turn an incident into silence. If the wait expires, the dump proceeds and
+# fails honestly, exactly as it did before.
+wait_for_database() {
+  waited=0
+  while [ "$waited" -lt "$STARTUP_WAIT_SECONDS" ]; do
+    if pg_isready -q 2>/dev/null; then
+      [ "$waited" -gt 0 ] && echo "[$(date -u +%FT%TZ)] database answered after ${waited}s; starting"
+      return 0
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  echo "[$(date -u +%FT%TZ)] database did not answer in ${STARTUP_WAIT_SECONDS}s; dumping anyway so the failure is recorded" >&2
+  return 1
+}
+
 dump_once() {
   STARTED_EPOCH="$(date -u +%s)"
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -119,12 +161,24 @@ dump_once() {
 }
 
 if [ "${1:-}" = "once" ]; then
+  # On demand, and deliberately without the startup wait: somebody running this
+  # by hand wants an answer now, not a two-minute pause.
   dump_once
+  exit $?
+fi
+
+if [ "${1:-}" = "wait" ]; then
+  # The startup wait on its own. Useful to an operator asking "can this
+  # container reach the database?", and it is how the wait is tested without
+  # running a loop that never ends.
+  wait_for_database
   exit $?
 fi
 
 echo "backups every ${INTERVAL_HOURS}h to ${DIR}, kept ${RETENTION_DAYS} days"
 trap 'exit 0' TERM INT
+# Before the first dump only. See wait_for_database.
+wait_for_database || true
 while :; do
   dump_once || true
   sleep "$((INTERVAL_HOURS * 3600))" &

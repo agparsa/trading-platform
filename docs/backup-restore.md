@@ -165,3 +165,35 @@ should not have to query anything.
 including the failure path — `pg_dump` replaced with something that exits
 non-zero, which is what a full disk, a dead primary or a revoked role look like
 from in there.
+
+## The startup race, and why `depends_on` did not cover it
+
+Production hit this twice before anybody looked:
+
+```text
+2026-09-16T02:37  connection to server at "postgres" ... Connection refused
+2026-09-18T10:45  could not translate host name "postgres" to address
+```
+
+The backup container dumps immediately when it starts. `docker-compose.prod.yml`
+has `depends_on: postgres: condition: service_healthy` — and **that is a
+startup-ordering directive for one `compose up`, not a runtime dependency.** The
+backup container is `restart: unless-stopped`, so when the daemon restarts, or
+postgres is recreated beneath it, this container can come back first and dump
+into nothing. The second message is the telling one: the name did not resolve at
+all, so the postgres container did not yet exist.
+
+Each failure then wrote `FAILED` to `status` and slept six hours, turning a
+one-second race into a six-hour-old "the backups are broken" signal. And
+`record` needs the same database, so **no row reached `scheduled_job_runs`
+either** — the platform could not see the failure it was reporting on disk, and
+`/health/jobs` showed the backup as *never run* rather than *failed*.
+
+`backup.sh` now waits for the database before its first dump, and the wait is
+**bounded and startup-only**: a dump six hours in that cannot reach the database
+is a real outage and still fails loudly, because waiting there would turn an
+incident into silence. `sh backup.sh wait` runs just the wait, which is also the
+quickest way for an operator to ask whether that container can see the database.
+
+`sh backup.sh once` deliberately does *not* wait — somebody running it by hand
+wants an answer now.
