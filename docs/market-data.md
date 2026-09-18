@@ -66,6 +66,34 @@ charting datafeed expects.
 
 ## Sessions
 
+## What a day is here — three answers, on purpose and not interchangeable
+
+| Surface | A day is | Where |
+| --- | --- | --- |
+| today's P&L, a `DAY` order's expiry, the swap accrual key, a report window | midnight in `TRADING_SERVER_TIMEZONE` | `startOfTradingDay` / `endOfTradingDay` |
+| a session window | the **instrument's own** IANA zone, per symbol | `MarketSession.timezone` |
+| a `1D` candle | **midnight UTC, always** | `bucketStart`, on the epoch grid |
+
+The third is the one a reader would not guess, and it is worth saying out loud
+because nothing else in this platform works that way. `bucketStart` aligns to
+the epoch grid — its own comment says so, so the code is honest — but the
+consequence was unstated: **the daily bar ignores the trading server's timezone
+entirely.** On a broker at UTC+2, the ordinary FX arrangement, the daily candle
+opens at 02:00 local while everything else the trader sees rolls over at
+midnight local. `H4` sits on the same grid, so the last four-hour bar of a local
+day straddles that day's boundary.
+
+`TRADING_SERVER_TIMEZONE` is `UTC` in both shipped examples, so today all three
+agree. They stop agreeing the moment the broker timezone is set.
+
+**Whether to change it is a decision, not a defect to fix quietly.** Stored
+`candles` rows are keyed by `(symbol, resolution, bucket start)`, so moving the
+daily boundary is a migration and a backfill of every historical bar, and it
+changes what every chart has shown until now.
+`packages/market-core/src/day-boundary.test.ts` pins the current behaviour so a
+change has to be deliberate; it deliberately does **not** assert that the UTC
+grid is right.
+
 `MarketSession` rows store weekly windows in an explicit IANA timezone, per
 symbol. The timezone is stored on the row rather than inherited from the server,
 so changing the server's timezone cannot silently move every session. Metals and
