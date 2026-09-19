@@ -31,6 +31,17 @@ import { describe, expect, it } from 'vitest';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relative: string) => readFileSync(resolve(ROOT, relative), 'utf8');
 
+/**
+ * One service's block out of a compose file, by name.
+ *
+ * The same two-space split the rest of this file uses, given a name so that a
+ * test asking about one service cannot accidentally match a neighbour's lines:
+ * `ulimits` under `api` and `ulimits` under `nginx` are the same eight
+ * characters, and a whole-file regex would be satisfied by either.
+ */
+const serviceBlock = (compose: string, service: string): string | null =>
+  compose.split(/\n {2}(?=[a-z])/).find((block) => block.trim().startsWith(`${service}:`)) ?? null;
+
 const DOCKERFILES = readdirSync(resolve(ROOT, 'docker'))
   .filter((name) => name.endsWith('.Dockerfile'))
   .map((name) => `docker/${name}`);
@@ -158,6 +169,135 @@ describe('.dockerignore', () => {
 
 describe('docker-compose.prod.yml', () => {
   const compose = read('docker-compose.prod.yml');
+
+  /**
+   * Descriptor ceilings, which nothing declared and nobody would have looked
+   * for until it bit.
+   *
+   * Measured on production: the nginx container's `ulimit -n` was **1024**,
+   * Docker's default, while `nginx.conf` asked for 4096 connections per worker
+   * across two workers. nginx says so at startup —
+   *
+   * ```text
+   * nginx: [warn] 4096 worker_connections exceed open file resource limit: 1024
+   * ```
+   *
+   * — once, into a log that scrolls away, and then serves happily until the day
+   * it runs out. A reverse-proxied connection costs two descriptors, so the
+   * real ceiling was about five hundred per worker rather than four thousand.
+   *
+   * `api-ws` had 1024 too, and holding many concurrent sockets is the whole of
+   * that container's job. `capacity.md` documents a **thousand-socket** run:
+   * nginx would need ~2,000 descriptors for it and `api-ws` ~1,000, so the
+   * documented figure was not reachable on this deployment — and the failure
+   * would have arrived as EMFILE, looking like the platform breaking rather
+   * than like a limit nobody set.
+   */
+  const CONNECTION_BEARING = ['nginx', 'api', 'api-ws', 'api-ingest', 'worker'] as const;
+
+  const nofileOf = (service: string): number | null => {
+    const block = serviceBlock(compose, service);
+    const soft = /ulimits:\s*\n\s*nofile:\s*\n\s*soft:\s*(\d+)/.exec(block ?? '');
+    return soft?.[1] === undefined ? null : Number(soft[1]);
+  };
+
+  it('gives every connection-bearing service a descriptor ceiling of its own', () => {
+    const missing = CONNECTION_BEARING.filter((service) => nofileOf(service) === null);
+    expect(
+      missing,
+      'these hold connections and would inherit Docker’s default of 1024',
+    ).toEqual([]);
+  });
+
+  /**
+   * And that the ceiling is above what nginx is configured to use. Two
+   * descriptors per proxied connection, and `worker_processes auto` means one
+   * worker per core — so the figure that has to fit is per worker, which is
+   * what `worker_rlimit_nofile` governs.
+   */
+  it('lets nginx open what its own configuration asks for', () => {
+    const conf = read('docker/nginx/nginx.conf');
+    const connections = Number(/worker_connections\s+(\d+)/.exec(conf)?.[1] ?? 0);
+    const rlimit = Number(/worker_rlimit_nofile\s+(\d+)/.exec(conf)?.[1] ?? 0);
+    const container = nofileOf('nginx') ?? 0;
+
+    expect(connections, 'worker_connections not found').toBeGreaterThan(0);
+    expect(rlimit, 'nginx does not raise its own descriptor limit').toBeGreaterThan(0);
+    // Two per proxied connection: one downstream, one upstream.
+    expect(rlimit, 'nginx asks for more connections than it can open').toBeGreaterThanOrEqual(
+      connections * 2,
+    );
+    // And the container has to allow what nginx asks for.
+    expect(container, 'the container caps nginx below its own limit').toBeGreaterThanOrEqual(
+      rlimit,
+    );
+  });
+
+  /**
+   * The socket target `capacity.md` documents has to fit through both layers.
+   * Read from the document rather than hard-coded, so raising the claim without
+   * raising the ceilings fails here.
+   *
+   * The counts have to be read as the document writes them, which is mostly in
+   * words. A digits-only reader finds `200 sockets` in three table rows and
+   * nothing else, and reports a target of two hundred while the document's
+   * headline result is *five thousand* — a guard that passes with a ceiling a
+   * twenty-fifth of the size it is supposed to be checking. That is how this
+   * test read until it was run against the document rather than against the
+   * three numbers it was written beside.
+   */
+  const WORD_VALUE: Record<string, number> = {
+    a: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
+    nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
+    fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+    twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70,
+    eighty: 80, ninety: 90,
+  };
+  const SCALE: Record<string, number> = { hundred: 100, thousand: 1000, million: 1_000_000 };
+
+  /** `five thousand` → 5000, `thirteen hundred` → 1300, `1,024` → 1024. */
+  const countBefore = (phrase: string): number | null => {
+    const digits = /([\d][\d,]*)\s*$/.exec(phrase);
+    if (digits) return Number(digits[1]!.replace(/,/g, ''));
+    const words = phrase.toLowerCase().trim().split(/[\s-]+/).slice(-3);
+    let total = 0;
+    let current = 0;
+    let saw = false;
+    for (const word of words) {
+      if (WORD_VALUE[word] !== undefined) {
+        current = WORD_VALUE[word]!;
+        saw = true;
+      } else if (SCALE[word] !== undefined && saw) {
+        current *= SCALE[word]!;
+        total += current;
+        current = 0;
+      } else {
+        total = 0;
+        current = 0;
+        saw = false;
+      }
+    }
+    const value = total + current;
+    return saw && value > 0 ? value : null;
+  };
+
+  it('has room for the socket count capacity.md claims', () => {
+    const capacity = read('docs/capacity.md');
+    const claimed = [...capacity.matchAll(/([^.\n]{0,40}?)\s*sockets\b/g)]
+      .map((match) => countBefore(match[1] ?? ''))
+      .filter((count): count is number => count !== null);
+    expect(claimed.length, 'no socket figure found in capacity.md').toBeGreaterThan(0);
+    // Written in words, so a digits-only reader would have found only the
+    // three `200 sockets` table rows.
+    expect(Math.max(...claimed), 'the headline figure is not being read').toBeGreaterThan(200);
+
+    const target = Math.max(...claimed);
+    // nginx: two descriptors per socket. api-ws: one.
+    expect(nofileOf('nginx') ?? 0, `${target} sockets need ${target * 2} at nginx`).
+      toBeGreaterThanOrEqual(target * 2);
+    expect(nofileOf('api-ws') ?? 0, `${target} sockets need ${target} at api-ws`).
+      toBeGreaterThanOrEqual(target);
+  });
 
   /**
    * Two processes ingesting the same feed double-count candle volume; two firing

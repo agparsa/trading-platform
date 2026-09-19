@@ -90,6 +90,16 @@ services:
 
   # The one process that pulls prices and fires stops. Never more than one.
   api-ingest:
+    # A descriptor ceiling that matches what this service is for.
+    #
+    # Docker's default is 1024. Measured on production, nginx and api-ws both
+    # had exactly that, while nginx asked for 4096 connections per worker and
+    # capacity.md documents a thousand-socket run — see docker/nginx/nginx.conf.
+    # A limit is not an allocation; this costs nothing until it is needed.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     build:
       context: .
       dockerfile: docker/api.Dockerfile
@@ -117,6 +127,16 @@ services:
 
   # Serves traffic. Scale this one: `docker compose ... up -d --scale api=3`.
   api:
+    # A descriptor ceiling that matches what this service is for.
+    #
+    # Docker's default is 1024. Measured on production, nginx and api-ws both
+    # had exactly that, while nginx asked for 4096 connections per worker and
+    # capacity.md documents a thousand-socket run — see docker/nginx/nginx.conf.
+    # A limit is not an allocation; this costs nothing until it is needed.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     build:
       context: .
       dockerfile: docker/api.Dockerfile
@@ -158,6 +178,16 @@ services:
   # they reach a second `api` replica today. Scale independently:
   # `--scale api-ws=2`.
   api-ws:
+    # A descriptor ceiling that matches what this service is for.
+    #
+    # Docker's default is 1024. Measured on production, nginx and api-ws both
+    # had exactly that, while nginx asked for 4096 connections per worker and
+    # capacity.md documents a thousand-socket run — see docker/nginx/nginx.conf.
+    # A limit is not an allocation; this costs nothing until it is needed.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     build:
       context: .
       dockerfile: docker/api.Dockerfile
@@ -179,6 +209,16 @@ services:
       migrate: { condition: service_completed_successfully }
 
   worker:
+    # A descriptor ceiling that matches what this service is for.
+    #
+    # Docker's default is 1024. Measured on production, nginx and api-ws both
+    # had exactly that, while nginx asked for 4096 connections per worker and
+    # capacity.md documents a thousand-socket run — see docker/nginx/nginx.conf.
+    # A limit is not an allocation; this costs nothing until it is needed.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     build:
       context: .
       dockerfile: docker/worker.Dockerfile
@@ -223,6 +263,16 @@ services:
       - api
 
   nginx:
+    # A descriptor ceiling that matches what this service is for.
+    #
+    # Docker's default is 1024. Measured on production, nginx and api-ws both
+    # had exactly that, while nginx asked for 4096 connections per worker and
+    # capacity.md documents a thousand-socket run — see docker/nginx/nginx.conf.
+    # A limit is not an allocation; this costs nothing until it is needed.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     build:
       context: .
       dockerfile: docker/nginx.Dockerfile
