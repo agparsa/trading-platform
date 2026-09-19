@@ -167,5 +167,12 @@ A probe that has never been seen to fail is a probe nobody has checked.
   that one account's private frames never reach another socket and that a private
   channel is refused without a token. Duplicating that here would create a second
   definition of the same check.
-- **Dependency vulnerabilities.** `pnpm audit` belongs in CI, not in a script that
-  boots the API.
+- **Dependency vulnerabilities.** `pnpm audit` belongs in CI, not in a script
+  that boots the API — and for the life of that sentence CI did not run it, so
+  nothing did. It is the **Dependency audit** step in `.github/workflows/ci.yml`
+  now, failing the build on high or worse; the first run found 2 critical and 11
+  high advisories, including `multer` on the path identity documents are
+  uploaded over. What is deliberately accepted below that threshold, and every
+  override taken to get under it, is in `security/dependencies.md`, checked
+  against `package.json` in both directions by
+  `scripts/dependency-audit.test.ts`.

@@ -58,7 +58,7 @@
     "@vitest/coverage-v8": "catalog:",
     "axe-core": "^4.13.0",
     "eslint": "catalog:",
-    "playwright": "^1.62.1",
+    "playwright": "^1.63.0",
     "prettier": "catalog:",
     "prisma": "catalog:",
     "rimraf": "catalog:",
@@ -73,5 +73,12 @@
   },
   "prisma": {
     "seed": "tsx --env-file-if-exists=.env prisma/seed.ts"
+  },
+  "pnpm": {
+    "overrides": {
+      "multer": "^2.3.0",
+      "postcss": "^8.5.26",
+      "deepmerge-ts": "^8.0.0"
+    }
   }
 }

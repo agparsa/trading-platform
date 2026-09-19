@@ -65,6 +65,19 @@ jobs:
       - name: Build workspace packages
         run: pnpm build:packages
 
+      # Dependency advisories, which nothing in this repository checked until
+      # the first run found two criticals and eleven highs. The penetration
+      # checklist delegates this here in as many words — "pnpm audit belongs in
+      # CI, not in a script that boots the API" — and for the life of that
+      # sentence CI did not run it.
+      #
+      # High and worse fails the build. Everything below that line, and every
+      # override taken to get under it, is written down in
+      # security/dependencies.md, which a test checks against package.json in
+      # both directions.
+      - name: Dependency audit
+        run: pnpm audit --audit-level=high
+
       - name: Lint
         run: pnpm lint
 
