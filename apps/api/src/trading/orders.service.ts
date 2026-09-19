@@ -1537,11 +1537,23 @@ export class OrdersService {
       });
 
       const first = error.violations[0];
+      /**
+       * `violations` is a **list**, matching `POST /orders/preview`, which has
+       * always returned one.
+       *
+       * It used to be the same messages joined with `'; '` into a single
+       * string. Nothing could render that as anything but a sentence, and the
+       * one client that read it did not exist: the web terminal showed
+       * `message` — the *first* violation — and the trader discovered the rest
+       * one order at a time, which is exactly what the comment above says this
+       * design avoids.
+       */
       throw new DomainError(
         (first?.code as TradingErrorCode) ?? TradingErrorCode.VALIDATION_FAILED,
         first?.message ?? 'Order rejected by risk',
         {
-          violations: error.violations.map((v) => `${v.rule}: ${v.message}`).join('; '),
+          violations: error.violations.map((v) => v.message),
+          rules: error.violations.map((v) => v.rule),
         },
       );
     }

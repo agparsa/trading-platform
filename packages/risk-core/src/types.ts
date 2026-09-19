@@ -1,5 +1,5 @@
 import type { Money, SymbolSpec } from '@tp/financial-core';
-import type { OrderSide, TradingErrorCode } from '@tp/shared-types';
+import type { ErrorDetail, OrderSide, TradingErrorCode } from '@tp/shared-types';
 
 /** Everything a risk rule may look at. Rules receive this and nothing else. */
 export interface RiskContext {
@@ -55,7 +55,7 @@ export interface RiskViolation {
   readonly rule: string;
   readonly code: TradingErrorCode;
   readonly message: string;
-  readonly details?: Record<string, string | number | boolean | null>;
+  readonly details?: Record<string, ErrorDetail>;
 }
 
 export interface RiskDecision {

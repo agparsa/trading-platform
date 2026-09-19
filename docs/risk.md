@@ -16,6 +16,19 @@ The engine evaluates **every** rule and returns all violations. It deliberately
 does not short-circuit: a trader whose order breaks three limits should be told
 all three, not sent round the loop three times.
 
+**And is told.** That sentence was true of the engine and false of the screen
+for as long as both existed: the rejection reached the client as
+`error.message`, the first violation, with the rest joined into a
+`details.violations` *string* that nothing read — and the web terminal rendered
+the message alone. A trader over the position limit and short of margin halved
+the volume, submitted again, and learned about the margin.
+
+`details.violations` is a list now, the same shape `POST /orders/preview` has
+always returned, and both clients render all of it.
+`scripts/rejection-surfaces.test.ts` checks each surface, and
+`apps/web/src/lib/order-commands.test.ts` checks the decision about what to
+show.
+
 ## Default rules
 
 | Rule                    | Error code                    | Notes                                                                                       |

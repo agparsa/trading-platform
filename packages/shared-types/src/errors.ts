@@ -81,13 +81,32 @@ export const TradingErrorCode = {
 } as const;
 export type TradingErrorCode = (typeof TradingErrorCode)[keyof typeof TradingErrorCode];
 
+/**
+ * What a `details` value may be.
+ *
+ * Scalars, or a list of them.
+ *
+ * Lists were not allowed for a long time, and that had a consequence nobody
+ * connected to this type. A risk rejection carries every violation the engine
+ * found — the platform promises this in four documents — and it could not be
+ * put here as a list, so it was joined into one `'; '`-separated string. No
+ * client could render a sentence as a list, so none tried: the web terminal
+ * showed `message`, the first violation, and a trader over two limits
+ * discovered them one order at a time.
+ *
+ * Still deliberately shallow. `details` crosses to clients and into logs, and
+ * nesting is how an object that was never meant to leave the server ends up in
+ * both.
+ */
+export type ErrorDetail = string | number | boolean | null | readonly string[];
+
 /** Wire shape of every error response. Stack traces never cross this boundary. */
 export interface ApiErrorBody {
   code: TradingErrorCode;
   message: string;
   requestId: string;
   /** Safe, structured context — field names, limits, observed values. Never secrets. */
-  details?: Record<string, string | number | boolean | null>;
+  details?: Record<string, ErrorDetail>;
 }
 
 /**
@@ -96,12 +115,12 @@ export interface ApiErrorBody {
  */
 export class DomainError extends Error {
   readonly code: TradingErrorCode;
-  readonly details?: Record<string, string | number | boolean | null>;
+  readonly details?: Record<string, ErrorDetail>;
 
   constructor(
     code: TradingErrorCode,
     message: string,
-    details?: Record<string, string | number | boolean | null>,
+    details?: Record<string, ErrorDetail>,
   ) {
     super(message);
     this.name = 'DomainError';

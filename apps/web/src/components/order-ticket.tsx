@@ -3,7 +3,7 @@
 import { marketNotice } from '../lib/market-state';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@tp/ui';
-import { DomainError, Permission } from '@tp/shared-types';
+import { Permission } from '@tp/shared-types';
 import { price as formatPrice, signedMoney, toneClass, toneOf } from '@/lib/format';
 import {
   estimateCosts,
@@ -17,6 +17,7 @@ import { validateRestingPrice } from '@/lib/ticket';
 import {
   COMMAND_STATE_LABEL,
   CommandState,
+  rejectionLines,
   settlementFromResponse,
   type OrderCommand,
 } from '@/lib/order-commands';
@@ -72,7 +73,7 @@ export function OrderTicket({
   const [timeInForce, setTimeInForce] = useState<'GTC' | 'DAY'>('GTC');
   const [stopLoss, setStopLoss] = useState('');
   const [takeProfit, setTakeProfit] = useState('');
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<readonly string[]>([]);
   /** A one-click order awaiting the confirmation the trader asked to keep. */
   const [pendingConfirm, setPendingConfirm] = useState<'BUY' | 'SELL' | null>(null);
 
@@ -222,10 +223,10 @@ export function OrderTicket({
     async (requestedSide: 'BUY' | 'SELL') => {
       if (accountId === null || symbol === undefined) return;
       if (blockedReason !== null) {
-        setSubmitError(blockedReason);
+        setSubmitError([blockedReason]);
         return;
       }
-      setSubmitError(null);
+      setSubmitError([]);
       const levels = {
         stopLoss: stopLoss.trim() === '' ? null : stopLoss.trim(),
         takeProfit: takeProfit.trim() === '' ? null : takeProfit.trim(),
@@ -283,16 +284,16 @@ export function OrderTicket({
         setStopLoss('');
         setTakeProfit('');
       } catch (error) {
-        const message =
-          error instanceof DomainError
-            ? error.message
-            : 'The order could not be submitted. It was not placed.';
+        // Every violation, not the first: see `rejectionLines`.
+        const lines = rejectionLines(error);
         useRealtime.getState().settleCommand(commandId, {
           state: CommandState.REJECTED,
-          reason: message,
+          // The command log is one row per attempt, so it keeps the primary
+          // reason; the ticket below shows all of them.
+          reason: lines[0] ?? 'The order was rejected.',
           at: Date.now(),
         });
-        setSubmitError(message);
+        setSubmitError(lines);
       }
     },
     [
@@ -648,8 +649,12 @@ export function OrderTicket({
       {validation.error === null ? null : (
         <p className="text-[11px] text-terminal-short">{validation.error}</p>
       )}
-      {submitError === null ? null : (
-        <p className="text-[11px] text-terminal-short">{submitError}</p>
+      {submitError.length === 0 ? null : (
+        <ul className="space-y-0.5 text-[11px] text-terminal-short" role="alert">
+          {submitError.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
       )}
 
       {pendingConfirm === null ? (

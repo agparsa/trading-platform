@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { Money } from '@tp/financial-core';
 import { LedgerService } from '../../src/accounts/ledger.service';
 import {
+  DEFAULT_TENANT_ID,
   createAccount,
   createTestClient,
   hasTestDatabase,
@@ -689,6 +690,48 @@ suite('Trading core (integration)', () => {
       const risk = await prisma.riskEvent.findFirstOrThrow({ where: { accountId } });
       expect(risk.rule).toBe('sufficient-margin');
       expect(JSON.stringify(risk.snapshot)).toContain('freeMargin');
+    });
+
+    /**
+     * Two rules broken at once, and the trader told about both.
+     *
+     * `docs/trading-engine.md`, `docs/risk.md`, `docs/testing.md` and the README
+     * all promise "all violations reported", and the engine does return them
+     * all — but the error it becomes carried them as one joined string that no
+     * client read, and the web terminal showed `message`, which is the first
+     * violation alone. A trader halved the volume, submitted again, and learned
+     * about the margin.
+     *
+     * So this asserts the shape a client can act on: a list, like
+     * `POST /orders/preview` has always returned.
+     */
+    it('reports every violation, not only the first', async () => {
+      const { userId, accountId } = await createAccount(prisma, { balance: '100' });
+      await prisma.accountSettings.upsert({
+        where: { accountId },
+        create: { tenantId: DEFAULT_TENANT_ID, accountId, maxPositionVolume: '0.50' },
+        update: { maxPositionVolume: '0.50' },
+      });
+
+      // One lot: over the half-lot cap *and* far beyond $100 of free margin.
+      const rejection = await stack.orders
+        .openPosition(userId, { accountId, symbol: 'XAUUSD', side: 'BUY', volume: '1.00' })
+        .then(
+          () => null,
+          (error: unknown) => error as { code: string; details?: Record<string, unknown> },
+        );
+
+      expect(rejection, 'the order was accepted').not.toBeNull();
+      const violations = rejection?.details?.['violations'];
+      expect(Array.isArray(violations), 'violations is not a list').toBe(true);
+      const lines = violations as string[];
+      expect(lines.length, `only one violation reported: ${JSON.stringify(lines)}`).toBe(2);
+      expect(lines.join(' | ')).toMatch(/per-position limit/);
+      expect(lines.join(' | ')).toMatch(/free margin/i);
+      // And the rules alongside them, for whoever reads a support ticket.
+      expect(rejection?.details?.['rules']).toEqual(
+        expect.arrayContaining(['max-position-volume', 'sufficient-margin']),
+      );
     });
 
     it('rejects a volume below the instrument minimum', async () => {

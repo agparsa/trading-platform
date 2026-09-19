@@ -319,6 +319,21 @@ financial rule nobody exercised. The applications are covered by the integration
 suite, the browser suite and sixty-three attacks, none of which a line-coverage
 number describes usefully.
 
+**One hole in that, stated plainly: no component in `apps/web` has a rendering
+test.** `vitest.config.ts` restricts the web app to pure logic because there is
+no DOM test environment configured, so the lib functions a component calls are
+tested and the component itself is not. The browser suite renders 33 views and
+audits every one for accessibility, but it places its single order over HTTP
+rather than through the ticket — so a component that computes the right answer
+and renders the wrong thing is caught by nobody.
+
+That is not hypothetical. The order ticket held every risk violation the server
+sent and rendered the first, and the check that now stops it doing so again is a
+*static* one: it reads the component and asserts it maps over the list instead
+of indexing element zero. That catches the regression and proves nothing about
+what a browser paints. A DOM environment for the web app is worth its own
+phase.
+
 One side effect worth recording: v8 instrumentation slows `resetDatabase` —
 forty tables truncated and the roles re-seeded between cases — past vitest's
 ten-second hook default, and the first coverage run failed twice in

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { DomainError } from '@tp/shared-types';
 import {
   beginCommand,
   COMMAND_LOG_LIMIT,
   CommandState,
   noteOrderClosed,
   noteOrderFilled,
+  rejectionLines,
   settleCommand,
   settlementFromResponse,
   type NewCommand,
@@ -180,5 +182,81 @@ describe('noteOrderClosed', () => {
       at: 2_000,
     });
     expect(noteOrderClosed(log, 'o1', 'cancelled', 6_000)[0]?.state).toBe(CommandState.EXECUTED);
+  });
+});
+
+/**
+ * The rejection the trader is shown.
+ *
+ * `docs/trading-engine.md`, `docs/risk.md`, `docs/testing.md` and the README all
+ * promise "all violations reported", and `OrdersService` says why: so a trader
+ * fixes all of them in one attempt rather than discovering them one order at a
+ * time. The terminal read `error.message` — the first violation — and dropped
+ * the rest. The guarantee was true up to the wire and false on the screen.
+ */
+describe('rejectionLines', () => {
+  // `as never` on the details: these cases deliberately include shapes the type
+  // forbids — a string where a list belongs, a number inside the list — because
+  // the whole point of `rejectionLines` is that a client cannot trust what
+  // arrives over a wire to match the type that describes it.
+  const rejection = (message: string, details?: Record<string, unknown>) =>
+    new DomainError('MAX_POSITION_SIZE_EXCEEDED' as never, message, details as never);
+
+  it('shows every violation, not only the first', () => {
+    const lines = rejectionLines(
+      rejection('Order volume 5.00 exceeds the per-position limit of 2 lots', {
+        violations: [
+          'Order volume 5.00 exceeds the per-position limit of 2 lots',
+          'Insufficient free margin',
+        ],
+      }),
+    );
+    expect(lines).toEqual([
+      'Order volume 5.00 exceeds the per-position limit of 2 lots',
+      'Insufficient free margin',
+    ]);
+  });
+
+  it('does not say the same thing twice', () => {
+    // `message` is the first violation, so it is already in the list.
+    const lines = rejectionLines(
+      rejection('Insufficient free margin', { violations: ['Insufficient free margin'] }),
+    );
+    expect(lines).toEqual(['Insufficient free margin']);
+  });
+
+  it('keeps the message when the detail does not repeat it', () => {
+    // An error from somewhere other than the risk engine, or a server that
+    // lists something the summary does not name.
+    const lines = rejectionLines(
+      rejection('Order rejected by risk', { violations: ['Insufficient free margin'] }),
+    );
+    expect(lines).toEqual(['Order rejected by risk', 'Insufficient free margin']);
+  });
+
+  it('falls back to the message when there is no detail at all', () => {
+    expect(rejectionLines(rejection('Market is closed'))).toEqual(['Market is closed']);
+    expect(rejectionLines(rejection('Market is closed', { violations: 'a; b' }))).toEqual([
+      'Market is closed',
+    ]);
+  });
+
+  it('says nothing was placed when the failure was not the platform answering', () => {
+    // A dropped connection or a proxy error. The one thing a trader needs to
+    // know is that no order exists.
+    for (const error of [new Error('fetch failed'), undefined, 'nope']) {
+      expect(rejectionLines(error)).toEqual([
+        'The order could not be submitted. It was not placed.',
+      ]);
+    }
+  });
+
+  it('drops empty and non-string entries rather than rendering blank lines', () => {
+    const lines = rejectionLines(
+      rejection('Insufficient free margin', {
+        violations: ['Insufficient free margin', '', '   ', 42, null],
+      }),
+    );
+    expect(lines).toEqual(['Insufficient free margin']);
   });
 });

@@ -33,6 +33,8 @@
  * the two ever disagree, the tables are right.
  */
 
+import { DomainError } from '@tp/shared-types';
+
 export const CommandState = {
   SUBMITTING: 'SUBMITTING',
   ACCEPTED: 'ACCEPTED',
@@ -213,3 +215,39 @@ export const COMMAND_STATE_LABEL: Record<CommandState, string> = {
   [CommandState.EXECUTED]: 'filled',
   [CommandState.REJECTED]: 'refused',
 };
+
+/**
+ * What to show a trader when the platform refuses an order.
+ *
+ * The risk engine evaluates **every** rule and returns every violation, and it
+ * does so deliberately: `docs/trading-engine.md`, `docs/risk.md`, `docs/testing.md`
+ * and the README all say "all violations reported", and `OrdersService` says why
+ * — "so a trader fixes all of them in one attempt rather than discovering them
+ * one order at a time".
+ *
+ * The guarantee was true up to the wire and false on the screen. This terminal
+ * read `error.message`, which is the *first* violation, and dropped
+ * `details.violations`, which is all of them. An order over the position limit
+ * *and* short of margin said only "Order volume 5.00 exceeds the per-position
+ * limit of 2 lots"; the trader halved it, submitted again, and learned about
+ * the margin.
+ *
+ * Returns every line to show, first line first. A rejection that carries no
+ * detail still yields its message, and a failure that is not a `DomainError` at
+ * all — a dropped connection, a proxy error — yields the one sentence that
+ * matters most, which is that nothing was placed.
+ */
+export function rejectionLines(error: unknown): string[] {
+  if (!(error instanceof DomainError)) {
+    return ['The order could not be submitted. It was not placed.'];
+  }
+  const detail = (error.details as { violations?: unknown } | undefined)?.violations;
+  const listed = Array.isArray(detail)
+    ? detail.filter((line): line is string => typeof line === 'string' && line.trim() !== '')
+    : [];
+  // The message is the first violation, so a list that already contains it must
+  // not repeat it — and a list that does not (an older server, or an error from
+  // somewhere other than risk) still keeps it at the front.
+  if (listed.length === 0) return [error.message];
+  return listed.includes(error.message) ? listed : [error.message, ...listed];
+}
