@@ -1356,3 +1356,102 @@ describe('file-backed secrets', () => {
     expect(unlisted).toEqual([]);
   });
 });
+
+/**
+ * The deploy scripts, checked against the thing they are supposed to make true.
+ *
+ * `verify:production` has a check called "the running build is the one that was
+ * deployed". It works by comparing the SHA the API serves at `/health` with the
+ * one the operator passes in, and the API can only serve a SHA if its image was
+ * built with `BUILD_SHA`. `docker-compose.prod.yml` defaults that build argument
+ * to `unknown`, which is the right default — a missing stamp should not stop a
+ * deploy — but it means a script that forgets to export it fails silently and
+ * produces an image that cannot say what it is.
+ *
+ * Both scripts forgot. Every deploy run through `upgrade-server.sh` — the
+ * command `docs/deployment.md` tells you to run — produced `build: unknown`, so
+ * the strongest check in the verifier degraded to "this deployment predates the
+ * marker" and passed on nothing. It was found by deploying: the upgrade ran
+ * green, and the verifier that runs right after it reported a build that could
+ * not identify itself.
+ *
+ * Discovered rather than listed, so a third deploy script inherits the check.
+ */
+describe('the deploy scripts', () => {
+  const SCRIPTS = readdirSync(resolve(ROOT, 'scripts'))
+    .filter((name) => name.endsWith('.sh'))
+    .map((name) => `scripts/${name}`);
+
+  /**
+   * Only what the shell would run. These scripts explain themselves at length,
+   * and both of the things this test looks for appear in prose too: a comment
+   * in `upgrade-server.sh` discusses `docker compose build`, and
+   * `bootstrap-production-env.sh` *prints* a compose command for the operator
+   * to run next without building anything itself. Matching the whole file
+   * found a build in a comment on line 19 and called a script that only echoes
+   * one a deploy script.
+   */
+  const commands = (body: string): string => {
+    const lines = body.split('\n');
+    const kept: string[] = [];
+    let heredoc: string | null = null;
+    for (const line of lines) {
+      if (heredoc !== null) {
+        if (line.trim() === heredoc) heredoc = null;
+        continue;
+      }
+      const opening = /<<-?'?([A-Za-z_]+)'?\s*$/.exec(line);
+      if (opening) {
+        heredoc = opening[1]!;
+        continue;
+      }
+      if (/^\s*#/.test(line)) continue;
+      if (/^\s*(echo|printf|say|warn|die)\b/.test(line)) continue;
+      kept.push(line);
+    }
+    return kept.join('\n');
+  };
+
+  const BUILD_CALL = /\$\{COMPOSE\[@\]\}"? build|docker compose[^\n]*\bbuild\b/;
+  const buildingScripts = SCRIPTS.filter((path) => BUILD_CALL.test(commands(read(path))));
+
+  it('has deploy scripts that build images', () => {
+    // If this ever finds none, the two tests below would pass by vacuum.
+    expect(buildingScripts.length, 'no script builds images — has the deploy moved?')
+      .toBeGreaterThanOrEqual(2);
+  });
+
+  for (const path of buildingScripts) {
+    it(`${path} stamps the images with the commit it is deploying`, () => {
+      const body = commands(read(path));
+      expect(body, 'builds images without exporting BUILD_SHA').toMatch(/export BUILD_SHA/);
+      // From git, not a literal: a hard-coded stamp is worse than none, because
+      // it looks right.
+      expect(body, 'BUILD_SHA is not read from the checkout').toMatch(
+        /BUILD_SHA=\$\(git rev-parse HEAD/,
+      );
+      // And before the build, or the build argument is not set when it is read.
+      const runnable = commands(body);
+      const exported = runnable.indexOf('BUILD_SHA=$(git rev-parse HEAD');
+      const built = runnable.search(BUILD_CALL);
+      expect(exported, 'BUILD_SHA is set after the build that reads it')
+        .toBeLessThan(built);
+    });
+  }
+
+  /**
+   * And the other half of the pair: the compose file has to pass the variable
+   * through to every image whose health endpoint the verifier reads.
+   */
+  it('passes BUILD_SHA to every image that is built from this repository', () => {
+    const compose = read('docker-compose.prod.yml');
+    const built = compose
+      .split(/\n {2}(?=[a-z])/)
+      .filter((block) => /dockerfile: docker\//.test(block));
+    expect(built.length).toBeGreaterThanOrEqual(5);
+    const unstamped = built
+      .filter((block) => !/BUILD_SHA: \$\{BUILD_SHA:-unknown\}/.test(block))
+      .map((block) => block.trim().split(':')[0]);
+    expect(unstamped, 'these images cannot say what they are').toEqual([]);
+  });
+});

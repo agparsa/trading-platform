@@ -78,7 +78,14 @@ grep -q "^TLS_DOMAIN=$DOMAIN$" .env.production \
 # ── 4. Build and start ──────────────────────────────────────────────────────
 # Nginx comes up on a self-signed certificate here; it has to be running and
 # serving port 80 before Let's Encrypt can reach the challenge.
+# Stamp the images with the commit they are built from, so `/health` can answer
+# what is running. Without it the API reports `build: unknown` and
+# `verify:production` cannot tell a fresh deploy from a stale container.
+export BUILD_SHA
+BUILD_SHA=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+
 say "Building images (this takes a while the first time)"
+echo "  stamping $BUILD_SHA"
 "${COMPOSE[@]}" build
 
 say "Starting the stack"

@@ -115,6 +115,22 @@ say "4/9  Fetching the new code"
 git merge --ff-only "@{u}" || die "The checkout has local changes or has diverged. Resolve by hand; a deploy is the wrong time to guess."
 echo "    now at $(git rev-parse --short HEAD)"
 
+# The images are stamped with the commit they were built from. Nothing else can
+# answer "what is actually running on this host?" — the checkout says what was
+# *fetched*, which is a different question and is the one that misleads: a build
+# that failed, or a container that was never recreated, leaves the two apart and
+# the checkout still looks right.
+#
+# `docker-compose.prod.yml` defaults this to `unknown`, so forgetting it is not
+# an error, just an image that cannot say what it is. This script forgot it from
+# the day it was written: every deploy run through it produced `build: unknown`,
+# and `verify:production`'s check that the running build is the deployed one
+# could only ever pass after a compose command typed by hand. Exported here,
+# after the merge, so it is the SHA of the code about to be built.
+export BUILD_SHA
+BUILD_SHA=$(git rev-parse HEAD)
+echo "    images will be stamped $BUILD_SHA"
+
 # ---------------------------------------------------------------------------
 say "5/9  Building images, one at a time"
 # ---------------------------------------------------------------------------
