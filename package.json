@@ -47,7 +47,8 @@
     "verify:production": "tsx --env-file-if-exists=.env scripts/verify-production.ts",
     "chaos": "tsx --env-file-if-exists=.env scripts/failure-injection.ts",
     "rotate:secrets": "tsx --env-file-if-exists=.env scripts/rotate-secrets.ts",
-    "verify:coverage": "pnpm build:packages && pnpm test:coverage"
+    "verify:coverage": "pnpm build:packages && pnpm test:coverage",
+    "measure": "tsx scripts/measure-repository.ts"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

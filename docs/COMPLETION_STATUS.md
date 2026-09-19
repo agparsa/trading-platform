@@ -15,28 +15,49 @@ from a command run against this repository.
 > than patched. If you are editing it, re-measure — do not trust the prose.
 
 **Short answer: the master prompt is not complete.** Four of sixteen planned
-phases are done. `docs/IMPLEMENTATION_PLAN.md` estimates **nine to twelve months
-for one engineer**, and nothing has happened to make that estimate wrong.
+phases are done *as of 3 September 2026* — a judgement, not a measurement, and
+the only figure on this page that is neither counted nor checked. It sits two
+paragraphs above a block of measured numbers, where it reads like one of them,
+so it carries its own date: a reader taking it as today's is the mistake this
+document has already made once with everything else.
+`docs/IMPLEMENTATION_PLAN.md` estimates **nine to twelve months for one
+engineer**, and nothing has happened to make that estimate wrong.
 
 ## The evidence baseline
 
-```
-pnpm build:packages   ok
-pnpm lint             ok
-pnpm format:check     ok
-pnpm typecheck        ok
-pnpm inventory --check ok
-pnpm test             141 files, 1903 tests, 0 failures
-pnpm build            ok
-```
+**The block below is generated.** `pnpm measure` prints it and
+`pnpm measure --write` replaces it; `scripts/repository-figures.test.ts` fails
+the build when its structural counts stop matching the working tree.
 
-4 applications (`api`, `web`, `worker`, `mobile`), 16 workspace packages, 52
-Prisma models, 161 API routes, ~78,000 lines of TypeScript. Live at
-https://devopss.ir.
+It is generated because the warning at the top of this document came true a
+second time. Every figure in the hand-written baseline was roughly half of
+reality — 141 test files against 226, 1,903 tests against 2,970, 16 packages
+against 20, 52 Prisma models against 70, 161 routes against 237, 78,000 lines
+against 151,000 — and each looked specific enough to be believed. A status
+document that under-reports by half is worse than none, because specificity
+reads as currency.
 
-The route count was 95 here and 84 in `docs/API_INVENTORY.md`'s hand-written
-header while the generated table in that same file listed 94. Both hand-written
-figures are gone; the generated one is the only one left.
+<!-- measured:begin -->
+
+**4 applications** (`api`, `web`, `worker`, `mobile`) and
+**20 workspace packages**, on **70 Prisma models**
+with **55 migrations** applied, serving **237 API routes**.
+
+Roughly **148,000 lines** of TypeScript across
+765 files.
+
+Counted at `f0d3a99` on 2026-09-19 by `pnpm measure`. The
+structural counts above are checked against the working tree on every build;
+the line and file counts move with every commit and are as old as the date
+beside them.
+
+<!-- measured:end -->
+
+Live at https://devopss.ir.
+
+The route count was once 95 here and 84 in `docs/API_INVENTORY.md`'s
+hand-written header while the generated table in that same file listed 94. Every
+hand-written figure is gone now; the generated ones are all that is left.
 
 ## Built, tested, and running
 
