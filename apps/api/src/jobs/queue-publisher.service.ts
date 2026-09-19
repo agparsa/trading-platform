@@ -66,4 +66,26 @@ export class QueuePublisher implements OnModuleInit, OnApplicationShutdown {
     await queue.add(jobName, data, jobId === undefined ? {} : { jobId });
     this.logger.log({ queue: name, jobName, jobId }, 'Job published');
   }
+
+  /**
+   * How many jobs are sitting in each queue's failed set.
+   *
+   * `removeOnFail: false` is deliberate — `queues.ts` says a failed financial
+   * job "stays visible in the dead-letter set until a human has looked at it" —
+   * and until now the only way to see that set was to open Redis by hand.
+   * `docs/observability.md` lists dead-letter depth under *What to alert on*,
+   * which nothing could do: there was no series to alert on.
+   *
+   * Read from here because this is where the `Queue` handles already live.
+   * `getFailedCount` is a `ZCARD` on a key BullMQ maintains, so it costs one
+   * round trip per queue and reads nothing the library does not expose.
+   */
+  async failedCounts(): Promise<Array<{ queue: QueueName; failed: number }>> {
+    return Promise.all(
+      [...this.queues.entries()].map(async ([queue, handle]) => ({
+        queue,
+        failed: await handle.getFailedCount(),
+      })),
+    );
+  }
 }

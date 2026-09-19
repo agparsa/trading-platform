@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { judgeSchedule } from '@tp/scheduling-core';
 import { withoutTenantScope } from '@tp/tenancy';
+import { QueuePublisher } from '../jobs/queue-publisher.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { QuoteService } from '../market/quote.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -37,6 +38,7 @@ export class PlatformMetricsService implements OnApplicationBootstrap, OnApplica
     private readonly quotes: QuoteService,
     private readonly gateway: RealtimeGateway,
     private readonly config: ConfigService,
+    private readonly queues: QueuePublisher,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -141,6 +143,35 @@ export class PlatformMetricsService implements OnApplicationBootstrap, OnApplica
 
     await this.refreshScheduledJobs();
     await this.refreshTenantIsolation();
+    await this.refreshDeadLetters();
+  }
+
+  /**
+   * What is sitting in each queue's failed set.
+   *
+   * `docs/observability.md` has listed dead-letter depth under *What to alert
+   * on* since it was written, and there was nothing to alert on: the failed set
+   * exists — `removeOnFail: false`, so a financial job that gave up stays there
+   * until a human has looked at it — and no series ever reported it. An
+   * operator following that row had to open Redis by hand.
+   *
+   * Read from the API rather than the worker because the worker exposes no
+   * metrics endpoint, and the depth is a property of the queue rather than of
+   * whoever processes it. One `ZCARD` per queue, on a fifteen-second timer.
+   *
+   * Reset first, like every gauge here — though on this one it is consistency
+   * rather than a guarantee, and the difference is worth stating. The label
+   * values come from `ALL_QUEUES`, which is a constant, so the series set never
+   * shrinks while the process lives; the gauges above take their labels from
+   * data, where a value that stops appearing really would sit at its last
+   * reading for ever. What does the work here is that every queue is published
+   * every pass, including the ones at zero: a gauge that is only written when
+   * it is non-zero pages for ever after the job is cleared.
+   */
+  private async refreshDeadLetters(): Promise<void> {
+    const counts = await this.queues.failedCounts();
+    this.metrics.deadLetterDepth.reset();
+    for (const row of counts) this.metrics.deadLetterDepth.set({ queue: row.queue }, row.failed);
   }
 
   /**
@@ -164,7 +195,15 @@ export class PlatformMetricsService implements OnApplicationBootstrap, OnApplica
    */
   private async refreshTenantIsolation(): Promise<void> {
     const state = await this.prisma.resolveTenantIsolation();
+    /**
+     * Reset before setting: `configured` can change between restarts, and the
+     * old series would otherwise sit at its last value alongside the new one —
+     * so a deployment that turned the second layer on would keep reporting the
+     * single-role posture for ever, on the exact label the alert selects.
+     */
+    this.metrics.tenantIsolation.reset();
     this.metrics.tenantIsolation.set(
+      { configured: this.prisma.tenantRoleConfigured ? 'true' : 'false' },
       state.enforced === true ? 1 : state.enforced === false ? 0 : -1,
     );
   }

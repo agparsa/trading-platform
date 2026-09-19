@@ -346,7 +346,7 @@ It is now:
 | --- | --- |
 | `GET /health/tenancy` | `enforced` and `configured`, and nothing else — the role name and the probe's reason are database internals and this route is public |
 | `GET /ready` | **down** only on the pair the platform promises to refuse: asked for and absent. Every other state is up |
-| `tp_tenant_isolation` | `1` enforced, `0` not, `-1` while there is nothing to prove it with |
+| `tp_tenant_isolation` | `1` enforced, `0` not, `-1` while there is nothing to prove it with. Labelled `configured` — whether `DATABASE_URL_TENANT` is set — so that `0` asked for can be alerted on and `0` not asked for cannot |
 | `pnpm verify:production` | prints which posture this deployment is running, and fails on that same pair |
 
 **Unknown is up, deliberately.** A two-role deployment on a fresh database

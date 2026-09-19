@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { JobsModule } from '../jobs/jobs.module';
 import { MarketModule } from '../market/market.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { PlatformMetricsService } from './platform-metrics.service';
@@ -11,7 +12,7 @@ import { PlatformMetricsService } from './platform-metrics.service';
  * make every dependency cycle in the codebase this module's problem.
  */
 @Module({
-  imports: [MarketModule, RealtimeModule],
+  imports: [JobsModule, MarketModule, RealtimeModule],
   providers: [PlatformMetricsService],
   exports: [PlatformMetricsService],
 })

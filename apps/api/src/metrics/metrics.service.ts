@@ -42,7 +42,8 @@ export class MetricsService {
   readonly marketFeedAge: Gauge<string>;
   readonly scheduledJobAge: Gauge<'job'>;
   readonly scheduledJobLate: Gauge<'job'>;
-  readonly tenantIsolation: Gauge<string>;
+  readonly tenantIsolation: Gauge<'configured'>;
+  readonly deadLetterDepth: Gauge<'queue'>;
   /** 1 when this instance leads the loop, 0 when it does not. */
   readonly leaderLease: Gauge<'loop'>;
   readonly leaderTransitions: Counter<'loop' | 'transition'>;
@@ -287,7 +288,15 @@ export class MetricsService {
 
     this.tenantIsolation = new Gauge({
       name: 'tp_tenant_isolation',
-      help: '1 when row-level security applies to the connection this API uses, 0 when it does not, -1 while there are no rows to prove it either way. 0 on a single-role deployment is the documented posture; 0 with DATABASE_URL_TENANT set is a misconfiguration.',
+      help: '1 when row-level security applies to the connection this API uses, 0 when it does not, -1 while there are no rows to prove it either way. The `configured` label is whether DATABASE_URL_TENANT is set: 0 with configured="false" is the documented single-role posture, 0 with configured="true" is a misconfiguration. Without the label the two are one series and the alert docs/observability.md describes could not be written.',
+      labelNames: ['configured'] as const,
+      registers: [this.registry],
+    });
+
+    this.deadLetterDepth = new Gauge({
+      name: 'tp_dead_letter_depth',
+      help: 'Jobs sitting in this queue\u2019s failed set. Queues keep failures (removeOnFail: false) so a financial job that gave up stays visible until a human has looked at it; anything above zero means one is waiting. Alert on it.',
+      labelNames: ['queue'] as const,
       registers: [this.registry],
     });
 

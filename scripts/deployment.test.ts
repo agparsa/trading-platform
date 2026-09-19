@@ -1309,6 +1309,127 @@ describe('observability stack', () => {
     expect(grafana).toMatch(/GRAFANA_ADMIN_PASSWORD:\?/);
   });
 
+  /**
+   * The table in `docs/observability.md` headed *What to alert on*, against the
+   * rules that are supposed to implement it.
+   *
+   * That heading is an instruction to an operator, and for the life of this
+   * repository it was prose. The file shipped nine alerts, the table asked for
+   * nine signals, and they were a different nine: dead-letter depth, the three
+   * scheduled-job signals and the isolation gauge were all listed under *alert
+   * on this* with no rule anywhere. Dead-letter depth was the worst of them —
+   * there was no series at all, so the row could not have been implemented by
+   * anybody who tried.
+   *
+   * The existing checks above only run one way: every metric an alert names is
+   * declared. Nothing asked whether every signal somebody was told to watch had
+   * an alert, which is the direction the silence lives in.
+   */
+  const alertNames = [...alerts.matchAll(/^\s*- alert: (\w+)$/gm)].map((m) => m[1]!);
+
+  /** The rule column of every row in that table. `—` where there is none. */
+  const tableRows = (): Array<{ signal: string; rule: string | null }> => {
+    const doc = read('docs/observability.md');
+    const section = doc.slice(doc.indexOf('## What to alert on'));
+    const body = section.slice(0, section.indexOf('\nFailed jobs are retained'));
+    return body
+      .split('\n')
+      .filter((line) => line.startsWith('|'))
+      .map((line) => line.split('|').slice(1, -1))
+      .filter((cells) => cells.length >= 3 && !/^[\s-]+$/.test(cells[1]!))
+      .filter((cells) => !/^\s*Signal\s*$/.test(cells[0]!))
+      .map((cells) => {
+        const rule = /`(\w+)`/.exec(cells[1]!);
+        return { signal: cells[0]!.trim(), rule: rule?.[1] ?? null };
+      });
+  };
+
+  it('reads the table it is checking', () => {
+    // A parser that finds nothing would make both directions below vacuous.
+    const rows = tableRows();
+    expect(rows.length, 'no rows parsed out of "What to alert on"').toBeGreaterThanOrEqual(10);
+    expect(rows.filter((row) => row.rule !== null).length).toBeGreaterThanOrEqual(10);
+  });
+
+  it('ships a rule for every signal the documentation says to alert on', () => {
+    const missing = tableRows()
+      .filter((row) => row.rule !== null && !alertNames.includes(row.rule))
+      .map((row) => `${row.signal} -> ${row.rule ?? ''}`);
+    expect(missing, 'the table names rules that do not exist').toEqual([]);
+  });
+
+  it('documents every rule it ships', () => {
+    const named = new Set(tableRows().map((row) => row.rule));
+    const undocumented = alertNames.filter((name) => !named.has(name));
+    // An alert nobody can find the reasoning for is one that gets silenced
+    // during the incident it was written for.
+    expect(undocumented, 'these rules are in no row of the table').toEqual([]);
+  });
+
+  /**
+   * And the binding that does not depend on anybody remembering the table: a
+   * gauge whose own help text tells the reader to alert on it must have a rule.
+   * Whoever writes the next such gauge gets a failing test until they write it.
+   */
+  it('has a rule for every metric that asks to be alerted on', () => {
+    const asks = [...metricsSource.matchAll(/name: '(tp_[a-z_]+)',\s*\n\s*help: '([^']*)'/g)]
+      .filter((match) => /Alert on/i.test(match[2]!))
+      .map((match) => match[1]!);
+    expect(asks.length, 'no metric asks to be alerted on — has the wording changed?')
+      .toBeGreaterThanOrEqual(2);
+    const unalerted = asks.filter((name) => !alerts.includes(name));
+    expect(unalerted, 'these say "alert on it" and nothing does').toEqual([]);
+  });
+
+  /**
+   * A selector on a label the metric does not carry matches nothing, and a rule
+   * whose expression matches nothing never fires and never says why — the same
+   * silence this whole section is about, one level further in.
+   *
+   * `role` is the case that makes this worth writing rather than assuming: it
+   * is not declared by any metric. It is attached by `prometheus.yml` to the
+   * scrape targets, so `tp_market_feed_age_ms{role="ingest"}` is correct and a
+   * check that only knew about `labelNames` would call it a bug. The allowed
+   * set is therefore the union of the metric's own labels, the labels the
+   * scrape configuration attaches, and the two Prometheus attaches itself.
+   */
+  it('selects only labels the series actually carry', () => {
+    const scrapeLabels = [
+      ...read('docker/observability/prometheus.yml').matchAll(/labels: \{ ([a-z_]+):/g),
+    ].map((match) => match[1]!);
+    const reserved = ['job', 'instance'];
+
+    const declaredLabels = new Map<string, string[]>();
+    for (const match of metricsSource.matchAll(
+      /name: '(tp_[a-z_]+)',[\s\S]{0,1200}?registers: \[this\.registry\]/g,
+    )) {
+      const block = match[0];
+      const names = [...block.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!);
+      const labelNames = /labelNames: \[([^\]]*)\]/.exec(block);
+      declaredLabels.set(
+        match[1]!,
+        labelNames === null
+          ? []
+          : [...labelNames[1]!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!),
+      );
+      void names;
+    }
+
+    const wrong: string[] = [];
+    for (const use of alerts.matchAll(/\b(tp_[a-z_]+?)(?:_bucket|_sum|_count)?\{([^}]*)\}/g)) {
+      const metric = use[1]!;
+      const allowed = new Set([
+        ...(declaredLabels.get(metric) ?? []),
+        ...scrapeLabels,
+        ...reserved,
+      ]);
+      for (const selector of use[2]!.matchAll(/([a-z_]+)\s*=/g)) {
+        if (!allowed.has(selector[1]!)) wrong.push(`${metric}{${selector[1]!}}`);
+      }
+    }
+    expect(wrong, 'these selectors match no series, so the rule can never fire').toEqual([]);
+  });
+
   it('mounts the provisioning it ships, read-only', () => {
     expect(compose).toMatch(
       /docker\/observability\/prometheus\.yml:\/etc\/prometheus\/prometheus\.yml:ro/,

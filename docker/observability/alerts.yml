@@ -71,3 +71,63 @@ groups:
         labels: { severity: warn }
         annotations:
           summary: Event-loop lag p99 above half a second on an API instance
+
+      # ── The silent failures ─────────────────────────────────────────────
+      #
+      # Everything above this line is something going wrong loudly: a feed
+      # stopping, latency climbing, requests being shed. The four below are the
+      # ones that produce no error anywhere — the work simply stops happening,
+      # or a job gives up and waits for somebody who is not looking.
+      #
+      # `docs/observability.md` has listed all four under *What to alert on*
+      # since they were written, and none of them had a rule. The table names
+      # the rule per row now, and a deployment test reads it in both
+      # directions.
+
+      - alert: ApiTargetDown
+        expr: up{job="api"} == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: An API process has stopped answering Prometheus
+          description: The instance labelled in this alert is unreachable on the compose network. Readiness itself is the container healthcheck's job — this is the coarser question, whether the process is there at all.
+
+      - alert: ScheduleLate
+        expr: max by (job) (tp_scheduled_job_late) > 0
+        for: 5m
+        labels: { severity: warn }
+        annotations:
+          summary: Scheduled job {{ $labels.job }} is later than its own cron allows
+          description: The gauge is judged against each job's own schedule, so this is lateness rather than a fixed threshold. A stopped schedule produces no error and no failed job — the process that would have written them never ran. Check WORKER_ROLE and the worker's logs.
+
+      - alert: ScheduleNeverSucceeded
+        expr: max by (job) (tp_scheduled_job_age_ms) == -1
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: Scheduled job {{ $labels.job }} has run and has never succeeded
+          description: A row exists, so something ran it; -1 means no run has ever finished successfully. Usually the job is failing every time rather than not being registered.
+
+      - alert: BackupLate
+        expr: max(tp_scheduled_job_late{job="backup"}) > 0
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: The backup has stopped or is failing
+          description: Its dumps are the only thing standing between a lost primary and a lost business. Separate from ScheduleLate and louder than it on purpose — this one is not a job that can be caught up tomorrow.
+
+      - alert: DeadLetterNotEmpty
+        expr: max by (queue) (tp_dead_letter_depth) > 0
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: A job in {{ $labels.queue }} has given up and is waiting for a human
+          description: Queues keep failures (removeOnFail is false) precisely so a financial job that exhausted its retries stays visible. Nothing clears this on its own.
+
+      - alert: TenantIsolationAbsent
+        expr: max(tp_tenant_isolation{configured="true"}) == 0
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: DATABASE_URL_TENANT is set and row-level security does not apply
+          description: The deployment asked for the second isolation layer and does not have it. The `configured` label is what makes this expressible — without it, this reading is indistinguishable from the documented single-role posture, where 0 is correct.

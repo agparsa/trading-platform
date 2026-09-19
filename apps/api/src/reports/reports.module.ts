@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
-import { QueuePublisher } from '../jobs/queue-publisher.service';
+import { JobsModule } from '../jobs/jobs.module';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
 
 @Module({
-  imports: [PermissionsModule],
+  imports: [JobsModule, PermissionsModule],
   controllers: [ReportsController],
-  providers: [QueuePublisher, ReportsService],
+  providers: [ReportsService],
   exports: [ReportsService],
 })
 export class ReportsModule {}
