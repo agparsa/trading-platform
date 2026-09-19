@@ -4,6 +4,13 @@ import { defineConfig } from 'vitest/config';
 const pkg = (name: string) => fileURLToPath(new URL(`./packages/${name}/src`, import.meta.url));
 
 export default defineConfig({
+  /**
+   * React's automatic JSX runtime, so a component test can write JSX without
+   * importing React — the same transform Next.js applies to this code in the
+   * application. Without it, esbuild emits `React.createElement` and the test
+   * fails with `React is not defined` on the first tag.
+   */
+  esbuild: { jsx: 'automatic' },
   resolve: {
     /**
      * Tests resolve workspace packages to their TypeScript sources, not to the
@@ -77,9 +84,27 @@ export default defineConfig({
     include: [
       'packages/**/src/**/*.{test,spec}.ts',
       'apps/api/src/**/*.{test,spec}.ts',
-      // Pure logic only — the web app has no DOM test environment configured,
-      // so anything importing React or JSX belongs in a component test instead.
       'apps/web/src/lib/**/*.{test,spec}.ts',
+      /**
+       * And the components.
+       *
+       * For most of this repository's life the line above read "pure logic only
+       * — the web app has no DOM test environment configured", and the
+       * consequence was exactly what it sounds like: **no component in
+       * `apps/web` had a rendering test at all.** The functions a component
+       * calls were tested; what it painted was not.
+       *
+       * That is not an abstract gap. The order ticket held every risk violation
+       * the server sent and rendered the first, and the only thing that could
+       * have caught it was a browser suite that renders 33 views for
+       * accessibility and places its single order over HTTP rather than through
+       * the ticket.
+       *
+       * A DOM environment is per file — `@vitest-environment jsdom` at the top
+       * — rather than global, because jsdom costs about a second to construct
+       * and nothing else here needs one.
+       */
+      'apps/web/src/**/*.{test,spec}.tsx',
       'apps/worker/src/**/*.{test,spec}.ts',
       /**
        * The mobile app's pure logic only.

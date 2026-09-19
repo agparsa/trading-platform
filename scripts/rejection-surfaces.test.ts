@@ -24,14 +24,13 @@ import { describe, expect, it } from 'vitest';
  * surfaces *use* it, and render the whole list rather than its first element.
  * It reads source, so it cannot tell you what a browser paints.
  *
- * That limit is not this check being lazy; it is a gap in the repository.
- * `vitest.config.ts` restricts the web app to "pure logic only — the web app
- * has no DOM test environment configured", so **no component in `apps/web` has
- * a rendering test at all**. The browser suite renders 33 views and audits them
- * for accessibility, and places its one order over HTTP rather than through the
- * ticket. A rendering regression in a component is currently caught by nobody.
- * Worth its own phase; recorded here rather than left for somebody to discover
- * the way this one was discovered.
+ * For the web ticket that is now the cheaper of two checks rather than the only
+ * one: `apps/web/src/components/order-ticket.test.tsx` renders the component in
+ * jsdom, submits, and reads the lines out of its `role="alert"`. This file is
+ * kept beside it because it reaches what a jsdom test of one component cannot —
+ * the mobile screen, the shape the API sends, and the four documents that make
+ * the promise — and because a check that costs a millisecond is worth having
+ * next to one that costs a second.
  */
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relative: string) => readFileSync(resolve(ROOT, relative), 'utf8');

@@ -319,20 +319,42 @@ financial rule nobody exercised. The applications are covered by the integration
 suite, the browser suite and sixty-three attacks, none of which a line-coverage
 number describes usefully.
 
-**One hole in that, stated plainly: no component in `apps/web` has a rendering
-test.** `vitest.config.ts` restricts the web app to pure logic because there is
-no DOM test environment configured, so the lib functions a component calls are
-tested and the component itself is not. The browser suite renders 33 views and
-audits every one for accessibility, but it places its single order over HTTP
-rather than through the ticket — so a component that computes the right answer
-and renders the wrong thing is caught by nobody.
+### Components are rendered now, and for a while they were not
 
-That is not hypothetical. The order ticket held every risk violation the server
-sent and rendered the first, and the check that now stops it doing so again is a
-*static* one: it reads the component and asserts it maps over the list instead
-of indexing element zero. That catches the regression and proves nothing about
-what a browser paints. A DOM environment for the web app is worth its own
-phase.
+`vitest.config.ts` restricted the web app to pure logic for want of a DOM
+environment, so **no component in `apps/web` had a rendering test at all**: the
+lib functions a component calls were tested and the component itself was not.
+The browser suite renders 33 views and audits every one for accessibility, but
+it places its single order over HTTP rather than through the ticket — so a
+component that computed the right answer and painted the wrong thing was caught
+by nobody.
+
+That was not hypothetical. The order ticket held every risk violation the server
+sent and rendered the first.
+
+A component test now looks like this:
+
+```tsx
+// @vitest-environment jsdom
+```
+
+Per file, not global: jsdom costs about a second to construct and nothing else
+here needs one. `esbuild: { jsx: 'automatic' }` gives the same transform Next.js
+applies, so a test writes JSX without importing React.
+
+`order-ticket.test.tsx` is the first, and it is the shape to copy. The mocks
+stop at the edge — the data hooks and the session — and everything from the
+submit handler inward is the real component; the assertion reads the ticket's
+own `role="alert"` rather than the page text, because the command log beneath
+also carries the reason and a text query would pass on the log alone, which is
+the bug rendered somewhere else. Four mutations fail it, including the original
+one.
+
+**What is still not covered.** One component of many. The static checks in
+`scripts/rejection-surfaces.test.ts` remain, because they reach the mobile
+screen and the API shape that a jsdom test of one web component cannot, and
+because a cheap check that reads source is worth keeping beside an expensive one
+that renders.
 
 One side effect worth recording: v8 instrumentation slows `resetDatabase` —
 forty tables truncated and the roles re-seeded between cases — past vitest's
