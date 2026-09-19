@@ -31,13 +31,18 @@
 # the container start.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
 
 SKIP_BACKUP=false
 BUILD=true
+RESUMED=false
+ARGS=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-backup) SKIP_BACKUP=true; shift ;;
     --no-build) BUILD=false; shift ;;
+    # Set only by this script, on itself. See step 4.
+    --resumed) RESUMED=true; SKIP_BACKUP=true; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -55,6 +60,7 @@ die()  { printf '\n\033[31m%s\033[0m\n' "$1" >&2; exit 1; }
 say "1/9  What is about to change"
 # ---------------------------------------------------------------------------
 BEFORE=$(git rev-parse --short HEAD)
+BEFORE_FULL=$(git rev-parse HEAD)
 git fetch --all --prune
 AFTER=$(git rev-parse --short "@{u}" 2>/dev/null || echo "$BEFORE")
 if [ "$BEFORE" = "$AFTER" ]; then
@@ -114,6 +120,27 @@ say "4/9  Fetching the new code"
 # ---------------------------------------------------------------------------
 git merge --ff-only "@{u}" || die "The checkout has local changes or has diverged. Resolve by hand; a deploy is the wrong time to guess."
 echo "    now at $(git rev-parse --short HEAD)"
+
+# This file is part of what was just fetched, and bash is still reading it.
+#
+# Bash reads a script from an open descriptor, and `git merge` replaces a
+# changed file by writing a new one and renaming over it — so the descriptor
+# still points at the *old* inode and the rest of this run is the *old* script.
+# A change to this script therefore does nothing on the deploy that brings it
+# in, and takes effect only on the one after. Nothing says so: the run is green
+# either way.
+#
+# That is not a hypothetical. The commit that added the BUILD_SHA stamp above
+# deployed green and stamped nothing, because the stamp was in the half of the
+# file this run never read.
+#
+# So: if this script is one of the files that changed, start again from the new
+# one. `--resumed` is set only here, and it implies `--skip-backup` because the
+# dump was already taken a step ago.
+if [ "$RESUMED" = false ] && ! git diff --quiet "$BEFORE_FULL" HEAD -- "$SELF"; then
+  warn "This script changed in that merge. Restarting on the new version."
+  exec bash "$SELF" ${ARGS[@]+"${ARGS[@]}"} --resumed
+fi
 
 # The images are stamped with the commit they were built from. Nothing else can
 # answer "what is actually running on this host?" — the checkout says what was

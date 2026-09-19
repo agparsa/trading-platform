@@ -1455,3 +1455,69 @@ describe('the deploy scripts', () => {
     expect(unstamped, 'these images cannot say what they are').toEqual([]);
   });
 });
+
+/**
+ * A deploy script that fetches its own source is reading a file that is being
+ * replaced underneath it, and the consequence is quiet enough that it shipped:
+ * the commit above added a BUILD_SHA stamp to `upgrade-server.sh`, the deploy
+ * ran green, and the API still reported `build: "unknown"` — because the half
+ * of the script holding the stamp was never read.
+ *
+ * The first test demonstrates the mechanism rather than asserting it, so the
+ * guard below cannot be removed as folklore.
+ */
+describe('a deploy script that updates itself', () => {
+  it('keeps running the old text after the file is replaced', () => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'self-update-'));
+    try {
+      const script = resolve(dir, 'run.sh');
+      const replacement = resolve(dir, 'new.sh');
+      const marker = resolve(dir, 'ran');
+
+      // `sleep` is the read boundary: bash has consumed the first line but not
+      // the last when the file is swapped. The swap is a rename, exactly as
+      // `git merge` replaces a changed file.
+      writeFileSync(
+        script,
+        ['#!/usr/bin/env bash', 'sleep 0.2', `echo old >> ${marker}`, ''].join('\n'),
+      );
+      writeFileSync(
+        replacement,
+        ['#!/usr/bin/env bash', 'sleep 0.2', `echo new >> ${marker}`, ''].join('\n'),
+      );
+
+      const swap = spawnSync(
+        'bash',
+        ['-c', `bash ${script} & sleep 0.05; mv ${replacement} ${script}; wait`],
+        { encoding: 'utf8' },
+      );
+      expect(swap.status, swap.stderr).toBe(0);
+
+      // The run that replaced the script still executed the version it started
+      // with. This is the whole hazard, in four lines.
+      expect(readFileSync(marker, 'utf8').trim()).toBe('old');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('restarts upgrade-server.sh on the version it just fetched', () => {
+    const body = read('scripts/upgrade-server.sh');
+
+    const merged = body.indexOf('git merge --ff-only');
+    const reexec = body.indexOf('exec bash "$SELF"');
+    const built = body.indexOf('"${COMPOSE[@]}" build');
+
+    expect(reexec, 'the script does not restart itself after fetching').toBeGreaterThan(-1);
+    expect(merged, 'the merge moved').toBeGreaterThan(-1);
+    expect(reexec, 'it restarts before it has the new code').toBeGreaterThan(merged);
+    expect(reexec, 'it restarts after the build, which is too late').toBeLessThan(built);
+
+    // Only when this file is one of the ones that changed, or every deploy
+    // restarts for nothing.
+    expect(body).toMatch(/git diff --quiet "\$BEFORE_FULL" HEAD -- "\$SELF"/);
+    // And not forever: the restarted run says so and does not restart again.
+    expect(body).toMatch(/\$RESUMED" = false/);
+    expect(body).toMatch(/--resumed\) RESUMED=true/);
+  });
+});
