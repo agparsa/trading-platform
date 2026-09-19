@@ -69,6 +69,32 @@ notification's own id is used: still stable, still unique, still processed once.
 | `order.cancelled`        | a resting order is cancelled or expires | `ORDER_CANCELLED` |
 | `risk.margin_call`       | an account crosses into margin call     | `RISK_ALERT`      |
 | `risk.stop_out`          | an account reaches its stop-out level   | `RISK_ALERT`      |
+| `price.alert`            | a price alert the trader set is reached | `PRICE_ALERT`     |
+| `kyc.verified`           | identity documents accepted             | `SYSTEM`          |
+| `kyc.rejected`           | identity documents not accepted         | `SYSTEM`          |
+| `kyc.revoked`            | a verification already granted is taken back | `SYSTEM`     |
+| `withdrawal.rejected`    | a withdrawal is refused, money back in the wallet | `SYSTEM` |
+| `withdrawal.paid`        | a withdrawal has been paid              | `SYSTEM`          |
+| `withdrawal.failed`      | a payout was attempted and did not complete | `SYSTEM`      |
+| `api_key.minted`         | a key was created on the holder's account | `SYSTEM`        |
+| `api_key.revoked`        | a key was revoked                       | `SYSTEM`          |
+
+The last nine rows were missing from this table for as long as they have been
+raised. The heading says *today*, which made the omission read as a deliberate
+boundary rather than a gap: the platform tells a person their identity documents
+were refused and their withdrawal was not approved, and the document describing
+what it tells people mentioned neither.
+`scripts/notification-kinds.test.ts` now reads every `raise(...)` in both
+applications and fails if one is not in this table, and checks each row's
+category against `CATEGORY_FOR_KIND` — so a notice added to the code and not
+here, or filed under a category the code does not agree with, stops the build.
+
+The identity and withdrawal rows are `SYSTEM` rather than a category of their
+own, and `notifications.ts` says why beside the map: a verification decision is
+about the person, not a trade and not a threat. The two `api_key` rows are
+`SYSTEM` for a different reason — their holder must hear about them whatever
+their preferences, because the first is how somebody learns of a key they did
+not mint.
 
 The trading rows come from **one subscriber** on the domain event bus, not from
 eight call sites. Orders and positions publish from eight places and the trigger
