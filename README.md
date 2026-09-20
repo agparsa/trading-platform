@@ -136,17 +136,27 @@ corepack enable pnpm
 If corepack is unavailable, `npm install -g pnpm` or `brew install pnpm` work too.
 The repo pins `pnpm@10.28.0` via `packageManager`, and corepack honours it.
 
-**2. Create `.env` and generate the two JWT secrets:**
+**2. Create `.env` and generate the three secrets:**
 
 ```bash
 cd ~/Documents/trading-platform
 cp .env.example .env
 sed -i '' "s|^JWT_ACCESS_SECRET=.*|JWT_ACCESS_SECRET=$(openssl rand -base64 48)|" .env
 sed -i '' "s|^JWT_REFRESH_SECRET=.*|JWT_REFRESH_SECRET=$(openssl rand -base64 48)|" .env
+sed -i '' "s|^SECRET_ENCRYPTION_KEYS=.*|SECRET_ENCRYPTION_KEYS=1:$(openssl rand -base64 32)|" .env
 ```
 
-On Linux, drop the `''` after `-i`. The API refuses to start on a secret shorter
-than 32 characters, so this step is not optional.
+On Linux, drop the `''` after `-i`. The API refuses to start on a JWT secret
+shorter than 32 characters or on the encryption-key placeholder, so this step is
+not optional — and for a long time it generated two secrets out of three. The
+placeholder says `replace_me_run_pnpm_keygen_1`, but `pnpm keygen` needs the
+toolchain that step 3 installs, so `openssl` does the job here; the two produce
+the same thing, a 32-byte key with the id `1`.
+
+`scripts/readme-quick-start.test.ts` runs this block against a copy of
+`.env.example` and hands the result to the API's own configuration validator, so
+a required setting added to the schema without a line here fails the build
+rather than the next person's first `pnpm dev`.
 
 **3. Start PostgreSQL and Redis, then set up the database:**
 
