@@ -192,6 +192,21 @@ interface OrderAttempt {
   ok: boolean;
 }
 
+/**
+ * Whatever is quoting, which after §36 is whatever is open.
+ *
+ * This was `'XAUUSD'`, written into the order. Gold's session closes for the
+ * weekend, so from Friday evening to Sunday night every order in every scenario
+ * came back `MARKET_CLOSED` and the run reported *"nothing fills after Redis
+ * came back"* — three scenarios failed, each naming the platform, for a
+ * platform that was correctly refusing to trade a closed market. The
+ * penetration suite learned exactly this lesson and wrote it down ("a security
+ * suite that only runs Monday to Friday is a security suite nobody runs before
+ * a weekend deploy"); this harness sat beside it and did not. `waitForQuotes`
+ * already asked the platform what was quoting and threw the answer away.
+ */
+let tradeable = 'XAUUSD';
+
 async function placeOrder(trader: Trader, key: string): Promise<OrderAttempt> {
   const started = Date.now();
   const result = await call<{ id: string }>('/orders', {
@@ -200,7 +215,7 @@ async function placeOrder(trader: Trader, key: string): Promise<OrderAttempt> {
     headers: { 'Idempotency-Key': key },
     body: JSON.stringify({
       accountId: trader.accountId,
-      symbol: 'XAUUSD',
+      symbol: tradeable,
       side: 'BUY',
       volume: '0.01',
     }),
@@ -482,11 +497,17 @@ async function waitForQuotesBack(token: string, withinMs: number): Promise<void>
   }
 }
 
-async function waitForQuotes(token: string): Promise<void> {
+async function waitForQuotes(token: string): Promise<string> {
   const deadline = Date.now() + 60_000;
   for (;;) {
     const quotes = await call<Array<{ symbol: string }>>('/market/quotes', { token });
-    if ((quotes.body?.data?.length ?? 0) > 0) return;
+    const first = quotes.body?.data?.[0]?.symbol;
+    if (first !== undefined) {
+      // The scenarios trade what is open now, not what was open when this
+      // file was written.
+      tradeable = first;
+      return first;
+    }
     if (Date.now() > deadline) throw new Error('nothing is quoting');
     await sleep(500);
   }
@@ -560,7 +581,8 @@ async function main(): Promise<void> {
     );
 
     const traders = await Promise.all(Array.from({ length: 8 }, (_, i) => registerTrader(i)));
-    await waitForQuotes(traders[0]!.token);
+    const symbol = await waitForQuotes(traders[0]!.token);
+    console.log(`  trading ${symbol}, which is open`);
     const allKeys: string[] = [];
     const keys = (n: number) => {
       const fresh = Array.from({ length: n }, () => randomUUID());

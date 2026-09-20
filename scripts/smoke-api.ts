@@ -1916,21 +1916,43 @@ async function main(): Promise<void> {
      * nothing. Only the local run can prove this; a deployment's stdout is not
      * reachable from here.
      */
+    /**
+     * The sentinel is the tenant-isolation announcement, **whichever branch it
+     * took**. `PrismaService.announceIsolation` logs one of three sentences at
+     * boot — enforced, not enforced, or asked-for-and-absent — and all three are
+     * buffered lines, so any one of them proves the flush.
+     *
+     * This used to look for the *enforced* sentence alone, which is printed only
+     * on the two-role deployment. On the single-role posture — the one
+     * `.env.example` produces, and therefore the one every checkout set up per
+     * the README has — that sentence never appears, and this check failed on
+     * every developer machine with a diagnosis that was wrong: "buffered logs
+     * are not being flushed". The logs had flushed. The check was reading the
+     * one boot line that depends on how the database is provisioned and calling
+     * its absence a logging fault. Found by rebuilding an environment from the
+     * README and running the gate that the README says to run.
+     */
+    const ISOLATION_ANNOUNCED = [
+      'tenant isolation enforced at the database',
+      'Tenant isolation is NOT enforced at the database',
+      'DATABASE_URL_TENANT is set but',
+    ];
+    const announced = (): boolean => {
+      const text = output.join('');
+      return ISOLATION_ANNOUNCED.some((sentence) => text.includes(sentence));
+    };
     // Pino writes through a worker thread, so the flushed lines can land a few
     // milliseconds after the health check answers. Wait for them, briefly.
     const bootLogDeadline = Date.now() + 5_000;
-    while (
-      !output.join('').includes('Database connection established') &&
-      Date.now() < bootLogDeadline
-    ) {
+    while (!announced() && Date.now() < bootLogDeadline) {
       await sleep(100);
     }
-    const booted = output.join('');
-    if (!booted.includes('Database connection established')) {
+    if (!announced()) {
       failures += 1;
       console.error(
-        '  FAIL the boot log reached stdout: "Database connection established" was never printed — ' +
-          'buffered logs are not being flushed',
+        '  FAIL the boot log reached stdout: the tenant-isolation announcement never appeared — ' +
+          'either buffered boot lines are not being flushed, or PrismaService.announceIsolation ' +
+          'changed its wording and this sentinel needs to follow it',
       );
     } else {
       console.log('  ok  the boot log reached stdout');
