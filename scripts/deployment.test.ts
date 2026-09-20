@@ -1430,6 +1430,56 @@ describe('observability stack', () => {
     expect(wrong, 'these selectors match no series, so the rule can never fire').toEqual([]);
   });
 
+  /**
+   * The two dead-letter rules, and the line between them.
+   *
+   * Everything above checks that a rule *exists* and is documented. Nothing
+   * checked what one *says* — and a mutation proved the cost: returning the
+   * page to `depth > 0` alone, which is the defect this pair was written to
+   * fix, passed every check in this file.
+   *
+   * The pair has to partition the space. One rule for "something gave up
+   * recently", one for "a backlog nobody cleared", on opposite sides of the
+   * same threshold: overlapping, they both fire for one problem; with a gap,
+   * a set of failures falls between them and nothing says anything.
+   */
+  it('splits the dead-letter alerts at one threshold, with no overlap and no gap', () => {
+    const rule = (name: string): string => {
+      const start = alerts.indexOf(`- alert: ${name}`);
+      expect(start, `${name} is not in alerts.yml`).toBeGreaterThan(-1);
+      const next = alerts.indexOf('- alert: ', start + 1);
+      return alerts.slice(start, next === -1 ? undefined : next);
+    };
+
+    const page = rule('DeadLetterNotEmpty');
+    const backlog = rule('DeadLetterBacklog');
+
+    // Both are about something waiting…
+    for (const [name, text] of [
+      ['DeadLetterNotEmpty', page],
+      ['DeadLetterBacklog', backlog],
+    ] as const) {
+      expect(text, `${name} does not look at the depth`).toMatch(/tp_dead_letter_depth/);
+      expect(text, `${name} does not look at the age`).toMatch(/tp_dead_letter_newest_age_ms/);
+    }
+
+    // …and they divide on the age, at the same number, in opposite directions.
+    const threshold = (text: string, comparison: RegExp): number => {
+      const found = comparison.exec(text);
+      return found === null ? Number.NaN : Number(found[1]);
+    };
+    const pages = threshold(page, /tp_dead_letter_newest_age_ms\)\s*<\s*(\d+)/);
+    const warns = threshold(backlog, /tp_dead_letter_newest_age_ms\)\s*>=\s*(\d+)/);
+
+    expect(pages, 'the page does not bound the age from above').not.toBeNaN();
+    expect(warns, 'the backlog does not bound the age from below').not.toBeNaN();
+    expect(warns, 'the two thresholds differ, so failures fall between them').toBe(pages);
+
+    // And the louder one is the recent one.
+    expect(page).toMatch(/severity: page/);
+    expect(backlog).toMatch(/severity: warn/);
+  });
+
   it('mounts the provisioning it ships, read-only', () => {
     expect(compose).toMatch(
       /docker\/observability\/prometheus\.yml:\/etc\/prometheus\/prometheus\.yml:ro/,

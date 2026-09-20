@@ -287,6 +287,53 @@ run in half.
 | Redis      | Yes, with a caveat | It carries no financial truth — quotes are re-published on the next tick and clients re-snapshot. In-flight WebSocket fan-out is lost. |
 | PostgreSQL | Only deliberately  | It _is_ the financial truth. Restore from backup rather than improvising.                                                              |
 
+## A job in the dead-letter set
+
+`DeadLetterNotEmpty` pages when something gave up in the last day.
+`DeadLetterBacklog` warns when the set is not empty and nothing new has failed —
+that is a backlog somebody was supposed to clear.
+
+Queues keep failures on purpose (`removeOnFail: false`): a financial job that
+exhausted its retries stays visible until a person has looked at it. Nothing
+removes one automatically, and that includes the job succeeding later.
+
+**Read them first.** `tp_dead_letter_depth{queue}` says how many;
+`tp_dead_letter_newest_age_ms{queue}` says how long since the most recent. Then,
+on the host:
+
+```bash
+Q=reconciliation   # the queue the alert named
+docker exec trading-platform-prod-redis-1 redis-cli ZCARD "bull:$Q:failed"
+# The newest three, with the reason each gave up:
+for id in $(docker exec trading-platform-prod-redis-1 \
+      redis-cli ZREVRANGE "bull:$Q:failed" 0 2); do
+  docker exec trading-platform-prod-redis-1 \
+    redis-cli HMGET "bull:$Q:$id" name failedReason finishedOn
+done
+```
+
+**Decide, then clear.** A failed job is evidence; deleting it without reading it
+throws away the only record of what happened. Once the reason is understood and
+either fixed or written down:
+
+```bash
+# Clears failures older than the given age in ms. 0 clears all of them.
+docker exec trading-platform-prod-api-1 node -e "
+  const { Queue } = require('bullmq');
+  const q = new Queue(process.env.Q, { connection: { url: process.env.REDIS_URL } });
+  q.clean(0, 1000, 'failed').then((ids) => { console.log('cleared', ids.length); return q.close(); });
+" 
+```
+
+**Do not retry blindly.** Some of these jobs are financial and some are not
+idempotent in the state they failed in. Re-queue deliberately, one at a time,
+after reading the reason.
+
+This section exists because the gauge's first scrape on production found 45 —
+every scheduled reconciliation between 31 August and 2 September, from a fault
+fixed on the 2nd, sitting where nobody could see them and nobody had been told
+to look.
+
 ## Rotating the encryption key
 
 The full procedure is in

@@ -44,6 +44,7 @@ export class MetricsService {
   readonly scheduledJobLate: Gauge<'job'>;
   readonly tenantIsolation: Gauge<'configured'>;
   readonly deadLetterDepth: Gauge<'queue'>;
+  readonly deadLetterAge: Gauge<'queue'>;
   /** 1 when this instance leads the loop, 0 when it does not. */
   readonly leaderLease: Gauge<'loop'>;
   readonly leaderTransitions: Counter<'loop' | 'transition'>;
@@ -296,6 +297,13 @@ export class MetricsService {
     this.deadLetterDepth = new Gauge({
       name: 'tp_dead_letter_depth',
       help: 'Jobs sitting in this queue\u2019s failed set. Queues keep failures (removeOnFail: false) so a financial job that gave up stays visible until a human has looked at it; anything above zero means one is waiting. Alert on it.',
+      labelNames: ['queue'] as const,
+      registers: [this.registry],
+    });
+
+    this.deadLetterAge = new Gauge({
+      name: 'tp_dead_letter_newest_age_ms',
+      help: 'Milliseconds since the most recent job in this queue gave up. -1 when the failed set is empty. Depth says how many are waiting; this says whether anything is still going wrong — the two answer different questions and an alert that conflates them pages about resolved incidents for ever.',
       labelNames: ['queue'] as const,
       registers: [this.registry],
     });

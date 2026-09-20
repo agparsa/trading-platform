@@ -148,12 +148,30 @@ operator following the row had to open Redis by hand.
 | Market-data integrity signals open            | `IntegritySignalsOpen`     | The feed is producing prices the gate refused                     |
 | Valuations deferred for ten minutes           | `RealtimeValuationsDeferred` | Screens are refreshing less often than the interval             |
 | Event-loop lag p99 over half a second         | `EventLoopLag`             | The process is saturated                                          |
-| `tp_dead_letter_depth` > 0                    | `DeadLetterNotEmpty`       | A financial job failed and is waiting for a human                 |
+| `tp_dead_letter_depth` > 0, newest under a day | `DeadLetterNotEmpty`       | A financial job failed and is waiting for a human                 |
+| `tp_dead_letter_newest_age_ms` over a day, depth > 0 | `DeadLetterBacklog` | Nothing new is failing, and nobody has cleared what did           |
 | `tp_scheduled_job_late` > 0                   | `ScheduleLate`             | A schedule has stopped, is failing, or was never registered — the one failure here that produces no error at all |
 | `tp_scheduled_job_age_ms` = -1                | `ScheduleNeverSucceeded`   | That job has run and has never succeeded. Usually it is failing every time |
 | `tp_scheduled_job_late{job="backup"}`         | `BackupLate`               | The backup container has stopped or is failing. Its dumps are the only thing standing between a lost primary and a lost business |
 | `tp_tenant_isolation{configured="true"}` = 0  | `TenantIsolationAbsent`    | The deployment asked for row-level security and does not have it. The `configured` label is what makes this expressible: without it the reading is indistinguishable from the single-role posture, where `0` is correct |
 | A job **missing** from `/health/jobs`         | — `verify:production`      | It has never run once — no row exists. A gauge cannot say this, because there is nothing to label |
+
+### Why the dead-letter set needs two alerts
+
+The depth gauge's first scrape on production reported **45**: every scheduled
+reconciliation run between 31 August and 2 September, from a fault fixed on the
+2nd. That is correct, and it is exactly what `removeOnFail: false` is for — a
+financial job that gave up stays visible until a human has looked at it.
+
+But an alert on depth alone would have paged about a three-week-old resolved
+incident every five minutes for ever, and a page that is always firing is a page
+nobody reads. Depth says *how many are waiting*; age says *whether anything is
+still going wrong*. They are different questions and one rule cannot ask both.
+
+So `DeadLetterNotEmpty` pages only while the newest failure is under a day old,
+and `DeadLetterBacklog` warns, quietly and after an hour, that somebody has a
+set to clear. Clearing it is the act of having looked, which is the whole point
+of keeping it.
 
 Failed jobs are retained deliberately (`removeOnFail: false`): a failed financial
 job must stay visible until someone has looked at it.

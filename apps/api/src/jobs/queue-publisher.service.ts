@@ -80,12 +80,31 @@ export class QueuePublisher implements OnModuleInit, OnApplicationShutdown {
    * `getFailedCount` is a `ZCARD` on a key BullMQ maintains, so it costs one
    * round trip per queue and reads nothing the library does not expose.
    */
-  async failedCounts(): Promise<Array<{ queue: QueueName; failed: number }>> {
+  async failedCounts(): Promise<
+    Array<{ queue: QueueName; failed: number; newestFailedAt: number | null }>
+  > {
     return Promise.all(
-      [...this.queues.entries()].map(async ([queue, handle]) => ({
-        queue,
-        failed: await handle.getFailedCount(),
-      })),
+      [...this.queues.entries()].map(async ([queue, handle]) => {
+        const failed = await handle.getFailedCount();
+        /**
+         * And *when* the most recent one gave up.
+         *
+         * Depth alone cannot tell a job that failed ten minutes ago from one
+         * that failed three weeks ago and was investigated, and the first thing
+         * this gauge did on production was report **45** — every scheduled
+         * reconciliation between 31 August and 2 September, from a fault fixed
+         * on the 2nd. Correct, and exactly what `removeOnFail: false` is for;
+         * but an alert on depth alone would have paged about a resolved
+         * incident every five minutes for ever, which is how a page gets muted.
+         *
+         * `getFailed(0, 0)` is one `ZREVRANGE` of a single element — BullMQ
+         * returns newest first — and it is asked for only when there is
+         * something to ask about.
+         */
+        if (failed === 0) return { queue, failed, newestFailedAt: null };
+        const [newest] = await handle.getFailed(0, 0);
+        return { queue, failed, newestFailedAt: newest?.finishedOn ?? null };
+      }),
     );
   }
 }

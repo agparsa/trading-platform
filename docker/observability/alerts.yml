@@ -116,13 +116,35 @@ groups:
           summary: The backup has stopped or is failing
           description: Its dumps are the only thing standing between a lost primary and a lost business. Separate from ScheduleLate and louder than it on purpose — this one is not a job that can be caught up tomorrow.
 
+      # Depth and age answer different questions, and the first scrape of the
+      # depth gauge on production proved why: **45** failed reconciliation jobs,
+      # every scheduled run between 31 August and 2 September, from a fault
+      # fixed on the 2nd. Correct, and exactly what `removeOnFail: false` is
+      # for — but an alert on depth alone would have paged about a resolved
+      # incident every five minutes for ever, and a page that is always firing
+      # is a page nobody reads.
+      #
+      # So the page is for something *still going wrong*, and the backlog is a
+      # warning that somebody has a queue to clear.
       - alert: DeadLetterNotEmpty
-        expr: max by (queue) (tp_dead_letter_depth) > 0
+        expr: |
+          max by (queue) (tp_dead_letter_depth) > 0
+            and on (queue) max by (queue) (tp_dead_letter_newest_age_ms) < 86400000
         for: 5m
         labels: { severity: page }
         annotations:
-          summary: A job in {{ $labels.queue }} has given up and is waiting for a human
-          description: Queues keep failures (removeOnFail is false) precisely so a financial job that exhausted its retries stays visible. Nothing clears this on its own.
+          summary: A job in {{ $labels.queue }} gave up in the last day and is waiting for a human
+          description: Queues keep failures (removeOnFail is false) precisely so a financial job that exhausted its retries stays visible. Nothing clears this on its own. See docs/runbook.md for reading and clearing the failed set.
+
+      - alert: DeadLetterBacklog
+        expr: |
+          max by (queue) (tp_dead_letter_depth) > 0
+            and on (queue) max by (queue) (tp_dead_letter_newest_age_ms) >= 86400000
+        for: 1h
+        labels: { severity: warn }
+        annotations:
+          summary: '{{ $labels.queue }} has failed jobs older than a day that nobody has cleared'
+          description: Nothing new is failing — the newest of these is over a day old — but the set is a record somebody is supposed to act on and then clear. Left alone it makes the depth figure meaningless.
 
       - alert: TenantIsolationAbsent
         expr: max(tp_tenant_isolation{configured="true"}) == 0

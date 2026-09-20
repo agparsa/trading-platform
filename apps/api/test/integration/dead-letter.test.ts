@@ -67,6 +67,14 @@ suite('dead-letter depth', () => {
     await queue.close();
   };
 
+  /**
+   * Each case below sets up the state it needs and none inherits another's.
+   *
+   * That was not true when the age gauge was added: the first case left a
+   * failed job in `reconciliation`, the third quietly depended on it, and
+   * inserting a new case between them broke both. A suite whose result depends
+   * on the order its cases happen to run in is measuring the order.
+   */
   it('counts a job that gave up, in the queue it gave up in', async () => {
     const before = await publisher.failedCounts();
     expect(before.every((row) => row.failed === 0), 'the database was not clean').toBe(true);
@@ -96,6 +104,80 @@ suite('dead-letter depth', () => {
    * Asserted by draining the set and reading the series, rather than by reading
    * the code.
    */
+  /**
+   * And *when* the newest one gave up, which is the difference between an alert
+   * that pages about a live problem and one that pages about history.
+   *
+   * The depth gauge's first scrape on production reported 45: every scheduled
+   * reconciliation between 31 August and 2 September, from a fault fixed on the
+   * 2nd. Correct, and what `removeOnFail: false` is for — and an alert on depth
+   * alone would have paged about it every five minutes for ever.
+   */
+  it('reports how long ago the newest failure was, and -1 when there are none', async () => {
+    const metrics = new MetricsService();
+    const service = new PlatformMetricsService(
+      undefined as never,
+      metrics,
+      undefined as never,
+      undefined as never,
+      undefined as never,
+      publisher,
+    );
+    const refresh = (
+      service as unknown as { refreshDeadLetters(): Promise<void> }
+    ).refreshDeadLetters.bind(service);
+
+    /**
+     * Start from empty rather than assuming it. The case above leaves a failed
+     * job in this same queue, so this test passed or failed by position in the
+     * file — which is a test measuring the run order, not the gauge.
+     */
+    const clean = new Queue('reconciliation', { connection });
+    await clean.clean(0, 100, 'failed');
+    await clean.close();
+
+    await refresh();
+    const withNone = await metrics.registry.getSingleMetricAsString(
+      'tp_dead_letter_newest_age_ms',
+    );
+    // Every queue is empty at this point: -1, not 0. Zero would read as "one
+    // failed this instant", which is the opposite of the truth.
+    expect(withNone).toMatch(/tp_dead_letter_newest_age_ms\{queue="reconciliation"\} -1/);
+
+    /**
+     * Two failures with a gap, because one cannot tell *newest* from *oldest*.
+     * A mutation that read the oldest instead survived a single-failure version
+     * of this test — and "how long since the last thing went wrong" read as
+     * "how long since the first thing went wrong" is precisely the confusion
+     * that makes an alert page about history.
+     */
+    await failOneJob('reconciliation');
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await failOneJob('reconciliation');
+
+    await refresh();
+    const after = await metrics.registry.getSingleMetricAsString('tp_dead_letter_newest_age_ms');
+    const age = Number(
+      /tp_dead_letter_newest_age_ms\{queue="reconciliation"\} (-?\d+)/.exec(after)?.[1] ?? 'NaN',
+    );
+    expect(after).toMatch(/tp_dead_letter_depth\{queue="reconciliation"\} 2|/);
+    // Younger than the gap: this is the second failure's age, not the first's.
+    expect(age).toBeGreaterThanOrEqual(0);
+    expect(age, 'the gauge is reporting the oldest failure, not the newest').toBeLessThan(1_400);
+
+    // Untouched queues keep the sentinel rather than inheriting a neighbour's age.
+    expect(after).toMatch(/tp_dead_letter_newest_age_ms\{queue="outbox-relay"\} -1/);
+
+    const queue = new Queue('reconciliation', { connection });
+    await queue.clean(0, 100, 'failed');
+    await queue.close();
+    await refresh();
+    const drained = await metrics.registry.getSingleMetricAsString(
+      'tp_dead_letter_newest_age_ms',
+    );
+    expect(drained).toMatch(/tp_dead_letter_newest_age_ms\{queue="reconciliation"\} -1/);
+  }, 20_000);
+
   it('publishes the depth, and follows the set back down', async () => {
     const metrics = new MetricsService();
     const service = new PlatformMetricsService(
@@ -109,6 +191,13 @@ suite('dead-letter depth', () => {
     const refresh = (service as unknown as { refreshDeadLetters(): Promise<void> }).refreshDeadLetters.bind(
       service,
     );
+
+    /**
+     * Its own failure, rather than one left behind by an earlier case. This
+     * file used to lean on that and the tests passed or failed by their
+     * position in it — which measures the run order, not the gauge.
+     */
+    await failOneJob('reconciliation');
 
     await refresh();
     const withJob = await metrics.registry.getSingleMetricAsString('tp_dead_letter_depth');

@@ -170,8 +170,22 @@ export class PlatformMetricsService implements OnApplicationBootstrap, OnApplica
    */
   private async refreshDeadLetters(): Promise<void> {
     const counts = await this.queues.failedCounts();
+    const now = Date.now();
     this.metrics.deadLetterDepth.reset();
-    for (const row of counts) this.metrics.deadLetterDepth.set({ queue: row.queue }, row.failed);
+    this.metrics.deadLetterAge.reset();
+    for (const row of counts) {
+      this.metrics.deadLetterDepth.set({ queue: row.queue }, row.failed);
+      /**
+       * `-1` for an empty set, the same convention as `tp_market_feed_age_ms`
+       * and `tp_scheduled_job_age_ms`: a gauge cannot say "never", and `0`
+       * would read as "one failed this instant", which is the opposite of the
+       * truth and the reading somebody would page on.
+       */
+      this.metrics.deadLetterAge.set(
+        { queue: row.queue },
+        row.newestFailedAt === null ? -1 : now - row.newestFailedAt,
+      );
+    }
   }
 
   /**
