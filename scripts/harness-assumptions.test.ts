@@ -117,6 +117,17 @@ describe('no gate places an order on an instrument it assumed was open', () => {
    * Only orders. A chart layout or a price alert named for a closed instrument
    * is a legitimate thing to have, so a literal symbol there is not a fault.
    */
+  /**
+   * Not `scripts/smoke-web.ts`, and the reason is worth keeping. It trades gold
+   * by name too — and that is deliberate: `openMarketToday` first uses the
+   * admin sessions route to open gold's window for today, so the order is
+   * placed on an instrument the suite *made* open, which also exercises the
+   * route that edits a session. I read the literal, generalised from the three
+   * files above, "fixed" it to trade whatever was quoting, and broke the book
+   * check that expects gold. The survey that found three offenders stopped
+   * looking once it had a pattern; the fourth file matched the pattern and not
+   * the fault.
+   */
   const ORDER_PLACING = ['scripts/failure-injection.ts', 'scripts/pentest.ts', 'scripts/smoke-api.ts'];
 
   it('resolves the instrument from what is quoting', () => {
