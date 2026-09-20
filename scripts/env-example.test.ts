@@ -187,3 +187,37 @@ describe('.env.example', () => {
     expect(missing, 'required, and a newcomer copying .env.example never learns of it').toEqual([]);
   });
 });
+
+/**
+ * No setting in the example is present-but-blank.
+ *
+ * `KEY=` is not "unset". It is "set to the empty string", and the difference
+ * reaches production: an empty value is past `.optional()`, past `?? null`, and
+ * into whatever parses it. Four settings here were spelled that way — each with
+ * a comment saying "leave unset" or "unset = none" directly above it — and
+ * copying this file, which is the only thing this file is for, produced an API
+ * that would not boot and a withdrawal path that threw on every request.
+ *
+ * `validateEnv` strips blanks now, so a deployment that leaves one blank
+ * behaves as documented rather than breaking. This is the other half: the
+ * example should not teach the spelling in the first place, because a reader
+ * copies the shape of a line as readily as its value.
+ */
+describe('.env.example has no blank values', () => {
+  const example = readFileSync(resolve(ROOT, '.env.example'), 'utf8');
+
+  it('spells "unset" as a comment, not as an empty value', () => {
+    const blank = example
+      .split('\n')
+      .map((line, index) => ({ line, number: index + 1 }))
+      .filter(({ line }) => /^[A-Z][A-Z0-9_]*=\s*$/.test(line))
+      .map(({ line, number }) => `${String(number)}: ${line.trim()}`);
+    expect(blank, 'write these as `# KEY=` — a blank value is a value').toEqual([]);
+  });
+
+  it('is reading the file it thinks it is', () => {
+    // A path that resolved to nothing would pass the check above for ever.
+    expect(example, '.env.example looks empty').toMatch(/^DATABASE_URL=/m);
+    expect(example.split('\n').length).toBeGreaterThan(100);
+  });
+});

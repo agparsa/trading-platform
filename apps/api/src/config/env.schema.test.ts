@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { corsOrigins, rateLimits, validateEnv } from './env.schema';
+import { corsOrigins, envSchema, rateLimits, validateEnv } from './env.schema';
+import { isCurrentlyVerified, KycStatus } from '@tp/kyc-core';
 import { generateEncryptionKey } from '@tp/crypto-core';
 
 const base = {
@@ -210,5 +211,54 @@ describe('rateLimits', () => {
     expect(rateLimits.login).toBe(5);
     process.env['RATE_LIMIT_LOGIN_PER_MINUTE'] = '-1';
     expect(rateLimits.login).toBe(5);
+  });
+});
+
+/**
+ * `KEY=` in a `.env` file.
+ *
+ * An operator reading "leave unset and it never lapses" beside
+ * `KYC_VALID_FOR_DAYS=` has done what the line asks. To `process.env` the value
+ * is the empty string — present, and therefore past `.optional()` and past
+ * every `?? null` in the code that reads it.
+ *
+ * Four settings in `.env.example` shipped that way and copying that file, which
+ * is the whole purpose of the file, broke two features. Found by rebuilding a
+ * development environment from it.
+ */
+describe('a setting left blank', () => {
+  it('is the same as not setting it at all', () => {
+    const blank = validateEnv({
+      ...base,
+      KYC_VALID_FOR_DAYS: '',
+      WITHDRAWAL_DAILY_LIMIT: '',
+      WITHDRAWAL_AUTO_APPROVE_BELOW: '',
+      PAYMENT_BANK_DETAILS: '   ',
+    });
+    // Not `0`, not `''` — absent, which is what every consumer's `?? null`
+    // is written against.
+    expect(blank.KYC_VALID_FOR_DAYS).toBeUndefined();
+    expect(blank.WITHDRAWAL_DAILY_LIMIT).toBeUndefined();
+    expect(blank.WITHDRAWAL_AUTO_APPROVE_BELOW).toBeUndefined();
+    expect(blank.PAYMENT_BANK_DETAILS).toBeUndefined();
+  });
+
+  it('would otherwise refuse to boot, or invert a gate', () => {
+    // The two failure modes, kept as the reason this exists. `.min(1)` refuses
+    // a coerced `0`, so the API would not start…
+    const schema = (
+      envSchema as unknown as { shape: Record<string, { safeParse(v: unknown): { success: boolean } }> }
+    ).shape;
+    expect(schema['KYC_VALID_FOR_DAYS']!.safeParse(0).success).toBe(false);
+    // …and where a `0` reaches the code, "verified within the last zero days"
+    // is false for everybody, which closes every withdrawal behind the
+    // identity gate.
+    expect(isCurrentlyVerified(KycStatus.VERIFIED, new Date(), 0)).toBe(false);
+    expect(isCurrentlyVerified(KycStatus.VERIFIED, new Date(), null)).toBe(true);
+  });
+
+  it('does not rescue a required setting', () => {
+    // Blank-stripping must not turn a missing database URL into a default.
+    expect(() => validateEnv({ ...base, DATABASE_URL: '' })).toThrow(/DATABASE_URL/);
   });
 });

@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { ConfigService } from '@nestjs/config';
 import type { PrismaClient } from '@prisma/client';
 import { UserRole } from '@tp/shared-types';
 import { withTenant } from '@tp/tenancy';
@@ -31,11 +30,32 @@ const TENANT = { tenantId: DEFAULT_TENANT_ID, slug: DEFAULT_TENANT_SLUG };
 suite('ip rules', () => {
   let prisma: PrismaClient;
 
-  /** Explicit, always: `undefined` is a meaningful value here, not an absence. */
+  /**
+   * Explicit, always: `undefined` is a meaningful value here, not an absence.
+   *
+   * And `skipProcessEnv`, which is the difference between a test that says that
+   * and one that means it. `ConfigService.get` falls back to `process.env` when
+   * its internal config has no value, and **Vitest loads `.env` into
+   * `process.env`** — so on a machine whose `.env` was copied from
+   * `.env.example`, which sets `TRUSTED_PROXY_HOPS=0`, the case below read a
+   * declaration the test had deliberately withheld and the refusal it asserts
+   * never happened.
+   *
+   * It passed in CI, which sets a handful of variables and has no `.env`, and
+   * on a machine whose `.env` predated that setting. It failed the first time
+   * anybody set this repository up the documented way. A test whose result
+   * depends on a file that is not part of the test is not testing what it
+   * names.
+   */
   const build = (hops: number | undefined) =>
     new IpRulesService(
       prisma as unknown as PrismaService,
-      new ConfigService({ TRUSTED_PROXY_HOPS: hops } as never) as never,
+      // Answers this one question and consults nothing else. `skipProcessEnv`
+      // is the real `ConfigService`'s switch for this and it is private —
+      // `ConfigModule.forRoot` sets it, and a test constructing the service by
+      // hand cannot. The service asks for exactly one setting, so the smallest
+      // honest thing to give it is that setting.
+      { get: (key: string) => (key === 'TRUSTED_PROXY_HOPS' ? hops : undefined) } as never,
       new AuditService(prisma as unknown as PrismaService),
     );
 
@@ -124,6 +144,26 @@ suite('ip rules', () => {
     await expect(create({}, build(undefined))).rejects.toThrow(/TRUSTED_PROXY_HOPS/);
     expect(build(undefined).enforceable()).toBe(false);
     expect(await prisma.tenantIpRule.count()).toBe(0);
+  });
+
+  /**
+   * And the ambient environment cannot make it pass.
+   *
+   * This is the case the test above could not make, because it was the one
+   * being broken: a `TRUSTED_PROXY_HOPS` in `process.env` — from a `.env` that
+   * Vitest loaded, from a shell, from anywhere — must not stand in for a
+   * declaration this service was not given.
+   */
+  it('does not read a declaration out of the ambient environment', async () => {
+    const before = process.env['TRUSTED_PROXY_HOPS'];
+    process.env['TRUSTED_PROXY_HOPS'] = '0';
+    try {
+      await expect(create({}, build(undefined))).rejects.toThrow(/TRUSTED_PROXY_HOPS/);
+      expect(build(undefined).enforceable()).toBe(false);
+    } finally {
+      if (before === undefined) delete process.env['TRUSTED_PROXY_HOPS'];
+      else process.env['TRUSTED_PROXY_HOPS'] = before;
+    }
   });
 
   /**

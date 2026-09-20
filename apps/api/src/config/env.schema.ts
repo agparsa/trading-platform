@@ -661,8 +661,46 @@ export const envSchema = z
 
 export type Env = z.infer<typeof envSchema>;
 
+/**
+ * `KEY=` means the operator left it blank, which is what "leave unset" looks
+ * like in a `.env` file.
+ *
+ * It is not what it means to `process.env`, where the value is the empty
+ * string — present, and therefore not caught by `?? null` or by `.optional()`.
+ * Four settings in `.env.example` are documented as "leave unset" or
+ * "unset = none" and shipped as `KEY=`, and copying that file — which is the
+ * whole purpose of the file — broke two features:
+ *
+ *  - `KYC_VALID_FOR_DAYS=` coerces to `0`, and the schema's `.min(1)` refuses
+ *    it, so the API will not start. Where config is read without the schema,
+ *    `0` survives and `isCurrentlyVerified` computes
+ *    `now - verifiedAt < 0` — **false for everybody**. Every verified identity
+ *    reads as unverified, and `WITHDRAWAL_REQUIRE_KYC` is on by default, so no
+ *    withdrawal can be approved.
+ *  - `WITHDRAWAL_DAILY_LIMIT=` and `WITHDRAWAL_AUTO_APPROVE_BELOW=` reach
+ *    `Money.of('')`, which throws `[DecimalError] Invalid argument:` on every
+ *    withdrawal request.
+ *
+ * Found by rebuilding a development environment from `.env.example`, which is
+ * exactly the path an operator takes on day one.
+ *
+ * Stripped here rather than in each consumer: a blank value is a property of
+ * how `.env` files are written, and every optional setting added later gets
+ * this for free. Required settings are untouched — a blank `DATABASE_URL`
+ * should still fail, and it does, because the schema has no `.optional()` on
+ * it and `undefined` is refused just as `''` was.
+ */
+function withoutBlanks(raw: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === 'string' && value.trim() === '') continue;
+    cleaned[key] = value;
+  }
+  return cleaned;
+}
+
 export function validateEnv(raw: Record<string, unknown>): Env {
-  const result = envSchema.safeParse(raw);
+  const result = envSchema.safeParse(withoutBlanks(raw));
   if (!result.success) {
     // Print the field names only. Values are secrets.
     const fields = result.error.issues
