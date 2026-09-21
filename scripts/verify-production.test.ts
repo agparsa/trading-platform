@@ -110,8 +110,13 @@ async function verify(
   expect: string | null = SHA,
 ): Promise<{ ok: string[]; failed: string[]; output: string; status: number | null }> {
   const server: Server = createServer((request, response) => {
-    const path = (request.url ?? '/').split('?')[0]!;
-    const answer = deployment[path] ?? { status: 404, body: 'no such path in the fake deployment' };
+    const [path, query] = (request.url ?? '/').split('?') as [string, string | undefined];
+    // `'/x?'` answers a request for /x that carries any query string, when a
+    // scenario wants the cache-busted fetch answered differently from the plain one.
+    const answer =
+      (query !== undefined ? deployment[`${path}?`] : undefined) ??
+      deployment[path] ??
+      { status: 404, body: 'no such path in the fake deployment' };
     response.writeHead(answer.status, { 'content-type': 'text/plain', ...(answer.headers ?? {}) });
     response.end(answer.body ?? '');
   });
@@ -257,6 +262,32 @@ describe('verify-production, run against a fake deployment', () => {
     const stale = await verify(deployment);
     expect(stale.failed).toEqual(['the web runs the build that was deployed']);
   }, 90_000);
+
+  /**
+   * The edge and the origin can disagree, and did: on the first deploy of the
+   * web header, the origin served it on every path and the public `/terminal`
+   * did not. The fake here answers the plain path like that edge and the
+   * cache-busted path like the origin; the check must fail and must say which
+   * of the two is at fault.
+   */
+  it('tells a stale edge copy apart from a stale container', async () => {
+    const deployment = good();
+    deployment['/terminal'] = { status: 200, body: '<html>terminal</html>' }; // no header: the edge's copy
+    deployment['/terminal?'] = { status: 200, headers: { 'x-tp-build': MARKER }, body: '<html>terminal</html>' };
+    const run = await verify(deployment);
+    expect(run.failed).toEqual(['the web says which build it runs']);
+    expect(run.output).toContain(`the origin serves /terminal on build ${MARKER}`);
+    expect(run.output).toContain('something between the origin and the visitor');
+  }, 60_000);
+
+  it('blames the container when the origin has no header either', async () => {
+    const deployment = good();
+    deployment['/terminal'] = { status: 200, body: '<html>terminal</html>' };
+    deployment['/login'] = { status: 200, body: '<html>login</html>' };
+    const run = await verify(deployment);
+    expect(run.failed).toEqual(['the web says which build it runs']);
+    expect(run.output).toContain('predates the header, or was not rebuilt');
+  }, 60_000);
 
   it('fails, and says so with the expected marker, when the API runs another build', async () => {
     const deployment = good();

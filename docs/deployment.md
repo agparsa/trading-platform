@@ -125,6 +125,18 @@ with (so the web Dockerfile sets it in the *build* stage — an `ENV` in the
 production stage would be read by nothing). The script reads it from the
 terminal page, or from the login page when the terminal redirected.
 
+When the public page carries no header, the script asks once more with a query
+string nobody has requested before — an answer that cannot come from a cache —
+and says which of two faults it found: the container was not rebuilt (no
+header at the origin either), or something between the origin and the visitor
+is answering that path from a copy older than the deploy (header at the
+origin, none on the public page). The second happened on the first deploy of
+the header: the origin served it on every path; the public `/` and `/terminal`
+— the two pages a trader opens — did not, while `/login`, `/wallet` and the
+rest did. That is a CDN answering for those paths, and it means a deploy can
+leave traders on the previous page shell. Purge it after a deploy, and find
+out what caches HTML for this host.
+
 The worker is the fourth process asked, though it serves no HTTP. Each worker
 writes a heartbeat to Redis on boot and every thirty seconds — instance, role,
 queues, and the same build marker — and withdraws it on a clean stop.

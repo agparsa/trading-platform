@@ -475,10 +475,28 @@ async function main(): Promise<void> {
   const webPage = terminal !== null && terminal.status === 200 ? terminal : await get('/login');
   const webBuild = webPage?.headers.get('x-tp-build') ?? null;
   if (webBuild === null) {
+    /**
+     * Before blaming the container, ask the origin past whatever is in front
+     * of it. The same page with a query string nobody has asked for before
+     * cannot be answered from an edge cache, so it is the origin's answer.
+     * On the first deploy of the header, production's origin served it on
+     * every path while the public `/` and `/terminal` — the two pages a
+     * trader opens — came back without it: something between the origin and
+     * the visitor was answering those two paths from a copy older than the
+     * deploy. That is a different fault from a stale container, and a worse
+     * one: it means a deploy can leave traders on the previous page shell.
+     */
+    const path = webPage === terminal ? '/terminal' : '/login';
+    const fresh = await get(`${path}?verify=${Date.now()}`);
+    const originBuild = fresh?.headers.get('x-tp-build') ?? null;
     record(
       'the web says which build it runs',
       false,
-      'no x-tp-build header on the page — this web container predates the header, or was not rebuilt',
+      originBuild === null
+        ? 'no x-tp-build header on the page — this web container predates the header, or was not rebuilt'
+        : `the origin serves ${path} on build ${originBuild}, but the public ${path} carries no build header — ` +
+          'something between the origin and the visitor (a CDN cache or rule) is answering for this path ' +
+          'with a copy that predates the deploy. Purge it, and look at what caches HTML for this host.',
     );
   } else if (webBuild === 'unknown') {
     record('the web says which build it runs', false, 'the web image was built without BUILD_SHA');
