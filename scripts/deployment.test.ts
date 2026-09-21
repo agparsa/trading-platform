@@ -1832,14 +1832,46 @@ describe('a deploy script that updates itself', () => {
       expect(result.stdout).toContain('Already at');
     });
 
-    it('refuses --resumed without the commit, so the flag cannot drift apart from its purpose', () => {
+    /**
+     * The caller that passes `--resumed` alone is the previous version of this
+     * script, restarting onto this one. The first version of this test wanted
+     * that refused, the script did, and the upgrade that introduced the flag
+     * stopped at step 4 on production: merged, nothing built, nothing stopped,
+     * old build still serving. A flag added to a self-restarting script is
+     * always first received from a caller that does not know it.
+     */
+    it('accepts --resumed from an older script that does not pass the commit, and says what it lost', () => {
       const result = run(['--resumed']);
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain('--resumed-from');
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain('older version of this script');
+      // Without the range it can only start from the merged commit, as before.
+      expect(result.stdout).toContain('Already at');
     });
 
     it('is what the restart line passes', () => {
       expect(body).toMatch(/exec bash "\$SELF" [^\n]*--resumed --resumed-from "\$BEFORE_FULL"/);
+    });
+
+    /**
+     * The general form of the lesson above. Whatever the *committed* version
+     * of this script passes when it restarts is what this version will be
+     * called with, once, on the deploy that brings it in. So the restart line
+     * is read from `HEAD`'s copy of the file — not the working tree's — and its
+     * flags are fed to the working tree's parser. A flag renamed or a flag made
+     * mandatory fails here, before it fails at step 4 on the host.
+     */
+    it('parses the flags the committed version passes when it restarts', () => {
+      const committed = spawnSync('git', ['show', 'HEAD:scripts/upgrade-server.sh'], { cwd: ROOT, encoding: 'utf8' });
+      if (committed.status !== 0) return; // no history to compare against (an export, not a checkout)
+      const line = /exec bash "\$SELF" \$\{ARGS\[@\]\+"\$\{ARGS\[@\]\}"\} ([^\n]+)/.exec(committed.stdout)?.[1];
+      expect(line, 'the committed script has a restart line').toBeDefined();
+      const flags = (line ?? '')
+        .replace(/"\$BEFORE_FULL"/g, '<A>')
+        .split(/\s+/)
+        .filter((token) => token !== '');
+      expect(flags).toContain('--resumed');
+      const result = run(flags);
+      expect(result.status, `the working-tree script rejected what HEAD's passes (${flags.join(' ')}): ${result.stderr}`).toBe(0);
     });
   });
 });

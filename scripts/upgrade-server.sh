@@ -55,9 +55,16 @@ while [ $# -gt 0 ]; do
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
+# `--resumed` without `--resumed-from` is what the *previous* version of this
+# script passes when it restarts onto this one: the flag was added after the
+# restart was. The first version of this check refused it with exit 2, and the
+# upgrade that introduced the flag stopped at step 4 — merged, nothing built,
+# nothing stopped, the old build still serving — because the old script called
+# the new one the only way it knew. A caller from the past is not an error.
 if [ "$RESUMED" = true ] && [ -z "$RESUMED_FROM" ]; then
-  echo "--resumed without --resumed-from; this flag is set by the script on itself" >&2
-  exit 2
+  RESUMED_WITHOUT_RANGE=true
+else
+  RESUMED_WITHOUT_RANGE=false
 fi
 
 COMPOSE=(docker compose -f docker-compose.prod.yml -f docker-compose.cpanel.yml --env-file .env.production)
@@ -79,6 +86,10 @@ if [ -n "$RESUMED_FROM" ]; then
 else
   BEFORE=$(git rev-parse --short HEAD)
   BEFORE_FULL=$(git rev-parse HEAD)
+  if [ "$RESUMED_WITHOUT_RANGE" = true ]; then
+    warn "Resumed by an older version of this script, which did not say where the upgrade began."
+    warn "The range below starts at the merged commit; nginx will be recreated because the range cannot be compared."
+  fi
 fi
 git fetch --all --prune
 AFTER=$(git rev-parse --short "@{u}" 2>/dev/null || echo "$BEFORE")

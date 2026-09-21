@@ -38,6 +38,14 @@ range to compare, dropping every open socket on an upgrade that never touched
 nginx. `deployment.test.ts` now runs that step of the script in a clone that is
 in the resumed state.
 
+A flag added to a self-restarting script is first received from a caller that
+does not know it: the previous version. The version that introduced
+`--resumed-from` refused a bare `--resumed`, and its own deploy stopped at
+step 4 — merged, nothing built, nothing stopped, old build still serving —
+when the old script restarted onto it. The script now accepts what its
+predecessor passes and says what it lost, and the test feeds the flags on
+`HEAD`'s restart line to the working tree's parser.
+
 For a fresh checkout, `pnpm db:roles` creates the second database role — the one that owns no tables,
 and therefore the one PostgreSQL's row-level-security policies actually apply to.
 It prints a `DATABASE_URL_TENANT` line for `.env`. Set it: with it, tenant
