@@ -99,8 +99,16 @@ function good(): Deployment {
       headers: { 'x-tp-build': MARKER },
       body: '0{"sid":"abc","upgrades":["websocket"],"pingInterval":25000,"pingTimeout":20000,"maxPayload":1000000}',
     },
-    '/terminal': { status: 200, headers: { 'x-tp-build': MARKER }, body: '<html>terminal</html>' },
-    '/login': { status: 200, headers: { 'x-tp-build': MARKER }, body: '<html>login</html>' },
+    '/terminal': {
+      status: 200,
+      headers: { 'x-tp-build': MARKER, 'cache-control': 'no-cache' },
+      body: '<html>terminal</html>',
+    },
+    '/login': {
+      status: 200,
+      headers: { 'x-tp-build': MARKER, 'cache-control': 'no-cache' },
+      body: '<html>login</html>',
+    },
   };
 }
 
@@ -162,7 +170,7 @@ describe('verify-production, run against a fake deployment', () => {
 
   it('passes every check on a healthy deployment, and says how many', () => {
     expect(healthy.failed, healthy.output).toEqual([]);
-    expect(healthy.ok.length).toBeGreaterThanOrEqual(19);
+    expect(healthy.ok.length).toBeGreaterThanOrEqual(20);
     expect(healthy.output).toMatch(new RegExp(`All ${healthy.ok.length} checks passed`));
     expect(healthy.status).toBe(0);
   });
@@ -258,7 +266,10 @@ describe('verify-production, run against a fake deployment', () => {
     deployment['/terminal'] = { status: 308, headers: { location: '/login' } };
     const run = await verify(deployment);
     expect(run.failed).toEqual([]);
-    deployment['/login'] = { ...deployment['/login']!, headers: { 'x-tp-build': 'bbbbbbbbbbbb' } };
+    deployment['/login'] = {
+      ...deployment['/login']!,
+      headers: { 'x-tp-build': 'bbbbbbbbbbbb', 'cache-control': 'no-cache' },
+    };
     const stale = await verify(deployment);
     expect(stale.failed).toEqual(['the web runs the build that was deployed']);
   }, 90_000);
@@ -272,8 +283,12 @@ describe('verify-production, run against a fake deployment', () => {
    */
   it('tells a stale edge copy apart from a stale container', async () => {
     const deployment = good();
-    deployment['/terminal'] = { status: 200, body: '<html>terminal</html>' }; // no header: the edge's copy
-    deployment['/terminal?'] = { status: 200, headers: { 'x-tp-build': MARKER }, body: '<html>terminal</html>' };
+    deployment['/terminal'] = { status: 200, headers: { 'cache-control': 'no-cache' }, body: '<html>terminal</html>' }; // no build header: the edge's copy
+    deployment['/terminal?'] = {
+      status: 200,
+      headers: { 'x-tp-build': MARKER, 'cache-control': 'no-cache' },
+      body: '<html>terminal</html>',
+    };
     const run = await verify(deployment);
     expect(run.failed).toEqual(['the web says which build it runs']);
     expect(run.output).toContain(`the origin serves /terminal on build ${MARKER}`);
@@ -282,11 +297,23 @@ describe('verify-production, run against a fake deployment', () => {
 
   it('blames the container when the origin has no header either', async () => {
     const deployment = good();
-    deployment['/terminal'] = { status: 200, body: '<html>terminal</html>' };
-    deployment['/login'] = { status: 200, body: '<html>login</html>' };
+    deployment['/terminal'] = { status: 200, headers: { 'cache-control': 'no-cache' }, body: '<html>terminal</html>' };
+    deployment['/login'] = { status: 200, headers: { 'cache-control': 'no-cache' }, body: '<html>login</html>' };
     const run = await verify(deployment);
     expect(run.failed).toEqual(['the web says which build it runs']);
     expect(run.output).toContain('predates the header, or was not rebuilt');
+  }, 60_000);
+
+  it("fails when the origin still sends Next's year-long s-maxage on the page shell", async () => {
+    const deployment = good();
+    deployment['/terminal'] = {
+      status: 200,
+      headers: { 'x-tp-build': MARKER, 'cache-control': 's-maxage=31536000' },
+      body: '<html>terminal</html>',
+    };
+    const run = await verify(deployment);
+    expect(run.failed).toEqual(['the page shell is not cacheable by a shared cache']);
+    expect(run.output).toContain('s-maxage=31536000');
   }, 60_000);
 
   it('fails, and says so with the expected marker, when the API runs another build', async () => {

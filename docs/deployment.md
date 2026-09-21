@@ -134,8 +134,17 @@ origin, none on the public page). The second happened on the first deploy of
 the header: the origin served it on every path; the public `/` and `/terminal`
 — the two pages a trader opens — did not, while `/login`, `/wallet` and the
 rest did. That is a CDN answering for those paths, and it means a deploy can
-leave traders on the previous page shell. Purge it after a deploy, and find
-out what caches HTML for this host.
+leave traders on the previous page shell.
+
+The cause was ours to remove, and is removed: Next marks every prerendered page
+`Cache-Control: s-maxage=31536000` — a year, for a CDN purged on each deploy,
+which is how the company that wrote Next runs it. Nothing purges this one, and
+Next's own `headers()` cannot override Cache-Control (its documentation says
+so). So nginx does: the page shell is served `no-cache` on every response, and
+`/_next/static/` — hashed assets that *are* immutable — is matched first and
+passed through untouched. The script's last check asks the origin for the
+shell's cache policy. What the edge already holds still has to be purged once;
+after that, no deploy needs a purge again.
 
 The worker is the fourth process asked, though it serves no HTTP. Each worker
 writes a heartbeat to Redis on boot and every thirty seconds — instance, role,

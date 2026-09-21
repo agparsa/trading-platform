@@ -513,6 +513,33 @@ async function main(): Promise<void> {
     );
   }
 
+  /**
+   * And that the origin forbids a shared cache from keeping the page shell.
+   *
+   * The root cause behind the stale edge above: Next marks prerendered pages
+   * `s-maxage=31536000` for a CDN purged on every deploy, and nothing purges
+   * this one. nginx now replaces that with `no-cache`. Asked of the origin —
+   * with a query nobody has sent before — because the edge's copy of the plain
+   * path may itself be the stale one, and is reported separately above.
+   */
+  const shellPath = terminal !== null && terminal.status === 200 ? '/terminal' : '/login';
+  const shell = await get(`${shellPath}?verify=${Date.now() + 1}`);
+  const cacheControl = shell?.headers.get('cache-control') ?? null;
+  const forbidsShared =
+    cacheControl !== null &&
+    /\b(no-cache|no-store|private)\b/i.test(cacheControl) &&
+    !/\bs-maxage=/i.test(cacheControl);
+  record(
+    'the page shell is not cacheable by a shared cache',
+    forbidsShared,
+    cacheControl === null
+      ? `no Cache-Control on ${shellPath} — a shared cache may keep it as long as it likes`
+      : forbidsShared
+        ? `Cache-Control: ${cacheControl}`
+        : `Cache-Control: ${cacheControl} — a shared cache may serve this shell after the next deploy, ` +
+          'naming chunks the new image no longer has',
+  );
+
   report();
 }
 

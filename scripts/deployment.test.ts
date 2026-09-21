@@ -438,6 +438,81 @@ describe('nginx', () => {
   it('ships openssl in the image, because the stock alpine image has none', () => {
     expect(read('docker/nginx.Dockerfile')).toMatch(/apk add --no-cache openssl/);
   });
+
+  /**
+   * Every `location { ... }` block in the file, by brace depth, with the
+   * server block's listen line so the 443 ones can be told from the 80 ones.
+   */
+  const locations = (): Array<{ header: string; body: string; listen: string }> => {
+    const found: Array<{ header: string; body: string; listen: string }> = [];
+    let listen = '';
+    const re = /listen\s+(\d+)[^;]*;|location\s+([^{]+)\{/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(conf)) !== null) {
+      if (match[1] !== undefined) {
+        listen = match[1];
+        continue;
+      }
+      let depth = 1;
+      let i = re.lastIndex;
+      for (; i < conf.length && depth > 0; i += 1) {
+        if (conf[i] === '{') depth += 1;
+        else if (conf[i] === '}') depth -= 1;
+      }
+      found.push({ header: match[2]!.trim(), body: conf.slice(re.lastIndex, i - 1), listen });
+      re.lastIndex = i;
+    }
+    return found;
+  };
+
+  /**
+   * The page shell must never be cacheable by a shared cache.
+   *
+   * Next marks every prerendered page `s-maxage=31536000`, for a CDN that is
+   * purged on each deploy. This one is not, and on 21 September the CDN in
+   * front of production answered `/` and `/terminal` with the shell from before
+   * the day's deploys, `/login` with the previous deploy's, and the origin the
+   * current one — three builds at once. A stale shell names chunks the new
+   * image no longer has, and the trader's next click is a client-side
+   * exception. Next's own `headers()` cannot override Cache-Control, so the
+   * edge does, and the hashed assets — which *are* immutable — are routed past
+   * that block untouched.
+   */
+  describe('the page shell is not cacheable by a shared cache', () => {
+    const web = () => locations().find((one) => one.header === '/' && one.listen === '443');
+    const assets = () => locations().find((one) => one.header === '^~ /_next/static/');
+
+    it('replaces what Next says with no-cache, on every response', () => {
+      const block = web();
+      expect(block, 'the 443 location / exists').toBeDefined();
+      expect(block!.body).toMatch(/proxy_hide_header\s+Cache-Control;/);
+      expect(block!.body).toMatch(/add_header\s+Cache-Control\s+"no-cache"\s+always;/);
+    });
+
+    it('lets the hashed assets keep their immutable caching, by matching them first', () => {
+      const block = assets();
+      expect(block, 'a prefix-priority location for /_next/static/ exists').toBeDefined();
+      expect(block!.listen).toBe('443');
+      expect(block!.body).not.toMatch(/Cache-Control/);
+      expect(block!.body).toMatch(/proxy_pass\s+http:\/\/\$web;/);
+    });
+  });
+
+  /**
+   * Nginx's `add_header` is inherited from the server block only into locations
+   * that add none of their own. A location that adds one header therefore
+   * silently drops HSTS for every response it serves — the header this file
+   * exists to set. So: any 443 location that uses `add_header` repeats it.
+   */
+  it('repeats HSTS in every 443 location that adds a header of its own', () => {
+    const offenders = locations()
+      .filter((one) => one.listen === '443' && /add_header/.test(one.body))
+      .filter((one) => !/add_header\s+Strict-Transport-Security\s+"max-age=31536000; includeSubDomains"\s+always;/.test(one.body))
+      .map((one) => one.header);
+    expect(offenders).toEqual([]);
+    // And the probe that cannot fail: the walk found the location that motivated this.
+    expect(locations().some((one) => one.listen === '443' && /add_header/.test(one.body))).toBe(true);
+  });
 });
 
 describe('the certificate entrypoint', () => {
