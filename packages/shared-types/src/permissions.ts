@@ -278,6 +278,18 @@ export const Permission = {
    */
   SECURITY_READ: 'security.read',
 
+  // --- notifications ---
+  /**
+   * What the platform tried to tell people, and whether it got through:
+   * every push delivery record, across every person in the firm. Read by
+   * support to answer "I never got the alert" — which has three different
+   * answers (we chose not to send it, we sent it and the provider took it, we
+   * tried and the token was dead) and only one of them is a bug. `_any` in the
+   * naming of the other cross-person reads: a person's own notification
+   * centre needs no capability at all.
+   */
+  NOTIFICATIONS_READ_ANY: 'notifications.read_any',
+
   // --- system ---
   SYSTEM_KILL_SWITCH: 'system.kill_switch',
   SYSTEM_OPERATIONS: 'system.operations',
@@ -432,6 +444,7 @@ const ADMIN_PERMISSIONS: readonly Permission[] = [
   Permission.API_KEYS_REVOKE_ANY,
   Permission.SERVICE_TOKENS_MANAGE,
   Permission.SECURITY_READ,
+  Permission.NOTIFICATIONS_READ_ANY,
 ];
 
 export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>> = {
@@ -439,6 +452,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
 
   [UserRole.SUPPORT]: [
     Permission.ACCOUNTS_READ_ANY,
+    Permission.NOTIFICATIONS_READ_ANY,
     Permission.WALLET_READ_ANY,
     Permission.PAYMENTS_READ_ANY,
     Permission.KYC_READ_ANY,
@@ -453,6 +467,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
 
   [UserRole.OPERATOR]: [
     Permission.ACCOUNTS_READ_ANY,
+    Permission.NOTIFICATIONS_READ_ANY,
     Permission.ACCOUNTS_MANAGE,
     Permission.WALLET_READ_ANY,
     Permission.PAYMENTS_READ_ANY,
@@ -587,6 +602,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
   ],
 
   [UserRole.PLATFORM_OPERATOR]: [
+    Permission.NOTIFICATIONS_READ_ANY,
     Permission.TENANTS_READ,
     Permission.TENANTS_MANAGE,
     Permission.ACCOUNTS_READ_ANY,
@@ -613,6 +629,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
   ],
 
   [UserRole.PLATFORM_SUPPORT]: [
+    Permission.NOTIFICATIONS_READ_ANY,
     Permission.TENANTS_READ,
     Permission.ACCOUNTS_READ_ANY,
     Permission.USERS_READ_ANY,
@@ -630,6 +647,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<UserRole, readonly Permission[]>>
 
   /** Reads everything, including the audit and security feeds, and changes nothing. */
   [UserRole.PLATFORM_AUDITOR]: [
+    Permission.NOTIFICATIONS_READ_ANY,
     Permission.TENANTS_READ,
     Permission.ACCOUNTS_READ_ANY,
     Permission.USERS_READ_ANY,
@@ -1014,6 +1032,7 @@ export function isKeyable(value: string): value is Permission {
 export const SERVICE_GRANTABLE_PERMISSIONS: readonly Permission[] = [
   Permission.ACCOUNTS_READ_ANY,
   Permission.USERS_READ_ANY,
+  Permission.NOTIFICATIONS_READ_ANY,
   Permission.WALLET_READ_ANY,
   Permission.PAYMENTS_READ_ANY,
   Permission.KYC_READ_ANY,

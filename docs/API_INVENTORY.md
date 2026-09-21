@@ -283,6 +283,13 @@ handler is responsible for scoping the result to that user — which for
 | --- | --- | --- | --- |
 | `GET` | `/metrics` | `scrape` | PUBLIC (class) |
 
+### `notifications/admin-notifications.controller.ts` — base `/admin/notifications`
+
+| Verb | Path | Handler | Requires |
+| --- | --- | --- | --- |
+| `GET` | `/admin/notifications/deliveries` | `list` | NOTIFICATIONS_READ_ANY |
+| `GET` | `/admin/notifications/deliveries/summary` | `summary` | NOTIFICATIONS_READ_ANY |
+
 ### `notifications/notifications.controller.ts` — base `/notifications`
 
 | Verb | Path | Handler | Requires |
@@ -485,7 +492,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals` | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel` | WITHDRAWALS_REQUEST |
 
-**236 routes:** 120 `GET`, 99 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**238 routes:** 122 `GET`, 99 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

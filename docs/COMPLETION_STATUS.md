@@ -15,7 +15,7 @@ from a command run against this repository.
 > than patched. If you are editing it, re-measure — do not trust the prose.
 
 **Short answer: the master prompt is not complete.** Four of sixteen planned
-phases are done *as of 3 September 2026* — a judgement, not a measurement, and
+phases are done _as of 3 September 2026_ — a judgement, not a measurement, and
 the only figure on this page that is neither counted nor checked. It sits two
 paragraphs above a block of measured numbers, where it reads like one of them,
 so it carries its own date: a reader taking it as today's is the mistake this
@@ -41,12 +41,12 @@ reads as currency.
 
 **4 applications** (`api`, `web`, `worker`, `mobile`) and
 **20 workspace packages**, on **70 Prisma models**
-with **55 migrations** applied, serving **237 API routes**.
+with **55 migrations** applied, serving **239 API routes**.
 
-Roughly **148,000 lines** of TypeScript across
-765 files.
+Roughly **152,000 lines** of TypeScript across
+781 files.
 
-Counted at `f0d3a99` on 2026-09-19 by `pnpm measure`. The
+Counted at `e775f23f` on 2026-09-21 by `pnpm measure`. The
 structural counts above are checked against the working tree on every build;
 the line and file counts move with every commit and are as old as the date
 beside them.
@@ -78,6 +78,7 @@ Complete in the sense the prompt defines — UI → API → business logic → d
 | 16,17    | Trade open / close notices | raised from domain events published **after** the transaction commits — no path from a rejected order to a notification                                                                                                 |
 | 18,19,25 | **Trade sounds**           | eight generated, distinguishable assets; a shared category→sound contract; an Android channel per sound; silence in the background so nothing doubles                                                                   |
 | 23,24    | Notification centre        | in-app delivery, per-category preferences, quiet hours, unmutable security and risk categories                                                                                                                          |
+| 36       | Notification admin         | `/admin/notifications`: every push delivery by outcome, error code and platform, under `notifications.read_any`; the token is not a field of the view                                                                   |
 | 26       | Duplicate-event protection | `dedupeKey` at the database, `eventId` on every frame and push, a bounded `SeenEvents` on the client                                                                                                                    |
 | 27       | Trading event model        | implemented as specified                                                                                                                                                                                                |
 | 28       | Device / push tokens       | `Device` model, AES-256-GCM sealed tokens bound to their row, registration, revocation, provider-rejection handling                                                                                                     |
@@ -96,11 +97,10 @@ Complete in the sense the prompt defines — UI → API → business logic → d
 
 ## Partial
 
-| §   | Area               | What exists                                                                                                                                                                                       | What is missing                                                                             |
-| --- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 29  | Admin panel        | 13 sections at their own addresses — overview, people (+ detail, with role assignment), accounts (+ detail), instruments, risk, payments, verification, withdrawals, reconciliation, roles, audit | ~17 sections asked for. No tenants, tokens, API management, security centre.                |
-| 35  | Finance            | wallets, transfers bounded by free margin, manual deposits and corrections, freeze, full audit, deposits through a provider port                                                                  | no third-party payment provider (a commercial decision, see below), no withdrawal — phase 7 |
-| 36  | Notification admin | `push_deliveries` records every attempt with its outcome                                                                                                                                          | no admin view over them                                                                     |
+| §   | Area        | What exists                                                                                                                                                                                       | What is missing                                                                             |
+| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 29  | Admin panel | 13 sections at their own addresses — overview, people (+ detail, with role assignment), accounts (+ detail), instruments, risk, payments, verification, withdrawals, reconciliation, roles, audit | ~17 sections asked for. No tenants, tokens, API management, security centre.                |
+| 35  | Finance     | wallets, transfers bounded by free margin, manual deposits and corrections, freeze, full audit, deposits through a provider port                                                                  | no third-party payment provider (a commercial decision, see below), no withdrawal — phase 7 |
 
 ## Does not exist — zero code
 
@@ -163,7 +163,7 @@ describe do not exist, and §45 says do not document features that do not exist.
 | 5 — payments                      | done to the edge of a commercial decision    |
 | 6 — KYC                           | done; manual review real, provider pending   |
 | 7 — withdrawals                   | done; hold at request, FINANCE, rail pending |
-| 8 — notification platform         | done; admin statistics view remains          |
+| 8 — notification platform         | done; the delivery view arrived 21 September |
 | 9 — API and token management      | done; keys and tokens, read-only machines    |
 | 10 — outbound webhooks            | not started                                  |
 | 11 — Security Centre              | not started                                  |

@@ -167,6 +167,8 @@ const adminKeys = {
   orderHistory: (id: string) => ['admin', 'order-history', id] as const,
   sessions: (code: string) => ['admin', 'sessions', code] as const,
   securityFeed: (filter: string) => ['admin', 'security-feed', filter] as const,
+  pushDeliveries: (filter: string) => ['admin', 'push-deliveries', filter] as const,
+  pushDeliverySummary: ['admin', 'push-deliveries', 'summary'] as const,
   ipRules: ['admin', 'ip-rules'] as const,
   webhooks: ['admin', 'webhooks'] as const,
   features: ['admin', 'features'] as const,
@@ -1239,6 +1241,70 @@ export function useSecurityFeed(filter: { severity?: string; kind?: string; user
     queryKey: adminKeys.securityFeed(JSON.stringify(query)),
     queryFn: () =>
       api.get<{ events: AdminSecurityEventRow[] }>('/admin/security/events', { query }),
+    refetchInterval: 30_000,
+  });
+}
+
+// ---- Push deliveries (what the platform tried to tell people) --------------
+
+export type PushDeliveryStatus = 'PENDING' | 'SENT' | 'FAILED' | 'DROPPED' | 'SKIPPED';
+
+export interface PushDeliveryRow {
+  id: string;
+  status: PushDeliveryStatus;
+  attempts: number;
+  errorCode: string | null;
+  providerMessageId: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  notification: {
+    id: string;
+    kind: string;
+    severity: string;
+    title: string;
+    createdAt: string;
+    userId: string;
+    userEmail: string;
+  };
+  device: {
+    id: string;
+    platform: string;
+    model: string | null;
+    appVersion: string | null;
+    isActive: boolean;
+    tokenFingerprint: string | null;
+    tokenRejectedAt: string | null;
+  };
+}
+
+export interface PushDeliverySummary {
+  since: string;
+  total: number;
+  counts: Record<PushDeliveryStatus, number>;
+  errors: Array<{ code: string; count: number }>;
+  platforms: Array<{ platform: string; attempted: number; sent: number }>;
+}
+
+export function usePushDeliveries(filter: { status?: string; kind?: string; errorCode?: string }) {
+  const { api } = useSession();
+  const query: Record<string, string> = { limit: '200' };
+  if (filter.status) query['status'] = filter.status;
+  if (filter.kind) query['kind'] = filter.kind;
+  if (filter.errorCode) query['errorCode'] = filter.errorCode;
+  return useQuery({
+    queryKey: adminKeys.pushDeliveries(JSON.stringify(query)),
+    queryFn: () =>
+      api.get<{ deliveries: PushDeliveryRow[] }>('/admin/notifications/deliveries', { query }),
+    refetchInterval: 30_000,
+  });
+}
+
+export function usePushDeliverySummary() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.pushDeliverySummary,
+    queryFn: () => api.get<PushDeliverySummary>('/admin/notifications/deliveries/summary'),
     refetchInterval: 30_000,
   });
 }

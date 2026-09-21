@@ -36,6 +36,7 @@ Every screen has an address now. The terminal did not change.
 | `/admin/roles`          | what each role may do                                                                             |
 | `/admin/credentials`    | everyone's API keys, and the firm's service tokens                                                |
 | `/admin/security`       | the firm's security feed: sign-ins, credentials, changes                                          |
+| `/admin/notifications`  | push deliveries: what was tried, for whom, what the provider said; figures for the last day       |
 | `/admin/brokers`        | the platform's brokers; create one and hand its owner the invitation (platform tenant only)       |
 | `/admin/audit`          | the audit trail                                                                                   |
 

@@ -1493,7 +1493,13 @@ const checks: Check[] = [
       });
       assert(withKey.status === 403, `a key could read the security feed: ${withKey.status}`);
 
-      for (const path of ['/admin/security/events', '/admin/security/summary', '/admin/brokers']) {
+      for (const path of [
+        '/admin/security/events',
+        '/admin/security/summary',
+        '/admin/brokers',
+        '/admin/notifications/deliveries',
+        '/admin/notifications/deliveries/summary',
+      ]) {
         const desk = await fetch(`${BASE}/api/v1${path}`, { headers: asSession });
         assert(desk.status === 403, `${path} answered a trader ${desk.status}`);
       }

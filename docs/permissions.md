@@ -42,86 +42,87 @@ partial.
 
 ### Accounts and instruments
 
-| Capability | Meaning |
-| ---------- | ------- |
-| `accounts.read` | Read **your own** accounts |
-| `accounts.read_any` | Read anyone's account |
-| `accounts.manage` | Change account settings, leverage, status |
-| `accounts.adjust` | Post a correcting entry to an account's ledger. Separate from `accounts.manage`, and the separation is the point: managing an account changes what it may do, adjusting it changes what it holds |
-| `instruments.read` | See what the platform trades, and on what terms |
-| `instruments.manage` | Enable or suspend an instrument and change its terms. Sensitive well beyond an on/off switch — raising a margin rate changes every open position's requirement |
+| Capability           | Meaning                                                                                                                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `accounts.read`      | Read **your own** accounts                                                                                                                                                                       |
+| `accounts.read_any`  | Read anyone's account                                                                                                                                                                            |
+| `accounts.manage`    | Change account settings, leverage, status                                                                                                                                                        |
+| `accounts.adjust`    | Post a correcting entry to an account's ledger. Separate from `accounts.manage`, and the separation is the point: managing an account changes what it may do, adjusting it changes what it holds |
+| `instruments.read`   | See what the platform trades, and on what terms                                                                                                                                                  |
+| `instruments.manage` | Enable or suspend an instrument and change its terms. Sensitive well beyond an on/off switch — raising a margin rate changes every open position's requirement                                   |
 
 ### Trading
 
-| Capability | Meaning |
-| ---------- | ------- |
-| `orders.read` / `.create` / `.modify` / `.cancel` | Order lifecycle |
-| `positions.read` / `.close` / `.modify` | Position lifecycle, including SL/TP |
+| Capability                                        | Meaning                             |
+| ------------------------------------------------- | ----------------------------------- |
+| `orders.read` / `.create` / `.modify` / `.cancel` | Order lifecycle                     |
+| `positions.read` / `.close` / `.modify`           | Position lifecycle, including SL/TP |
 
 ### People, roles and access
 
-| Capability | Meaning |
-| ---------- | ------- |
-| `users.read_any` | Read any user's profile, accounts and sessions |
-| `users.manage` | Suspend, reinstate, force a user's sessions to end |
-| `roles.assign` | Put a person into a role. Not part of `users.manage`: changing what a person may do is its own act |
-| `roles.read` | See which roles exist and what each carries |
-| `roles.manage` | Change what a role carries — the meta-permission, and the most dangerous one here |
-| `invites.manage` | Mint, list and revoke invitations when the platform runs in invite mode |
-| `api_keys.manage` | Mint, list and revoke **your own** API keys |
-| `api_keys.read_any` | See every key in the firm — never the secret, which nobody holds |
-| `api_keys.revoke_any` | Revoke anyone's key. The response to a leak, and it needs no more than that |
-| `service_tokens.manage` | Mint, list and revoke machine identities that belong to the firm rather than to a person |
-| `security.read` | The security event feed: sign-ins, lockouts, second factors, credentials minted and revoked |
-| `security.break_glass` | Open a break-glass grant and see one trader's own view (§9). Held by nobody by default, and not implied by being an administrator |
+| Capability               | Meaning                                                                                                                           |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `users.read_any`         | Read any user's profile, accounts and sessions                                                                                    |
+| `users.manage`           | Suspend, reinstate, force a user's sessions to end                                                                                |
+| `roles.assign`           | Put a person into a role. Not part of `users.manage`: changing what a person may do is its own act                                |
+| `roles.read`             | See which roles exist and what each carries                                                                                       |
+| `roles.manage`           | Change what a role carries — the meta-permission, and the most dangerous one here                                                 |
+| `invites.manage`         | Mint, list and revoke invitations when the platform runs in invite mode                                                           |
+| `api_keys.manage`        | Mint, list and revoke **your own** API keys                                                                                       |
+| `api_keys.read_any`      | See every key in the firm — never the secret, which nobody holds                                                                  |
+| `api_keys.revoke_any`    | Revoke anyone's key. The response to a leak, and it needs no more than that                                                       |
+| `service_tokens.manage`  | Mint, list and revoke machine identities that belong to the firm rather than to a person                                          |
+| `security.read`          | The security event feed: sign-ins, lockouts, second factors, credentials minted and revoked                                       |
+| `notifications.read_any` | Every push delivery record in the firm — what was tried, for whom, and what the provider said. Never the token                    |
+| `security.break_glass`   | Open a break-glass grant and see one trader's own view (§9). Held by nobody by default, and not implied by being an administrator |
 
 ### Money
 
-| Capability | Meaning |
-| ---------- | ------- |
-| `wallet.read` / `.read_any` | Your own wallet and its movements; anyone's |
-| `wallet.transfer` | Move your own money between your wallet and your trading accounts |
-| `wallet.adjust` | Credit or debit a wallet directly — money arriving by bank transfer, or a correction. The same power as `accounts.adjust`, pointed at the wallet |
-| `wallet.manage` | Freeze and unfreeze a wallet. Holding money is not taking it |
-| `payments.read` / `.read_any` | Your own payments; anyone's |
-| `payments.create` | Start a deposit |
-| `payments.confirm` | Confirm or reject a payment a person has to settle — a bank transfer an operator can see on a statement |
-| `withdrawals.read` / `.read_any` | Your own withdrawals; anyone's, and the queue |
-| `withdrawals.request` | Ask for money to be paid out, and cancel before it is decided |
-| `withdrawals.review` | Approve or reject. The most consequential capability here after the two that create money, and it must never sit beside either |
-| `withdrawals.pay` | Start a payout and record that it was paid, or that it failed |
+| Capability                       | Meaning                                                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `wallet.read` / `.read_any`      | Your own wallet and its movements; anyone's                                                                                                      |
+| `wallet.transfer`                | Move your own money between your wallet and your trading accounts                                                                                |
+| `wallet.adjust`                  | Credit or debit a wallet directly — money arriving by bank transfer, or a correction. The same power as `accounts.adjust`, pointed at the wallet |
+| `wallet.manage`                  | Freeze and unfreeze a wallet. Holding money is not taking it                                                                                     |
+| `payments.read` / `.read_any`    | Your own payments; anyone's                                                                                                                      |
+| `payments.create`                | Start a deposit                                                                                                                                  |
+| `payments.confirm`               | Confirm or reject a payment a person has to settle — a bank transfer an operator can see on a statement                                          |
+| `withdrawals.read` / `.read_any` | Your own withdrawals; anyone's, and the queue                                                                                                    |
+| `withdrawals.request`            | Ask for money to be paid out, and cancel before it is decided                                                                                    |
+| `withdrawals.review`             | Approve or reject. The most consequential capability here after the two that create money, and it must never sit beside either                   |
+| `withdrawals.pay`                | Start a payout and record that it was paid, or that it failed                                                                                    |
 
 ### Identity verification
 
-| Capability | Meaning |
-| ---------- | ------- |
-| `kyc.read` / `.submit` | Your own status and what it waits on; submit documents |
-| `kyc.read_any` | Anyone's verification *status* and the review queue — never the documents |
-| `kyc.documents.read` | Open the documents themselves. Separate from `kyc.read_any`, and the separation is the point |
-| `kyc.review` | Verify, reject, or revoke a verification already granted |
+| Capability             | Meaning                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
+| `kyc.read` / `.submit` | Your own status and what it waits on; submit documents                                       |
+| `kyc.read_any`         | Anyone's verification _status_ and the review queue — never the documents                    |
+| `kyc.documents.read`   | Open the documents themselves. Separate from `kyc.read_any`, and the separation is the point |
+| `kyc.review`           | Verify, reject, or revoke a verification already granted                                     |
 
 ### Oversight
 
-| Capability | Meaning |
-| ---------- | ------- |
-| `risk.read` / `.manage` | Read risk state; change limits |
-| `audit.read` | Read the audit log |
-| `integrity.read` / `.manage` | Integrity signals; act on them |
-| `reconciliation.read` / `.manage` / `.run` | Read findings; decide one; trigger a run |
-| `reports.run` | Ask for a report and fetch one you asked for. Deliberately *not* enough on its own to read anything |
-| `master.read` / `.manage` | Master-account links |
+| Capability                                 | Meaning                                                                                             |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `risk.read` / `.manage`                    | Read risk state; change limits                                                                      |
+| `audit.read`                               | Read the audit log                                                                                  |
+| `integrity.read` / `.manage`               | Integrity signals; act on them                                                                      |
+| `reconciliation.read` / `.manage` / `.run` | Read findings; decide one; trigger a run                                                            |
+| `reports.run`                              | Ask for a report and fetch one you asked for. Deliberately _not_ enough on its own to read anything |
+| `master.read` / `.manage`                  | Master-account links                                                                                |
 
 ### The firm, and the platform above it
 
-| Capability | Meaning |
-| ---------- | ------- |
-| `tenant.settings.manage` | A firm's own settings and branding |
-| `tenants.read` / `.manage` | The platform's view of its brokers. Platform roles only |
-| `broker_connections.read` | A firm's venue connections and whether they are up — never a credential |
-| `broker_connections.manage` | Create a connection and set or rotate its credentials. Person-only |
-| `webhooks.manage` | Register where the firm's events are sent, and read the delivery log (§49) |
-| `system.operations` | The operations dashboard |
-| `system.kill_switch` | Halt trading |
+| Capability                  | Meaning                                                                    |
+| --------------------------- | -------------------------------------------------------------------------- |
+| `tenant.settings.manage`    | A firm's own settings and branding                                         |
+| `tenants.read` / `.manage`  | The platform's view of its brokers. Platform roles only                    |
+| `broker_connections.read`   | A firm's venue connections and whether they are up — never a credential    |
+| `broker_connections.manage` | Create a connection and set or rotate its credentials. Person-only         |
+| `webhooks.manage`           | Register where the firm's events are sent, and read the delivery log (§49) |
+| `system.operations`         | The operations dashboard                                                   |
+| `system.kill_switch`        | Halt trading                                                               |
 
 `accounts.read` and `accounts.read_any` are deliberately separate. Collapsing
 them would mean that granting a support agent the ability to look up a customer
@@ -464,14 +465,15 @@ administrator do" has one file as its answer.
 
 ### The split that runs through it
 
-| Power                               | Permission        | Held by                                |
-| ----------------------------------- | ----------------- | -------------------------------------- |
-| See any user                        | `users.read_any`  | SUPPORT, OPERATOR, RISK_MANAGER, ADMIN |
-| Suspend, sign out, unlock           | `users.manage`    | RISK_MANAGER, ADMIN                    |
-| Freeze, restrict, close an account  | `accounts.manage` | OPERATOR, RISK_MANAGER, ADMIN          |
-| Change an account's risk thresholds | `risk.manage`     | RISK_MANAGER, ADMIN                    |
-| **Post a ledger entry**             | `accounts.adjust` | **ADMIN only**                         |
-| Read the audit trail                | `audit.read`      | RISK_MANAGER, ADMIN                    |
+| Power                               | Permission               | Held by                                |
+| ----------------------------------- | ------------------------ | -------------------------------------- |
+| See any user                        | `users.read_any`         | SUPPORT, OPERATOR, RISK_MANAGER, ADMIN |
+| Suspend, sign out, unlock           | `users.manage`           | RISK_MANAGER, ADMIN                    |
+| Freeze, restrict, close an account  | `accounts.manage`        | OPERATOR, RISK_MANAGER, ADMIN          |
+| Change an account's risk thresholds | `risk.manage`            | RISK_MANAGER, ADMIN                    |
+| **Post a ledger entry**             | `accounts.adjust`        | **ADMIN only**                         |
+| Read the audit trail                | `audit.read`             | RISK_MANAGER, ADMIN                    |
+| See what was pushed to whom         | `notifications.read_any` | SUPPORT, OPERATOR, ADMIN               |
 
 `accounts.adjust` is deliberately not implied by `accounts.manage`. Managing an
 account changes what it may _do_; adjusting it changes what it is _worth_, and

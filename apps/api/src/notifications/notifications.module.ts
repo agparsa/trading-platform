@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JobsModule } from '../jobs/jobs.module';
+import { AdminNotificationsController } from './admin-notifications.controller';
+import { PushDeliveriesService } from './push-deliveries.service';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 import { PreferencesService } from './preferences.service';
@@ -21,8 +23,13 @@ import { TradingNotificationsService } from './trading-notifications.service';
  */
 @Module({
   imports: [JobsModule],
-  controllers: [NotificationsController],
-  providers: [NotificationsService, PreferencesService, TradingNotificationsService],
+  controllers: [NotificationsController, AdminNotificationsController],
+  providers: [
+    NotificationsService,
+    PreferencesService,
+    TradingNotificationsService,
+    PushDeliveriesService,
+  ],
   exports: [NotificationsService, PreferencesService],
 })
 export class NotificationsModule {}

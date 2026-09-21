@@ -74,6 +74,8 @@ export const SECRET_BODY_FIELDS = [
  */
 export const NOT_SECRET_BODY_FIELDS: Readonly<Record<string, string>> = {
   symbolCode: 'An instrument symbol — EURUSD. Public, and printed on the screen.',
+  errorCode:
+    "A push provider's own word for why it refused — UNREGISTERED, UNAVAILABLE. A filter on the delivery view, and printed on it.",
 };
 
 /**

@@ -1469,6 +1469,27 @@ async function main(): Promise<void> {
       waiting.replace(/\s+/g, ' ').slice(0, 160),
     );
 
+    /**
+     * The push delivery view. Nothing has been pushed in this world — no
+     * worker runs here — so the screen must say so with figures rather than
+     * with a permission refusal or a spinner: the route, the capability the
+     * admin role carries, and the summary query are what this proves.
+     */
+    await visit(adminPage, '/admin/notifications', {
+      url: '/admin/notifications',
+      // The label is set in small capitals by CSS, and `innerText` reports it
+      // as the browser shows it.
+      text: /Attempted, last day/i,
+    });
+    await auditAccessibility(adminPage, 'the push deliveries screen');
+    const deliveries = await adminPage.getByTestId('push-deliveries').innerText();
+    ok(
+      /Attempted, last day\s*0/i.test(deliveries.replace(/\n/g, ' ')) &&
+        /Nothing recorded/.test(deliveries),
+      'the push delivery screen answers with figures — none yet — rather than a refusal',
+      deliveries.replace(/\s+/g, ' ').slice(0, 160),
+    );
+
     await visit(adminPage, '/admin/security', { url: '/admin/security', text: /SIGN_IN/ });
 
     await auditAccessibility(adminPage, 'the security feed');

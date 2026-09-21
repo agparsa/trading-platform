@@ -58,29 +58,29 @@ notification's own id is used: still stable, still unique, still processed once.
 
 ## What raises one today
 
-| Kind                     | When                                    | Category          |
-| ------------------------ | --------------------------------------- | ----------------- |
-| `position.opened`        | a position opens                        | `TRADE_OPENED`    |
-| `position.closed`        | a position closes manually              | `TRADE_CLOSED`    |
-| `position.partial_close` | part of a position closes               | `TRADE_CLOSED`    |
-| `position.stop_loss`     | a stop loss or trailing stop fires      | `STOP_LOSS`       |
-| `position.take_profit`   | a take profit fires                     | `TAKE_PROFIT`     |
-| `position.modified`      | SL or TP changed                        | `TRADE_MODIFIED`  |
-| `order.cancelled`        | a resting order is cancelled or expires | `ORDER_CANCELLED` |
-| `risk.margin_call`       | an account crosses into margin call     | `RISK_ALERT`      |
-| `risk.stop_out`          | an account reaches its stop-out level   | `RISK_ALERT`      |
-| `price.alert`            | a price alert the trader set is reached | `PRICE_ALERT`     |
-| `kyc.verified`           | identity documents accepted             | `SYSTEM`          |
-| `kyc.rejected`           | identity documents not accepted         | `SYSTEM`          |
-| `kyc.revoked`            | a verification already granted is taken back | `SYSTEM`     |
-| `withdrawal.rejected`    | a withdrawal is refused, money back in the wallet | `SYSTEM` |
-| `withdrawal.paid`        | a withdrawal has been paid              | `SYSTEM`          |
-| `withdrawal.failed`      | a payout was attempted and did not complete | `SYSTEM`      |
-| `api_key.minted`         | a key was created on the holder's account | `SYSTEM`        |
-| `api_key.revoked`        | a key was revoked                       | `SYSTEM`          |
+| Kind                     | When                                              | Category          |
+| ------------------------ | ------------------------------------------------- | ----------------- |
+| `position.opened`        | a position opens                                  | `TRADE_OPENED`    |
+| `position.closed`        | a position closes manually                        | `TRADE_CLOSED`    |
+| `position.partial_close` | part of a position closes                         | `TRADE_CLOSED`    |
+| `position.stop_loss`     | a stop loss or trailing stop fires                | `STOP_LOSS`       |
+| `position.take_profit`   | a take profit fires                               | `TAKE_PROFIT`     |
+| `position.modified`      | SL or TP changed                                  | `TRADE_MODIFIED`  |
+| `order.cancelled`        | a resting order is cancelled or expires           | `ORDER_CANCELLED` |
+| `risk.margin_call`       | an account crosses into margin call               | `RISK_ALERT`      |
+| `risk.stop_out`          | an account reaches its stop-out level             | `RISK_ALERT`      |
+| `price.alert`            | a price alert the trader set is reached           | `PRICE_ALERT`     |
+| `kyc.verified`           | identity documents accepted                       | `SYSTEM`          |
+| `kyc.rejected`           | identity documents not accepted                   | `SYSTEM`          |
+| `kyc.revoked`            | a verification already granted is taken back      | `SYSTEM`          |
+| `withdrawal.rejected`    | a withdrawal is refused, money back in the wallet | `SYSTEM`          |
+| `withdrawal.paid`        | a withdrawal has been paid                        | `SYSTEM`          |
+| `withdrawal.failed`      | a payout was attempted and did not complete       | `SYSTEM`          |
+| `api_key.minted`         | a key was created on the holder's account         | `SYSTEM`          |
+| `api_key.revoked`        | a key was revoked                                 | `SYSTEM`          |
 
 The last nine rows were missing from this table for as long as they have been
-raised. The heading says *today*, which made the omission read as a deliberate
+raised. The heading says _today_, which made the omission read as a deliberate
 boundary rather than a gap: the platform tells a person their identity documents
 were refused and their withdrawal was not approved, and the document describing
 what it tells people mentioned neither.
@@ -212,6 +212,20 @@ one of them is a bug.
 and no push provider can tell us that — which is why the admin view says "sent"
 rather than "delivered".
 
+### The admin view
+
+The sentence above was written a phase before the view existed: the rows were
+written and read by nobody, which is the audit log's story one table over. It
+exists now — `/admin/notifications`, on `GET /admin/notifications/deliveries`
+and `/deliveries/summary`, under `notifications.read_any` (SUPPORT, OPERATOR,
+ADMIN and the platform's read-across roles; grantable to a service token).
+Figures for the last day by outcome, error code and platform, then the rows,
+filtered by outcome, kind prefix or error code, newest first, each naming the
+notice, the person, and the device by platform, model and token fingerprint.
+The token itself is not a field of the view. Nothing on the screen can be
+changed: a delivery record is what happened, and the one action a dead token
+calls for — revoking or restoring the device — lives under People.
+
 ## Preferences
 
 Per-category switches with master overrides, in `@tp/push-core` so that the API
@@ -254,12 +268,12 @@ row, and never appears in any API response.
 The app calls `POST /devices` **on every launch**, so three quite different
 things arrive at the same endpoint, and `register` reports which:
 
-| Outcome | What happened | Audited as |
-| --- | --- | --- |
-| `REGISTERED` | An installation this account had never been seen on | `DEVICE_REGISTERED`, and a WARNING in the person's feed |
-| `REVIVED` | A device the person had revoked, back because they signed in on it | `DEVICE_REVIVED`, WARNING |
-| `REFRESHED` | An app launch, or a rotated token | **nothing** |
-| `REFUSED_REVIVAL` | A staff-revoked handset asking to come back | `DEVICE_REVIVAL_REFUSED` |
+| Outcome           | What happened                                                      | Audited as                                              |
+| ----------------- | ------------------------------------------------------------------ | ------------------------------------------------------- |
+| `REGISTERED`      | An installation this account had never been seen on                | `DEVICE_REGISTERED`, and a WARNING in the person's feed |
+| `REVIVED`         | A device the person had revoked, back because they signed in on it | `DEVICE_REVIVED`, WARNING                               |
+| `REFRESHED`       | An app launch, or a rotated token                                  | **nothing**                                             |
+| `REFUSED_REVIVAL` | A staff-revoked handset asking to come back                        | `DEVICE_REVIVAL_REFUSED`                                |
 
 `REFRESHED` writing nothing is the point of the table. Every launch used to be
 audited as `DEVICE_REGISTERED`, so the log counted launches while claiming to
