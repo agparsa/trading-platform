@@ -36,6 +36,7 @@ SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
 SKIP_BACKUP=false
 BUILD=true
 RESUMED=false
+RESUMED_FROM=""
 ARGS=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -43,9 +44,21 @@ while [ $# -gt 0 ]; do
     --no-build) BUILD=false; shift ;;
     # Set only by this script, on itself. See step 4.
     --resumed) RESUMED=true; SKIP_BACKUP=true; shift ;;
+    # Also set only by this script: the commit the *first* run started from.
+    # The restarted run begins after the merge, so `git rev-parse HEAD` is the
+    # new commit — and a run that thinks it went from 54c7b29 to 54c7b29 finds
+    # "nothing to fetch", cannot tell whether the nginx configuration changed,
+    # and force-recreates nginx to be safe, dropping every open socket on an
+    # upgrade that never touched it. That happened on the first upgrade to
+    # restart itself. The old commit is handed across instead.
+    --resumed-from) RESUMED_FROM="$2"; shift 2 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
+if [ "$RESUMED" = true ] && [ -z "$RESUMED_FROM" ]; then
+  echo "--resumed without --resumed-from; this flag is set by the script on itself" >&2
+  exit 2
+fi
 
 COMPOSE=(docker compose -f docker-compose.prod.yml -f docker-compose.cpanel.yml --env-file .env.production)
 ENV_FILE=.env.production
@@ -59,8 +72,14 @@ die()  { printf '\n\033[31m%s\033[0m\n' "$1" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 say "1/9  What is about to change"
 # ---------------------------------------------------------------------------
-BEFORE=$(git rev-parse --short HEAD)
-BEFORE_FULL=$(git rev-parse HEAD)
+if [ -n "$RESUMED_FROM" ]; then
+  BEFORE_FULL=$RESUMED_FROM
+  BEFORE=$(git rev-parse --short "$RESUMED_FROM")
+  echo "    resumed on the new script; the upgrade began at $BEFORE"
+else
+  BEFORE=$(git rev-parse --short HEAD)
+  BEFORE_FULL=$(git rev-parse HEAD)
+fi
 git fetch --all --prune
 AFTER=$(git rev-parse --short "@{u}" 2>/dev/null || echo "$BEFORE")
 if [ "$BEFORE" = "$AFTER" ]; then
@@ -139,7 +158,7 @@ echo "    now at $(git rev-parse --short HEAD)"
 # dump was already taken a step ago.
 if [ "$RESUMED" = false ] && ! git diff --quiet "$BEFORE_FULL" HEAD -- "$SELF"; then
   warn "This script changed in that merge. Restarting on the new version."
-  exec bash "$SELF" ${ARGS[@]+"${ARGS[@]}"} --resumed
+  exec bash "$SELF" ${ARGS[@]+"${ARGS[@]}"} --resumed --resumed-from "$BEFORE_FULL"
 fi
 
 # The images are stamped with the commit they were built from. Nothing else can

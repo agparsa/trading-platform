@@ -27,6 +27,17 @@ failure there is a warning rather than a stop, because the platform runs
 correctly without it — with the second isolation layer disarmed, which is the
 state every deployment was in before the step existed.
 
+When the merge it performs changes `upgrade-server.sh` itself, the script
+restarts on the new version rather than finishing on the old text (bash reads a
+script as it runs, so a change to the file lands on the *next* deploy
+otherwise). The restarted run says so — "resumed on the new script; the upgrade
+began at …" — and reports the same `before -> after` range as the first, because
+the first hands its starting commit across. The first upgrade to restart itself
+did not, saw "nothing to fetch", and force-recreated nginx for want of a
+range to compare, dropping every open socket on an upgrade that never touched
+nginx. `deployment.test.ts` now runs that step of the script in a clone that is
+in the resumed state.
+
 For a fresh checkout, `pnpm db:roles` creates the second database role — the one that owns no tables,
 and therefore the one PostgreSQL's row-level-security policies actually apply to.
 It prints a `DATABASE_URL_TENANT` line for `.env`. Set it: with it, tenant

@@ -1750,4 +1750,96 @@ describe('a deploy script that updates itself', () => {
     expect(body).toMatch(/\$RESUMED" = false/);
     expect(body).toMatch(/--resumed\) RESUMED=true/);
   });
+
+  /**
+   * The restarted run begins *after* the merge. Its `git rev-parse HEAD` is the
+   * new commit, so on the first upgrade that restarted itself the log read
+   * "Already at 54c7b29. Nothing to fetch." and "Done. 54c7b29 -> 54c7b29", and
+   * — the part that cost something — with BEFORE equal to AFTER the nginx step
+   * could not tell whether its configuration had changed and force-recreated
+   * the container, dropping every open socket, on an upgrade that never
+   * touched nginx. The first run now hands its starting commit across.
+   *
+   * Tested by running the script's own step-1 text, not a paraphrase of it: the
+   * option parser and the BEFORE/AFTER block are cut out of the file and run in
+   * a clone whose HEAD and upstream are both at the new commit — the state a
+   * resumed run is in. `git fetch` is a no-op there.
+   */
+  describe('the restarted run knows where the upgrade began', () => {
+    const body = read('scripts/upgrade-server.sh');
+    const parserStart = body.indexOf('RESUMED=false');
+    const parserEnd = body.indexOf('COMPOSE=(');
+    const stepStart = body.indexOf('if [ -n "$RESUMED_FROM" ]');
+    const stepEnd = body.indexOf('# ---', stepStart);
+    const snippet = [
+      'set -u',
+      'SKIP_BACKUP=false',
+      'BUILD=true',
+      'warn() { echo "WARN $1"; }',
+      'git() { if [ "$1" = fetch ]; then return 0; fi; command git "$@"; }',
+      body.slice(parserStart, parserEnd),
+      body.slice(stepStart, stepEnd),
+      'echo "BEFORE=$BEFORE AFTER=$AFTER"',
+    ].join('\n');
+
+    const run = (args: string[]) => {
+      const root = mkdtempSync(resolve(tmpdir(), 'tp-resume-'));
+      const remote = resolve(root, 'remote.git');
+      const clone = resolve(root, 'clone');
+      const git = (cwd: string, ...a: string[]) => {
+        const r = spawnSync('git', a, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+        expect(r.status, `${a.join(' ')}: ${r.stderr}`).toBe(0);
+        return r.stdout.trim();
+      };
+      try {
+        git(root, 'init', '-q', '--bare', '-b', 'main', remote);
+        git(root, 'clone', '-q', remote, clone);
+        writeFileSync(resolve(clone, 'a'), 'a');
+        git(clone, 'add', 'a');
+        git(clone, 'commit', '-q', '-m', 'A');
+        const before = git(clone, 'rev-parse', 'HEAD');
+        writeFileSync(resolve(clone, 'b'), 'b');
+        git(clone, 'add', 'b');
+        git(clone, 'commit', '-q', '-m', 'B');
+        git(clone, 'push', '-q', '-u', 'origin', 'main');
+        const after = git(clone, 'rev-parse', '--short', 'HEAD');
+        const result = spawnSync('bash', ['-c', `${snippet}`, 'x', ...args.map((a) => a.replace('<A>', before))], { cwd: clone, encoding: 'utf8' });
+        return { ...result, before: before.slice(0, 7), after };
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    };
+
+    it('the pieces under test were found in the script', () => {
+      expect(parserStart).toBeGreaterThan(0);
+      expect(parserEnd).toBeGreaterThan(parserStart);
+      expect(stepStart).toBeGreaterThan(parserEnd);
+      expect(stepEnd).toBeGreaterThan(stepStart);
+    });
+
+    it('a resumed run reports the range the upgrade actually covers', () => {
+      const result = run(['--resumed', '--resumed-from', '<A>']);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).not.toContain('Already at');
+      expect(result.stdout).toContain(`${result.before} -> ${result.after}`);
+      expect(result.stdout).toMatch(new RegExp(`BEFORE=${result.before} AFTER=${result.after}`));
+    });
+
+    it('a first run still reads its start from the checkout', () => {
+      const result = run([]);
+      expect(result.status, result.stderr).toBe(0);
+      // HEAD already equals upstream in this clone, so a first run has nothing to fetch.
+      expect(result.stdout).toContain('Already at');
+    });
+
+    it('refuses --resumed without the commit, so the flag cannot drift apart from its purpose', () => {
+      const result = run(['--resumed']);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('--resumed-from');
+    });
+
+    it('is what the restart line passes', () => {
+      expect(body).toMatch(/exec bash "\$SELF" [^\n]*--resumed --resumed-from "\$BEFORE_FULL"/);
+    });
+  });
 });
