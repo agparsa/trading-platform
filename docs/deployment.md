@@ -119,14 +119,22 @@ socket service — the container each trader's screen is connected to — had be
 rebuilt or stopped it. Both of its service lists are now checked against the
 compose file by `deployment.test.ts`.
 
-The worker is the third process asked, though it serves no HTTP. Each worker
+The web is asked too: every page carries an `x-tp-build` header, folded into
+the routes manifest at `next build` from the `BUILD_SHA` the image was built
+with (so the web Dockerfile sets it in the *build* stage — an `ENV` in the
+production stage would be read by nothing). The script reads it from the
+terminal page, or from the login page when the terminal redirected.
+
+The worker is the fourth process asked, though it serves no HTTP. Each worker
 writes a heartbeat to Redis on boot and every thirty seconds — instance, role,
 queues, and the same build marker — and withdraws it on a clean stop.
 `/health/jobs` reports every heartbeat under `workers`, and the script checks
 that at least one worker is alive and that every one is on the deployed build.
-Before this the worker was the one container that could sit on last week's
-image with nothing outside the host able to tell. See
-[worker.md](./worker.md#is-a-worker-there-now).
+With that, every container running this platform's code — API, socket
+service, worker, web — says which build it is, and the script compares each to
+the deployed commit. Until the worker's heartbeat and the web's header existed,
+either could sit on last week's image with nothing outside the host able to
+tell. See [worker.md](./worker.md#is-a-worker-there-now).
 
 What it cannot see: one request reaches one instance, so a half-finished
 rollout can pass. It does not read logs or count containers. Green means the

@@ -43,6 +43,11 @@ ARG NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1
 ARG NEXT_PUBLIC_WS_URL=http://localhost:4000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
+# The build marker too, and in *this* stage for the same reason: next.config.ts
+# folds it into the routes manifest as the `x-tp-build` response header, so it
+# has to be in the environment when `next build` runs. See next.config.ts.
+ARG BUILD_SHA=unknown
+ENV BUILD_SHA=$BUILD_SHA
 
 RUN pnpm build:packages && pnpm --filter @tp/web build
 

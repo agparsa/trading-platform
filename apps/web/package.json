@@ -13,6 +13,7 @@
     "@tanstack/react-query": "catalog:",
     "@tp/api-client": "workspace:*",
     "@tp/chart-core": "workspace:*",
+    "@tp/crypto-core": "workspace:*",
     "@tp/financial-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
     "@tp/trading-core": "workspace:*",

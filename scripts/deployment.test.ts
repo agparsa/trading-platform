@@ -1617,21 +1617,35 @@ describe('file-backed secrets', () => {
  *
  * Every image that runs this platform's Node code and has a channel to report
  * the marker — the API (`/health`, the handshake header) and the worker (its
- * heartbeat) — must take the argument in its production stage and keep it as
- * an environment variable. The web image renders pages and has no such
- * channel yet; nginx runs no code of ours.
+ * heartbeat) and the web (the `x-tp-build` response header) — must take the
+ * argument in the stage that reads it and keep it as an environment variable.
+ * nginx runs no code of ours.
  */
 describe('the images that answer "which build?"', () => {
   const compose = read('docker-compose.prod.yml');
-  const stamped = ['docker/api.Dockerfile', 'docker/worker.Dockerfile'];
+  const stamped = ['docker/api.Dockerfile', 'docker/worker.Dockerfile', 'docker/web.Dockerfile'];
 
-  it.each(stamped)('%s takes BUILD_SHA and keeps it in the environment', (file) => {
+  /**
+   * Which stage has to carry it differs, and the difference is the point. The
+   * API and the worker read `BUILD_SHA` at runtime, so it is the production
+   * stage's environment. The web folds it into the routes manifest during
+   * `next build`, so it must be in the *build* stage's environment before that
+   * command — an `ENV` in the production stage would be read by nothing.
+   */
+  it.each(stamped)('%s takes BUILD_SHA where it is read', (file) => {
     const body = read(file);
-    const production = body.slice(body.lastIndexOf('FROM '));
-    expect(production, `${file}: the production stage declares ARG BUILD_SHA`).toMatch(
-      /^ARG BUILD_SHA=unknown$/m,
-    );
-    expect(production, `${file}: and exports it`).toMatch(/^ENV BUILD_SHA=\$BUILD_SHA$/m);
+    const stageStart = file.includes('web')
+      ? body.indexOf('FROM base AS build')
+      : body.lastIndexOf('FROM ');
+    expect(stageStart, `${file}: the consuming stage exists`).toBeGreaterThan(-1);
+    const stage = body.slice(stageStart, body.indexOf('\nFROM ', stageStart + 1) === -1 ? undefined : body.indexOf('\nFROM ', stageStart + 1));
+    expect(stage, `${file}: the consuming stage declares ARG BUILD_SHA`).toMatch(/^ARG BUILD_SHA=unknown$/m);
+    expect(stage, `${file}: and exports it`).toMatch(/^ENV BUILD_SHA=\$BUILD_SHA$/m);
+    if (file.includes('web')) {
+      expect(stage.indexOf('ENV BUILD_SHA'), 'set before next build runs').toBeLessThan(
+        stage.indexOf('pnpm --filter @tp/web build'),
+      );
+    }
   });
 
   it('is passed to every service compose builds from those files', () => {

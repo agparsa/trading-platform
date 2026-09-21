@@ -831,6 +831,22 @@ async function main(): Promise<void> {
     web.stderr?.on('data', () => undefined);
     await waitFor(`${WEB}/login`, 'the web application');
 
+    /**
+     * The built web names its build on every response — the header
+     * `verify:production` reads to tell whether the web container was
+     * deployed. Checked on the real standalone server this script just
+     * started, against the BUILD_SHA it was *built* with: the value is folded
+     * into the routes manifest at `next build`, so the environment this
+     * process was started with is not what decides it.
+     */
+    const loginResponse = await fetch(`${WEB}/login`, { redirect: 'manual' });
+    const served = loginResponse.headers.get('x-tp-build');
+    ok(
+      served !== null && /^([0-9a-f]{12}|unknown)$/.test(served),
+      'every page names the build that served it',
+      `x-tp-build: ${String(served)}`,
+    );
+
     const people = await seedPeople(prisma);
 
     /**

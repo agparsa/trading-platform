@@ -452,6 +452,37 @@ async function main(): Promise<void> {
     `answered ${terminal?.status ?? 'nothing'}`,
   );
 
+  /**
+   * And which build served it. The fourth and last container: the API answers
+   * in `/health`, the socket service on its handshake, the worker on its
+   * heartbeat, and the web on every response as `x-tp-build`, folded into the
+   * routes manifest at `next build` from the BUILD_SHA the image was built with.
+   * A redirect carries no page headers, so the login page — which every visitor
+   * can fetch and which is never redirected — is read when the terminal was.
+   */
+  const webPage = terminal !== null && terminal.status === 200 ? terminal : await get('/login');
+  const webBuild = webPage?.headers.get('x-tp-build') ?? null;
+  if (webBuild === null) {
+    record(
+      'the web says which build it runs',
+      false,
+      'no x-tp-build header on the page — this web container predates the header, or was not rebuilt',
+    );
+  } else if (webBuild === 'unknown') {
+    record('the web says which build it runs', false, 'the web image was built without BUILD_SHA');
+  } else if (EXPECT === null) {
+    record('the web says which build it runs', true, `build ${webBuild} (pass --expect <sha> to confirm it)`);
+  } else {
+    const want = marker(EXPECT);
+    record(
+      'the web runs the build that was deployed',
+      webBuild === want,
+      webBuild === want
+        ? `${webBuild} matches ${EXPECT.slice(0, 12)}`
+        : `the web serves ${webBuild}, expected ${want} — the web image was not rebuilt or the container not recreated`,
+    );
+  }
+
   report();
 }
 
