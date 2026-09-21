@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import type { RequestWithContext } from './request-context';
-import { ApiFailure, DomainError, TradingErrorCode } from '@tp/shared-types';
+import { ApiFailure, DomainError, TradingErrorCode, type HealthReport } from '@tp/shared-types';
 
 /**
  * Maps a domain error code onto an HTTP status.
@@ -166,11 +166,23 @@ export class DomainExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
+      /**
+       * A health probe that reports down carries its report in the exception —
+       * Terminus throws `ServiceUnavailableException(report)`. This branch used
+       * to keep the message and drop the report, so every 503 from `/ready` or
+       * `/health/jobs` read "Service Unavailable Exception" and nothing else:
+       * not which dependency, not which schedule was late, not which worker
+       * was missing. The 200 said everything and the 503 said nothing, which is
+       * the wrong way round for a probe. The report goes on the envelope as
+       * `data`, the same place the 200 puts it, so a reader parses both alike.
+       */
+      const report = healthReport(exception.getResponse());
       return {
         status,
         body: {
           ok: false,
           error: { code: codeForStatus(status), message: exception.message, requestId },
+          ...(report === null ? {} : { data: report }),
         },
       };
     }
@@ -276,4 +288,20 @@ function contentionCodeOf(exception: unknown): TradingErrorCode | null {
     return TradingErrorCode.CONCURRENT_MODIFICATION;
   }
   return null;
+}
+
+/**
+ * The response of an `HttpException` when it is a Terminus health report, and
+ * `null` for every other response. Recognised by shape rather than by class:
+ * Terminus throws a plain `ServiceUnavailableException`, and any other
+ * exception whose response happens to be an object is somebody's message and
+ * stays where it was.
+ */
+function healthReport(response: unknown): HealthReport | null {
+  if (typeof response !== 'object' || response === null) return null;
+  const candidate = response as Record<string, unknown>;
+  const status = candidate['status'];
+  if (status !== 'ok' && status !== 'error' && status !== 'shutting_down') return null;
+  if (typeof candidate['details'] !== 'object' || candidate['details'] === null) return null;
+  return candidate as unknown as HealthReport;
 }

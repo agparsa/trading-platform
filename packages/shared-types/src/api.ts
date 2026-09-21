@@ -13,6 +13,28 @@ export interface ApiSuccess<T> {
 export interface ApiFailure {
   ok: false;
   error: ApiErrorBody;
+  /**
+   * Present on one kind of failure only: a health probe that reports down.
+   * The report is the answer — which dependency, which schedule, which worker
+   * — and a 503 that dropped it said nothing but "unavailable". See
+   * `HealthReport`.
+   */
+  data?: HealthReport;
+}
+
+/** One indicator's entry in a health report: its status and whatever it chose to say. */
+export type HealthEntry = { status: 'up' | 'down' } & Record<string, unknown>;
+
+/**
+ * The shape the health probes answer with (`/ready`, `/health/jobs`, …): each
+ * indicator once under `details`, and again under `info` (the ones that are
+ * up) or `error` (the ones that are down).
+ */
+export interface HealthReport {
+  status: 'ok' | 'error' | 'shutting_down';
+  info?: Record<string, HealthEntry>;
+  error?: Record<string, HealthEntry>;
+  details: Record<string, HealthEntry>;
 }
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;

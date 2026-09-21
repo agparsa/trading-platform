@@ -10,3 +10,4 @@ export * from './permissions';
 export * from './features';
 export * from './role-seed';
 export * from './notifications';
+export * from './worker-heartbeat';

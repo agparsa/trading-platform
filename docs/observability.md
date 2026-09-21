@@ -100,7 +100,19 @@ write.
 `/health` — liveness, no dependencies touched.
 `/ready` — readiness, reports database and Redis status with measured latencies.
 `/health/market` — the feed. Alert on it; do not route on it.
-`/health/jobs` — the scheduled work. Alert on it; do not route on it.
+`/health/jobs` — the scheduled work, and whether a worker is there to do it:
+`scheduled-jobs` from the database rows, `workers` from each worker's Redis
+heartbeat with its build. Alert on it; do not route on it.
+
+**A probe that reports down carries its report.** The failure envelope has the
+report on `data`, exactly where the 200 puts it, so `/ready` on 503 names the
+dependency and `/health/jobs` on 503 names the schedule or the missing worker.
+It did not: the exception filter kept Terminus's message and dropped its body,
+so every 503 from a probe read "Service Unavailable Exception" and nothing
+else — the 200 said everything and the 503 said nothing, the wrong way round
+for a probe. Found the day the worker indicator was added and went down on a
+machine with no worker: the probe built to name the missing worker answered
+with nothing.
 `/health/tenancy` — whether row-level security applies to the connection this
 API uses. `TenantIsolationAbsent` alerts on it, selecting
 `tp_tenant_isolation{configured="true"}`; on a single-role deployment `0` is the

@@ -4,6 +4,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { validateEnv } from './env';
 import { PrismaService } from './prisma.service';
 import { QueueRegistry } from './queue-registry';
+import { HeartbeatService } from './heartbeat.service';
 import { SwapAccrualService } from './jobs/swap-accrual.service';
 import { ReconciliationService } from './jobs/reconciliation.service';
 import { ScheduleLogService } from './jobs/schedule-log.service';
@@ -58,6 +59,7 @@ import { PushModule } from './push/push.module';
     ReportsService,
     { provide: BrokerAdapterRegistry, useFactory: () => new BrokerAdapterRegistry() },
     QueueRegistry,
+    HeartbeatService,
   ],
 })
 export class WorkerModule {}

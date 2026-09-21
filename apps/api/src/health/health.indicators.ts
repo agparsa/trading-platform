@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HealthIndicatorResult, HealthIndicatorService } from '@nestjs/terminus';
 import { overdueSchedules, type ScheduledRun } from '@tp/scheduling-core';
+import { WORKER_HEARTBEAT_PREFIX, parseWorkerHeartbeat, type WorkerHeartbeat } from '@tp/shared-types';
 import { withoutTenantScope } from '@tp/tenancy';
 import { MarketIntegrityService } from '../market/market-integrity.service';
 import { QuoteService } from '../market/quote.service';
@@ -264,5 +265,89 @@ export class TenantIsolationHealthIndicator {
       ...detail,
       note: 'DATABASE_URL_TENANT is set and row-level security does not apply to this connection',
     });
+  }
+}
+
+/**
+ * Which worker processes are alive, and which build each one is.
+ *
+ * The schedule log answers "did the jobs run", from the database. This answers
+ * "is a worker there *now*", from the heartbeat each one writes to Redis (see
+ * `WorkerHeartbeat` in `@tp/shared-types`). They are separate because a
+ * schedule that runs daily keeps yesterday's worker's row for a day, so the
+ * rows cannot say what is running at this moment — and the moment is what an
+ * upgrade needs: `verify:production` compares every heartbeat's `build` to the
+ * commit it just deployed, which is how a worker still on last week's image
+ * gets noticed the same day rather than by reading `docker ps` on a hunch.
+ *
+ * Down when no worker has reported within the TTL. That is the plain state —
+ * nothing is going to run the schedules — and it is reported here rather than
+ * waiting for the first schedule to be late, which for the daily ones is a
+ * day. A worker older than the heartbeat writes none, and reads as absent: on
+ * the upgrade that introduces this, the worker is rebuilt in the same run.
+ *
+ * Read with SCAN, never KEYS: a few keys, but the command must not block
+ * Redis, which is also the order queue's backbone.
+ */
+@Injectable()
+export class WorkerHealthIndicator {
+  constructor(
+    private readonly health: HealthIndicatorService,
+    private readonly redis: RedisService,
+  ) {}
+
+  async heartbeats(): Promise<WorkerHeartbeat[]> {
+    const keys: string[] = [];
+    let cursor = '0';
+    do {
+      const [next, batch] = await this.redis.client.scan(
+        cursor,
+        'MATCH',
+        `${WORKER_HEARTBEAT_PREFIX}*`,
+        'COUNT',
+        100,
+      );
+      cursor = next;
+      keys.push(...batch);
+    } while (cursor !== '0');
+    if (keys.length === 0) return [];
+    const values = await this.redis.client.mget(...keys);
+    return values
+      .map((value) => parseWorkerHeartbeat(value))
+      .filter((beat): beat is WorkerHeartbeat => beat !== null)
+      .sort((a, b) => a.instance.localeCompare(b.instance));
+  }
+
+  async check(key = 'workers', now: number = Date.now()): Promise<HealthIndicatorResult> {
+    const indicator = this.health.check(key);
+    let beats: WorkerHeartbeat[];
+    try {
+      beats = await this.heartbeats();
+    } catch (error) {
+      return indicator.down({
+        workers: 0,
+        message: error instanceof Error ? error.name : 'unknown error',
+      });
+    }
+    const detail = {
+      workers: beats.length,
+      /**
+       * Every instance, with its build — not a count and not a set of builds.
+       * A count cannot say which one is stale, and a set of builds cannot say
+       * how many are on each; the verifier wants to name the one that is
+       * wrong, and so does whoever reads this at three in the morning.
+       */
+      instances: beats.map((beat) => ({
+        instance: beat.instance,
+        build: beat.build,
+        role: beat.role,
+        queues: beat.queues,
+        ageMs: Math.max(0, now - Date.parse(beat.at)),
+      })),
+      builds: [...new Set(beats.map((beat) => beat.build))].sort(),
+    };
+    return beats.length === 0
+      ? indicator.down({ ...detail, note: 'no worker has reported in — nothing will run the schedules' })
+      : indicator.up(detail);
   }
 }

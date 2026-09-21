@@ -119,11 +119,20 @@ socket service — the container each trader's screen is connected to — had be
 rebuilt or stopped it. Both of its service lists are now checked against the
 compose file by `deployment.test.ts`.
 
+The worker is the third process asked, though it serves no HTTP. Each worker
+writes a heartbeat to Redis on boot and every thirty seconds — instance, role,
+queues, and the same build marker — and withdraws it on a clean stop.
+`/health/jobs` reports every heartbeat under `workers`, and the script checks
+that at least one worker is alive and that every one is on the deployed build.
+Before this the worker was the one container that could sit on last week's
+image with nothing outside the host able to tell. See
+[worker.md](./worker.md#is-a-worker-there-now).
+
 What it cannot see: one request reaches one instance, so a half-finished
-rollout can pass. It does not read logs, count containers, or see the worker.
-Green means the public surface is right; the container list still deserves a
-look — `docker compose ps` shows each container's age, and a service far older
-than its neighbours after an upgrade is a service the upgrade did not touch.
+rollout can pass. It does not read logs or count containers. Green means the
+public surface is right; the container list still deserves a look —
+`docker compose ps` shows each container's age, and a service far older than
+its neighbours after an upgrade is a service the upgrade did not touch.
 
 ## Migrations
 

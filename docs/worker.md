@@ -67,6 +67,30 @@ outcome, and the totals. From those rows:
 | `tp_scheduled_job_late{job}` | `1` when it is later than its own cron allows, failing, never run, or misconfigured |
 | `pnpm verify:production` | one check, the only one that can fail on a deployment where everything else passes |
 
+### Is a worker there *now*?
+
+The rows above say what *ran*. They cannot say what is running: a daily job's
+row is yesterday's worker's for a day, and the worker serves no HTTP, so until
+21 September it could not be asked — it was the one container that could sit on
+last week's image with nothing outside the host able to tell, which is what the
+real-time service did for three upgrades before its handshake named its build.
+
+So every worker process writes a heartbeat: one Redis key under
+`tp:worker:heartbeat:<host>:<pid>`, holding its instance, role, queues, start
+time and build marker, rewritten every thirty seconds with a ninety-second TTL
+and deleted on a clean shutdown. Redis rather than the database, deliberately:
+this is *presence*, and presence that outlives its process is the failure mode.
+A Redis flush costs one interval of "no worker seen"; the next beat repairs it.
+
+`GET /health/jobs` carries a second indicator, `workers`, naming every instance
+with its build and how old its last beat is. It is **down when no worker has
+reported within the TTL** — nothing is going to run the schedules, and that is
+said at once rather than when the first daily job is late tomorrow.
+`pnpm verify:production` reads it: a worker is alive, and with `--expect`, every
+worker runs the deployed build. The contract both sides use is
+`WorkerHeartbeat` in `@tp/shared-types`; `pnpm smoke:worker` reads the real
+build's heartbeat from the real Redis and checks the key is gone after SIGTERM.
+
 Three details worth knowing, because each was a decision:
 
 - **The tolerance comes from the job's own cron**, not from a constant. Three

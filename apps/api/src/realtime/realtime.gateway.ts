@@ -34,7 +34,7 @@ import { DOMAIN_EVENT_CHANNEL, EventsService, type DomainEventEnvelope } from '.
 import { rateLimits, socketCorsOrigins, type Env } from '../config/env.schema';
 import { initialState, type TradingSocket } from './socket.types';
 import { TenantResolver } from '../tenancy/tenant-resolver.service';
-import { buildMarker } from '../health/health.controller';
+import { buildMarker } from '@tp/crypto-core';
 import { withTenant, type TenantContext } from '@tp/tenancy';
 
 const subscribeSchema = z

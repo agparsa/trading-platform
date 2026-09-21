@@ -1,8 +1,11 @@
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
+import { buildMarker } from '@tp/crypto-core';
+import { WORKER_HEARTBEAT_PREFIX, parseWorkerHeartbeat } from '@tp/shared-types';
 
 /**
  * Boots the real worker and watches it stay up.
@@ -118,7 +121,43 @@ async function main(): Promise<void> {
   }
   console.log('  ok  nothing in its output is a dependency it could not resolve');
 
+  /**
+   * It says it is alive, and which build, where the API will look.
+   *
+   * The unit test drives the service with a map. This reads the real Redis the
+   * real build wrote to: the key is under the prefix the API scans, the value
+   * parses under the shared contract, and the build is the digest of the
+   * BUILD_SHA this process was started with — the same digest
+   * `verify:production` computes from the deployed commit. Then SIGTERM, and
+   * the key must be gone: a stopped worker that lingers for the TTL is a
+   * worker the verifier would report as alive on an old build for ninety
+   * seconds after every upgrade.
+   */
+  const heartbeats = await readHeartbeats();
+  if (heartbeats.length !== 1) {
+    fail(`expected exactly one worker heartbeat in Redis, found ${heartbeats.length}`);
+    return;
+  }
+  const [beat] = heartbeats;
+  const expectedBuild = buildMarker(process.env['BUILD_SHA']);
+  if (beat!.build !== expectedBuild) {
+    fail(`the heartbeat says build ${beat!.build}; this process was started as ${expectedBuild}`);
+    return;
+  }
+  if (beat!.role !== 'all' || beat!.queues.length === 0) {
+    fail(`the heartbeat reports role ${beat!.role} with queues ${beat!.queues.join(',') || 'none'}`);
+    return;
+  }
+  console.log(`  ok  it wrote a heartbeat the API can read, on build ${beat!.build}`);
+
   worker.kill('SIGTERM');
+  const gone = await waitUntil(async () => (await readHeartbeats()).length === 0, 10_000);
+  if (!gone) {
+    console.error('  FAIL the heartbeat was still in Redis 10s after SIGTERM; a clean stop must withdraw it');
+    process.exitCode = 1;
+    return;
+  }
+  console.log('  ok  a clean stop withdraws the heartbeat at once');
 
   /**
    * A narrowed processor (§77) takes only the queues it was given and writes
@@ -203,7 +242,7 @@ async function main(): Promise<void> {
     rmSync(secretDir, { recursive: true, force: true });
   }
 
-  console.log('\nAll 7 worker smoke checks passed.');
+  console.log('\nAll 9 worker smoke checks passed.');
 }
 
 /**
@@ -238,3 +277,44 @@ async function bootOnce(env: Record<string, string>, until: RegExp | null): Prom
 }
 
 void main();
+
+/**
+ * The worker's own ioredis, because the harness has none of its own and the
+ * point is to read what the worker's build wrote with the client it ships.
+ */
+async function readHeartbeats() {
+  const require = createRequire(resolve('apps/worker/package.json'));
+  const IORedis = (require('ioredis') as { default: new (url: string) => RedisLike }).default;
+  const url = process.env['REDIS_URL'];
+  if (url === undefined) throw new Error('REDIS_URL is required (from .env)');
+  const redis = new IORedis(url);
+  try {
+    const keys: string[] = [];
+    let cursor = '0';
+    do {
+      const [next, batch] = await redis.scan(cursor, 'MATCH', `${WORKER_HEARTBEAT_PREFIX}*`, 'COUNT', 100);
+      cursor = next;
+      keys.push(...batch);
+    } while (cursor !== '0');
+    if (keys.length === 0) return [];
+    const values = await redis.mget(...keys);
+    return values.map(parseWorkerHeartbeat).filter((beat) => beat !== null);
+  } finally {
+    redis.disconnect();
+  }
+}
+
+interface RedisLike {
+  scan(cursor: string, ...args: (string | number)[]): Promise<[string, string[]]>;
+  mget(...keys: string[]): Promise<(string | null)[]>;
+  disconnect(): void;
+}
+
+async function waitUntil(probe: () => Promise<boolean>, ms: number): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await probe()) return true;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return probe();
+}

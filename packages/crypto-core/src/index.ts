@@ -35,3 +35,4 @@ export {
   type SealedColumn,
   type SealedForm,
 } from './sealed-columns';
+export { buildMarker } from './build-marker';

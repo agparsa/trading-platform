@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { WsChannel } from '@tp/shared-types';
 import type { Candle, Tick } from '@tp/market-core';
 import { BUILD_HEADER, RealtimeGateway } from './realtime.gateway';
-import { buildMarker } from '../health/health.controller';
+import { buildMarker } from '@tp/crypto-core';
 import { initialState, type TradingSocket } from './socket.types';
 import { CandleBus } from '../market/candle-bus';
 import { TickBus } from '../market/tick-bus';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HttpStatus } from '@nestjs/common';
+import { HttpStatus, ServiceUnavailableException } from '@nestjs/common';
 import { TradingErrorCode } from '@tp/shared-types';
 import { DomainExceptionFilter, statusForCode } from './domain-exception.filter';
 import type { ApiFailure } from '@tp/shared-types';
@@ -145,5 +145,46 @@ describe('errors raised by the body parsers, below Nest', () => {
     });
     // Not marked exposable: treated as unknown, said nothing about.
     expect(respond(hidden).status).toBe(500);
+  });
+});
+
+/**
+ * A probe that reports down has to say what is down.
+ *
+ * Terminus throws `ServiceUnavailableException(report)`, and the `HttpException`
+ * branch kept the message and dropped the report. Every 503 from `/ready` and
+ * `/health/jobs` therefore read "Service Unavailable Exception" — not which
+ * dependency, which schedule, which worker. Found the day the worker heartbeat
+ * was added and its indicator went down on a machine with no worker: the
+ * probe that was built to name the missing worker answered with nothing.
+ */
+describe('DomainExceptionFilter, on a health probe that reports down', () => {
+  const report = {
+    status: 'error',
+    info: { 'scheduled-jobs': { status: 'up', jobs: 6 } },
+    error: { workers: { status: 'down', workers: 0, note: 'no worker has reported in' } },
+    details: {
+      'scheduled-jobs': { status: 'up', jobs: 6 },
+      workers: { status: 'down', workers: 0, note: 'no worker has reported in' },
+    },
+  };
+
+  it('keeps the report on the envelope, where the 200 puts it', () => {
+    const { status, body } = respond(new ServiceUnavailableException(report));
+    expect(status).toBe(503);
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe(TradingErrorCode.SERVICE_UNAVAILABLE);
+    expect(body.error.requestId).toBe('req-1');
+    expect(body.data).toEqual(report);
+  });
+
+  it('does not mistake an ordinary exception with an object response for a report', () => {
+    const { body } = respond(
+      new ServiceUnavailableException({ status: 'error', reason: 'draining' }),
+    );
+    expect(body.data).toBeUndefined();
+    const plain = respond(new ServiceUnavailableException('shutting down'));
+    expect(plain.body.data).toBeUndefined();
+    expect(plain.body.error.message).toBe('shutting down');
   });
 });

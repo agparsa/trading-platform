@@ -1607,6 +1607,46 @@ describe('file-backed secrets', () => {
  *
  * Discovered rather than listed, so a third deploy script inherits the check.
  */
+/**
+ * The stamp has to land somewhere that can be read back. Compose passes
+ * `BUILD_SHA` to every image it builds; an image whose Dockerfile does not take
+ * it is stamped with nothing, and a process in that image answers `unknown`.
+ * The worker's did not take it until the heartbeat existed to carry the
+ * answer — so for as long as the marker had existed the worker was the process
+ * that could not say what it was, and nobody noticed, because nothing asked.
+ *
+ * Every image that runs this platform's Node code and has a channel to report
+ * the marker — the API (`/health`, the handshake header) and the worker (its
+ * heartbeat) — must take the argument in its production stage and keep it as
+ * an environment variable. The web image renders pages and has no such
+ * channel yet; nginx runs no code of ours.
+ */
+describe('the images that answer "which build?"', () => {
+  const compose = read('docker-compose.prod.yml');
+  const stamped = ['docker/api.Dockerfile', 'docker/worker.Dockerfile'];
+
+  it.each(stamped)('%s takes BUILD_SHA and keeps it in the environment', (file) => {
+    const body = read(file);
+    const production = body.slice(body.lastIndexOf('FROM '));
+    expect(production, `${file}: the production stage declares ARG BUILD_SHA`).toMatch(
+      /^ARG BUILD_SHA=unknown$/m,
+    );
+    expect(production, `${file}: and exports it`).toMatch(/^ENV BUILD_SHA=\$BUILD_SHA$/m);
+  });
+
+  it('is passed to every service compose builds from those files', () => {
+    for (const file of stamped) {
+      const users = compose
+        .split(/\n {2}(?=[a-z])/)
+        .filter((block) => block.includes(`dockerfile: ${file}`));
+      expect(users.length, `${file} is used by some service`).toBeGreaterThan(0);
+      for (const block of users) {
+        expect(block).toMatch(/BUILD_SHA: \$\{BUILD_SHA:-unknown\}/);
+      }
+    }
+  });
+});
+
 describe('the deploy scripts', () => {
   const SCRIPTS = readdirSync(resolve(ROOT, 'scripts'))
     .filter((name) => name.endsWith('.sh'))

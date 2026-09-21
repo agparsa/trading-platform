@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMarker } from './health.controller';
+import { buildMarker } from './build-marker';
 
 /**
  * The marker has two jobs that pull against each other: it must identify a

@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto';
 import { Controller, Get, VERSION_NEUTRAL, Version } from '@nestjs/common';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
+import { buildMarker } from '@tp/crypto-core';
 import { Public } from '../common/decorators/public.decorator';
 import {
   DatabaseHealthIndicator,
@@ -10,6 +10,7 @@ import {
   RedisHealthIndicator,
   ScheduledJobsHealthIndicator,
   TenantIsolationHealthIndicator,
+  WorkerHealthIndicator,
 } from './health.indicators';
 
 /**
@@ -55,6 +56,7 @@ export class HealthController {
     private readonly marketData: MarketDataHealthIndicator,
     private readonly scheduledJobs: ScheduledJobsHealthIndicator,
     private readonly tenantIsolation: TenantIsolationHealthIndicator,
+    private readonly workers: WorkerHealthIndicator,
   ) {}
 
   /**
@@ -143,42 +145,19 @@ export class HealthController {
   @ApiOperation({ summary: 'Whether every scheduled job is still running on time' })
   @HealthCheck()
   jobs() {
-    return this.health.check([() => this.scheduledJobs.check()]);
+    /**
+     * Two indicators, one question: is the background work happening. The
+     * schedule log says whether it *has* been (from the database); the
+     * heartbeat says whether anything is there to do it *now*, and on which
+     * build (from Redis). See `WorkerHealthIndicator` for why both.
+     */
+    return this.health.check([() => this.scheduledJobs.check(), () => this.workers.check()]);
   }
 }
 
 /**
- * Which build this is, without saying which revision it is.
- *
- * ## Why there is a marker at all
- *
- * Production sits behind Cloudflare and its origin takes no connection from
- * anywhere the deploy tooling runs, so for a whole weekend the only honest
- * answer to "did the deploy land?" was to ask somebody to read a container log
- * over SSH. A probe that says a service is *alive* but not *which* service is
- * alive cannot tell a successful deploy from one that silently kept the old
- * containers running — which is the failure a deploy check exists to catch.
- *
- * ## Why it is not the commit
- *
- * `/health` is unauthenticated, as a liveness probe has to be. This platform
- * deliberately keeps its route surface off the public internet — Swagger is
- * dev-only, `/metrics` is refused at nginx, the OpenAPI document sits behind a
- * session — and publishing the exact revision of a private repository on an
- * open endpoint would cut against all of it: it tells anyone watching precisely
- * which code is running and therefore which known defect to try.
- *
- * So the endpoint serves a **one-way** marker: the first 12 hex of
- * SHA-256 over the build's commit. Somebody who already knows the candidate
- * commit — the person who just deployed it — can confirm a match in one line.
- * Somebody who does not learns an opaque string. `verify-production.ts` does
- * that comparison, so nobody has to think about the hashing.
- *
- * `unknown` when the image was built without `BUILD_SHA`, which is itself worth
- * knowing: it means the deploy did not stamp its build, and the next person
- * asking "what is running?" will have no way to answer.
+ * Re-exported so existing callers and tests keep their import path. The rule
+ * lives in `@tp/crypto-core` now, because the worker answers the same question
+ * on its heartbeat and the real-time service on its handshake.
  */
-export function buildMarker(sha: string | undefined = process.env['BUILD_SHA']): string {
-  if (sha === undefined || sha === '' || sha === 'unknown') return 'unknown';
-  return createHash('sha256').update(sha.trim()).digest('hex').slice(0, 12);
-}
+export { buildMarker };

@@ -58,6 +58,15 @@ COPY --from=build --chown=node:node /app/prisma ./prisma
 # image builds, starts, and dies on `Cannot find module 'reflect-metadata'`,
 # because nothing the application actually imports is where Node looks for it.
 COPY --from=build --chown=node:node /app/apps/worker/node_modules ./apps/worker/node_modules
+
+# Which build this is. The worker serves no HTTP, so it says so on its
+# heartbeat in Redis, which `/health/jobs` reports and `verify:production`
+# compares to the deployed commit. Same marker rule as the API image; see
+# `buildMarker` in @tp/crypto-core. Until this line existed the worker was the
+# one container that could run an old build with nothing outside the host able
+# to tell — which is what `api-ws` did for three upgrades.
+ARG BUILD_SHA=unknown
+ENV BUILD_SHA=$BUILD_SHA
 COPY --from=build --chown=node:node /app/apps/worker/dist ./apps/worker/dist
 COPY --from=build --chown=node:node /app/apps/worker/package.json ./apps/worker/package.json
 

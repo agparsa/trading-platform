@@ -170,10 +170,17 @@ async function main(): Promise<void> {
   const jobs = await get('/health/jobs');
   const jobsBody = jobs === null ? null : json(jobs.body);
   const jobsInfo = (jobsBody?.['data'] as Record<string, unknown> | undefined) ?? jobsBody ?? {};
-  const jobsDetail =
-    ((jobsInfo['info'] ?? jobsInfo['error']) as
-      | Record<string, { problems?: string[]; jobs?: number }>
-      | undefined)?.['scheduled-jobs'] ?? undefined;
+  /**
+   * `details` carries every indicator whatever its status; `info` and `error`
+   * split them by it. Read `details`, and fall back to the split for a build
+   * that predates it being here — on a 503 the old filter dropped the report
+   * altogether, so on those builds this is `{}` and every check below says so.
+   */
+  const indicators = ((jobsInfo['details'] ?? jobsInfo['info'] ?? jobsInfo['error']) ??
+    {}) as Record<string, Record<string, unknown>>;
+  const jobsDetail = indicators['scheduled-jobs'] as
+    | { status?: string; problems?: string[]; jobs?: number }
+    | undefined;
   const problems = jobsDetail?.problems ?? [];
 
   if (jobs === null || (jobs.status !== 200 && jobs.status !== 503)) {
@@ -188,9 +195,14 @@ async function main(): Promise<void> {
         : `got ${jobs?.status ?? 'no answer'} from /health/jobs — this deployment predates the probe`,
     );
   } else {
+    /**
+     * Judged on the schedule indicator's own status, not the response code:
+     * `/health/jobs` also carries the worker indicator now, and a 503 for a
+     * missing worker is not a late schedule. Each is its own line below.
+     */
     record(
       'every scheduled job is still running on time',
-      jobs.status === 200,
+      jobsDetail === undefined ? jobs.status === 200 : jobsDetail.status === 'up',
       problems.length === 0
         ? `${String(jobsDetail?.jobs ?? 0)} schedules, all inside their own tolerance`
         : problems.join('; '),
@@ -206,9 +218,7 @@ async function main(): Promise<void> {
      * than in the platform because it is a fact about this deployment's shape:
      * a development machine with no backup container is not broken.
      */
-    const named = Object.keys(
-      ((jobsInfo['info'] ?? jobsInfo['error']) as Record<string, unknown> | undefined) ?? {},
-    );
+    const named = Object.keys(indicators);
     const seen = (jobsDetail as unknown as { names?: string[] } | undefined)?.names ?? [];
     const EXPECTED = [
       'swap-accrual',
@@ -229,6 +239,52 @@ async function main(): Promise<void> {
           ? `${String(seen.length)} present`
           : `never run: ${absent.join(', ')} — a schedule with no row has never fired once`,
     );
+
+    /**
+     * And that a worker is there *now*, on the build that was deployed.
+     *
+     * The schedule rows say what ran; a daily job's row is yesterday's worker's
+     * for a day. The worker itself serves no HTTP and could not be asked, so
+     * until it wrote a heartbeat it was the one container that could sit on
+     * last week's image with nothing outside the host able to tell — which is
+     * exactly what `api-ws` did for three upgrades before its handshake header
+     * existed. Every heartbeat names its build; each is compared here.
+     */
+    const workers = indicators['workers'] as
+      | { instances?: Array<{ instance: string; build: string; ageMs?: number }> }
+      | undefined;
+    const instances = workers?.instances ?? [];
+    if (workers === undefined) {
+      record(
+        'a worker is alive and says which build it runs',
+        false,
+        'no `workers` in /health/jobs — this deployment predates the worker heartbeat',
+      );
+    } else if (instances.length === 0) {
+      record(
+        'a worker is alive and says which build it runs',
+        false,
+        'no worker heartbeat — nothing will run the schedules, or the worker predates the heartbeat',
+      );
+    } else if (EXPECT === null) {
+      record(
+        'a worker is alive and says which build it runs',
+        instances.every((one) => one.build !== 'unknown'),
+        instances.map((one) => `${one.instance} on ${one.build}`).join(', ') +
+          ' (pass --expect <sha> to confirm it)',
+      );
+    } else {
+      const want = marker(EXPECT);
+      const stale = instances.filter((one) => one.build !== want);
+      record(
+        'every worker runs the build that was deployed',
+        stale.length === 0,
+        stale.length === 0
+          ? `${String(instances.length)} worker(s) on ${want}`
+          : `on another build: ${stale.map((one) => `${one.instance} (${one.build})`).join(', ')} — ` +
+            'the worker was not rebuilt or not recreated; compare its age to api in `docker ps`',
+      );
+    }
   }
 
   // --- the second isolation layer ------------------------------------------
