@@ -166,6 +166,24 @@ async function main(): Promise<void> {
     const alice = await registerTrader('alice');
     const bob = await registerTrader('bob');
 
+    await check('the handshake names the same build /health does', async () => {
+      /**
+       * The unit test drives a bare event emitter. This is the real Engine.IO
+       * server: it has to emit `initial_headers` for the polling handshake and
+       * actually write what the gateway put there — the header
+       * `verify:production` reads to tell whether `api-ws` was deployed.
+       */
+      const handshake = await fetch(`${BASE}/ws/?EIO=4&transport=polling`);
+      assert(handshake.status === 200, `handshake answered ${handshake.status}`);
+      const header = handshake.headers.get('x-tp-build');
+      assert(header !== null, 'no x-tp-build header on the handshake response');
+      const health = (await (await fetch(`${BASE}/health`)).json()) as { data?: { build?: string } };
+      assert(
+        header === health.data?.build,
+        `handshake says ${header}, /health says ${String(health.data?.build)}`,
+      );
+    });
+
     await check('public quotes reach an unauthenticated socket', async () => {
       const { socket, frames } = connect();
       sockets.push(socket);

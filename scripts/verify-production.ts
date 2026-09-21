@@ -339,6 +339,50 @@ async function main(): Promise<void> {
       : `${handshake.status} ${engineIo === null ? handshake.body.slice(0, 60) : `upgrades: ${String(engineIo['upgrades'])}`}`,
   );
 
+  /**
+   * And *which build* answered that handshake.
+   *
+   * The check above proves the real-time service is serving. It does not say
+   * which version, and the version is a separate question here because it is a
+   * separate container: nginx sends `/ws` to `api-ws` and everything else to
+   * `api`, so the `/health` marker checked earlier is the HTTP instance's answer
+   * only. On 21 September that answer matched the deployed commit while the
+   * socket service was sixteen commits behind it — the upgrade script never
+   * rebuilt or stopped it — and this script reported all sixteen checks passed.
+   *
+   * The gateway now puts the same marker on the handshake response as the
+   * `x-tp-build` header (Engine.IO answers every request under `/ws` itself, so
+   * a route could not carry it). Absent on a build older than the header; then
+   * the answer is "predates the check", which is not a pass.
+   */
+  const wsBuild = handshake?.headers.get('x-tp-build') ?? null;
+  if (wsBuild === null) {
+    record(
+      'the real-time service says which build it runs',
+      false,
+      'no x-tp-build header on the handshake — this real-time container predates the check, ' +
+        'or was not rebuilt with the API. `docker ps` shows its age next to the api container.',
+    );
+  } else if (wsBuild === 'unknown') {
+    record(
+      'the real-time service says which build it runs',
+      false,
+      'the socket image was built without BUILD_SHA',
+    );
+  } else if (EXPECT === null) {
+    record('the real-time service says which build it runs', true, `build ${wsBuild} (pass --expect <sha> to confirm it)`);
+  } else {
+    const want = marker(EXPECT);
+    record(
+      'the real-time service runs the build that was deployed',
+      wsBuild === want,
+      wsBuild === want
+        ? `${wsBuild} matches ${EXPECT.slice(0, 12)}`
+        : `socket service runs ${wsBuild}, expected ${want} — api-ws was not rebuilt or not recreated; ` +
+          `compare its age to api in \`docker ps\``,
+    );
+  }
+
   // --- the screen a trader actually opens ----------------------------------
   const terminal = await get('/terminal');
   record(

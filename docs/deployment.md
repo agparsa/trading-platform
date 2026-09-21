@@ -76,22 +76,35 @@ Both are version-neutral, so moving the API from v1 to v2 does not break probes.
 pnpm verify:production --expect $(git rev-parse HEAD)
 ```
 
-Thirteen checks over HTTPS, with no credentials and no shell: the probes,
-whether the running build is the one you just deployed, that `/metrics` and the
-API reference are **not** public, that an unauthenticated call is refused with a
-coded error rather than a crash, HSTS, and that the real-time socket completes
-a handshake.
+Checks over HTTPS, with no credentials and no shell (the script prints how
+many it ran): the probes, whether the running build is the one you just
+deployed, that `/metrics` and the API reference are **not** public, that an
+unauthenticated call is refused with a coded error rather than a crash, HSTS,
+that the real-time socket completes a handshake — and that the real-time
+service is on the deployed build too.
 
-`BUILD_SHA` above is what makes the second of those possible. The API serves a
+`BUILD_SHA` above is what makes the build checks possible. The API serves a
 one-way marker derived from it — not the commit, because `/health` is
 unauthenticated and this platform keeps its route surface off the public
 internet. Deploy without `BUILD_SHA` and the check reports `unknown`, which is
 itself worth knowing: nobody will be able to tell what is running.
 
+The real-time service is asked separately because it is a separate container.
+Nginx sends `/ws` to `api-ws` and everything else to `api`, so the `/health`
+marker is the HTTP instance's answer only. `api-ws` puts the same marker on
+its Engine.IO handshake response as an `x-tp-build` header, and the script
+reads it from the handshake it already performs. This exists because on
+21 September the API reported the deployed commit, every check passed, and the
+socket service — the container each trader's screen is connected to — had been
+"Up 2 days" on a build sixteen commits older: `upgrade-server.sh` had never
+rebuilt or stopped it. Both of its service lists are now checked against the
+compose file by `deployment.test.ts`.
+
 What it cannot see: one request reaches one instance, so a half-finished
 rollout can pass. It does not read logs, count containers, or see the worker.
 Green means the public surface is right; the container list still deserves a
-look.
+look — `docker compose ps` shows each container's age, and a service far older
+than its neighbours after an upgrade is a service the upgrade did not touch.
 
 ## Migrations
 

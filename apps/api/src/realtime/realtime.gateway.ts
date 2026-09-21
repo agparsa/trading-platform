@@ -34,6 +34,7 @@ import { DOMAIN_EVENT_CHANNEL, EventsService, type DomainEventEnvelope } from '.
 import { rateLimits, socketCorsOrigins, type Env } from '../config/env.schema';
 import { initialState, type TradingSocket } from './socket.types';
 import { TenantResolver } from '../tenancy/tenant-resolver.service';
+import { buildMarker } from '../health/health.controller';
 import { withTenant, type TenantContext } from '@tp/tenancy';
 
 const subscribeSchema = z
@@ -86,6 +87,12 @@ const EVENT_ROUTING: Readonly<Record<string, { channel: WsChannel; wire: string 
   'margin.call': { channel: WsChannel.ACCOUNT, wire: 'account.updated' },
   liquidation: { channel: WsChannel.POSITIONS, wire: 'position.closed' },
 };
+
+/**
+ * The response header on the Engine.IO handshake that names the running build.
+ * Read by `scripts/verify-production.ts`; the value is `buildMarker()`.
+ */
+export const BUILD_HEADER = 'x-tp-build';
 
 @Injectable()
 @WebSocketGateway({
@@ -185,6 +192,29 @@ export class RealtimeGateway
       } catch (error) {
         this.logger.error({ err: error }, 'Unreadable domain event from Redis');
       }
+    });
+
+    /**
+     * The handshake names the build it came from.
+     *
+     * The HTTP instances say which build they run in `/health`, and
+     * `verify:production` checks it against the commit that was deployed. The
+     * real-time service is a *separate container* on the same image — nginx
+     * sends `/ws` to `api-ws` and everything else to `api` — and nothing asked
+     * it the same question. So on 21 September the API answered with the
+     * deployed commit while the socket service, sixteen commits and seven API
+     * changes behind, had been "Up 2 days": the upgrade script's build list
+     * and its pre-migration stop list both omitted it. Every check was green.
+     *
+     * A route cannot carry the answer: Engine.IO owns every request under its
+     * path and answers `/ws/anything` itself. The handshake response's headers
+     * are the one thing under `/ws` this code gets to write, so the marker
+     * goes there, and `verify:production` reads it from the same polling
+     * handshake it already performs. The header is the digest `/health`
+     * publishes, not the commit hash — see `buildMarker`.
+     */
+    this.server.engine.on('initial_headers', (headers: Record<string, string>) => {
+      headers[BUILD_HEADER] = buildMarker();
     });
 
     this.logger.log('WebSocket gateway ready on /ws');

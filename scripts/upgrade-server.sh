@@ -162,11 +162,20 @@ echo "    images will be stamped $BUILD_SHA"
 say "5/9  Building images, one at a time"
 # ---------------------------------------------------------------------------
 if [ "$BUILD" = true ]; then
-  # `migrate` and `api-ingest` are built from the same Dockerfile and target as
-  # `api`, so those two are cache hits and cost seconds. They are listed anyway:
-  # compose builds per service, and a service left out is one that pulls a stale
-  # image at the worst moment.
-  for service in api api-ingest migrate worker web nginx; do
+  # `migrate`, `api-ingest` and `api-ws` are built from the same Dockerfile and
+  # target as `api`, so those three are cache hits and cost seconds. They are
+  # listed anyway: compose builds per service, and a service left out is one
+  # that keeps its stale image at the worst moment.
+  #
+  # Not a hypothetical either. `api-ws` was missing from this list and from the
+  # stop list below, and on 21 September the API answered `verify:production`
+  # with the deployed commit while the real-time service — the container every
+  # trader's screen is connected to — was sixteen commits and seven API changes
+  # behind, "Up 2 days", on an image built before the last three upgrades.
+  # `up -d` had no reason to touch it: its image tag never changed. The list
+  # is now checked against the compose file by `deployment.test.ts`, so the next
+  # service added there fails a test here rather than quietly never deploying.
+  for service in api api-ws api-ingest migrate worker web nginx; do
     echo "    building $service"
     "${COMPOSE[@]}" build "$service" || die "Building $service failed. Nothing has been stopped; the old version is still serving."
   done
@@ -179,8 +188,10 @@ say "6/9  Migrating — the downtime starts here"
 # ---------------------------------------------------------------------------
 # `api-ingest` too, and it is the one most easily forgotten: it is a separate
 # service running the same code, and leaving it up would have the old build
-# writing ticks and firing stops against the new schema.
-"${COMPOSE[@]}" stop api api-ingest worker
+# writing ticks and firing stops against the new schema. `api-ws` for the same
+# reason — it reads accounts and links for every socket it authorises, on the
+# old build, against whatever the migration is about to change.
+"${COMPOSE[@]}" stop api api-ws api-ingest worker
 "${COMPOSE[@]}" run --rm migrate || die "The migration failed. The old images are still built; 'docker compose up -d api worker' restores service on the old schema only if the migration made no changes."
 #
 # `pnpm db:seed` does not work here, and finding that out the hard way is why

@@ -973,7 +973,7 @@ describe('scripts/upgrade-server.sh', () => {
      * old container is already gone. So the check must come first.
      */
     const envStep = script.indexOf('add_if_missing REGISTRATION_MODE');
-    const stopStep = script.indexOf('stop api api-ingest worker');
+    const stopStep = script.indexOf('stop api api-ws api-ingest worker');
     expect(envStep).toBeGreaterThan(0);
     expect(stopStep).toBeGreaterThan(envStep);
   });
@@ -994,7 +994,66 @@ describe('scripts/upgrade-server.sh', () => {
   it('stops api-ingest as well as api', () => {
     // A separate service running the same code. Left up, the old build writes
     // ticks and fires stops against the new schema.
-    expect(script).toMatch(/stop api api-ingest worker/);
+    expect(script).toMatch(/stop api api-ws api-ingest worker/);
+  });
+
+  /**
+   * The two service lists, read from the script and checked against the compose
+   * file rather than against a second hand-written list here.
+   *
+   * `api-ws` was in neither. Compose only recreates a container whose image or
+   * configuration changed, and an image that is never rebuilt never changes, so
+   * for three upgrades the real-time service — where every trader's screen is
+   * connected — kept running a build from 18 September while `/health` on the
+   * API reported the deployed commit and all sixteen production checks passed.
+   * Found on 21 September by reading `docker ps`: "Up 2 days" beside "Up 7
+   * minutes". The next service added to the compose file fails here instead.
+   */
+  describe('its service lists come from the compose file', () => {
+    const compose = read('docker-compose.prod.yml');
+    const serviceNames = compose
+      .split(/\n {2}(?=[a-z])/)
+      .map((block) => /^([a-z][a-z0-9-]*):/.exec(block.trim())?.[1])
+      .filter((name): name is string => name !== undefined);
+    const withBuild = serviceNames.filter((name) => /\n {4}build:/.test(serviceBlock(compose, name) ?? ''));
+    /**
+     * A service that runs this platform's own code against the database: built
+     * from the api or worker Dockerfile. `migrate` is one of them and is the
+     * exception — it is *run*, once, in the window the others are stopped for.
+     */
+    const applicationServices = serviceNames.filter((name) => {
+      const block = serviceBlock(compose, name) ?? '';
+      return /dockerfile: docker\/(api|worker)\.Dockerfile/.test(block) && name !== 'migrate';
+    });
+
+    const buildList = /for service in ([a-z\- ]+); do\n\s+echo " {4}building \$service"/.exec(script)?.[1]
+      ?.trim()
+      .split(/\s+/);
+    const stopList = /"\$\{COMPOSE\[@\]\}" stop ([a-z\- ]+)\n/.exec(script)?.[1]?.trim().split(/\s+/);
+
+    it('reads both lists and finds a plausible compose file', () => {
+      // The probe that cannot fail is the one that never checked anything.
+      expect(withBuild.length).toBeGreaterThanOrEqual(6);
+      expect(applicationServices).toEqual(expect.arrayContaining(['api', 'api-ws', 'api-ingest', 'worker']));
+      expect(buildList, 'the build loop was found').toBeDefined();
+      expect(stopList, 'the stop line was found').toBeDefined();
+    });
+
+    it('builds every service the compose file builds', () => {
+      for (const service of withBuild) {
+        expect(buildList, `${service} has a build: section and is never rebuilt`).toContain(service);
+      }
+    });
+
+    it('builds nothing the compose file does not define', () => {
+      for (const service of buildList ?? []) {
+        expect(serviceNames, `${service} is built but is not a compose service`).toContain(service);
+      }
+    });
+
+    it('stops every service that runs application code before migrating, and only those', () => {
+      expect([...(stopList ?? [])].sort()).toEqual([...applicationServices].sort());
+    });
   });
 
   it('takes a backup before migrating, and checks the dump is not empty', () => {

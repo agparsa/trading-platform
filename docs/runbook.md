@@ -26,7 +26,7 @@ From anywhere, with no shell on the box — which is the case more often than it
 should be:
 
 ```bash
-pnpm verify:production                 # thirteen checks over HTTPS, no credentials
+pnpm verify:production                 # the public surface over HTTPS, no credentials
 ```
 
 `/ready` failing while `/health` passes means the process is up but a dependency

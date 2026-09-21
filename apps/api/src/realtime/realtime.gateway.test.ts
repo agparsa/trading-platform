@@ -1,7 +1,9 @@
+import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { WsChannel } from '@tp/shared-types';
 import type { Candle, Tick } from '@tp/market-core';
-import { RealtimeGateway } from './realtime.gateway';
+import { BUILD_HEADER, RealtimeGateway } from './realtime.gateway';
+import { buildMarker } from '../health/health.controller';
 import { initialState, type TradingSocket } from './socket.types';
 import { CandleBus } from '../market/candle-bus';
 import { TickBus } from '../market/tick-bus';
@@ -108,7 +110,14 @@ function buildGateway(
     { forHost: async () => ({ tenantId: TENANT_ID, slug: 'test' }) } as never,
     { get: () => quoteFanoutIntervalMs } as never,
   );
-  return { gateway, ticks, candles };
+  /**
+   * Nest assigns `server` before `afterInit` runs; here it is assigned by hand.
+   * Only the Engine.IO event emitter is real, because the handshake-header test
+   * drives it and everything else about the server is never reached.
+   */
+  const engine = new EventEmitter();
+  Object.assign(gateway, { server: { engine } });
+  return { gateway, ticks, candles, engine };
 }
 
 describe('RealtimeGateway subscriptions', () => {
@@ -512,5 +521,45 @@ describe('RealtimeGateway message budget', () => {
       ).ok,
     ).toBe(true);
     expect(socket.emitted.filter((e) => e.event === 'error')).toEqual([]);
+  });
+});
+
+describe('RealtimeGateway handshake', () => {
+  /**
+   * The real-time service is its own container on the API image, and on
+   * 21 September it was sixteen commits behind the API while every check was
+   * green: nothing outside the host could ask it which build it ran. Now the
+   * Engine.IO handshake carries the same marker `/health` publishes, and
+   * `verify:production` compares it to the deployed commit.
+   */
+  it('names the running build in a header on the handshake response', async () => {
+    const harness = buildGateway();
+    await harness.gateway.afterInit();
+
+    const headers: Record<string, string> = {};
+    harness.engine.emit('initial_headers', headers, {});
+
+    expect(headers[BUILD_HEADER]).toBe(buildMarker());
+    // The digest, not the commit: the same value `/health` reports, so the
+    // two can be compared without either side knowing the hash.
+    expect(headers[BUILD_HEADER]).toMatch(/^([0-9a-f]{12}|unknown)$/);
+    await harness.gateway.onApplicationShutdown();
+  });
+
+  it('is the digest of BUILD_SHA when one was stamped', async () => {
+    const before = process.env['BUILD_SHA'];
+    process.env['BUILD_SHA'] = 'f05ed1c18740f02f8bec7708b89407448fbe5b7b';
+    try {
+      const harness = buildGateway();
+      await harness.gateway.afterInit();
+      const headers: Record<string, string> = {};
+      harness.engine.emit('initial_headers', headers, {});
+      expect(headers[BUILD_HEADER]).toBe(buildMarker('f05ed1c18740f02f8bec7708b89407448fbe5b7b'));
+      expect(headers[BUILD_HEADER]).not.toBe('unknown');
+      await harness.gateway.onApplicationShutdown();
+    } finally {
+      if (before === undefined) delete process.env['BUILD_SHA'];
+      else process.env['BUILD_SHA'] = before;
+    }
   });
 });
