@@ -136,6 +136,13 @@ the deployed commit. Until the worker's heartbeat and the web's header existed,
 either could sit on last week's image with nothing outside the host able to
 tell. See [worker.md](./worker.md#is-a-worker-there-now).
 
+The script itself is tested: `verify-production.test.ts` runs it as a process
+against a fake deployment that answers every path as a healthy one does, then
+breaks one answer at a time and requires the matching check — and only it — to
+fail. The first run of that harness found the tenancy reader looking in the
+wrong place: it had printed "this deployment predates the probe" and passed on
+every deployment since it was written, including ones that had the probe.
+
 What it cannot see: one request reaches one instance, so a half-finished
 rollout can pass. It does not read logs or count containers. Green means the
 public surface is right; the container list still deserves a look —

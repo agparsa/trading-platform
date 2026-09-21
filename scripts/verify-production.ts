@@ -307,10 +307,22 @@ async function main(): Promise<void> {
    */
   const tenancy = await get('/health/tenancy');
   const tenancyBody = tenancy === null ? null : json(tenancy.body);
-  const isolation = (tenancyBody?.['info'] ?? tenancyBody?.['error'] ?? {}) as Record<
-    string,
-    Record<string, unknown>
-  >;
+  /**
+   * Off `data`, like every other probe — the envelope wraps the report. This
+   * read `info` off the top of the body from the day it was written, found
+   * nothing there, printed "this deployment predates the probe" and passed:
+   * a check that could not fail, on the one property this script exists to
+   * ask about. `verify-production.test.ts` runs the script against a fake
+   * deployment whose isolation is asked for and absent, and requires this
+   * line to fail.
+   */
+  const tenancyReport =
+    ((tenancyBody?.['data'] as Record<string, unknown> | undefined) ?? tenancyBody ?? {}) as Record<
+      string,
+      unknown
+    >;
+  const isolation = ((tenancyReport['details'] ?? tenancyReport['info'] ?? tenancyReport['error']) ??
+    {}) as Record<string, Record<string, unknown>>;
   const enforced = isolation['tenant-isolation']?.['enforced'];
   const configured = isolation['tenant-isolation']?.['configured'] === true;
   record(
