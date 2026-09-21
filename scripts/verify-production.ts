@@ -217,6 +217,11 @@ async function main(): Promise<void> {
      * that was never started, looks like. The expected set lives here rather
      * than in the platform because it is a fact about this deployment's shape:
      * a development machine with no backup container is not broken.
+     *
+     * Hand-written, and checked: `expected-schedules.test.ts` reads this list
+     * and requires it to be exactly the worker's `SCHEDULED` table plus the
+     * backup script's row name. A schedule added to the worker and forgotten
+     * here would otherwise be one whose silence this check never asks about.
      */
     const named = Object.keys(indicators);
     const seen = (jobsDetail as unknown as { names?: string[] } | undefined)?.names ?? [];
