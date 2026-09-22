@@ -262,6 +262,7 @@ handler is responsible for scoping the result to that user — which for
 
 | Verb | Path | Handler | Requires |
 | --- | --- | --- | --- |
+| `GET` | `/market/resolutions` | `resolutions` | _authenticated only_ |
 | `GET` | `/market/quotes` | `quotes_` | _authenticated only_ |
 | `GET` | `/market/stats` | `stats` | _authenticated only_ |
 | `GET` | `/market/candles` | `candlesFor` | _authenticated only_ |
@@ -492,7 +493,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals` | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel` | WITHDRAWALS_REQUEST |
 
-**238 routes:** 122 `GET`, 99 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**239 routes:** 123 `GET`, 99 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

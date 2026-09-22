@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   CandleAggregator,
   InternalMarketSimulator,
-  isResolution,
+  parseResolutionList,
   type Candle,
   type MarketDataProvider,
   type Resolution,
@@ -81,11 +81,7 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
    * initialising; `onApplicationBootstrap` runs once everything is ready.
    */
   async onApplicationBootstrap(): Promise<void> {
-    this.resolutions = this.config
-      .getOrThrow('CANDLE_RESOLUTIONS', { infer: true })
-      .split(',')
-      .map((value) => value.trim())
-      .filter((value): value is Resolution => isResolution(value));
+    this.resolutions = parseResolutionList(this.config.getOrThrow('CANDLE_RESOLUTIONS', { infer: true }));
 
     /**
      * Every instance relays to begin with — including the one that will end up
@@ -372,6 +368,17 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
         volume: candle.volume,
       },
     });
+  }
+
+  /**
+   * The resolutions this deployment aggregates and persists, in the order the
+   * setting lists them. What `GET /market/resolutions` answers, and what
+   * `GET /market/candles` refuses anything outside of: a resolution the
+   * platform *knows* but this deployment does not *serve* used to answer with
+   * an empty chart, which reads as a frozen feed rather than as a setting.
+   */
+  servedResolutions(): readonly Resolution[] {
+    return this.resolutions;
   }
 
   /** In-progress candle for a symbol, so a chart's last bar is not a minute stale. */

@@ -334,8 +334,15 @@ export const envSchema = z
      * worse than the spike it was protecting against.
      */
     MARKET_REANCHOR_AFTER: z.coerce.number().int().min(1).max(1_000).default(5),
-    // Resolutions the platform aggregates and persists.
-    CANDLE_RESOLUTIONS: z.string().default('1,5,15,60,240,1D'),
+    /**
+     * Resolutions the platform aggregates and persists, out of the vocabulary
+     * in `@tp/market-core`. `30` joined the default on 22 September: it had
+     * been in the vocabulary, accepted by `GET /market/candles`, and served
+     * nowhere — an orphan the charting notes recorded rather than resolved.
+     * A deployment that sets this variable keeps its own list; the clients
+     * ask `GET /market/resolutions` rather than assuming either.
+     */
+    CANDLE_RESOLUTIONS: z.string().default('1,5,15,30,60,240,1D'),
     /**
      * Whether this instance may *contend* to ingest market data.
      *

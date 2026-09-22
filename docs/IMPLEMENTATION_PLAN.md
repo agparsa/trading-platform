@@ -309,10 +309,12 @@ resolution, debounced, armed only after the restore.
 Advanced Charts licence, which is what they are for. Building them on
 `lightweight-charts` primitives would be writing a second charting library and
 throwing it away when the licence arrives. P&L on the SL/TP level labels
-already shipped in the existing drag work. The timeframe list is 6 of the 7
-resolutions the server knows; `30` is orphaned in `market-core` and off by
-default in `CANDLE_RESOLUTIONS`.
-[charting.md](./charting.md).
+already shipped in the existing drag work. The timeframe list was 6 of the 7
+resolutions the server knew — `30` orphaned in `market-core`, off by default,
+accepted by the candles route and answered with an empty chart; since
+22 September there is one vocabulary, the server says which of it is served
+(`GET /market/resolutions`), the clients build their row from the answer, and
+`30` is in the default. [charting.md](./charting.md).
 
 ## Phase 8 — Realtime and notification hardening · **done**
 

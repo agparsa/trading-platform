@@ -15,7 +15,13 @@ import {
 import { cn } from '@tp/ui';
 import { currencySymbol, markClasses, markFor } from '@/lib/instrument-marks';
 import { price as formatPrice, signedMoney } from '@/lib/format';
-import { RESOLUTIONS, RESOLUTION_LABEL, mergeBars, type ChartBar } from '@tp/chart-core';
+import {
+  RESOLUTIONS,
+  RESOLUTION_LABEL,
+  isResolution,
+  mergeBars,
+  type ChartBar,
+} from '@tp/chart-core';
 import {
   LevelKind,
   levelIdentity,
@@ -27,7 +33,13 @@ import {
   type ChartLevel,
 } from '@/lib/chart-levels';
 import { useTradingCommands } from '@/lib/chart-commands';
-import { useCandles, type PendingOrderRow, type PositionRow, type SymbolRow } from '@/lib/queries';
+import {
+  useCandles,
+  useResolutions,
+  type PendingOrderRow,
+  type PositionRow,
+  type SymbolRow,
+} from '@/lib/queries';
 import { barKey, useRealtime } from '@/lib/realtime-store';
 import { EmptyState } from './primitives';
 
@@ -63,6 +75,7 @@ export function ChartPanel({
   currency: string;
 }) {
   const history = useCandles(symbol?.code ?? null, resolution);
+  const served = useResolutions();
   const liveBars = useRealtime((state) =>
     symbol === undefined ? undefined : state.bars[barKey(symbol.code, resolution)],
   );
@@ -106,7 +119,7 @@ export function ChartPanel({
           </span>
         </div>
         <div className="flex items-center gap-0.5">
-          {RESOLUTIONS.map((value) => (
+          {(served.data ?? RESOLUTIONS).map((value) => (
             <button
               key={value}
               type="button"
@@ -141,7 +154,9 @@ export function ChartPanel({
               <Overlay>Loading bars…</Overlay>
             ) : empty ? (
               <Overlay>
-                No bars recorded for {symbol.code} at {RESOLUTION_LABEL[resolution]} in this window.
+                No bars recorded for {symbol.code} at{' '}
+                {isResolution(resolution) ? RESOLUTION_LABEL[resolution] : resolution} in this
+                window.
               </Overlay>
             ) : null}
           </>

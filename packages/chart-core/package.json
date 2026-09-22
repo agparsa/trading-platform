@@ -26,6 +26,7 @@
     "vitest": "catalog:"
   },
   "dependencies": {
-    "@tp/api-client": "workspace:*"
+    "@tp/api-client": "workspace:*",
+    "@tp/market-core": "workspace:*"
   }
 }

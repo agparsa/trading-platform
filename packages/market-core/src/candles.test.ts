@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { aggregateTicks, bucketStart, CandleAggregator } from './candles';
-import { Resolution } from './types';
+import {
+  RESOLUTIONS,
+  RESOLUTION_LABEL,
+  Resolution,
+  parseResolutionList,
+  resolutionMs,
+} from './types';
 import { T0, tick } from './__fixtures__/market';
 
 const MIN = 60_000;
@@ -72,5 +78,25 @@ describe('aggregateTicks', () => {
     expect(candles.map((c) => c.time)).toEqual([T0, T0 + MIN, T0 + 2 * MIN, T0 + 3 * MIN]);
     expect(candles[0]?.open).toBe('4580');
     expect(candles[0]?.close).toBe('4581');
+  });
+});
+
+describe('the resolution vocabulary', () => {
+  it('labels every resolution, and every label is distinct', () => {
+    for (const resolution of RESOLUTIONS) {
+      expect(RESOLUTION_LABEL[resolution], `${resolution} has a label`).toMatch(/^\d+[mHD]$/);
+    }
+    expect(new Set(Object.values(RESOLUTION_LABEL)).size).toBe(RESOLUTIONS.length);
+  });
+
+  it('lists resolutions shortest first, so a row of buttons reads left to right', () => {
+    const spans = RESOLUTIONS.map((resolution) => resolutionMs(resolution));
+    expect([...spans].sort((a, b) => a - b)).toEqual(spans);
+  });
+
+  it('parses the server setting: order kept, unknown dropped, duplicates removed', () => {
+    expect(parseResolutionList('1, 5,15,60,240,1D')).toEqual(['1', '5', '15', '60', '240', '1D']);
+    expect(parseResolutionList('60,1,60,7,1W')).toEqual(['60', '1']);
+    expect(parseResolutionList('')).toEqual([]);
   });
 });

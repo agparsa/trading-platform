@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { ApiClient } from '@tp/api-client';
 import type { MarketStatusDto } from '@tp/shared-types';
-import { barWindow, RESOLUTION_MINUTES } from '@tp/chart-core';
+import { barWindow, RESOLUTION_MINUTES, type Resolution } from '@tp/chart-core';
 import { useSession } from './session';
 
 /**
@@ -576,6 +576,22 @@ export interface CandleRow {
  * otherwise React Query would treat each render as a new query and refetch the
  * whole series continuously.
  */
+/**
+ * The resolutions this deployment serves, from the server, so the row of
+ * timeframe buttons offers nothing that would open an empty chart. Until the
+ * answer arrives the row shows the platform's whole vocabulary — a short flash
+ * of a button that may then disappear, preferred to no buttons at all.
+ */
+export function useResolutions() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: ['market', 'resolutions'],
+    queryFn: () => api.get<{ resolutions: Resolution[] }>('/market/resolutions'),
+    staleTime: Number.POSITIVE_INFINITY,
+    select: (data) => data.resolutions,
+  });
+}
+
 export function useCandles(symbol: string | null, resolution: string, bars = 400) {
   const { api } = useSession();
   const { fromMs, toMs } = barWindow(resolution, bars, Date.now());

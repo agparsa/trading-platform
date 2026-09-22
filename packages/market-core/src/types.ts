@@ -57,6 +57,45 @@ export function isResolution(value: string): value is Resolution {
 }
 
 /**
+ * Every resolution the platform knows, shortest first — the order a row of
+ * timeframe buttons shows them in.
+ *
+ * One list, here, because there were two. `@tp/chart-core` carried its own
+ * hand-written copy for the web and the phone, six entries long and captioned
+ * "must match CANDLE_RESOLUTIONS on the server", while this file knew seven:
+ * `30` was aggregatable, accepted by `GET /market/candles`, and offered by no
+ * screen — an orphan the charting notes had recorded rather than resolved. The
+ * clients now derive their vocabulary from here and ask the server which of
+ * it is actually served (`GET /market/resolutions`).
+ */
+export const RESOLUTIONS: readonly Resolution[] = Object.values(Resolution);
+
+/** What a timeframe button says. */
+export const RESOLUTION_LABEL: Readonly<Record<Resolution, string>> = {
+  [Resolution.M1]: '1m',
+  [Resolution.M5]: '5m',
+  [Resolution.M15]: '15m',
+  [Resolution.M30]: '30m',
+  [Resolution.H1]: '1H',
+  [Resolution.H4]: '4H',
+  [Resolution.D1]: '1D',
+};
+
+/**
+ * Parses the server's `CANDLE_RESOLUTIONS` setting: a comma-separated list,
+ * unknown entries dropped, order kept, duplicates removed. Shared so the API
+ * and anything reading the same setting cannot read it two ways.
+ */
+export function parseResolutionList(setting: string): Resolution[] {
+  const seen = new Set<Resolution>();
+  for (const raw of setting.split(',')) {
+    const value = raw.trim();
+    if (isResolution(value)) seen.add(value);
+  }
+  return [...seen];
+}
+
+/**
  * A weekly trading session, expressed in the trading server's timezone.
  * Days are 0=Sunday..6=Saturday; minutes are from midnight.
  */

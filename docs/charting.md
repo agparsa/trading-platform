@@ -92,14 +92,33 @@ and mixing them renders every bar in 1970:
 Verified against the tutorial's own `getBars`, which multiplies
 `periodParams.to` by 1000 before comparing it with bar times.
 
-| Datafeed method | Backed by                                                                                        |
-| --------------- | ------------------------------------------------------------------------------------------------ |
-| `onReady`       | Supported resolutions from `Resolution`                                                          |
-| `searchSymbols` | `GET /symbols`                                                                                   |
-| `resolveSymbol` | `GET /symbols/:code` → `SymbolSpec` (pricescale from `pricePrecision`, `minmov` from `tickSize`) |
-| `getBars`       | `GET /market/candles?from&to&resolution`                                                         |
-| `subscribeBars` | WebSocket `candle.update`                                                                        |
-| `getServerTime` | `meta.serverTime` on any response                                                                |
+| Datafeed method | Backed by                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------ |
+| `onReady`       | Supported resolutions from `GET /market/resolutions` — what this deployment serves, not the vocabulary |
+| `searchSymbols` | `GET /symbols`                                                                                         |
+| `resolveSymbol` | `GET /symbols/:code` → `SymbolSpec` (pricescale from `pricePrecision`, `minmov` from `tickSize`)       |
+| `getBars`       | `GET /market/candles?from&to&resolution`                                                               |
+| `subscribeBars` | WebSocket `candle.update`                                                                              |
+| `getServerTime` | `meta.serverTime` on any response                                                                      |
+
+### Resolutions: one vocabulary, and the server says which it serves
+
+`@tp/market-core` is the vocabulary — seven resolutions, `1` to `1D`, with the
+label a timeframe button shows and the milliseconds a bar spans.
+`@tp/chart-core` re-exports it; it used to carry its own six-entry copy
+captioned "must match `CANDLE_RESOLUTIONS` on the server", which it did not: `30`
+was aggregatable, accepted by `GET /market/candles`, offered by no screen, and
+persisted nowhere by default, so a request for it answered with an empty chart
+— which reads as a frozen feed rather than as a setting.
+
+A deployment aggregates a subset of the vocabulary (`CANDLE_RESOLUTIONS`;
+`30` is in the default now). `GET /market/resolutions` says which, in order,
+and the web terminal, the TradingView adapter's `onReady`/`resolveSymbol` and
+the phone's chart build their row of timeframes from that answer, falling back
+to the whole vocabulary only until it arrives. `GET /market/candles` refuses a
+resolution outside the vocabulary and, separately, one the platform knows but
+this deployment does not aggregate — each refusal names what would have been
+accepted.
 
 Three more details that are easy to get wrong and are pinned by tests:
 

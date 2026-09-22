@@ -14,36 +14,28 @@ import type { ApiClient } from '@tp/api-client';
  * exactly what docs/charting.md promised in Phase 0.
  */
 
-export type Resolution = '1' | '5' | '15' | '60' | '240' | '1D';
+/**
+ * The resolution vocabulary is `@tp/market-core`'s. This package used to carry
+ * its own six-entry copy captioned "must match CANDLE_RESOLUTIONS on the
+ * server"; it did not — the server knew seven — and a caption is not a check.
+ * Re-exported here so the web and the phone keep one import path.
+ */
+export { RESOLUTIONS, RESOLUTION_LABEL, isResolution, type Resolution } from '@tp/market-core';
+import {
+  RESOLUTIONS as ALL,
+  resolutionMs as msOf,
+  isResolution as known,
+  type Resolution,
+} from '@tp/market-core';
 
-export const RESOLUTIONS: readonly Resolution[] = ['1', '5', '15', '60', '240', '1D'];
-
-/** Minutes per bar. Must match CANDLE_RESOLUTIONS on the server. */
-export const RESOLUTION_MINUTES: Readonly<Record<string, number>> = {
-  '1': 1,
-  '5': 5,
-  '15': 15,
-  '60': 60,
-  '240': 240,
-  '1D': 1440,
-};
-
-export const RESOLUTION_LABEL: Readonly<Record<string, string>> = {
-  '1': '1m',
-  '5': '5m',
-  '15': '15m',
-  '60': '1H',
-  '240': '4H',
-  '1D': '1D',
-};
-
-export function isResolution(value: string): value is Resolution {
-  return RESOLUTIONS.includes(value as Resolution);
-}
+/** Minutes per bar, for every resolution the platform knows. */
+export const RESOLUTION_MINUTES: Readonly<Record<string, number>> = Object.fromEntries(
+  ALL.map((resolution) => [resolution, msOf(resolution) / 60_000]),
+);
 
 /** Milliseconds one bar spans. Unknown resolutions fall back to one minute. */
 export function resolutionMs(resolution: string): number {
-  return (RESOLUTION_MINUTES[resolution] ?? 1) * 60_000;
+  return known(resolution) ? msOf(resolution) : 60_000;
 }
 
 /**
@@ -80,6 +72,12 @@ export interface ChartDatafeed {
     fromMs: number,
     toMs: number,
   ): Promise<readonly ChartBar[]>;
+  /**
+   * The resolutions this deployment serves — what a chart may offer. The
+   * platform's vocabulary is `RESOLUTIONS`; a deployment aggregates a subset
+   * of it, and a timeframe button outside that subset opens an empty chart.
+   */
+  resolutions(): Promise<readonly Resolution[]>;
 }
 
 /** Bars from this platform's own API. */
@@ -89,6 +87,8 @@ export function createPlatformDatafeed(api: ApiClient): ChartDatafeed {
       api.get<ChartBar[]>('/market/candles', {
         query: { symbol, resolution, from: fromMs, to: toMs },
       }),
+    resolutions: async () =>
+      (await api.get<{ resolutions: Resolution[] }>('/market/resolutions')).resolutions,
   };
 }
 

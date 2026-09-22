@@ -9,7 +9,7 @@ import {
   toSessionString,
   type PeriodParams,
 } from './tradingview-datafeed';
-import type { ChartBar } from '@tp/chart-core';
+import { RESOLUTIONS, type ChartBar } from '@tp/chart-core';
 import type { SymbolRow, TradingSession } from './queries';
 
 /**
@@ -230,15 +230,19 @@ describe('toBar', () => {
 });
 
 describe('datafeedConfiguration', () => {
-  it('advertises exactly the resolutions the server aggregates', () => {
-    expect(datafeedConfiguration().supported_resolutions).toEqual([
-      '1',
-      '5',
-      '15',
-      '60',
-      '240',
-      '1D',
-    ]);
+  /**
+   * "Exactly the resolutions the server aggregates" was this test's title when
+   * the list was a hand-written copy that happened to match the server's
+   * default. It advertises what the server *said* now, and only falls back to
+   * the platform's whole vocabulary when nothing was said.
+   */
+  it('advertises exactly the resolutions the server said it serves', () => {
+    expect(datafeedConfiguration(['1', '60']).supported_resolutions).toEqual(['1', '60']);
+  });
+
+  it('falls back to the whole vocabulary when the server has not answered', () => {
+    expect(datafeedConfiguration().supported_resolutions).toEqual([...RESOLUTIONS]);
+    expect(datafeedConfiguration().supported_resolutions).toContain('30');
   });
 
   /**

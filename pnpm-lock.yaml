@@ -695,6 +695,9 @@ importers:
       '@tp/api-client':
         specifier: workspace:*
         version: link:../api-client
+      '@tp/market-core':
+        specifier: workspace:*
+        version: link:../market-core
     devDependencies:
       rimraf:
         specifier: 'catalog:'

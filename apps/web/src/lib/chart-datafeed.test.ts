@@ -48,10 +48,11 @@ interface Requested {
   query: Record<string, unknown>;
 }
 
-function stubApi(bars: unknown[], seen: Requested[]): ApiClient {
+function stubApi(bars: unknown[], seen: Requested[], served = ['1', '5', '60']): ApiClient {
   return {
     get: async (path: string, options?: { query?: Record<string, unknown> }) => {
       seen.push({ path, query: options?.query ?? {} });
+      if (path === '/market/resolutions') return { resolutions: served };
       return bars;
     },
   } as unknown as ApiClient;
@@ -84,7 +85,26 @@ describe('buildChartDatafeed', () => {
     const config = await new Promise<{ supported_resolutions: string[] }>((resolve) => {
       feed.onReady(resolve);
     });
-    expect(config.supported_resolutions).toContain('1');
+    // The server's list, not the platform's vocabulary: `30` is known and not served here.
+    expect(config.supported_resolutions).toEqual(['1', '5', '60']);
+  });
+
+  it('still configures the library when the server cannot say what it serves', async () => {
+    const failing = {
+      get: async (path: string) => {
+        if (path === '/market/resolutions') throw new Error('503');
+        return [];
+      },
+    } as unknown as ApiClient;
+    const feed = buildChartDatafeed({
+      api: failing,
+      symbols: () => [XAUUSD],
+      sessionFor: () => SESSION,
+    });
+    const config = await new Promise<{ supported_resolutions: string[] }>((resolve) => {
+      feed.onReady(resolve);
+    });
+    expect(config.supported_resolutions.length).toBeGreaterThan(0);
   });
 
   it('resolves an instrument with the session the platform holds for it', async () => {

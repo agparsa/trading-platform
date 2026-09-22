@@ -46,6 +46,25 @@ export default function Chart(): React.ReactElement {
   const [ready, setReady] = useState(false);
 
   const datafeed = useMemo(() => createPlatformDatafeed(api), [api]);
+  /**
+   * The row of timeframes is what this deployment serves, asked once. Until it
+   * answers, the platform's vocabulary — a chip that may then disappear is
+   * preferred to a row that appears late. `30` is in the vocabulary and, on a
+   * deployment that does not aggregate it, not in the answer.
+   */
+  const [served, setServed] = useState<readonly Resolution[]>(RESOLUTIONS);
+  useEffect(() => {
+    let cancelled = false;
+    void datafeed
+      .resolutions()
+      .then((list) => {
+        if (!cancelled && list.length > 0) setServed(list);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [datafeed]);
 
   useEffect(() => {
     void (async () => {
@@ -104,7 +123,7 @@ export default function Chart(): React.ReactElement {
       <View style={styles.header}>
         <Text style={styles.symbol}>{String(symbol)}</Text>
         <View style={styles.resolutions}>
-          {RESOLUTIONS.map((value) => (
+          {served.map((value) => (
             <Pressable
               key={value}
               accessibilityRole="button"

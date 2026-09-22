@@ -212,6 +212,77 @@ const checks: Check[] = [
     },
   },
   {
+    name: 'the served resolutions are what the candles route answers, and nothing else',
+    /**
+     * `GET /market/resolutions` is what every chart builds its row of
+     * timeframes from. Each entry must answer a candles request; a resolution
+     * the platform knows and this deployment does not serve must be refused
+     * *naming the served list* — it used to answer with an empty chart. Run
+     * against the deployment's own setting, so which resolution plays the
+     * unserved part depends on `.env`; when every known one is served, that
+     * half is reported as not exercised rather than faked.
+     */
+    run: async () => {
+      const email = `smoke-resolutions-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: registration(email, password, 'Smoke Resolutions'),
+      });
+      const login = await fetch(`${BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const token = ((await login.json()) as { data: { accessToken: string } }).data.accessToken;
+      const auth = { Authorization: `Bearer ${token}` };
+
+      const listed = await fetch(`${BASE}/api/v1/market/resolutions`, { headers: auth });
+      assert(listed.status === 200, `/market/resolutions answered ${listed.status}`);
+      const served = ((await listed.json()) as { data: { resolutions: string[] } }).data.resolutions;
+      assert(served.length > 0, 'the deployment serves no resolution at all');
+
+      const symbolsResponse = await fetch(`${BASE}/api/v1/symbols`, { headers: auth });
+      const symbol = ((await symbolsResponse.json()) as { data: Array<{ code: string }> }).data[0]
+        ?.code;
+      assert(symbol !== undefined, 'no instrument to ask candles for');
+      const to = Date.now();
+      const from = to - 6 * 60 * 60 * 1000;
+      for (const resolution of served) {
+        const bars = await fetch(
+          `${BASE}/api/v1/market/candles?symbol=${symbol}&resolution=${resolution}&from=${from}&to=${to}`,
+          { headers: auth },
+        );
+        assert(bars.status === 200, `candles at ${resolution} answered ${bars.status}`);
+      }
+
+      const KNOWN = ['1', '5', '15', '30', '60', '240', '1D'];
+      const unserved = KNOWN.find((one) => !served.includes(one));
+      if (unserved === undefined) {
+        console.log('        (every known resolution is served here; the refusal was not exercised)');
+      } else {
+        const refused = await fetch(
+          `${BASE}/api/v1/market/candles?symbol=${symbol}&resolution=${unserved}&from=${from}&to=${to}`,
+          { headers: auth },
+        );
+        const body = (await refused.json()) as {
+          error?: { code?: string; details?: { served?: string[] } };
+        };
+        assert(refused.status === 400, `an unserved resolution answered ${refused.status}, not 400`);
+        assert(
+          JSON.stringify(body.error?.details?.served) === JSON.stringify(served),
+          'the refusal did not name the served list',
+        );
+      }
+      const unknown = await fetch(
+        `${BASE}/api/v1/market/candles?symbol=${symbol}&resolution=7&from=${from}&to=${to}`,
+        { headers: auth },
+      );
+      assert(unknown.status === 400, `an unknown resolution answered ${unknown.status}`);
+    },
+  },
+  {
     name: 'every instrument reports a market state, and only an open one trades',
     /**
      * §36. The engine's refusal and the screen's explanation come from one

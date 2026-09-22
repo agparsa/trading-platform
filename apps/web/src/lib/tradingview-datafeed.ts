@@ -4,6 +4,7 @@ import {
   resolutionMs,
   type ChartBar,
   type ChartDatafeed,
+  type Resolution,
 } from '@tp/chart-core';
 import type { SymbolRow, TradingSession } from './queries';
 
@@ -87,9 +88,11 @@ const EXCHANGE = 'Trading Platform';
 
 // --- Pure mappings -------------------------------------------------------
 
-export function datafeedConfiguration(): DatafeedConfiguration {
+export function datafeedConfiguration(
+  served: readonly Resolution[] = RESOLUTIONS,
+): DatafeedConfiguration {
   return {
-    supported_resolutions: [...RESOLUTIONS],
+    supported_resolutions: [...served],
     // Marks are event annotations on the time scale. The platform has the data
     // for them — executions, breaches — but wiring them before the library can
     // be run would be claiming a feature nobody has seen work.
@@ -153,6 +156,7 @@ function minutesToHhmm(minute: number): string {
 export function toLibrarySymbolInfo(
   spec: SymbolRow,
   session: TradingSession | null,
+  served: readonly Resolution[] = RESOLUTIONS,
 ): LibrarySymbolInfo {
   const { pricescale, minmov } = priceScaleFor(spec);
   return {
@@ -171,7 +175,7 @@ export function toLibrarySymbolInfo(
     has_intraday: true,
     has_daily: true,
     has_weekly_and_monthly: false,
-    supported_resolutions: [...RESOLUTIONS],
+    supported_resolutions: [...served],
     volume_precision: spec.volumePrecision,
     data_status: 'streaming',
   };
@@ -257,11 +261,24 @@ export interface PlatformDatafeedDeps {
  */
 export function createTradingViewDatafeed(deps: PlatformDatafeedDeps) {
   const unsubscribes = new Map<string, () => void>();
+  /**
+   * What this deployment serves, asked once on start-up. Until the answer
+   * arrives — and if it never does — the platform's whole vocabulary, because
+   * a library left without a configuration shows nothing at all, and a button
+   * for an unserved resolution is a refusal the chart can show.
+   */
+  let served: readonly Resolution[] = RESOLUTIONS;
 
   return {
     onReady: (callback: (config: DatafeedConfiguration) => void): void => {
-      // The library requires this to be asynchronous.
-      setTimeout(() => callback(datafeedConfiguration()), 0);
+      // The library requires this to be asynchronous; the request makes it so.
+      void deps.datafeed
+        .resolutions()
+        .then((list) => {
+          if (list.length > 0) served = list;
+        })
+        .catch(() => undefined)
+        .finally(() => callback(datafeedConfiguration(served)));
     },
 
     searchSymbols: (
@@ -302,7 +319,10 @@ export function createTradingViewDatafeed(deps: PlatformDatafeedDeps) {
         onError('unknown_symbol');
         return;
       }
-      setTimeout(() => onResolved(toLibrarySymbolInfo(spec, deps.sessionFor(spec.code))), 0);
+      setTimeout(
+        () => onResolved(toLibrarySymbolInfo(spec, deps.sessionFor(spec.code), served)),
+        0,
+      );
     },
 
     getBars: async (
