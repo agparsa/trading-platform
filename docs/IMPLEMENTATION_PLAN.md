@@ -214,15 +214,19 @@ the engine's cached copy refreshed on save.
 and swap earned, traders' net P&L, closed trades and volume — **by currency,
 never summed across them**.
 
+**Built since this was written, and this paragraph did not say so** until
+22 September: Reports (`/admin/reports` — a job, a sealed file and a download
+that expires, `reports.md`), IP rules (Phase 10, `ip-rules.md`), outbound
+webhooks (Phase 12) and the admin view over a person's devices. A plan that
+under-reports what exists gets the work done twice; `panel-claims.test.ts` now
+reads this paragraph and fails it when it names a feature the code has.
+
 **Not built, and stated as such:** Fees as a section (commission and swap are
 edited per instrument; there is no schedule, override or rebate model, and
-spread comes from the feed); Reports (no server-side export — a job queue, a
-file store and a retention policy, which is a phase of its own); Alerts (price
-alerts are Phase 8; admin threshold rules are not designed); admin device
-management and IP rules (no allow/deny concept exists anywhere — it belongs
-with Phase 10, and carries real lock-out risk); Branding (the `Tenant` model
-has no visual field; Phase 14 flags a feature nobody has written); Webhooks
-(Phase 12); and API documentation, which is mounted only outside production.
+spread comes from the feed); Alerts (price alerts are Phase 8; admin threshold
+rules are not designed); Branding (the `Tenant` model has no visual field;
+Phase 14 flags a feature nobody has written); and API documentation, which is
+mounted only outside production, on purpose.
 [broker-panel.md](./broker-panel.md).
 
 ## Phase 6 — Trading terminal UX upgrade · **partly done**

@@ -194,6 +194,9 @@ importers:
       '@tp/crypto-core':
         specifier: workspace:*
         version: link:packages/crypto-core
+      '@tp/market-core':
+        specifier: workspace:*
+        version: link:packages/market-core
       '@tp/shared-types':
         specifier: workspace:*
         version: link:packages/shared-types

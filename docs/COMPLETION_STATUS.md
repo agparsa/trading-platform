@@ -386,10 +386,13 @@ Forty-eight new tests. Eight mutations run, seven caught outright; the survivor
 was a real gap — nothing tested the case the cursor's id half exists for, so a
 test now pages through six orders sharing one timestamp and fails without it.
 
-**Not built, named rather than stubbed:** Fees as a section, Reports,
-Alerts, admin device management, IP rules, Branding, outbound webhooks, and API
-documentation in production. Each is listed in
-[broker-panel.md](./broker-panel.md) with where it belongs.
+**Not built, named rather than stubbed:** Fees as a section, Alerts (admin
+threshold rules), Branding, and API documentation in production. Each is
+listed in [broker-panel.md](./broker-panel.md) with where it belongs.
+
+Reports, IP rules, outbound webhooks and the admin device view were on that
+list long after they shipped; `panel-claims.test.ts` reads the paragraph
+above against the code now.
 
 `pnpm verify` 2029 tests over 152 files; smoke 20; smoke:worker 3; web smoke
 107 over 30 routes; pentest 48 attacks refused.

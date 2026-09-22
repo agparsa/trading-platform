@@ -55,6 +55,7 @@
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@tp/crypto-core": "workspace:*",
+    "@tp/market-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
     "@tp/tenancy": "workspace:*",
     "@types/node": "catalog:",

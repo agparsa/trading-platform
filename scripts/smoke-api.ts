@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { connect } from 'node:net';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { PrismaClient } from '@prisma/client';
+import { RESOLUTIONS } from '@tp/market-core';
 import { base32Decode, codeForStep, stepFor } from '../apps/api/src/auth/totp';
 
 /** The code the user's authenticator app is showing right now. */
@@ -257,8 +258,7 @@ const checks: Check[] = [
         assert(bars.status === 200, `candles at ${resolution} answered ${bars.status}`);
       }
 
-      const KNOWN = ['1', '5', '15', '30', '60', '240', '1D'];
-      const unserved = KNOWN.find((one) => !served.includes(one));
+      const unserved = RESOLUTIONS.find((one) => !served.includes(one));
       if (unserved === undefined) {
         console.log('        (every known resolution is served here; the refusal was not exercised)');
       } else {
