@@ -220,9 +220,7 @@ export class OperationsService {
       byCurrency: [...byCurrency.values()].sort((a, b) => a.currency.localeCompare(b.currency)),
     };
   }
-
 }
-
 
 /** One currency's money figures. Decimal strings throughout; never a float. */
 export interface MoneyRow {

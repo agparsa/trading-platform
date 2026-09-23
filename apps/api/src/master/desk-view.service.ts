@@ -129,7 +129,10 @@ export class DeskViewService {
 
     const accounts: DeskAccountRow[] = [];
     const unpriced: string[] = [];
-    const exposure = new Map<string, { net: Decimal; gross: Decimal | null; accounts: Set<string> }>();
+    const exposure = new Map<
+      string,
+      { net: Decimal; gross: Decimal | null; accounts: Set<string> }
+    >();
 
     let balance: Money | null = Money.zero(currency);
     let equity: Money | null = Money.zero(currency);

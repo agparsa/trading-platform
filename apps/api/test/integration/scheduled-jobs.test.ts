@@ -85,7 +85,12 @@ suite('scheduled jobs', () => {
     // And it is not called healthy for having run a moment ago.
     expect(
       judgeSchedule(
-        { name: found.name, cron: found.cron, lastFinishedAt: found.finishedAt, lastOutcome: found.outcome },
+        {
+          name: found.name,
+          cron: found.cron,
+          lastFinishedAt: found.finishedAt,
+          lastOutcome: found.outcome,
+        },
         'UTC',
         new Date('2026-03-01T12:01:30Z'),
       ).verdict,
@@ -101,7 +106,12 @@ suite('scheduled jobs', () => {
   it('clears the reason once the job works again', async () => {
     const bad = new Date('2026-03-01T12:00:00Z');
     await log.started('broker-health', '* * * * *', bad);
-    await log.finished('broker-health', 'FAILED', { startedAt: bad, error: 'venue timed out' }, bad);
+    await log.finished(
+      'broker-health',
+      'FAILED',
+      { startedAt: bad, error: 'venue timed out' },
+      bad,
+    );
 
     const good = new Date('2026-03-01T12:01:00Z');
     await log.started('broker-health', '* * * * *', good);

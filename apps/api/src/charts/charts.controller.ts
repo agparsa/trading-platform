@@ -38,9 +38,7 @@ const templateSchema = z
 
 const drawingsSchema = z.object({ content: z.unknown() }).strict();
 
-const layoutQuerySchema = z
-  .object({ accountId: z.string().uuid().optional() })
-  .strict();
+const layoutQuerySchema = z.object({ accountId: z.string().uuid().optional() }).strict();
 
 class SaveLayoutDto extends createZodDto(layoutSchema) {}
 class SaveTemplateDto extends createZodDto(templateSchema) {}

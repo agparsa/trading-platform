@@ -453,7 +453,6 @@ export class AdminInstrumentsService {
   }
 }
 
-
 export interface SessionWindow {
   /** 0 = Sunday … 6 = Saturday. */
   readonly dayOfWeek: number;

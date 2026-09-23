@@ -177,7 +177,9 @@ async function main(): Promise<void> {
       assert(handshake.status === 200, `handshake answered ${handshake.status}`);
       const header = handshake.headers.get('x-tp-build');
       assert(header !== null, 'no x-tp-build header on the handshake response');
-      const health = (await (await fetch(`${BASE}/health`)).json()) as { data?: { build?: string } };
+      const health = (await (await fetch(`${BASE}/health`)).json()) as {
+        data?: { build?: string };
+      };
       assert(
         header === health.data?.build,
         `handshake says ${header}, /health says ${String(health.data?.build)}`,

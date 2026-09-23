@@ -77,7 +77,7 @@ a position nobody can find.
 on the row. It is the only handle the platform has on an order it cannot see,
 so it is unique — `@@unique([tenantId, clientOrderId])` — and it is never
 reused. Per firm rather than platform-wide because the column also holds
-references a *caller* chose, and two firms both reaching for `order-1` must not
+references a _caller_ chose, and two firms both reaching for `order-1` must not
 collide; the ids this file mints are UUIDs, which would not have collided
 either way.
 

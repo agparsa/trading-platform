@@ -19,7 +19,10 @@ describe('the web build header', () => {
 
   it('shares its name with the socket handshake header, so one reader serves both', async () => {
     const gateway = await import('node:fs').then((fs) =>
-      fs.readFileSync(new URL('../apps/api/src/realtime/realtime.gateway.ts', import.meta.url), 'utf8'),
+      fs.readFileSync(
+        new URL('../apps/api/src/realtime/realtime.gateway.ts', import.meta.url),
+        'utf8',
+      ),
     );
     expect(gateway).toContain(`export const BUILD_HEADER = '${BUILD_HEADER}';`);
   });

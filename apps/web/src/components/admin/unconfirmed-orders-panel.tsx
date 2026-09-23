@@ -43,9 +43,7 @@ export function UnconfirmedOrdersPanel() {
           Sent to a venue, with no answer back. The platform asks again on its own; this is where
           you can ask now. Nothing here decides an order&apos;s outcome — only the venue can.
         </p>
-        <span className="text-[10px] text-terminal-muted">
-          {rows.length} waiting
-        </span>
+        <span className="text-[10px] text-terminal-muted">{rows.length} waiting</span>
       </div>
       <ErrorLine error={orders.error ?? resolve.error} />
 

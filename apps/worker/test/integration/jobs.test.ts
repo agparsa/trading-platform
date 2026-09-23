@@ -595,23 +595,24 @@ suite('Worker jobs (integration)', () => {
           get(target, property, receiver) {
             if (property === '$transaction') {
               return async (fn: (tx: unknown) => Promise<unknown>) =>
-                (target as unknown as { $transaction: (f: unknown) => Promise<unknown> })
-                  .$transaction(async (tx: Record<string, unknown>) =>
-                    fn(
-                      new Proxy(tx, {
-                        get(inner, key, self) {
-                          if (key === 'outboxEvent') {
-                            return {
-                              create: async () => {
-                                throw new Error('the outbox went away');
-                              },
-                            };
-                          }
-                          return Reflect.get(inner, key, self);
-                        },
-                      }),
-                    ),
-                  );
+                (
+                  target as unknown as { $transaction: (f: unknown) => Promise<unknown> }
+                ).$transaction(async (tx: Record<string, unknown>) =>
+                  fn(
+                    new Proxy(tx, {
+                      get(inner, key, self) {
+                        if (key === 'outboxEvent') {
+                          return {
+                            create: async () => {
+                              throw new Error('the outbox went away');
+                            },
+                          };
+                        }
+                        return Reflect.get(inner, key, self);
+                      },
+                    }),
+                  ),
+                );
             }
             return Reflect.get(target, property, receiver);
           },

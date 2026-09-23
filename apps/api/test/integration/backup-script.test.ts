@@ -162,7 +162,9 @@ suite('the backup script', () => {
     const callAt = source.indexOf('wait_for_database || true');
     expect(loopAt, 'the loop has moved').toBeGreaterThan(0);
     expect(callAt, 'nothing calls wait_for_database before the loop').toBeGreaterThan(0);
-    expect(callAt, 'the wait is inside the loop, so it runs before every dump').toBeLessThan(loopAt);
+    expect(callAt, 'the wait is inside the loop, so it runs before every dump').toBeLessThan(
+      loopAt,
+    );
   });
 
   /**

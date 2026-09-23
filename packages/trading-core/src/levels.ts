@@ -219,8 +219,7 @@ export function levelView(input: {
     price: input.levelPrice,
     distance: distanceBetween(input.entryPrice, input.levelPrice, input.spec.pricePrecision),
     outcome,
-    percentOfEquity:
-      input.equity === null ? null : percentOfEquity(outcome, input.equity),
+    percentOfEquity: input.equity === null ? null : percentOfEquity(outcome, input.equity),
   };
 }
 

@@ -28,7 +28,9 @@ const METRICS = readFileSync(join(__dirname, 'metrics.service.ts'), 'utf8');
 
 /** Each instrument declared on `MetricsService`, with its exported name. */
 export function declaredMetrics(source: string): Array<{ field: string; name: string }> {
-  const fields = [...source.matchAll(/^\s*readonly ([A-Za-z0-9_]+):\s*(?:Gauge|Counter|Histogram|Summary)\b/gm)]
+  const fields = [
+    ...source.matchAll(/^\s*readonly ([A-Za-z0-9_]+):\s*(?:Gauge|Counter|Histogram|Summary)\b/gm),
+  ]
     .map((match) => match[1])
     .filter((field): field is string => field !== undefined);
   return fields.map((field) => {
@@ -107,7 +109,8 @@ describe('declared metrics', () => {
 
     const exported = new Set(declaredMetrics(METRICS).map(({ name }) => name));
     const missing = [...queried].filter(
-      (name) => !exported.has(name) && !name.startsWith('tp_nodejs_') && !name.startsWith('tp_process_'),
+      (name) =>
+        !exported.has(name) && !name.startsWith('tp_nodejs_') && !name.startsWith('tp_process_'),
     );
     expect(missing, 'a dashboard or an alert queries a metric this build does not export').toEqual(
       [],

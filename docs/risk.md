@@ -19,7 +19,7 @@ all three, not sent round the loop three times.
 **And is told.** That sentence was true of the engine and false of the screen
 for as long as both existed: the rejection reached the client as
 `error.message`, the first violation, with the rest joined into a
-`details.violations` *string* that nothing read — and the web terminal rendered
+`details.violations` _string_ that nothing read — and the web terminal rendered
 the message alone. A trader over the position limit and short of margin halved
 the volume, submitted again, and learned about the margin.
 

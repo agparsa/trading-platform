@@ -349,7 +349,10 @@ export function detectRapidCancelReplace(
   let worstOrder: string | null = null;
   let worst = { count: 0, spanMs: 0 };
   for (const [orderId, times] of byOrder) {
-    const densest = densestRun([...times].sort((a, b) => a - b), windowMs);
+    const densest = densestRun(
+      [...times].sort((a, b) => a - b),
+      windowMs,
+    );
     if (densest.count > worst.count) {
       worst = densest;
       worstOrder = orderId;

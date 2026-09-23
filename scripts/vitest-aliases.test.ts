@@ -61,9 +61,7 @@ function aliasedPackages(): Set<string> {
 describe('vitest workspace aliases', () => {
   it('resolves every workspace package to its source', () => {
     const aliased = aliasedPackages();
-    const missing = workspacePackages().filter(
-      (name) => !aliased.has(name) && !(name in EXEMPT),
-    );
+    const missing = workspacePackages().filter((name) => !aliased.has(name) && !(name in EXEMPT));
 
     expect(
       missing,

@@ -292,9 +292,7 @@ function DevicesSection({ userId, email }: { userId: string; email: string }) {
 
   return (
     <>
-      <p className="mb-2 mt-4 text-[10px] uppercase tracking-wider text-terminal-muted">
-        Devices
-      </p>
+      <p className="mb-2 mt-4 text-[10px] uppercase tracking-wider text-terminal-muted">Devices</p>
       {devices.isLoading ? (
         <Loading />
       ) : devices.error !== null ? (

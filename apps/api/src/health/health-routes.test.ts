@@ -58,7 +58,7 @@ describe('health routes and the global prefix', () => {
    */
   it('is what main.ts excludes, rather than a literal beside it', () => {
     expect(MAIN).toContain('exclude: [...HEALTH_ROUTES');
-    expect(MAIN, "a hand-written probe path in main.ts is how this went wrong").not.toMatch(
+    expect(MAIN, 'a hand-written probe path in main.ts is how this went wrong').not.toMatch(
       /exclude:\s*\[\s*'health'/,
     );
   });

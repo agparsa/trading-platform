@@ -162,7 +162,10 @@ export function cronIntervalMs(cron: string, tz: string, from: Date = new Date()
  * Five fields, or six with seconds, and nothing else.
  */
 export function isCronPattern(value: string): boolean {
-  const fields = value.trim().split(/\s+/).filter((field) => field.length > 0);
+  const fields = value
+    .trim()
+    .split(/\s+/)
+    .filter((field) => field.length > 0);
   if (fields.length !== 5 && fields.length !== 6) return false;
   try {
     parser.parseExpression(value, { tz: 'UTC' });
@@ -221,7 +224,11 @@ function human(ms: number): string {
  * working, and calling it "ok" because it ran recently is the reading that
  * would let it fail all week.
  */
-export function judgeSchedule(run: ScheduledRun, tz: string, now: Date = new Date()): ScheduleHealth {
+export function judgeSchedule(
+  run: ScheduledRun,
+  tz: string,
+  now: Date = new Date(),
+): ScheduleHealth {
   const intervalMs = intervalOf(run.cron, tz, now);
   if (intervalMs === null) {
     return {

@@ -238,10 +238,7 @@ export class BearerAuthGuard implements CanActivate {
    * a stale grant id in a browser tab should show the operator their own screen,
    * not a wall of errors.
    */
-  private async attachBreakGlass(
-    request: RequestWithContext,
-    role: UserRole,
-  ): Promise<void> {
+  private async attachBreakGlass(request: RequestWithContext, role: UserRole): Promise<void> {
     const grantId = request.header('x-break-glass')?.trim();
     if (grantId === undefined || grantId === '') return;
 

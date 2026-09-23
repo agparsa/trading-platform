@@ -137,7 +137,7 @@ suite('webhooks', () => {
    * offered can never be subscribed to, so it is delivered only to endpoints
    * that asked for everything.
    */
-  it('offers the platform\'s own two events, and accepts a subscription to them', async () => {
+  it("offers the platform's own two events, and accepts a subscription to them", async () => {
     const offered = service.eventTypes();
     expect(offered).toContain('reconciliation.mismatch');
     expect(offered).toContain('security.alert');

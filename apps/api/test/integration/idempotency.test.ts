@@ -102,7 +102,10 @@ suite('idempotency', () => {
   it('refuses, with its own code, a claim whose effects committed but whose result was never recorded', async () => {
     const first = await claim('k3');
     expect(first.kind).toBe('fresh');
-    await prisma.idempotencyKey.updateMany({ where: { scope: SCOPE, key: 'k3' }, data: { status: 'COMMITTED' } });
+    await prisma.idempotencyKey.updateMany({
+      where: { scope: SCOPE, key: 'k3' },
+      data: { status: 'COMMITTED' },
+    });
 
     const retry = await failure(claim('k3'));
     expect(retry.code).toBe(TradingErrorCode.IDEMPOTENCY_RESULT_UNAVAILABLE);
@@ -160,7 +163,10 @@ suite('idempotency', () => {
 
     const committed = await claim('k8');
     if (committed.kind !== 'fresh') throw new Error('expected fresh');
-    await prisma.idempotencyKey.updateMany({ where: { scope: SCOPE, key: 'k8' }, data: { status: 'COMMITTED' } });
+    await prisma.idempotencyKey.updateMany({
+      where: { scope: SCOPE, key: 'k8' },
+      data: { status: 'COMMITTED' },
+    });
     await committed.abandon();
     expect((await row('k8')).status).toBe('COMMITTED');
   });
@@ -236,7 +242,9 @@ suite('idempotency', () => {
           await first.abandon();
         }),
       );
-      expect(await prisma.idempotencyKey.count({ where: { scope: SCOPE, key: 'refused' } })).toBe(0);
+      expect(await prisma.idempotencyKey.count({ where: { scope: SCOPE, key: 'refused' } })).toBe(
+        0,
+      );
       expect(await prisma.execution.count({ where: { accountId } })).toBe(0);
     });
 
@@ -254,8 +262,13 @@ suite('idempotency', () => {
         }),
       );
       expect((await row('fine')).status).toBe('COMPLETED');
-      const again = await withTenant(TENANT, () => service.claim<{ orderId: string }>(SCOPE, 'fine', order));
-      expect(again).toEqual({ kind: 'replayed', result: expect.objectContaining({ orderId: result.orderId }) });
+      const again = await withTenant(TENANT, () =>
+        service.claim<{ orderId: string }>(SCOPE, 'fine', order),
+      );
+      expect(again).toEqual({
+        kind: 'replayed',
+        result: expect.objectContaining({ orderId: result.orderId }),
+      });
       expect(await prisma.execution.count({ where: { accountId } })).toBe(1);
     });
   });

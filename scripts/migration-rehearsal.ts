@@ -158,14 +158,17 @@ async function partialProject(count: number, into: string): Promise<string> {
  * applies something, so "the table is not there" and "nothing has been applied"
  * are the same state and must not be an error.
  */
-async function appliedCount(
-  connect: readonly string[],
-  env: NodeJS.ProcessEnv,
-): Promise<number> {
+async function appliedCount(connect: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {
   const out = await run(
     'psql',
-    [...connect, '-At', '-d', SCRATCH_DB, '-c',
-      `SELECT count(*) FROM _prisma_migrations WHERE to_regclass('_prisma_migrations') IS NOT NULL`],
+    [
+      ...connect,
+      '-At',
+      '-d',
+      SCRATCH_DB,
+      '-c',
+      `SELECT count(*) FROM _prisma_migrations WHERE to_regclass('_prisma_migrations') IS NOT NULL`,
+    ],
     { env },
   ).catch(() => '0');
   const count = Number(out.trim());
@@ -279,8 +282,16 @@ async function main(): Promise<void> {
         // And the result must be the schema the code expects.
         const drift = await run(
           'npx',
-          ['prisma', 'migrate', 'diff', '--from-url', url, '--to-schema-datamodel',
-            join(ROOT, 'prisma', 'schema.prisma'), '--script'],
+          [
+            'prisma',
+            'migrate',
+            'diff',
+            '--from-url',
+            url,
+            '--to-schema-datamodel',
+            join(ROOT, 'prisma', 'schema.prisma'),
+            '--script',
+          ],
           { env, cwd: ROOT },
         );
         const empty = /empty migration/i.test(drift);
@@ -307,7 +318,9 @@ async function main(): Promise<void> {
       } catch (error) {
         failures += 1;
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`  FAILED    ${label}\n            ${message.split('\n').slice(0, 6).join('\n            ')}`);
+        console.error(
+          `  FAILED    ${label}\n            ${message.split('\n').slice(0, 6).join('\n            ')}`,
+        );
       }
     }
   } finally {

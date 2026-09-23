@@ -139,7 +139,9 @@ export function BookPanel() {
           <Button
             variant="neutral"
             onClick={() => {
-              const rows = (active.data?.rows ?? []) as unknown as ReadonlyArray<Record<string, unknown>>;
+              const rows = (active.data?.rows ?? []) as unknown as ReadonlyArray<
+                Record<string, unknown>
+              >;
               const first = rows[0];
               if (first === undefined) return;
               const columns = Object.keys(first);
@@ -258,11 +260,7 @@ function OrdersTable({
   );
 }
 
-function PositionsTable({
-  rows,
-}: {
-  rows: readonly BlotterPositionRow[];
-}) {
+function PositionsTable({ rows }: { rows: readonly BlotterPositionRow[] }) {
   return (
     <Table>
       <Head

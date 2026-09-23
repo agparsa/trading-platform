@@ -29,7 +29,7 @@ state every deployment was in before the step existed.
 
 When the merge it performs changes `upgrade-server.sh` itself, the script
 restarts on the new version rather than finishing on the old text (bash reads a
-script as it runs, so a change to the file lands on the *next* deploy
+script as it runs, so a change to the file lands on the _next_ deploy
 otherwise). The restarted run says so — "resumed on the new script; the upgrade
 began at …" — and reports the same `before -> after` range as the first, because
 the first hands its starting commit across. The first upgrade to restart itself
@@ -121,7 +121,7 @@ compose file by `deployment.test.ts`.
 
 The web is asked too: every page carries an `x-tp-build` header, folded into
 the routes manifest at `next build` from the `BUILD_SHA` the image was built
-with (so the web Dockerfile sets it in the *build* stage — an `ENV` in the
+with (so the web Dockerfile sets it in the _build_ stage — an `ENV` in the
 production stage would be read by nothing). The script reads it from the
 terminal page, or from the login page when the terminal redirected.
 
@@ -141,7 +141,7 @@ The cause was ours to remove, and is removed: Next marks every prerendered page
 which is how the company that wrote Next runs it. Nothing purges this one, and
 Next's own `headers()` cannot override Cache-Control (its documentation says
 so). So nginx does: the page shell is served `no-cache` on every response, and
-`/_next/static/` — hashed assets that *are* immutable — is matched first and
+`/_next/static/` — hashed assets that _are_ immutable — is matched first and
 passed through untouched. The script's last check asks the origin for the
 shell's cache policy. What the edge already holds still has to be purged once;
 after that, no deploy needs a purge again.
@@ -173,7 +173,7 @@ its neighbours after an upgrade is a service the upgrade did not touch.
 ## Migrations
 
 `prisma migrate deploy` runs before new application containers accept traffic.
-Migrations are forward-only, and additive *as a rule* — a destructive change is
+Migrations are forward-only, and additive _as a rule_ — a destructive change is
 split across two releases so a rollback never strands data.
 
 The rule has two recorded exceptions, both `NOT NULL` on columns that already

@@ -97,13 +97,18 @@ export class OutboxRelayService {
     return summary;
   }
 
-  private async relayOne(event: OutboxEvent, now: Date): Promise<'RELAYED' | 'FAILED' | 'ABANDONED'> {
+  private async relayOne(
+    event: OutboxEvent,
+    now: Date,
+  ): Promise<'RELAYED' | 'FAILED' | 'ABANDONED'> {
     const failures: string[] = [];
     for (const destination of this.destinations) {
       try {
         await destination.deliver(event);
       } catch (error) {
-        failures.push(`${destination.name}: ${error instanceof Error ? error.message : String(error)}`);
+        failures.push(
+          `${destination.name}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
 

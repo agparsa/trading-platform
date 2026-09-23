@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HealthIndicatorResult, HealthIndicatorService } from '@nestjs/terminus';
 import { overdueSchedules, type ScheduledRun } from '@tp/scheduling-core';
-import { WORKER_HEARTBEAT_PREFIX, parseWorkerHeartbeat, type WorkerHeartbeat } from '@tp/shared-types';
+import {
+  WORKER_HEARTBEAT_PREFIX,
+  parseWorkerHeartbeat,
+  type WorkerHeartbeat,
+} from '@tp/shared-types';
 import { withoutTenantScope } from '@tp/tenancy';
 import { MarketIntegrityService } from '../market/market-integrity.service';
 import { QuoteService } from '../market/quote.service';
@@ -347,7 +351,10 @@ export class WorkerHealthIndicator {
       builds: [...new Set(beats.map((beat) => beat.build))].sort(),
     };
     return beats.length === 0
-      ? indicator.down({ ...detail, note: 'no worker has reported in — nothing will run the schedules' })
+      ? indicator.down({
+          ...detail,
+          note: 'no worker has reported in — nothing will run the schedules',
+        })
       : indicator.up(detail);
   }
 }

@@ -605,7 +605,12 @@ export class OrdersService {
         entryPrice: entryPrice.toString(),
         margin: margin.toString(),
       };
-      const recordedFill = await this.outbox.record(tx, DomainEvent.ORDER_FILLED, account.id, filled);
+      const recordedFill = await this.outbox.record(
+        tx,
+        DomainEvent.ORDER_FILLED,
+        account.id,
+        filled,
+      );
       const recordedOpen = await this.outbox.record(
         tx,
         DomainEvent.POSITION_OPENED,

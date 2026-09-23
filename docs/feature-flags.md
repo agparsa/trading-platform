@@ -67,7 +67,7 @@ wrong quietly:**
   leave somebody holding a position they cannot exit from the device in their
   hand.
 - **Unknown means allowed.** A flag that has not loaded, or a request that
-  failed, reads as *on* — matching the terminal's `!== false` for
+  failed, reads as _on_ — matching the terminal's `!== false` for
   `quick_trading`. Failing closed would stop a trader placing an order because
   their phone briefly lost signal, in order to enforce a preference the server
   refuses nothing for. That is only safe because this is not a control, which is

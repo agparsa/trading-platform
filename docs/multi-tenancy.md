@@ -331,7 +331,7 @@ for two reasons that only show up together.
 **The probe ran once, at boot.** It reads `users`, chosen because that table "is
 never empty in a running deployment" — and it is empty at exactly one moment, a
 fresh install starting for the first time, which was the only moment anything
-asked. A new deployment answered *unknown*, somebody registered a minute later,
+asked. A new deployment answered _unknown_, somebody registered a minute later,
 and nothing asked again. The refusal promised above could not fire on the
 deployment where getting it wrong costs the most. Both processes now keep asking
 while the answer is unknown, and stop the moment it is definite: the API from
@@ -342,12 +342,12 @@ not change under a running process, so a settled answer is kept.
 a warning nobody is meant to act on, which is how a reader learns to skip it.
 It is now:
 
-| Where | What it says |
-| --- | --- |
-| `GET /health/tenancy` | `enforced` and `configured`, and nothing else — the role name and the probe's reason are database internals and this route is public |
-| `GET /ready` | **down** only on the pair the platform promises to refuse: asked for and absent. Every other state is up |
-| `tp_tenant_isolation` | `1` enforced, `0` not, `-1` while there is nothing to prove it with. Labelled `configured` — whether `DATABASE_URL_TENANT` is set — so that `0` asked for can be alerted on and `0` not asked for cannot |
-| `pnpm verify:production` | prints which posture this deployment is running, and fails on that same pair |
+| Where                    | What it says                                                                                                                                                                                             |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health/tenancy`    | `enforced` and `configured`, and nothing else — the role name and the probe's reason are database internals and this route is public                                                                     |
+| `GET /ready`             | **down** only on the pair the platform promises to refuse: asked for and absent. Every other state is up                                                                                                 |
+| `tp_tenant_isolation`    | `1` enforced, `0` not, `-1` while there is nothing to prove it with. Labelled `configured` — whether `DATABASE_URL_TENANT` is set — so that `0` asked for can be alerted on and `0` not asked for cannot |
+| `pnpm verify:production` | prints which posture this deployment is running, and fails on that same pair                                                                                                                             |
 
 **Unknown is up, deliberately.** A two-role deployment on a fresh database
 cannot prove the policies bite until a row exists, and taking readiness down

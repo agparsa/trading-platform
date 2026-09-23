@@ -50,10 +50,7 @@ export function csvRow(fields: readonly string[]): string {
 export const UTF8_BOM = '﻿';
 
 /** A whole document, for a report small enough to assemble in memory. */
-export function toCsv(
-  columns: readonly string[],
-  rows: ReadonlyArray<readonly string[]>,
-): string {
+export function toCsv(columns: readonly string[], rows: ReadonlyArray<readonly string[]>): string {
   // CRLF: RFC 4180 says so, and Excel on Windows is the reader that cares.
   return [csvRow(columns), ...rows.map(csvRow)].join('\r\n');
 }

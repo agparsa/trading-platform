@@ -10,7 +10,7 @@ fails too, so the file cannot rot into folklore.
 ## How this came to be written
 
 `docs/penetration-checklist.md` listed dependency vulnerabilities under what the
-penetration suite deliberately does *not* cover, with the reason that
+penetration suite deliberately does _not_ cover, with the reason that
 "`pnpm audit` belongs in CI, not in a script that boots the API". That reasoning
 is right. CI did not run it, and nothing else did either.
 
@@ -30,11 +30,11 @@ overrides below cleared the rest.
 parent, so there is no range for an update to find; an override is the only
 route short of waiting for upstream.
 
-| Package | Forced to | Parent pins | Why it is worth overriding |
-| --- | --- | --- | --- |
-| `multer` | `^2.3.0` | `@nestjs/platform-express@11.2.5` pins `2.2.0` | GHSA-qvfw-j98x-7q72: a file-size limit bypassed by a race in an async `fileFilter`. This platform accepts identity documents on that path, so a bypassed size limit is storage abuse against a store holding KYC material. Same major, API-compatible. |
-| `postcss` | `^8.5.26` | `next@15.5.25` pins `8.4.31` | Two high advisories. Build-time only, and the workspace root already resolved `8.5.26`, so both versions were installed side by side before this. |
-| `deepmerge-ts` | `^8.0.0` | `@prisma/config@6.19.3` pins `7.1.5` | A major bump, taken rather than reasoned around: the merge it performs is over `prisma.config.ts`, a file this repository owns, so the advisory is not reachable from untrusted input — but "not reachable today" is an argument that expires, and the build gate proves the upgrade. |
+| Package        | Forced to | Parent pins                                    | Why it is worth overriding                                                                                                                                                                                                                                                            |
+| -------------- | --------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `multer`       | `^2.3.0`  | `@nestjs/platform-express@11.2.5` pins `2.2.0` | GHSA-qvfw-j98x-7q72: a file-size limit bypassed by a race in an async `fileFilter`. This platform accepts identity documents on that path, so a bypassed size limit is storage abuse against a store holding KYC material. Same major, API-compatible.                                |
+| `postcss`      | `^8.5.26` | `next@15.5.25` pins `8.4.31`                   | Two high advisories. Build-time only, and the workspace root already resolved `8.5.26`, so both versions were installed side by side before this.                                                                                                                                     |
+| `deepmerge-ts` | `^8.0.0`  | `@prisma/config@6.19.3` pins `7.1.5`           | A major bump, taken rather than reasoned around: the merge it performs is over `prisma.config.ts`, a file this repository owns, so the advisory is not reachable from untrusted input — but "not reachable today" is an argument that expires, and the build gate proves the upgrade. |
 
 An override changes a dependency for every package in the workspace, including
 ones that asked for something else. That is why each needs a row here: a silent
@@ -45,11 +45,11 @@ override is a dependency decision nobody reviewed.
 Nothing is in `pnpm.auditConfig`. These four are below the gate's threshold and
 are recorded so that "moderate" does not quietly become "ignored".
 
-| Advisory | Where | Why it is not fixed yet |
-| --- | --- | --- |
-| `vitest`, `@vitest/mocker` — path traversal via a redirected mock | the test runner | Patched in **4.1.11**; this workspace is on 3.x. A major upgrade of the runner across 226 test files is its own change with its own risk, not a line in a security commit. The advisory is reachable only by a test that mocks a redirect, which is test code this repository writes. |
-| `uuid` under `@expo/config-plugins` | the mobile toolchain | Expo pins it; build-time only, and it never ships in the app. |
-| `decode-uri-component` under `expo-router` | the mobile app | Expo's own dependency. Worth revisiting at the next Expo bump. |
+| Advisory                                                          | Where                | Why it is not fixed yet                                                                                                                                                                                                                                                               |
+| ----------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vitest`, `@vitest/mocker` — path traversal via a redirected mock | the test runner      | Patched in **4.1.11**; this workspace is on 3.x. A major upgrade of the runner across 226 test files is its own change with its own risk, not a line in a security commit. The advisory is reachable only by a test that mocks a redirect, which is test code this repository writes. |
+| `uuid` under `@expo/config-plugins`                               | the mobile toolchain | Expo pins it; build-time only, and it never ships in the app.                                                                                                                                                                                                                         |
+| `decode-uri-component` under `expo-router`                        | the mobile app       | Expo's own dependency. Worth revisiting at the next Expo bump.                                                                                                                                                                                                                        |
 
 Each of these is a reason to look again, not a reason to stop looking. The gate
 is set at high because that is the line this repository can hold today; lowering

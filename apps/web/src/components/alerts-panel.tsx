@@ -112,9 +112,7 @@ export function AlertsPanel({
             inputMode="decimal"
             value={level}
             onChange={(event) => setLevel(event.target.value)}
-            placeholder={
-              chosen === '' ? '' : (quotes[chosen]?.bid ?? '')
-            }
+            placeholder={chosen === '' ? '' : (quotes[chosen]?.bid ?? '')}
           />
         </label>
 

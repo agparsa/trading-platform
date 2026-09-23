@@ -155,7 +155,8 @@ describe('the notifications this platform raises', () => {
       // falls back to SYSTEM deliberately, so that a notice added to the
       // backend and not to the map still reaches somebody.
       const expected = actual ?? NotificationCategory.SYSTEM;
-      if (category !== expected) wrong.push(`${kind}: documented ${category}, code says ${expected}`);
+      if (category !== expected)
+        wrong.push(`${kind}: documented ${category}, code says ${expected}`);
     }
     expect(wrong, 'the document and the map disagree about what silences these').toEqual([]);
   });

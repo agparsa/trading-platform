@@ -195,7 +195,10 @@ export class DevicesService {
    * by revoking and re-registering, which would otherwise be the obvious way
    * round the control above.
    */
-  async deactivate(userId: string, deviceId: string): Promise<{ id: string; sessionsEnded: number }> {
+  async deactivate(
+    userId: string,
+    deviceId: string,
+  ): Promise<{ id: string; sessionsEnded: number }> {
     const device = await this.prisma.device.findFirst({
       where: { id: deviceId, userId },
       select: { installationId: true },
@@ -238,10 +241,7 @@ export class DevicesService {
   ): Promise<{ revoked: number }> {
     const { revoked } = await this.sessions.revokeByInstallation(userId, installationId);
     if (revoked > 0) {
-      this.logger.warn(
-        { userId, revoked },
-        'Revoking a device ended the sessions it held',
-      );
+      this.logger.warn({ userId, revoked }, 'Revoking a device ended the sessions it held');
     }
     return { revoked };
   }
@@ -284,7 +284,10 @@ export class DevicesService {
    * is the right tool when the account itself is compromised rather than one
    * handset.
    */
-  async revokeForUser(userId: string, deviceId: string): Promise<{ id: string; sessionsEnded: number }> {
+  async revokeForUser(
+    userId: string,
+    deviceId: string,
+  ): Promise<{ id: string; sessionsEnded: number }> {
     const device = await this.prisma.device.findFirst({
       where: { id: deviceId, userId },
       select: { installationId: true },

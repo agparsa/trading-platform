@@ -32,7 +32,9 @@ import {
   hasTestDatabase,
   resetDatabase,
   seedTradingSymbols,
-  DEFAULT_TENANT_ID, testPasswordService } from './harness';
+  DEFAULT_TENANT_ID,
+  testPasswordService,
+} from './harness';
 import { buildTradingStack, type TradingStack } from './trading-stack';
 
 const suite = hasTestDatabase ? describe : describe.skip;
@@ -298,7 +300,11 @@ suite('Administration (integration)', () => {
           new SecretBoxService(
             new ConfigService({ SECRET_ENCRYPTION_KEYS: KEY } as never) as never,
           ),
-          new SessionsService(prismaService, new AuditService(prismaService), new SilentEmailAdapter()),
+          new SessionsService(
+            prismaService,
+            new AuditService(prismaService),
+            new SilentEmailAdapter(),
+          ),
         ).register(userId, {
           platform: 'IOS' as never,
           installationId: `installation-${randomUUID()}`,

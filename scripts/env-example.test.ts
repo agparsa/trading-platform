@@ -94,7 +94,11 @@ function repositoryText(): string {
     }
   };
   for (const directory of ['apps', 'packages', 'scripts', 'docker']) walk(join(ROOT, directory));
-  for (const file of ['docker-compose.yml', 'docker-compose.prod.yml', 'docker-compose.cpanel.yml']) {
+  for (const file of [
+    'docker-compose.yml',
+    'docker-compose.prod.yml',
+    'docker-compose.cpanel.yml',
+  ]) {
     try {
       parts.push(readFileSync(join(ROOT, file), 'utf8'));
     } catch {
@@ -141,9 +145,7 @@ describe('.env.example', () => {
    * allow-list.
    */
   it('exempts nothing the repository never mentions', () => {
-    const unread = Object.keys(NOT_APPLICATION_CONFIG).filter(
-      (name) => !REPOSITORY.includes(name),
-    );
+    const unread = Object.keys(NOT_APPLICATION_CONFIG).filter((name) => !REPOSITORY.includes(name));
     expect(unread, 'exempted as read elsewhere, and read nowhere').toEqual([]);
   });
 
@@ -155,11 +157,15 @@ describe('.env.example', () => {
     for (const [name, document] of Object.entries(RESERVED)) {
       const line = EXAMPLE.split('\n').findIndex((text) => text.startsWith(`${name}=`));
       expect(line, `${name} is not in .env.example`).toBeGreaterThan(0);
-      const preamble = EXAMPLE.split('\n').slice(Math.max(0, line - 4), line).join(' ');
+      const preamble = EXAMPLE.split('\n')
+        .slice(Math.max(0, line - 4), line)
+        .join(' ');
       expect(preamble, `${name} is not marked as reserved`).toMatch(/reserved|nothing reads this/i);
       expect(preamble, `${name} does not say where to read more`).toContain(document);
-      expect(readFileSync(join(ROOT, document), 'utf8'), `${document} never mentions ${name}`)
-        .toContain(name);
+      expect(
+        readFileSync(join(ROOT, document), 'utf8'),
+        `${document} never mentions ${name}`,
+      ).toContain(name);
     }
   });
 

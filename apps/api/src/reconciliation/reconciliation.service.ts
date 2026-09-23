@@ -323,5 +323,4 @@ export interface FindingRow {
   lastSeenAt: string;
   resolvedAt: string | null;
   resolutionNote: string | null;
-
 }

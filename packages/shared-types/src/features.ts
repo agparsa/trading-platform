@@ -82,7 +82,8 @@ export const FEATURES: readonly FeatureDefinition[] = [
   {
     key: Feature.TRAILING_STOP,
     name: 'Trailing stops',
-    description: 'Traders may set a trailing stop distance on a position. Off, a request that sets one is refused; existing trails keep ratcheting.',
+    description:
+      'Traders may set a trailing stop distance on a position. Off, a request that sets one is refused; existing trails keep ratcheting.',
     authority: 'FIRM',
     enforcement: 'SERVER',
     default: true,
@@ -91,7 +92,8 @@ export const FEATURES: readonly FeatureDefinition[] = [
   {
     key: Feature.QUICK_TRADING,
     name: 'One-click trading',
-    description: 'The terminal offers one-click orders. Off, every order is confirmed. A product choice the client honours; the server has no action to guard.',
+    description:
+      'The terminal offers one-click orders. Off, every order is confirmed. A product choice the client honours; the server has no action to guard.',
     authority: 'FIRM',
     enforcement: 'CLIENT',
     default: true,
@@ -100,7 +102,8 @@ export const FEATURES: readonly FeatureDefinition[] = [
   {
     key: Feature.MOBILE_TRADING,
     name: 'Mobile trading',
-    description: 'The mobile app offers order entry. Off, it shows positions and alerts only. Honoured by the app; the same person can still trade from the web.',
+    description:
+      'The mobile app offers order entry. Off, it shows positions and alerts only. Honoured by the app; the same person can still trade from the web.',
     authority: 'FIRM',
     enforcement: 'CLIENT',
     default: true,
@@ -109,7 +112,8 @@ export const FEATURES: readonly FeatureDefinition[] = [
   {
     key: Feature.NEW_CHART,
     name: 'Licensed chart',
-    description: 'The terminal draws the licensed chart library instead of the built-in one. Meaningless until the licence exists.',
+    description:
+      'The terminal draws the licensed chart library instead of the built-in one. Meaningless until the licence exists.',
     authority: 'PLATFORM',
     enforcement: 'CLIENT',
     default: false,
@@ -118,7 +122,8 @@ export const FEATURES: readonly FeatureDefinition[] = [
   {
     key: Feature.WHITE_LABEL,
     name: 'White label',
-    description: 'The firm’s own name and branding replace the platform’s. Branding itself is not built; this flag exists so the day it is, nothing has to be redesigned to gate it.',
+    description:
+      'The firm’s own name and branding replace the platform’s. Branding itself is not built; this flag exists so the day it is, nothing has to be redesigned to gate it.',
     authority: 'PLATFORM',
     enforcement: 'CLIENT',
     default: false,

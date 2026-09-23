@@ -32,7 +32,6 @@ export function queueLagMs(
   return Math.max(0, startedAt - dueAt);
 }
 
-
 /**
  * Whether this job counts as *the schedule having run*.
  *

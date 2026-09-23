@@ -100,9 +100,8 @@ export class PriceAlertsController {
       source: body.source,
       price: body.price,
       note: body.note ?? null,
-      expiresAt: body.expiresAt === null || body.expiresAt === undefined
-          ? null
-          : new Date(body.expiresAt),
+      expiresAt:
+        body.expiresAt === null || body.expiresAt === undefined ? null : new Date(body.expiresAt),
     });
     return toView(alert);
   }

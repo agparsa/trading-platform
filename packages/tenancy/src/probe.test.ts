@@ -27,7 +27,7 @@ function database(
   return {
     calls: () => calls,
     unscoped: {
-      $queryRawUnsafe: async <T,>(): Promise<T> => {
+      $queryRawUnsafe: async <T>(): Promise<T> => {
         calls += 1;
         const answer = seen[Math.min(index, seen.length - 1)];
         index += 1;
@@ -35,7 +35,7 @@ function database(
       },
     },
     privileged: {
-      $queryRawUnsafe: async <T,>(): Promise<T> => [{ total }] as unknown as T,
+      $queryRawUnsafe: async <T>(): Promise<T> => [{ total }] as unknown as T,
     },
   };
 }

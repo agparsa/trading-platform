@@ -10,7 +10,7 @@ against the WCAG 2.1 A and AA rule set, in a real browser with real data.
 Serious and critical violations fail the run; moderate and minor ones are
 printed.
 
-Thirty-three *views*, not thirty-three pages: five of them are tab panels that
+Thirty-three _views_, not thirty-three pages: five of them are tab panels that
 share a URL with a page already audited. That distinction is the whole of the
 next section.
 
@@ -100,20 +100,20 @@ selects, **six** had no accessible name of their own and were not wrapped in a
 `<label>` or the `Field` helper. All six now carry an `aria-label`, as do the
 placeholder-only text inputs beside them:
 
-| File | Control |
-| --- | --- |
-| `verification/page.tsx` | document type |
-| `admin/features-panel.tsx` | broker |
+| File                       | Control                            |
+| -------------------------- | ---------------------------------- |
+| `verification/page.tsx`    | document type                      |
+| `admin/features-panel.tsx` | broker                             |
 | `admin/ip-rules-panel.tsx` | allow/deny, scope, address, reason |
-| `admin/people-panel.tsx` | role, reason |
-| `admin/security-panel.tsx` | severity, event kind |
+| `admin/people-panel.tsx`   | role, reason                       |
+| `admin/security-panel.tsx` | severity, event kind               |
 
 ### And the coverage gap under the coverage gap
 
 Removing `aria-label="Allow or deny"` from the IP rules panel to check the
 audit would catch it — **it did not.** The run passed.
 
-The IP rules panel is a *tab* inside `/admin/security`, and the audit for that
+The IP rules panel is a _tab_ inside `/admin/security`, and the audit for that
 URL runs before the tab is switched. Four other panels were hidden the same
 way: the alerts tab on the terminal, the venue-disagreement tab on
 reconciliation, the ceilings tab on the risk console, and the service-tokens
@@ -125,7 +125,7 @@ With the audit in place the same mutation fails the run —
 — and passes again when the label is restored.
 
 The lesson is not about selects. A screen counted as audited was audited; a
-*view* that only exists after a click was not, and no number in this document
+_view_ that only exists after a click was not, and no number in this document
 distinguished the two. Anything reached by a tab, a dialog, or a disclosure is
 invisible to a per-URL audit unless somebody opens it first.
 

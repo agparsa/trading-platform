@@ -192,7 +192,7 @@ described the correction; the code did not do it. It does now, and
 `session.test.ts` sweeps every minute of six transition days in three zones,
 one of which (`Australia/Lord_Howe`) shifts by thirty minutes rather than an
 hour.
-| `GTD` | Expires at a supplied timestamp                           |
+| `GTD` | Expires at a supplied timestamp |
 
 `DAY` is resolved to a timestamp **once, at placement**, so nothing downstream
 has to decide what a "day" means and a server that changes timezone cannot

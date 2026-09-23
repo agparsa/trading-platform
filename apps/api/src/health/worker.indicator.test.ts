@@ -25,7 +25,11 @@ function redisWith(entries: Record<string, string>, pageSize = 1) {
   return { client } as unknown as RedisService;
 }
 
-const beat = (instance: string, build: string, at = '2026-09-21T08:00:00.000Z'): WorkerHeartbeat => ({
+const beat = (
+  instance: string,
+  build: string,
+  at = '2026-09-21T08:00:00.000Z',
+): WorkerHeartbeat => ({
   instance,
   build,
   role: 'all',
@@ -50,19 +54,42 @@ describe('worker health', () => {
     const entries = {
       [`${WORKER_HEARTBEAT_PREFIX}c:3`]: JSON.stringify(beat('c:3', 'aaaaaaaaaaaa')),
       [`${WORKER_HEARTBEAT_PREFIX}a:1`]: JSON.stringify(beat('a:1', 'aaaaaaaaaaaa')),
-      [`${WORKER_HEARTBEAT_PREFIX}b:2`]: JSON.stringify(beat('b:2', 'bbbbbbbbbbbb', '2026-09-21T07:59:40.000Z')),
+      [`${WORKER_HEARTBEAT_PREFIX}b:2`]: JSON.stringify(
+        beat('b:2', 'bbbbbbbbbbbb', '2026-09-21T07:59:40.000Z'),
+      ),
       'tp:something:else': JSON.stringify(beat('x:9', 'cccccccccccc')),
     };
-    const indicator = new WorkerHealthIndicator(new HealthIndicatorService(), redisWith(entries, 2));
+    const indicator = new WorkerHealthIndicator(
+      new HealthIndicatorService(),
+      redisWith(entries, 2),
+    );
     const result = await indicator.check('workers', NOW);
     const detail = detailOf(result);
     expect(detail['status']).toBe('up');
     expect(detail['workers']).toBe(3);
     expect(detail['builds']).toEqual(['aaaaaaaaaaaa', 'bbbbbbbbbbbb']);
     expect(detail['instances']).toEqual([
-      { instance: 'a:1', build: 'aaaaaaaaaaaa', role: 'all', queues: ['swap-accrual'], ageMs: 10_000 },
-      { instance: 'b:2', build: 'bbbbbbbbbbbb', role: 'all', queues: ['swap-accrual'], ageMs: 30_000 },
-      { instance: 'c:3', build: 'aaaaaaaaaaaa', role: 'all', queues: ['swap-accrual'], ageMs: 10_000 },
+      {
+        instance: 'a:1',
+        build: 'aaaaaaaaaaaa',
+        role: 'all',
+        queues: ['swap-accrual'],
+        ageMs: 10_000,
+      },
+      {
+        instance: 'b:2',
+        build: 'bbbbbbbbbbbb',
+        role: 'all',
+        queues: ['swap-accrual'],
+        ageMs: 30_000,
+      },
+      {
+        instance: 'c:3',
+        build: 'aaaaaaaaaaaa',
+        role: 'all',
+        queues: ['swap-accrual'],
+        ageMs: 10_000,
+      },
     ]);
   });
 
@@ -84,7 +111,10 @@ describe('worker health', () => {
         },
       },
     } as unknown as RedisService;
-    const result = await new WorkerHealthIndicator(new HealthIndicatorService(), redis).check('workers', NOW);
+    const result = await new WorkerHealthIndicator(new HealthIndicatorService(), redis).check(
+      'workers',
+      NOW,
+    );
     expect(detailOf(result)['status']).toBe('down');
     expect(detailOf(result)['message']).toBe('Error');
   });

@@ -6,10 +6,7 @@ const on: HapticPreferences = { hapticsEnabled: true, perCategory: {} };
 describe('haptic decisions', () => {
   it('vibrates for an event the trader wants', () => {
     expect(
-      decideHaptic(
-        { category: 'ORDER_FILLED', appActive: true, serverSaysNotify: true },
-        on,
-      ),
+      decideHaptic({ category: 'ORDER_FILLED', appActive: true, serverSaysNotify: true }, on),
     ).toEqual({ haptic: 'success', reason: 'vibrate' });
   });
 
@@ -20,19 +17,20 @@ describe('haptic decisions', () => {
    */
   it('stays still when the app is in the background', () => {
     expect(
-      decideHaptic(
-        { category: 'ORDER_FILLED', appActive: false, serverSaysNotify: true },
-        on,
-      ).reason,
+      decideHaptic({ category: 'ORDER_FILLED', appActive: false, serverSaysNotify: true }, on)
+        .reason,
     ).toBe('app-in-background');
   });
 
   it('respects the master switch', () => {
     expect(
-      decideHaptic({ category: 'ORDER_FILLED', appActive: true, serverSaysNotify: true }, {
-        ...on,
-        hapticsEnabled: false,
-      }).haptic,
+      decideHaptic(
+        { category: 'ORDER_FILLED', appActive: true, serverSaysNotify: true },
+        {
+          ...on,
+          hapticsEnabled: false,
+        },
+      ).haptic,
     ).toBeNull();
   });
 
@@ -42,19 +40,20 @@ describe('haptic decisions', () => {
    */
   it('respects a category the trader muted', () => {
     expect(
-      decideHaptic({ category: 'TRADE_MODIFIED', appActive: true, serverSaysNotify: true }, {
-        ...on,
-        perCategory: { TRADE_MODIFIED: false },
-      }),
+      decideHaptic(
+        { category: 'TRADE_MODIFIED', appActive: true, serverSaysNotify: true },
+        {
+          ...on,
+          perCategory: { TRADE_MODIFIED: false },
+        },
+      ),
     ).toEqual({ haptic: null, reason: 'category-muted' });
   });
 
   it('respects the server’s decision about this notification', () => {
     expect(
-      decideHaptic(
-        { category: 'ORDER_FILLED', appActive: true, serverSaysNotify: false },
-        on,
-      ).haptic,
+      decideHaptic({ category: 'ORDER_FILLED', appActive: true, serverSaysNotify: false }, on)
+        .haptic,
     ).toBeNull();
   });
 

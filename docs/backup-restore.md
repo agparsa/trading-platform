@@ -187,7 +187,7 @@ Each failure then wrote `FAILED` to `status` and slept six hours, turning a
 one-second race into a six-hour-old "the backups are broken" signal. And
 `record` needs the same database, so **no row reached `scheduled_job_runs`
 either** — the platform could not see the failure it was reporting on disk, and
-`/health/jobs` showed the backup as *never run* rather than *failed*.
+`/health/jobs` showed the backup as _never run_ rather than _failed_.
 
 `backup.sh` now waits for the database before its first dump, and the wait is
 **bounded and startup-only**: a dump six hours in that cannot reach the database
@@ -195,5 +195,5 @@ is a real outage and still fails loudly, because waiting there would turn an
 incident into silence. `sh backup.sh wait` runs just the wait, which is also the
 quickest way for an operator to ask whether that container can see the database.
 
-`sh backup.sh once` deliberately does *not* wait — somebody running it by hand
+`sh backup.sh once` deliberately does _not_ wait — somebody running it by hand
 wants an answer now.

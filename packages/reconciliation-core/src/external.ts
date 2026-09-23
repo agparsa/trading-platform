@@ -696,9 +696,7 @@ export function compareFeeTotals(
 // ---------------------------------------------------------------------------
 
 /** Counts for a run summary, so a console can say what a pass found at a glance. */
-export function tally(
-  items: readonly ReconciliationItem[],
-): Readonly<Record<ItemStatus, number>> {
+export function tally(items: readonly ReconciliationItem[]): Readonly<Record<ItemStatus, number>> {
   const counts = Object.fromEntries(
     Object.values(ItemStatus).map((status) => [status, 0]),
   ) as Record<ItemStatus, number>;

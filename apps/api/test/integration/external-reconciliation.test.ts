@@ -363,9 +363,9 @@ suite('external reconciliation', () => {
           data: { note: 'never mind' },
         }),
       ).rejects.toThrow(/append-only/);
-      await expect(
-        prisma.resolutionRecord.delete({ where: { id: record.id } }),
-      ).rejects.toThrow(/append-only/);
+      await expect(prisma.resolutionRecord.delete({ where: { id: record.id } })).rejects.toThrow(
+        /append-only/,
+      );
     });
   });
 });

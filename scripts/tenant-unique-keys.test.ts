@@ -71,7 +71,8 @@ const GLOBAL_ON_PURPOSE: Readonly<Record<string, string>> = {
   'RefreshToken.tokenHash': 'a hash of a token this platform issued.',
   'TotpRecoveryCode.codeHash': 'a hash of a recovery code this platform generated.',
   'InviteCode.codeHash': 'a hash of an invite code this platform generated.',
-  'ApiKey.fingerprint': 'a fingerprint of a key this platform generated; it identifies the key itself.',
+  'ApiKey.fingerprint':
+    'a fingerprint of a key this platform generated; it identifies the key itself.',
   'ServiceToken.fingerprint': 'likewise, for service tokens.',
   'OutboxEvent.eventId':
     'randomUUID() at the moment of record — see outbox.service.ts. Global uniqueness is the ' +
@@ -272,7 +273,9 @@ describe('the rule, driven with a schema that is deliberately wrong', () => {
    * defect, and the version most likely to be written next.
    */
   it('rejects an index rooted in a parent that is not itself tenant-scoped', () => {
-    expect(audit(models, {}).unrooted).toContain('  Listing.registryId+label  —  @@unique([registryId, label])');
+    expect(audit(models, {}).unrooted).toContain(
+      '  Listing.registryId+label  —  @@unique([registryId, label])',
+    );
   });
 
   it('accepts tenantId anywhere in the index, not only first', () => {
@@ -292,7 +295,9 @@ describe('the rule, driven with a schema that is deliberately wrong', () => {
     const excused = audit(models, { 'Widget.serial': 'a minted id' });
     expect(excused.unrooted.join('\n')).not.toContain('Widget.serial');
     // And the other one is still flagged — one entry excuses one index.
-    expect(excused.unrooted).toContain('  Listing.registryId+label  —  @@unique([registryId, label])');
+    expect(excused.unrooted).toContain(
+      '  Listing.registryId+label  —  @@unique([registryId, label])',
+    );
     expect(excused.used).toEqual(new Set(['Widget.serial']));
     // An entry for something that is not flagged is not counted as used, which
     // is what makes the stale-entry check in the real suite bite.

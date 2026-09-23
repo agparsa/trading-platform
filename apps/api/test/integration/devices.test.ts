@@ -72,7 +72,11 @@ suite('Devices and push tokens (integration)', () => {
     devices = new DevicesService(
       prisma as unknown as PrismaService,
       secrets as never,
-      new SessionsService(prisma as unknown as PrismaService, new AuditService(prisma as unknown as PrismaService), new SilentEmailAdapter()),
+      new SessionsService(
+        prisma as unknown as PrismaService,
+        new AuditService(prisma as unknown as PrismaService),
+        new SilentEmailAdapter(),
+      ),
     );
   });
 
@@ -94,12 +98,14 @@ suite('Devices and push tokens (integration)', () => {
   });
 
   it('registers an installation and hands back no token', async () => {
-    const device = (await devices.register(userId, {
-      platform: DevicePlatform.IOS,
-      installationId: IPHONE,
-      pushToken: TOKEN_A,
-      model: 'iPhone 15 Pro',
-    })).device;
+    const device = (
+      await devices.register(userId, {
+        platform: DevicePlatform.IOS,
+        installationId: IPHONE,
+        pushToken: TOKEN_A,
+        model: 'iPhone 15 Pro',
+      })
+    ).device;
 
     expect(device.hasPushToken).toBe(true);
     expect(device.pushTokenFingerprint).toBe('1111');
@@ -153,11 +159,13 @@ suite('Devices and push tokens (integration)', () => {
       installationId: IPHONE,
       pushToken: TOKEN_A,
     });
-    const ipad = (await devices.register(userId, {
-      platform: DevicePlatform.IOS,
-      installationId: IPAD,
-      pushToken: TOKEN_B,
-    })).device;
+    const ipad = (
+      await devices.register(userId, {
+        platform: DevicePlatform.IOS,
+        installationId: IPAD,
+        pushToken: TOKEN_B,
+      })
+    ).device;
     const iphoneRow = await prisma.device.findFirstOrThrow({
       where: { userId, installationId: IPHONE },
     });
@@ -238,11 +246,13 @@ suite('Devices and push tokens (integration)', () => {
   });
 
   it('stops delivering to a revoked device and destroys its token', async () => {
-    const device = (await devices.register(userId, {
-      platform: DevicePlatform.ANDROID,
-      installationId: IPHONE,
-      pushToken: TOKEN_A,
-    })).device;
+    const device = (
+      await devices.register(userId, {
+        platform: DevicePlatform.ANDROID,
+        installationId: IPHONE,
+        pushToken: TOKEN_A,
+      })
+    ).device;
 
     await devices.deactivate(userId, device.id);
 
@@ -263,11 +273,13 @@ suite('Devices and push tokens (integration)', () => {
         displayName: 'Other',
       },
     });
-    const device = (await devices.register(other.id, {
-      platform: DevicePlatform.IOS,
-      installationId: IPHONE,
-      pushToken: TOKEN_A,
-    })).device;
+    const device = (
+      await devices.register(other.id, {
+        platform: DevicePlatform.IOS,
+        installationId: IPHONE,
+        pushToken: TOKEN_A,
+      })
+    ).device;
 
     await expect(devices.deactivate(userId, device.id)).rejects.toThrow();
     // And it is still receiving, which is what "refused" has to mean.
@@ -497,7 +509,7 @@ suite('Devices and push tokens (integration)', () => {
     await expect(tokens.rotate(browser.refreshToken)).resolves.toBeDefined();
   });
 
-  it("a person revoking their own phone signs that phone out too", async () => {
+  it('a person revoking their own phone signs that phone out too', async () => {
     const tokens = buildTokens(prisma as unknown as PrismaService);
     const user = { id: userId, email: 'trader@test.local', role: 'USER' as const };
     const phone = await tokens.issuePair(user, { installationId: IPHONE });
@@ -527,7 +539,9 @@ suite('Devices and push tokens (integration)', () => {
 
     // Rotate twice, each time claiming to be a different installation.
     const second = await tokens.rotate(first.refreshToken, { installationId: IPAD });
-    const third = await tokens.rotate(second.refreshToken, { installationId: 'installation-elsewhere' });
+    const third = await tokens.rotate(second.refreshToken, {
+      installationId: 'installation-elsewhere',
+    });
 
     const { device } = await devices.register(userId, {
       platform: DevicePlatform.IOS,
@@ -551,11 +565,13 @@ suite('Devices and push tokens (integration)', () => {
   });
 
   it('drops a device the provider has rejected', async () => {
-    const device = (await devices.register(userId, {
-      platform: DevicePlatform.ANDROID,
-      installationId: IPHONE,
-      pushToken: TOKEN_A,
-    })).device;
+    const device = (
+      await devices.register(userId, {
+        platform: DevicePlatform.ANDROID,
+        installationId: IPHONE,
+        pushToken: TOKEN_A,
+      })
+    ).device;
 
     await devices.markTokenRejected(device.id);
 

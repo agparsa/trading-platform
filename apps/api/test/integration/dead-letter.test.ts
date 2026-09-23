@@ -77,7 +77,10 @@ suite('dead-letter depth', () => {
    */
   it('counts a job that gave up, in the queue it gave up in', async () => {
     const before = await publisher.failedCounts();
-    expect(before.every((row) => row.failed === 0), 'the database was not clean').toBe(true);
+    expect(
+      before.every((row) => row.failed === 0),
+      'the database was not clean',
+    ).toBe(true);
     expect(before.length, 'every queue is reported, not only the failing ones').toBeGreaterThan(5);
 
     await failOneJob('reconciliation');
@@ -137,9 +140,7 @@ suite('dead-letter depth', () => {
     await clean.close();
 
     await refresh();
-    const withNone = await metrics.registry.getSingleMetricAsString(
-      'tp_dead_letter_newest_age_ms',
-    );
+    const withNone = await metrics.registry.getSingleMetricAsString('tp_dead_letter_newest_age_ms');
     // Every queue is empty at this point: -1, not 0. Zero would read as "one
     // failed this instant", which is the opposite of the truth.
     expect(withNone).toMatch(/tp_dead_letter_newest_age_ms\{queue="reconciliation"\} -1/);
@@ -172,9 +173,7 @@ suite('dead-letter depth', () => {
     await queue.clean(0, 100, 'failed');
     await queue.close();
     await refresh();
-    const drained = await metrics.registry.getSingleMetricAsString(
-      'tp_dead_letter_newest_age_ms',
-    );
+    const drained = await metrics.registry.getSingleMetricAsString('tp_dead_letter_newest_age_ms');
     expect(drained).toMatch(/tp_dead_letter_newest_age_ms\{queue="reconciliation"\} -1/);
   }, 20_000);
 
@@ -188,9 +187,9 @@ suite('dead-letter depth', () => {
       undefined as never,
       publisher,
     );
-    const refresh = (service as unknown as { refreshDeadLetters(): Promise<void> }).refreshDeadLetters.bind(
-      service,
-    );
+    const refresh = (
+      service as unknown as { refreshDeadLetters(): Promise<void> }
+    ).refreshDeadLetters.bind(service);
 
     /**
      * Its own failure, rather than one left behind by an earlier case. This

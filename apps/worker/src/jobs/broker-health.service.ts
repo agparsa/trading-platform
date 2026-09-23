@@ -198,7 +198,9 @@ export class BrokerHealthService {
 
     let credentials: BrokerCredentials;
     try {
-      credentials = deserialiseCredentials(secrets.open(credentialRow.sealed, idSealContext(connection.id)));
+      credentials = deserialiseCredentials(
+        secrets.open(credentialRow.sealed, idSealContext(connection.id)),
+      );
     } catch (error) {
       /**
        * The sealed blob will not open: a rotated encryption key, or a row

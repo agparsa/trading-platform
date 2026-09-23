@@ -16,13 +16,10 @@ import { isCronPattern } from '@tp/scheduling-core';
  * the only version of this failure anybody would notice.
  */
 const cron = (fallback: string) =>
-  z
-    .string()
-    .default(fallback)
-    .refine(isCronPattern, {
-      message:
-        'is not a cron pattern (five fields, or six with seconds). A four-field pattern parses and fires every minute.',
-    });
+  z.string().default(fallback).refine(isCronPattern, {
+    message:
+      'is not a cron pattern (five fields, or six with seconds). A four-field pattern parses and fires every minute.',
+  });
 
 /** The worker needs strictly less configuration than the API. Same discipline. */
 export const workerEnvSchema = z.object({

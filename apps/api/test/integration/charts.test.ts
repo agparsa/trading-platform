@@ -173,9 +173,7 @@ suite('Chart persistence (integration)', () => {
     await charts.deleteLayout(alice.userId, one?.id as string);
     expect(await charts.layouts(alice.userId)).toEqual([]);
     expect(
-      await codeOf(() =>
-        charts.deleteLayout(alice.userId, '00000000-0000-4000-8000-000000000001'),
-      ),
+      await codeOf(() => charts.deleteLayout(alice.userId, '00000000-0000-4000-8000-000000000001')),
     ).toBe(TradingErrorCode.RESOURCE_NOT_FOUND);
   });
 

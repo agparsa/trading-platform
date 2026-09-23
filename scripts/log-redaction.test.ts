@@ -38,7 +38,8 @@ function sourceFiles(directory: string): string[] {
       found.push(...sourceFiles(path));
       continue;
     }
-    if (!entry.endsWith('.ts') || entry.endsWith('.test.ts') || entry.endsWith('.spec.ts')) continue;
+    if (!entry.endsWith('.ts') || entry.endsWith('.test.ts') || entry.endsWith('.spec.ts'))
+      continue;
     found.push(path);
   }
   return found;

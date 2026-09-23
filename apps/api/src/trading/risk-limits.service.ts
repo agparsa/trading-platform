@@ -22,7 +22,12 @@ export interface EffectiveLimits {
 }
 
 /** The four caps the hierarchy governs. Stop-out levels are not among them — see below. */
-const CAPPED = ['maxPositionVolume', 'maxOpenPositions', 'maxGrossNotional', 'maxSymbolNetVolume'] as const;
+const CAPPED = [
+  'maxPositionVolume',
+  'maxOpenPositions',
+  'maxGrossNotional',
+  'maxSymbolNetVolume',
+] as const;
 type Capped = (typeof CAPPED)[number];
 
 /**

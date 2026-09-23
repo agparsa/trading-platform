@@ -198,23 +198,23 @@ export class BlotterService {
       rows,
       take,
       (row) => ({
-      id: row.id,
-      accountId: row.accountId,
-      accountNumber: row.account.number,
-      ownerEmail: row.account.user.email,
-      symbol: row.symbol.code,
-      side: row.side,
-      status: row.status,
-      volume: row.volume.toString(),
-      entryPrice: row.entryPrice.toString(),
-      currentPrice: row.currentPrice?.toString() ?? null,
-      stopLoss: row.stopLoss?.toString() ?? null,
-      takeProfit: row.takeProfit?.toString() ?? null,
-      margin: row.margin.toString(),
-      commission: row.commission.toString(),
-      swap: row.swap.toString(),
-      openedAt: row.openedAt.toISOString(),
-      closedAt: row.closedAt?.toISOString() ?? null,
+        id: row.id,
+        accountId: row.accountId,
+        accountNumber: row.account.number,
+        ownerEmail: row.account.user.email,
+        symbol: row.symbol.code,
+        side: row.side,
+        status: row.status,
+        volume: row.volume.toString(),
+        entryPrice: row.entryPrice.toString(),
+        currentPrice: row.currentPrice?.toString() ?? null,
+        stopLoss: row.stopLoss?.toString() ?? null,
+        takeProfit: row.takeProfit?.toString() ?? null,
+        margin: row.margin.toString(),
+        commission: row.commission.toString(),
+        swap: row.swap.toString(),
+        openedAt: row.openedAt.toISOString(),
+        closedAt: row.closedAt?.toISOString() ?? null,
       }),
       'openedAt',
     );
@@ -394,10 +394,7 @@ function keyset(cursor: string | undefined, field: KeyField = 'createdAt') {
     });
   }
   return {
-    OR: [
-      { [field]: { lt: decoded.at } },
-      { [field]: decoded.at, id: { lt: decoded.id } },
-    ],
+    OR: [{ [field]: { lt: decoded.at } }, { [field]: decoded.at, id: { lt: decoded.id } }],
   };
 }
 
@@ -413,7 +410,8 @@ function page<Row extends { id: string } & Partial<Record<KeyField, Date>>, Out>
   const at = last?.[field];
   return {
     rows: visible.map(map),
-    nextCursor: hasMore && last !== undefined && at !== undefined ? encodeCursor(at, last.id) : null,
+    nextCursor:
+      hasMore && last !== undefined && at !== undefined ? encodeCursor(at, last.id) : null,
   };
 }
 

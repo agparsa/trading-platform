@@ -63,9 +63,7 @@ describe('server and browser CSV agree', () => {
    * the guard *set* is caught whichever way it goes, without anybody having to
    * predict which character the next spreadsheet trick will use.
    */
-  const LEADING = [
-    ...'=+-@ \t\r\n\v\f\u00a0\u200b\u2212!#$%^&*()[]{}<>?/\\|~`\'";:,.0123456789aZ',
-  ];
+  const LEADING = [...'=+-@ \t\r\n\v\f\u00a0\u200b\u2212!#$%^&*()[]{}<>?/\\|~`\'";:,.0123456789aZ'];
 
   it.each(LEADING)('agree on a field starting with %j', (lead) => {
     const value = `${lead}cmd|calc`;

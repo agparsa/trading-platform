@@ -134,7 +134,10 @@ const blotterQuerySchema = z
     status: z.string().trim().min(1).max(32).optional(),
     since: z.string().datetime({ offset: true }).optional(),
     until: z.string().datetime({ offset: true }).optional(),
-    limit: z.string().regex(/^\d{1,4}$/).optional(),
+    limit: z
+      .string()
+      .regex(/^\d{1,4}$/)
+      .optional(),
     cursor: z.string().min(1).max(512).optional(),
   })
   .strict();

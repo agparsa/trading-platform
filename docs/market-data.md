@@ -68,11 +68,11 @@ charting datafeed expects.
 
 ## What a day is here — three answers, on purpose and not interchangeable
 
-| Surface | A day is | Where |
-| --- | --- | --- |
-| today's P&L, a `DAY` order's expiry, the swap accrual key, a report window | midnight in `TRADING_SERVER_TIMEZONE` | `startOfTradingDay` / `endOfTradingDay` |
-| a session window | the **instrument's own** IANA zone, per symbol | `MarketSession.timezone` |
-| a `1D` candle | **midnight UTC, always** | `bucketStart`, on the epoch grid |
+| Surface                                                                    | A day is                                       | Where                                   |
+| -------------------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------- |
+| today's P&L, a `DAY` order's expiry, the swap accrual key, a report window | midnight in `TRADING_SERVER_TIMEZONE`          | `startOfTradingDay` / `endOfTradingDay` |
+| a session window                                                           | the **instrument's own** IANA zone, per symbol | `MarketSession.timezone`                |
+| a `1D` candle                                                              | **midnight UTC, always**                       | `bucketStart`, on the epoch grid        |
 
 The third is the one a reader would not guess, and it is worth saying out loud
 because nothing else in this platform works that way. `bucketStart` aligns to

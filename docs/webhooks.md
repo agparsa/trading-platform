@@ -97,11 +97,17 @@ the same fact; an hourly sweep would send it seven hundred times in a month.
   "accountId": "…",
   "aggregate": { "type": "account", "id": "…" },
   "data": {
-    "runId": "…", "accountId": "…", "accountNumber": "TP-100001",
-    "code": "LEDGER_DRIFT", "severity": "CRITICAL",
+    "runId": "…",
+    "accountId": "…",
+    "accountNumber": "TP-100001",
+    "code": "LEDGER_DRIFT",
+    "severity": "CRITICAL",
     "message": "…",
-    "expected": "100000", "actual": "100500", "difference": "500",
-    "subjectType": null, "subjectId": null,
+    "expected": "100000",
+    "actual": "100500",
+    "difference": "500",
+    "subjectType": null,
+    "subjectId": null,
     "reopened": false,
     "detectedAt": "2026-09-11T20:14:02.118Z"
   }

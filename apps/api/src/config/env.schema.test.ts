@@ -247,7 +247,9 @@ describe('a setting left blank', () => {
     // The two failure modes, kept as the reason this exists. `.min(1)` refuses
     // a coerced `0`, so the API would not start…
     const schema = (
-      envSchema as unknown as { shape: Record<string, { safeParse(v: unknown): { success: boolean } }> }
+      envSchema as unknown as {
+        shape: Record<string, { safeParse(v: unknown): { success: boolean } }>;
+      }
     ).shape;
     expect(schema['KYC_VALID_FOR_DAYS']!.safeParse(0).success).toBe(false);
     // …and where a `0` reaches the code, "verified within the last zero days"

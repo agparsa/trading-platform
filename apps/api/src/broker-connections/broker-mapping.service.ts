@@ -97,7 +97,9 @@ export class BrokerMappingService {
    * Candidate pairings, by normalised name. A suggestion is a shortlist for a
    * person, never a mapping: `confirm` is a separate, audited act.
    */
-  async suggest(connectionId: string): Promise<readonly { symbolCode: string; externalSymbol: string }[]> {
+  async suggest(
+    connectionId: string,
+  ): Promise<readonly { symbolCode: string; externalSymbol: string }[]> {
     const [instruments, symbols, existing] = await Promise.all([
       this.connections.withAdapter(connectionId, (adapter) => adapter.listInstruments()),
       this.prisma.symbol.findMany({ where: { enabled: true }, select: { code: true } }),
@@ -344,7 +346,8 @@ function termDifferences(
 ): string[] {
   const differences: string[] = [];
   const compare = (name: string, was: Prisma.Decimal | null, now: string) => {
-    if (was !== null && was.toString() !== now) differences.push(`${name}: ${was.toString()} → ${now}`);
+    if (was !== null && was.toString() !== now)
+      differences.push(`${name}: ${was.toString()} → ${now}`);
   };
   compare('contractSize', mapping.contractSize, venue.contractSize);
   compare('volumeStep', mapping.volumeStep, venue.volumeStep);

@@ -114,7 +114,9 @@ export class IdempotencyService {
      * for the key's whole lifetime — a day — and the client's only way forward
      * was a fresh key, which is the one thing the design asks them never to do.
      */
-    const takeoverAfterMs = this.config.getOrThrow('IDEMPOTENCY_TAKEOVER_AFTER_MS', { infer: true });
+    const takeoverAfterMs = this.config.getOrThrow('IDEMPOTENCY_TAKEOVER_AFTER_MS', {
+      infer: true,
+    });
     const cutoff = new Date(Date.now() - takeoverAfterMs);
     if (existing.status === 'IN_PROGRESS' && existing.createdAt < cutoff) {
       const taken = await this.prisma.idempotencyKey.updateMany({

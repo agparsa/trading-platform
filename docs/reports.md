@@ -27,22 +27,22 @@ deleting the record.
 A report is evidence that an operator was shown a particular set of rows on a
 particular day. The record outlives the file.
 
-| Column | Why |
-| --- | --- |
-| `params` | The filters as the request made them, so a file can be explained later. Never a secret. |
-| `sha256`, `size_bytes`, `row_count` | In the clear. What the file was, after it is gone. |
-| `content` | Sealed. Null before the job runs and after the sweep. |
-| `expires_at` | Written by the job that produced the file, so retention is decided once at production rather than re-derived from a setting that may since have changed. A file promised for fourteen days keeps its fourteen days. |
+| Column                              | Why                                                                                                                                                                                                                 |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `params`                            | The filters as the request made them, so a file can be explained later. Never a secret.                                                                                                                             |
+| `sha256`, `size_bytes`, `row_count` | In the clear. What the file was, after it is gone.                                                                                                                                                                  |
+| `content`                           | Sealed. Null before the job runs and after the sweep.                                                                                                                                                               |
+| `expires_at`                        | Written by the job that produced the file, so retention is decided once at production rather than re-derived from a setting that may since have changed. A file promised for fourteen days keeps its fourteen days. |
 
 ### The kinds
 
-| Kind | A row is | Windowed on | Needs |
-| --- | --- | --- | --- |
-| `TRADES` | one closed trade: entry, exit, costs, net profit | exit | `accounts.read_any` |
-| `LEDGER` | one ledger entry, with the balance after it | entry | `accounts.read_any` |
-| `AUDIT` | one recorded action: who, what, before and after | record | `audit.read` |
-| `ORDERS` | one order placed, whatever became of it | **placement** | `accounts.read_any` |
-| `POSITIONS` | one position opened, open ones included | **opening** | `accounts.read_any` |
+| Kind        | A row is                                         | Windowed on   | Needs               |
+| ----------- | ------------------------------------------------ | ------------- | ------------------- |
+| `TRADES`    | one closed trade: entry, exit, costs, net profit | exit          | `accounts.read_any` |
+| `LEDGER`    | one ledger entry, with the balance after it      | entry         | `accounts.read_any` |
+| `AUDIT`     | one recorded action: who, what, before and after | record        | `audit.read`        |
+| `ORDERS`    | one order placed, whatever became of it          | **placement** | `accounts.read_any` |
+| `POSITIONS` | one position opened, open ones included          | **opening**   | `accounts.read_any` |
 
 Each kind's columns are the matching screen's, in its order, deliberately: an
 export that disagrees with the screen it came from starts an argument nobody can
@@ -58,8 +58,8 @@ disagree about what happened.
 
 ### Which day, as well as which timestamp
 
-The section below reasons about *which timestamp* a window is anchored on. It
-said nothing about *which timezone*, and the panel had quietly chosen one:
+The section below reasons about _which timestamp_ a window is anchored on. It
+said nothing about _which timezone_, and the panel had quietly chosen one:
 
 ```ts
 from: new Date(`${from}T00:00:00.000Z`).toISOString(),
@@ -102,8 +102,8 @@ March on the 1st of April and again on the 1st of May returns different rows for
 a window that did not change. "Every order placed in March" is a sentence an
 operator can act on.
 
-What still moves is said out loud rather than hidden: the *set* of rows is fixed
-by that choice, the *contents* are not. An order placed on the 31st and still
+What still moves is said out loud rather than hidden: the _set_ of rows is fixed
+by that choice, the _contents_ are not. An order placed on the 31st and still
 resting has a `status` and a `filled_volume` that will differ tomorrow. Two
 exports of the same window can therefore disagree, and that is the difference
 between "which orders were placed" and "what became of them" — for the second,
@@ -126,7 +126,7 @@ at — so the column would be easy to add and wrong in a specific way: true at t
 instant the file was built and never again, printed under a heading that says
 March and read in June as a March figure. `current_price` itself is in the file,
 because a mark whose date is on the page is evidence. What else goes out is what
-is *settled* about the position: commission, swap, realized profit, margin held.
+is _settled_ about the position: commission, swap, realized profit, margin held.
 `reports.test.ts` fails if an unrealized column appears.
 
 Three CHECK constraints keep the status honest: READY must have a file, a hash,
@@ -200,7 +200,7 @@ or no worker was listening on `reports` at that moment, the row sits there
 looking like it is about to start.
 
 **RUNNING with no worker.** A process killed mid-build leaves the row claimed,
-and *nothing can ever pick it up again*: the claim is a conditional update from
+and _nothing can ever pick it up again_: the claim is a conditional update from
 QUEUED, so the mechanism that makes retries safe is exactly what makes a dead
 claim permanent. This is the sharper of the two and the one that does not
 resolve itself.
@@ -208,7 +208,7 @@ resolve itself.
 `MaintenanceService.recoverStalledReports` handles both, on the existing
 retention schedule: a RUNNING row idle for 30 minutes goes back to QUEUED, and
 QUEUED rows older than that are re-queued by the queue registry, which owns the
-queues. Deciding *which* is a question about rows and is testable without a
+queues. Deciding _which_ is a question about rows and is testable without a
 Redis; putting them back on the queue is not.
 
 After six hours a report that is still not finished is marked FAILED with words

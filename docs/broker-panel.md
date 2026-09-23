@@ -172,6 +172,7 @@ that really are absent keep their entry and their reason.
   for it rather than to the firm. The client-side CSV buttons on Audit, the book
   and the trader's history stay — they are the right tool for the page on
   screen, and are now the only thing claiming to be that.
+
 - **Alerts.** `Alert` (price alerts) is Phase 8, with the notification
   channels. Admin alert _rules_ — thresholds that raise something when a figure
   moves — do not exist and are not designed.

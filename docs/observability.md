@@ -36,7 +36,7 @@ healthy under load, and the one that will regress first.
 `tp_http_request_duration_seconds` and `tp_execution_latency_seconds` — from the
 first phase until now. Six requests through a running instance produced a
 `# HELP` line and zero samples. That is worse than a missing metric: Prometheus
-answers a query against it with *no data* rather than an error, a panel draws an
+answers a query against it with _no data_ rather than an error, a panel draws an
 empty chart rather than a broken one, and an alert on a series that never exists
 never fires and never says why. `ExecutionLatencyHigh` and `RequestsShed` were
 both in that state, and four panels of the shipped dashboard.
@@ -48,7 +48,7 @@ alerts and dashboard query is one this build exports.
 The two HTTP metrics are recorded by Express middleware mounted **ahead of the
 drain**, not by a Nest interceptor: admission control answers a shed request
 itself without calling `next()`, and those 503s are exactly what `RequestsShed`
-counts. The `route` label is the route *pattern*, never the URL — a label value
+counts. The `route` label is the route _pattern_, never the URL — a label value
 is a time series, and `/api/v1/accounts/<uuid>/positions` would mean one series
 per account for ever, with account identifiers inside a store that has its own
 access rules and its own retention.
@@ -89,7 +89,7 @@ and transitions, event-loop lag and heap. A deployment test checks that every
 so a panel can never be a flat line for a metric nobody emits.
 
 The alert rules in `docker/observability/alerts.yml` implement the table under
-*What to alert on* below, one rule per row, and that correspondence is checked
+_What to alert on_ below, one rule per row, and that correspondence is checked
 rather than asserted. Thresholds are starting points for a two-core deployment;
 the reasoning beside each is the part to keep when they are tuned. Routing them
 to a pager is Alertmanager configuration this repository does not presume to
@@ -143,30 +143,30 @@ does not ship fails, and a rule not named here fails too.
 
 That check exists because this table spent its whole life as prose. It listed
 dead-letter depth, the three scheduled-job signals and the isolation gauge under
-a heading that says *alert on this* — and **none of them had a rule**. The file
+a heading that says _alert on this_ — and **none of them had a rule**. The file
 shipped nine alerts, the table asked for nine signals, and they were a different
 nine. Dead-letter depth was the worst of them: there was no series at all, so an
 operator following the row had to open Redis by hand.
 
-| Signal                                        | Rule                       | Why                                                              |
-| --------------------------------------------- | -------------------------- | ---------------------------------------------------------------- |
-| An API process unreachable                    | `ApiTargetDown`            | The instance is not there at all. Readiness itself is the container healthcheck's job; this is the coarser question |
-| `tp_market_feed_age_ms` over ten seconds      | `MarketFeedStale`          | Orders are being refused `STALE_QUOTE`, or soon will be           |
-| `tp_market_ticks_total` flat                  | `MarketFeedFlat`           | The feed died; quotes are going stale                             |
-| Nothing holds the trigger-engine lease        | `NoLeaderForTriggerEngine` | Stops and take-profits are not being evaluated anywhere            |
-| `tp_execution_latency_seconds` p99 rising     | `ExecutionLatencyHigh`     | The engine is falling behind the market                           |
-| Requests shed as overloaded                   | `RequestsShed`             | Admission control is declining; add a serving instance            |
-| Ledger vs `accounts.balance` drift            | `ReconciliationFindingsOpen` | Reconciliation found a discrepancy — the most serious alert here |
-| Market-data integrity signals open            | `IntegritySignalsOpen`     | The feed is producing prices the gate refused                     |
-| Valuations deferred for ten minutes           | `RealtimeValuationsDeferred` | Screens are refreshing less often than the interval             |
-| Event-loop lag p99 over half a second         | `EventLoopLag`             | The process is saturated                                          |
-| `tp_dead_letter_depth` > 0, newest under a day | `DeadLetterNotEmpty`       | A financial job failed and is waiting for a human                 |
-| `tp_dead_letter_newest_age_ms` over a day, depth > 0 | `DeadLetterBacklog` | Nothing new is failing, and nobody has cleared what did           |
-| `tp_scheduled_job_late` > 0                   | `ScheduleLate`             | A schedule has stopped, is failing, or was never registered — the one failure here that produces no error at all |
-| `tp_scheduled_job_age_ms` = -1                | `ScheduleNeverSucceeded`   | That job has run and has never succeeded. Usually it is failing every time |
-| `tp_scheduled_job_late{job="backup"}`         | `BackupLate`               | The backup container has stopped or is failing. Its dumps are the only thing standing between a lost primary and a lost business |
-| `tp_tenant_isolation{configured="true"}` = 0  | `TenantIsolationAbsent`    | The deployment asked for row-level security and does not have it. The `configured` label is what makes this expressible: without it the reading is indistinguishable from the single-role posture, where `0` is correct |
-| A job **missing** from `/health/jobs`         | — `verify:production`      | It has never run once — no row exists. A gauge cannot say this, because there is nothing to label |
+| Signal                                               | Rule                         | Why                                                                                                                                                                                                                     |
+| ---------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An API process unreachable                           | `ApiTargetDown`              | The instance is not there at all. Readiness itself is the container healthcheck's job; this is the coarser question                                                                                                     |
+| `tp_market_feed_age_ms` over ten seconds             | `MarketFeedStale`            | Orders are being refused `STALE_QUOTE`, or soon will be                                                                                                                                                                 |
+| `tp_market_ticks_total` flat                         | `MarketFeedFlat`             | The feed died; quotes are going stale                                                                                                                                                                                   |
+| Nothing holds the trigger-engine lease               | `NoLeaderForTriggerEngine`   | Stops and take-profits are not being evaluated anywhere                                                                                                                                                                 |
+| `tp_execution_latency_seconds` p99 rising            | `ExecutionLatencyHigh`       | The engine is falling behind the market                                                                                                                                                                                 |
+| Requests shed as overloaded                          | `RequestsShed`               | Admission control is declining; add a serving instance                                                                                                                                                                  |
+| Ledger vs `accounts.balance` drift                   | `ReconciliationFindingsOpen` | Reconciliation found a discrepancy — the most serious alert here                                                                                                                                                        |
+| Market-data integrity signals open                   | `IntegritySignalsOpen`       | The feed is producing prices the gate refused                                                                                                                                                                           |
+| Valuations deferred for ten minutes                  | `RealtimeValuationsDeferred` | Screens are refreshing less often than the interval                                                                                                                                                                     |
+| Event-loop lag p99 over half a second                | `EventLoopLag`               | The process is saturated                                                                                                                                                                                                |
+| `tp_dead_letter_depth` > 0, newest under a day       | `DeadLetterNotEmpty`         | A financial job failed and is waiting for a human                                                                                                                                                                       |
+| `tp_dead_letter_newest_age_ms` over a day, depth > 0 | `DeadLetterBacklog`          | Nothing new is failing, and nobody has cleared what did                                                                                                                                                                 |
+| `tp_scheduled_job_late` > 0                          | `ScheduleLate`               | A schedule has stopped, is failing, or was never registered — the one failure here that produces no error at all                                                                                                        |
+| `tp_scheduled_job_age_ms` = -1                       | `ScheduleNeverSucceeded`     | That job has run and has never succeeded. Usually it is failing every time                                                                                                                                              |
+| `tp_scheduled_job_late{job="backup"}`                | `BackupLate`                 | The backup container has stopped or is failing. Its dumps are the only thing standing between a lost primary and a lost business                                                                                        |
+| `tp_tenant_isolation{configured="true"}` = 0         | `TenantIsolationAbsent`      | The deployment asked for row-level security and does not have it. The `configured` label is what makes this expressible: without it the reading is indistinguishable from the single-role posture, where `0` is correct |
+| A job **missing** from `/health/jobs`                | — `verify:production`        | It has never run once — no row exists. A gauge cannot say this, because there is nothing to label                                                                                                                       |
 
 ### Why the dead-letter set needs two alerts
 
@@ -177,8 +177,8 @@ financial job that gave up stays visible until a human has looked at it.
 
 But an alert on depth alone would have paged about a three-week-old resolved
 incident every five minutes for ever, and a page that is always firing is a page
-nobody reads. Depth says *how many are waiting*; age says *whether anything is
-still going wrong*. They are different questions and one rule cannot ask both.
+nobody reads. Depth says _how many are waiting_; age says _whether anything is
+still going wrong_. They are different questions and one rule cannot ask both.
 
 So `DeadLetterNotEmpty` pages only while the newest failure is under a day old,
 and `DeadLetterBacklog` warns, quietly and after an hour, that somebody has a
@@ -190,7 +190,7 @@ job must stay visible until someone has looked at it.
 
 The two scheduled-job signals are the ones worth adding first if this list is
 being implemented from scratch. Everything else here alerts on something going
-*wrong*; those two alert on something not happening at all, which is the failure
+_wrong_; those two alert on something not happening at all, which is the failure
 mode nothing else in this platform can see. `docs/worker.md` has the mechanism
 and the three decisions behind it.
 

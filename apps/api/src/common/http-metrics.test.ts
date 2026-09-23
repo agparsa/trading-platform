@@ -89,10 +89,14 @@ describe('httpMetrics', () => {
       }
 
       const printed = await registry.metrics();
-      expect(printed).toContain('tp_http_requests_total{method="GET",route="/accounts/:id",status="200"} 1');
+      expect(printed).toContain(
+        'tp_http_requests_total{method="GET",route="/accounts/:id",status="200"} 1',
+      );
       expect(printed).toContain(`route="${UNMATCHED}"`);
       expect(printed, 'an account id reached a metrics label').not.toContain('8b1e0533');
-      expect(printed).toMatch(/tp_http_request_duration_seconds_count\{[^}]*route="\/accounts\/:id"[^}]*\} 1/);
+      expect(printed).toMatch(
+        /tp_http_request_duration_seconds_count\{[^}]*route="\/accounts\/:id"[^}]*\} 1/,
+      );
     } finally {
       server.close();
     }

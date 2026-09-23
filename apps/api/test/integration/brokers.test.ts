@@ -24,7 +24,9 @@ import {
   DEFAULT_TENANT_SLUG,
   createTestClient,
   hasTestDatabase,
-  resetDatabase, testPasswordService } from './harness';
+  resetDatabase,
+  testPasswordService,
+} from './harness';
 import { redisStub } from './redis-stub';
 
 const suite = hasTestDatabase ? describe : describe.skip;

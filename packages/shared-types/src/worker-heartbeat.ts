@@ -58,7 +58,8 @@ export function workerHeartbeatKey(instance: string): string {
 }
 
 const isString = (value: unknown): value is string => typeof value === 'string' && value !== '';
-const isIso = (value: unknown): value is string => isString(value) && !Number.isNaN(Date.parse(value));
+const isIso = (value: unknown): value is string =>
+  isString(value) && !Number.isNaN(Date.parse(value));
 
 /**
  * A heartbeat, or `null` for anything that is not one.

@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  type OnApplicationBootstrap,
+  type OnApplicationShutdown,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TickWindow, type Tick } from '@tp/market-core';
 import { withTenant, withoutTenantScope } from '@tp/tenancy';
@@ -146,16 +152,19 @@ export class PriceAlertsRunner implements OnApplicationBootstrap, OnApplicationS
     if (this.timer !== null || this.stopped) return;
     const interval = this.config.getOrThrow('PRICE_ALERT_SWEEP_INTERVAL_MS', { infer: true });
     const run = (): void => {
-      this.timer = setTimeout(() => {
-        void this.sweep()
-          .catch((error: unknown) => {
-            this.logger.error({ err: error }, 'Price alert sweep failed');
-          })
-          .finally(() => {
-            this.timer = null;
-            if (!this.stopped && this.leadership.isLeading(LeaderLoop.PRICE_ALERTS)) run();
-          });
-      }, Math.max(100, interval));
+      this.timer = setTimeout(
+        () => {
+          void this.sweep()
+            .catch((error: unknown) => {
+              this.logger.error({ err: error }, 'Price alert sweep failed');
+            })
+            .finally(() => {
+              this.timer = null;
+              if (!this.stopped && this.leadership.isLeading(LeaderLoop.PRICE_ALERTS)) run();
+            });
+        },
+        Math.max(100, interval),
+      );
       this.timer.unref?.();
     };
     run();

@@ -147,7 +147,7 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
     if (reason !== 'SHUTDOWN') {
       this.logger.warn(
         { reason },
-        'Trigger engine detached — stop-loss and take-profit are another instance\'s job now',
+        "Trigger engine detached — stop-loss and take-profit are another instance's job now",
       );
     }
   }

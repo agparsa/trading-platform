@@ -17,7 +17,13 @@ import { AuditService } from '../../src/common/audit/audit.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { RolesService } from '../../src/permissions/roles.service';
 import { redisStub } from './redis-stub';
-import { createTestClient, hasTestDatabase, resetDatabase, DEFAULT_TENANT_ID, testPasswordService } from './harness';
+import {
+  createTestClient,
+  hasTestDatabase,
+  resetDatabase,
+  DEFAULT_TENANT_ID,
+  testPasswordService,
+} from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
 

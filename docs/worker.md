@@ -15,17 +15,17 @@ services, not the queues.
 
 ## Jobs
 
-| Queue               | Schedule (default) | What it does                                                      | Silence costs                       |
-| ------------------- | ------------------ | ----------------------------------------------------------------- | ----------------------------------- |
-| `swap-accrual`      | `0 0 * * *`        | Charges or credits overnight financing on every open position     | money, every night                  |
-| `reconciliation`    | `15 * * * *`       | Replays every ledger and compares it to the cached balance        | drift found by a person, not a check |
-| `idempotency-sweep` | `30 * * * *`       | Expired keys, abandoned claims, stale payments, identity-document retention, expired and stalled reports | a data-retention duty |
-| `broker-health`     | `* * * * *`        | Polls each venue connection and ages its credentials              | an expiry nobody sees coming        |
-| `outbox-relay`      | `* * * * *`        | Moves committed events out of the outbox                          | every event stops leaving           |
-| `webhook-delivery`  | `* * * * *`        | Delivers due webhook attempts                                     | deliveries stay due for ever        |
-| `reports`           | on demand          | Builds a requested export                                         | —                                   |
-| `notifications`     | on demand          | Delivers a push notification                                      | —                                   |
-| `account-snapshot`  | —                  | **No processor yet.** Needs live valuation; see below             | —                                   |
+| Queue               | Schedule (default) | What it does                                                                                             | Silence costs                        |
+| ------------------- | ------------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `swap-accrual`      | `0 0 * * *`        | Charges or credits overnight financing on every open position                                            | money, every night                   |
+| `reconciliation`    | `15 * * * *`       | Replays every ledger and compares it to the cached balance                                               | drift found by a person, not a check |
+| `idempotency-sweep` | `30 * * * *`       | Expired keys, abandoned claims, stale payments, identity-document retention, expired and stalled reports | a data-retention duty                |
+| `broker-health`     | `* * * * *`        | Polls each venue connection and ages its credentials                                                     | an expiry nobody sees coming         |
+| `outbox-relay`      | `* * * * *`        | Moves committed events out of the outbox                                                                 | every event stops leaving            |
+| `webhook-delivery`  | `* * * * *`        | Delivers due webhook attempts                                                                            | deliveries stay due for ever         |
+| `reports`           | on demand          | Builds a requested export                                                                                | —                                    |
+| `notifications`     | on demand          | Delivers a push notification                                                                             | —                                    |
+| `account-snapshot`  | —                  | **No processor yet.** Needs live valuation; see below                                                    | —                                    |
 
 Cron expressions are evaluated in `TRADING_SERVER_TIMEZONE`, not the host's, and
 are **validated at boot**: a pattern with the wrong number of fields refuses to
@@ -57,19 +57,19 @@ keys, or a worker that never came back after a deploy, looks identical from
 inside: quiet.
 
 So every scheduled run is recorded in `scheduled_job_runs` — one row per job,
-holding the last start, the last finish, the last *success* kept separately, the
+holding the last start, the last finish, the last _success_ kept separately, the
 outcome, and the totals. From those rows:
 
-| Where | What it gives you |
-| --- | --- |
-| `GET /health/jobs` | up or down, with a sentence per problem. Alert on it; do not route on it |
-| `tp_scheduled_job_age_ms{job}` | how long since that job last succeeded; `-1` means never |
-| `tp_scheduled_job_late{job}` | `1` when it is later than its own cron allows, failing, never run, or misconfigured |
-| `pnpm verify:production` | one check, the only one that can fail on a deployment where everything else passes |
+| Where                          | What it gives you                                                                   |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| `GET /health/jobs`             | up or down, with a sentence per problem. Alert on it; do not route on it            |
+| `tp_scheduled_job_age_ms{job}` | how long since that job last succeeded; `-1` means never                            |
+| `tp_scheduled_job_late{job}`   | `1` when it is later than its own cron allows, failing, never run, or misconfigured |
+| `pnpm verify:production`       | one check, the only one that can fail on a deployment where everything else passes  |
 
-### Is a worker there *now*?
+### Is a worker there _now_?
 
-The rows above say what *ran*. They cannot say what is running: a daily job's
+The rows above say what _ran_. They cannot say what is running: a daily job's
 row is yesterday's worker's for a day, and the worker serves no HTTP, so until
 21 September it could not be asked — it was the one container that could sit on
 last week's image with nothing outside the host able to tell, which is what the
@@ -79,7 +79,7 @@ So every worker process writes a heartbeat: one Redis key under
 `tp:worker:heartbeat:<host>:<pid>`, holding its instance, role, queues, start
 time and build marker, rewritten every thirty seconds with a ninety-second TTL
 and deleted on a clean shutdown. Redis rather than the database, deliberately:
-this is *presence*, and presence that outlives its process is the failure mode.
+this is _presence_, and presence that outlives its process is the failure mode.
 A Redis flush costs one interval of "no worker seen"; the next beat repairs it.
 
 `GET /health/jobs` carries a second indicator, `workers`, naming every instance
@@ -99,7 +99,7 @@ Three details worth knowing, because each was a decision:
   the **longest** gap over the next few firings — otherwise a weekday schedule
   would report a healthy job as stopped every Saturday.
 - **A manual run does not count.** Only the job BullMQ's scheduler adds is
-  recorded. Otherwise an operator pressing "run now" *because* the numbers look
+  recorded. Otherwise an operator pressing "run now" _because_ the numbers look
   stale would reset the clock and hide the dead scheduler they were reacting to.
 - **A failing job is not a quiet one, and is not healthy either.** The last
   success is kept apart from the last finish, so a job that has run every minute

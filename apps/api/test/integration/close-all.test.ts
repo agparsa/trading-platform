@@ -163,11 +163,16 @@ suite('Close all (integration)', () => {
 
     const result = await stack.positions.closeAll(userId, accountId);
     expect(result.asked).toBe(1);
-    expect(await prisma.position.count({ where: { accountId: second.id, status: 'OPEN' } })).toBe(1);
+    expect(await prisma.position.count({ where: { accountId: second.id, status: 'OPEN' } })).toBe(
+      1,
+    );
   });
 
   it('refuses an account the caller may not close on, before anything moves', async () => {
-    const mine = await createAccount(prisma, { balance: '1000000', email: `m-${Date.now()}@t.local` });
+    const mine = await createAccount(prisma, {
+      balance: '1000000',
+      email: `m-${Date.now()}@t.local`,
+    });
     const theirs = await createAccount(prisma, {
       balance: '1000000',
       email: `t-${Date.now()}@t.local`,

@@ -81,7 +81,9 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
    * initialising; `onApplicationBootstrap` runs once everything is ready.
    */
   async onApplicationBootstrap(): Promise<void> {
-    this.resolutions = parseResolutionList(this.config.getOrThrow('CANDLE_RESOLUTIONS', { infer: true }));
+    this.resolutions = parseResolutionList(
+      this.config.getOrThrow('CANDLE_RESOLUTIONS', { infer: true }),
+    );
 
     /**
      * Every instance relays to begin with — including the one that will end up

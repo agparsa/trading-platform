@@ -1,10 +1,7 @@
 {
   "uid": "tp-platform",
   "title": "Trading platform",
-  "tags": [
-    "trading-platform",
-    "§63"
-  ],
+  "tags": ["trading-platform", "§63"],
   "timezone": "utc",
   "schemaVersion": 39,
   "version": 1,

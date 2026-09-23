@@ -171,9 +171,7 @@ export function ReportsPanel() {
       </section>
 
       <section className="rounded border border-terminal-border">
-        <div className="border-b border-terminal-border px-3 py-2 text-xs font-medium">
-          Reports
-        </div>
+        <div className="border-b border-terminal-border px-3 py-2 text-xs font-medium">Reports</div>
         {downloadError !== null ? (
           <div className="px-3 pt-2">
             <ErrorLine error={downloadError} />
@@ -222,9 +220,7 @@ export function ReportsPanel() {
                         : STATUS_MEANS[report.status]}
                     </span>
                   </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">
-                    {report.rowCount ?? '—'}
-                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{report.rowCount ?? '—'}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{bytes(report.sizeBytes)}</td>
                   <td className="px-2 py-1.5 text-right">
                     <Button

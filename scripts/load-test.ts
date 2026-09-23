@@ -127,9 +127,7 @@ async function registerTrader(index: number): Promise<Trader> {
    */
   if (registered.status !== 201 && registered.status !== 202) {
     const body = (await registered.text()).slice(0, 200);
-    throw new Error(
-      `trader ${index} could not register: HTTP ${registered.status} ${body}`,
-    );
+    throw new Error(`trader ${index} could not register: HTTP ${registered.status} ${body}`);
   }
   const login = await fetch(`${BASE}/api/v1/auth/login`, {
     method: 'POST',
@@ -171,7 +169,9 @@ async function waitForBoot(base: string = BASE, said: readonly string[] = []): P
       const tail = said.join('').trim().split('\n').slice(-25).join('\n');
       throw new Error(
         `${base} did not become healthy in 60s. What that instance said:\n\n${
-          tail === '' ? '  (nothing at all — check that apps/api/dist exists and the port is free)' : tail
+          tail === ''
+            ? '  (nothing at all — check that apps/api/dist exists and the port is free)'
+            : tail
         }`,
       );
     }

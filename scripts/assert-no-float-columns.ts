@@ -42,9 +42,7 @@ async function main(): Promise<void> {
    * shelf life; this is the same number with none, so the document can point
    * here instead of repeating it.
    */
-  const shapes = await prisma.$queryRaw<
-    Array<{ precision: number; scale: number; count: bigint }>
-  >`
+  const shapes = await prisma.$queryRaw<Array<{ precision: number; scale: number; count: bigint }>>`
     SELECT numeric_precision AS precision, numeric_scale AS scale, count(*)::bigint AS count
     FROM information_schema.columns
     WHERE table_schema = 'public' AND data_type = 'numeric'

@@ -133,7 +133,9 @@ const checks: Check[] = [
       const isolation = payload.data.info['tenant-isolation'];
       assert(isolation !== undefined, 'nothing reported the isolation state');
       assert(
-        isolation.enforced === true || isolation.enforced === false || isolation.enforced === 'unknown',
+        isolation.enforced === true ||
+          isolation.enforced === false ||
+          isolation.enforced === 'unknown',
         `unexpected enforced value ${String(isolation.enforced)}`,
       );
       assert(typeof isolation.configured === 'boolean', 'did not say whether it was asked for');
@@ -241,7 +243,8 @@ const checks: Check[] = [
 
       const listed = await fetch(`${BASE}/api/v1/market/resolutions`, { headers: auth });
       assert(listed.status === 200, `/market/resolutions answered ${listed.status}`);
-      const served = ((await listed.json()) as { data: { resolutions: string[] } }).data.resolutions;
+      const served = ((await listed.json()) as { data: { resolutions: string[] } }).data
+        .resolutions;
       assert(served.length > 0, 'the deployment serves no resolution at all');
 
       const symbolsResponse = await fetch(`${BASE}/api/v1/symbols`, { headers: auth });
@@ -260,7 +263,9 @@ const checks: Check[] = [
 
       const unserved = RESOLUTIONS.find((one) => !served.includes(one));
       if (unserved === undefined) {
-        console.log('        (every known resolution is served here; the refusal was not exercised)');
+        console.log(
+          '        (every known resolution is served here; the refusal was not exercised)',
+        );
       } else {
         const refused = await fetch(
           `${BASE}/api/v1/market/candles?symbol=${symbol}&resolution=${unserved}&from=${from}&to=${to}`,
@@ -269,7 +274,10 @@ const checks: Check[] = [
         const body = (await refused.json()) as {
           error?: { code?: string; details?: { served?: string[] } };
         };
-        assert(refused.status === 400, `an unserved resolution answered ${refused.status}, not 400`);
+        assert(
+          refused.status === 400,
+          `an unserved resolution answered ${refused.status}, not 400`,
+        );
         assert(
           JSON.stringify(body.error?.details?.served) === JSON.stringify(served),
           'the refusal did not name the served list',
@@ -1620,8 +1628,7 @@ const checks: Check[] = [
                * and does not resolve Nest's packages.
                */
               {
-                get: (key: string) =>
-                  key === 'PASSWORD_HASH_MEMORY_COST' ? 19_456 : 2,
+                get: (key: string) => (key === 'PASSWORD_HASH_MEMORY_COST' ? 19_456 : 2),
               } as never,
             ).hash(password),
             displayName: 'Smoke Inviter',

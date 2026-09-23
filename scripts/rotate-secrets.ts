@@ -191,7 +191,11 @@ export async function walk(
   }
 }
 
-export function report(tallies: readonly Tally[], activeKeyId: string | null, apply: boolean): void {
+export function report(
+  tallies: readonly Tally[],
+  activeKeyId: string | null,
+  apply: boolean,
+): void {
   const pad = Math.max(...tallies.map((one) => label(one.column).length));
   let stale = 0;
   let unreadable = 0;
@@ -211,7 +215,9 @@ export function report(tallies: readonly Tally[], activeKeyId: string | null, ap
     console.log(`  ${' '.repeat(pad)}  ${tally.column.describes}`);
     for (const row of tally.unreadable) {
       unreadable += 1;
-      console.log(`  ${' '.repeat(pad)}  WILL NOT OPEN ${row.id} (key ${row.keyId}): ${row.because}`);
+      console.log(
+        `  ${' '.repeat(pad)}  WILL NOT OPEN ${row.id} (key ${row.keyId}): ${row.because}`,
+      );
     }
   }
 

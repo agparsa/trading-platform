@@ -16,7 +16,9 @@ import {
   createTenant,
   createTestClient,
   hasTestDatabase,
-  resetDatabase, testPasswordService } from './harness';
+  resetDatabase,
+  testPasswordService,
+} from './harness';
 import type { PasswordService } from '../../src/auth/password.service';
 
 const suite = hasTestDatabase ? describe : describe.skip;

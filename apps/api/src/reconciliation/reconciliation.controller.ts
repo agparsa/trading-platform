@@ -68,10 +68,22 @@ const externalRunSchema = z
      */
     tolerances: z
       .object({
-        quantity: z.string().regex(/^\d+(\.\d+)?$/).optional(),
-        price: z.string().regex(/^\d+(\.\d+)?$/).optional(),
-        fee: z.string().regex(/^\d+(\.\d+)?$/).optional(),
-        balance: z.string().regex(/^\d+(\.\d+)?$/).optional(),
+        quantity: z
+          .string()
+          .regex(/^\d+(\.\d+)?$/)
+          .optional(),
+        price: z
+          .string()
+          .regex(/^\d+(\.\d+)?$/)
+          .optional(),
+        fee: z
+          .string()
+          .regex(/^\d+(\.\d+)?$/)
+          .optional(),
+        balance: z
+          .string()
+          .regex(/^\d+(\.\d+)?$/)
+          .optional(),
       })
       .strict()
       .optional(),

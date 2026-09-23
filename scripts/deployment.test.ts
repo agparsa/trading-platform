@@ -203,10 +203,9 @@ describe('docker-compose.prod.yml', () => {
 
   it('gives every connection-bearing service a descriptor ceiling of its own', () => {
     const missing = CONNECTION_BEARING.filter((service) => nofileOf(service) === null);
-    expect(
-      missing,
-      'these hold connections and would inherit Docker’s default of 1024',
-    ).toEqual([]);
+    expect(missing, 'these hold connections and would inherit Docker’s default of 1024').toEqual(
+      [],
+    );
   });
 
   /**
@@ -247,11 +246,34 @@ describe('docker-compose.prod.yml', () => {
    * three numbers it was written beside.
    */
   const WORD_VALUE: Record<string, number> = {
-    a: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
-    nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
-    fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
-    twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70,
-    eighty: 80, ninety: 90,
+    a: 1,
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    eleven: 11,
+    twelve: 12,
+    thirteen: 13,
+    fourteen: 14,
+    fifteen: 15,
+    sixteen: 16,
+    seventeen: 17,
+    eighteen: 18,
+    nineteen: 19,
+    twenty: 20,
+    thirty: 30,
+    forty: 40,
+    fifty: 50,
+    sixty: 60,
+    seventy: 70,
+    eighty: 80,
+    ninety: 90,
   };
   const SCALE: Record<string, number> = { hundred: 100, thousand: 1000, million: 1_000_000 };
 
@@ -259,7 +281,11 @@ describe('docker-compose.prod.yml', () => {
   const countBefore = (phrase: string): number | null => {
     const digits = /([\d][\d,]*)\s*$/.exec(phrase);
     if (digits) return Number(digits[1]!.replace(/,/g, ''));
-    const words = phrase.toLowerCase().trim().split(/[\s-]+/).slice(-3);
+    const words = phrase
+      .toLowerCase()
+      .trim()
+      .split(/[\s-]+/)
+      .slice(-3);
     let total = 0;
     let current = 0;
     let saw = false;
@@ -293,10 +319,14 @@ describe('docker-compose.prod.yml', () => {
 
     const target = Math.max(...claimed);
     // nginx: two descriptors per socket. api-ws: one.
-    expect(nofileOf('nginx') ?? 0, `${target} sockets need ${target * 2} at nginx`).
-      toBeGreaterThanOrEqual(target * 2);
-    expect(nofileOf('api-ws') ?? 0, `${target} sockets need ${target} at api-ws`).
-      toBeGreaterThanOrEqual(target);
+    expect(
+      nofileOf('nginx') ?? 0,
+      `${target} sockets need ${target * 2} at nginx`,
+    ).toBeGreaterThanOrEqual(target * 2);
+    expect(
+      nofileOf('api-ws') ?? 0,
+      `${target} sockets need ${target} at api-ws`,
+    ).toBeGreaterThanOrEqual(target);
   });
 
   /**
@@ -507,11 +537,18 @@ describe('nginx', () => {
   it('repeats HSTS in every 443 location that adds a header of its own', () => {
     const offenders = locations()
       .filter((one) => one.listen === '443' && /add_header/.test(one.body))
-      .filter((one) => !/add_header\s+Strict-Transport-Security\s+"max-age=31536000; includeSubDomains"\s+always;/.test(one.body))
+      .filter(
+        (one) =>
+          !/add_header\s+Strict-Transport-Security\s+"max-age=31536000; includeSubDomains"\s+always;/.test(
+            one.body,
+          ),
+      )
       .map((one) => one.header);
     expect(offenders).toEqual([]);
     // And the probe that cannot fail: the walk found the location that motivated this.
-    expect(locations().some((one) => one.listen === '443' && /add_header/.test(one.body))).toBe(true);
+    expect(locations().some((one) => one.listen === '443' && /add_header/.test(one.body))).toBe(
+      true,
+    );
   });
 });
 
@@ -1090,7 +1127,9 @@ describe('scripts/upgrade-server.sh', () => {
       .split(/\n {2}(?=[a-z])/)
       .map((block) => /^([a-z][a-z0-9-]*):/.exec(block.trim())?.[1])
       .filter((name): name is string => name !== undefined);
-    const withBuild = serviceNames.filter((name) => /\n {4}build:/.test(serviceBlock(compose, name) ?? ''));
+    const withBuild = serviceNames.filter((name) =>
+      /\n {4}build:/.test(serviceBlock(compose, name) ?? ''),
+    );
     /**
      * A service that runs this platform's own code against the database: built
      * from the api or worker Dockerfile. `migrate` is one of them and is the
@@ -1101,22 +1140,30 @@ describe('scripts/upgrade-server.sh', () => {
       return /dockerfile: docker\/(api|worker)\.Dockerfile/.test(block) && name !== 'migrate';
     });
 
-    const buildList = /for service in ([a-z\- ]+); do\n\s+echo " {4}building \$service"/.exec(script)?.[1]
+    const buildList = /for service in ([a-z\- ]+); do\n\s+echo " {4}building \$service"/
+      .exec(script)?.[1]
       ?.trim()
       .split(/\s+/);
-    const stopList = /"\$\{COMPOSE\[@\]\}" stop ([a-z\- ]+)\n/.exec(script)?.[1]?.trim().split(/\s+/);
+    const stopList = /"\$\{COMPOSE\[@\]\}" stop ([a-z\- ]+)\n/
+      .exec(script)?.[1]
+      ?.trim()
+      .split(/\s+/);
 
     it('reads both lists and finds a plausible compose file', () => {
       // The probe that cannot fail is the one that never checked anything.
       expect(withBuild.length).toBeGreaterThanOrEqual(6);
-      expect(applicationServices).toEqual(expect.arrayContaining(['api', 'api-ws', 'api-ingest', 'worker']));
+      expect(applicationServices).toEqual(
+        expect.arrayContaining(['api', 'api-ws', 'api-ingest', 'worker']),
+      );
       expect(buildList, 'the build loop was found').toBeDefined();
       expect(stopList, 'the stop line was found').toBeDefined();
     });
 
     it('builds every service the compose file builds', () => {
       for (const service of withBuild) {
-        expect(buildList, `${service} has a build: section and is never rebuilt`).toContain(service);
+        expect(buildList, `${service} has a build: section and is never rebuilt`).toContain(
+          service,
+        );
       }
     });
 
@@ -1509,8 +1556,10 @@ describe('observability stack', () => {
     const asks = [...metricsSource.matchAll(/name: '(tp_[a-z_]+)',\s*\n\s*help: '([^']*)'/g)]
       .filter((match) => /Alert on/i.test(match[2]!))
       .map((match) => match[1]!);
-    expect(asks.length, 'no metric asks to be alerted on — has the wording changed?')
-      .toBeGreaterThanOrEqual(2);
+    expect(
+      asks.length,
+      'no metric asks to be alerted on — has the wording changed?',
+    ).toBeGreaterThanOrEqual(2);
     const unalerted = asks.filter((name) => !alerts.includes(name));
     expect(unalerted, 'these say "alert on it" and nothing does').toEqual([]);
   });
@@ -1542,9 +1591,7 @@ describe('observability stack', () => {
       const labelNames = /labelNames: \[([^\]]*)\]/.exec(block);
       declaredLabels.set(
         match[1]!,
-        labelNames === null
-          ? []
-          : [...labelNames[1]!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!),
+        labelNames === null ? [] : [...labelNames[1]!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]!),
       );
       void names;
     }
@@ -1713,8 +1760,15 @@ describe('the images that answer "which build?"', () => {
       ? body.indexOf('FROM base AS build')
       : body.lastIndexOf('FROM ');
     expect(stageStart, `${file}: the consuming stage exists`).toBeGreaterThan(-1);
-    const stage = body.slice(stageStart, body.indexOf('\nFROM ', stageStart + 1) === -1 ? undefined : body.indexOf('\nFROM ', stageStart + 1));
-    expect(stage, `${file}: the consuming stage declares ARG BUILD_SHA`).toMatch(/^ARG BUILD_SHA=unknown$/m);
+    const stage = body.slice(
+      stageStart,
+      body.indexOf('\nFROM ', stageStart + 1) === -1
+        ? undefined
+        : body.indexOf('\nFROM ', stageStart + 1),
+    );
+    expect(stage, `${file}: the consuming stage declares ARG BUILD_SHA`).toMatch(
+      /^ARG BUILD_SHA=unknown$/m,
+    );
     expect(stage, `${file}: and exports it`).toMatch(/^ENV BUILD_SHA=\$BUILD_SHA$/m);
     if (file.includes('web')) {
       expect(stage.indexOf('ENV BUILD_SHA'), 'set before next build runs').toBeLessThan(
@@ -1776,8 +1830,10 @@ describe('the deploy scripts', () => {
 
   it('has deploy scripts that build images', () => {
     // If this ever finds none, the two tests below would pass by vacuum.
-    expect(buildingScripts.length, 'no script builds images — has the deploy moved?')
-      .toBeGreaterThanOrEqual(2);
+    expect(
+      buildingScripts.length,
+      'no script builds images — has the deploy moved?',
+    ).toBeGreaterThanOrEqual(2);
   });
 
   for (const path of buildingScripts) {
@@ -1793,8 +1849,7 @@ describe('the deploy scripts', () => {
       const runnable = commands(body);
       const exported = runnable.indexOf('BUILD_SHA=$(git rev-parse HEAD');
       const built = runnable.search(BUILD_CALL);
-      expect(exported, 'BUILD_SHA is set after the build that reads it')
-        .toBeLessThan(built);
+      expect(exported, 'BUILD_SHA is set after the build that reads it').toBeLessThan(built);
     });
   }
 
@@ -1916,7 +1971,17 @@ describe('a deploy script that updates itself', () => {
       const remote = resolve(root, 'remote.git');
       const clone = resolve(root, 'clone');
       const git = (cwd: string, ...a: string[]) => {
-        const r = spawnSync('git', a, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+        const r = spawnSync('git', a, {
+          cwd,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            GIT_AUTHOR_NAME: 't',
+            GIT_AUTHOR_EMAIL: 't@t',
+            GIT_COMMITTER_NAME: 't',
+            GIT_COMMITTER_EMAIL: 't@t',
+          },
+        });
         expect(r.status, `${a.join(' ')}: ${r.stderr}`).toBe(0);
         return r.stdout.trim();
       };
@@ -1932,7 +1997,11 @@ describe('a deploy script that updates itself', () => {
         git(clone, 'commit', '-q', '-m', 'B');
         git(clone, 'push', '-q', '-u', 'origin', 'main');
         const after = git(clone, 'rev-parse', '--short', 'HEAD');
-        const result = spawnSync('bash', ['-c', `${snippet}`, 'x', ...args.map((a) => a.replace('<A>', before))], { cwd: clone, encoding: 'utf8' });
+        const result = spawnSync(
+          'bash',
+          ['-c', `${snippet}`, 'x', ...args.map((a) => a.replace('<A>', before))],
+          { cwd: clone, encoding: 'utf8' },
+        );
         return { ...result, before: before.slice(0, 7), after };
       } finally {
         rmSync(root, { recursive: true, force: true });
@@ -1990,9 +2059,14 @@ describe('a deploy script that updates itself', () => {
      * mandatory fails here, before it fails at step 4 on the host.
      */
     it('parses the flags the committed version passes when it restarts', () => {
-      const committed = spawnSync('git', ['show', 'HEAD:scripts/upgrade-server.sh'], { cwd: ROOT, encoding: 'utf8' });
+      const committed = spawnSync('git', ['show', 'HEAD:scripts/upgrade-server.sh'], {
+        cwd: ROOT,
+        encoding: 'utf8',
+      });
       if (committed.status !== 0) return; // no history to compare against (an export, not a checkout)
-      const line = /exec bash "\$SELF" \$\{ARGS\[@\]\+"\$\{ARGS\[@\]\}"\} ([^\n]+)/.exec(committed.stdout)?.[1];
+      const line = /exec bash "\$SELF" \$\{ARGS\[@\]\+"\$\{ARGS\[@\]\}"\} ([^\n]+)/.exec(
+        committed.stdout,
+      )?.[1];
       expect(line, 'the committed script has a restart line').toBeDefined();
       const flags = (line ?? '')
         .replace(/"\$BEFORE_FULL"/g, '<A>')
@@ -2000,7 +2074,10 @@ describe('a deploy script that updates itself', () => {
         .filter((token) => token !== '');
       expect(flags).toContain('--resumed');
       const result = run(flags);
-      expect(result.status, `the working-tree script rejected what HEAD's passes (${flags.join(' ')}): ${result.stderr}`).toBe(0);
+      expect(
+        result.status,
+        `the working-tree script rejected what HEAD's passes (${flags.join(' ')}): ${result.stderr}`,
+      ).toBe(0);
     });
   });
 });

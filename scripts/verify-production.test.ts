@@ -57,7 +57,9 @@ function good(): Deployment {
       workers: {
         status: 'up',
         workers: 1,
-        instances: [{ instance: 'host:1', build: MARKER, role: 'all', queues: ['swap-accrual'], ageMs: 5 }],
+        instances: [
+          { instance: 'host:1', build: MARKER, role: 'all', queues: ['swap-accrual'], ageMs: 5 },
+        ],
         builds: [MARKER],
       },
     },
@@ -92,7 +94,10 @@ function good(): Deployment {
     '/api/v1/developer/openapi.json': { status: 401, body: '{}' },
     '/api/v1/market/quotes': {
       status: 401,
-      body: JSON.stringify({ ok: false, error: { code: 'UNAUTHENTICATED', message: 'x', requestId: 'r-2' } }),
+      body: JSON.stringify({
+        ok: false,
+        error: { code: 'UNAUTHENTICATED', message: 'x', requestId: 'r-2' },
+      }),
     },
     '/ws/socket.io/': {
       status: 200,
@@ -121,10 +126,8 @@ async function verify(
     const [path, query] = (request.url ?? '/').split('?') as [string, string | undefined];
     // `'/x?'` answers a request for /x that carries any query string, when a
     // scenario wants the cache-busted fetch answered differently from the plain one.
-    const answer =
-      (query !== undefined ? deployment[`${path}?`] : undefined) ??
-      deployment[path] ??
-      { status: 404, body: 'no such path in the fake deployment' };
+    const answer = (query !== undefined ? deployment[`${path}?`] : undefined) ??
+      deployment[path] ?? { status: 404, body: 'no such path in the fake deployment' };
     response.writeHead(answer.status, { 'content-type': 'text/plain', ...(answer.headers ?? {}) });
     response.end(answer.body ?? '');
   });
@@ -152,8 +155,12 @@ async function verify(
     });
     const lines = result.output.split('\n');
     return {
-      ok: lines.filter((line) => /^ {2}ok {6}/.test(line)).map((line) => line.replace(/^ {2}ok {6}/, '')),
-      failed: lines.filter((line) => /^ {2}FAIL {4}/.test(line)).map((line) => line.replace(/^ {2}FAIL {4}/, '')),
+      ok: lines
+        .filter((line) => /^ {2}ok {6}/.test(line))
+        .map((line) => line.replace(/^ {2}ok {6}/, '')),
+      failed: lines
+        .filter((line) => /^ {2}FAIL {4}/.test(line))
+        .map((line) => line.replace(/^ {2}FAIL {4}/, '')),
       output: result.output,
       status: result.status,
     };
@@ -204,14 +211,19 @@ describe('verify-production, run against a fake deployment', () => {
   }, 60_000);
 
   it('says which posture a deployment has, rather than that it cannot tell', () => {
-    expect(healthy.output).toContain('DATABASE_URL_TENANT is set; row-level security enforced: true');
+    expect(healthy.output).toContain(
+      'DATABASE_URL_TENANT is set; row-level security enforced: true',
+    );
     expect(healthy.output).not.toContain('predates the probe');
   });
 
   it('fails the worker check alone when a worker is on another build', async () => {
     const deployment = good();
-    const jobs = JSON.parse(deployment['/health/jobs']!.body!) as { data: { details: Record<string, unknown> } };
-    (jobs.data.details['workers'] as { instances: Array<{ build: string }> }).instances[0]!.build = 'aaaaaaaaaaaa';
+    const jobs = JSON.parse(deployment['/health/jobs']!.body!) as {
+      data: { details: Record<string, unknown> };
+    };
+    (jobs.data.details['workers'] as { instances: Array<{ build: string }> }).instances[0]!.build =
+      'aaaaaaaaaaaa';
     deployment['/health/jobs'] = { status: 200, body: JSON.stringify(jobs) };
     const run = await verify(deployment);
     expect(run.failed).toEqual(['every worker runs the build that was deployed']);
@@ -223,8 +235,11 @@ describe('verify-production, run against a fake deployment', () => {
     const report = {
       status: 'error',
       info: {
-        workers: (JSON.parse(deployment['/health/jobs']!.body!) as { data: { details: Record<string, unknown> } })
-          .data.details['workers'],
+        workers: (
+          JSON.parse(deployment['/health/jobs']!.body!) as {
+            data: { details: Record<string, unknown> };
+          }
+        ).data.details['workers'],
       },
       error: {
         'scheduled-jobs': {
@@ -242,7 +257,11 @@ describe('verify-production, run against a fake deployment', () => {
       status: 503,
       body: JSON.stringify({
         ok: false,
-        error: { code: 'SERVICE_UNAVAILABLE', message: 'Service Unavailable Exception', requestId: 'r-3' },
+        error: {
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'Service Unavailable Exception',
+          requestId: 'r-3',
+        },
         data: report,
       }),
     };
@@ -258,7 +277,9 @@ describe('verify-production, run against a fake deployment', () => {
     deployment['/ws/socket.io/'] = { ...deployment['/ws/socket.io/']!, headers: {} };
     const run = await verify(deployment);
     expect(run.failed).toEqual(['the real-time service says which build it runs']);
-    expect(run.ok).toContain('the real-time socket completes a handshake and offers a websocket upgrade');
+    expect(run.ok).toContain(
+      'the real-time socket completes a handshake and offers a websocket upgrade',
+    );
   }, 60_000);
 
   it('reads the web build from the login page when the terminal redirects', async () => {
@@ -283,7 +304,11 @@ describe('verify-production, run against a fake deployment', () => {
    */
   it('tells a stale edge copy apart from a stale container', async () => {
     const deployment = good();
-    deployment['/terminal'] = { status: 200, headers: { 'cache-control': 'no-cache' }, body: '<html>terminal</html>' }; // no build header: the edge's copy
+    deployment['/terminal'] = {
+      status: 200,
+      headers: { 'cache-control': 'no-cache' },
+      body: '<html>terminal</html>',
+    }; // no build header: the edge's copy
     deployment['/terminal?'] = {
       status: 200,
       headers: { 'x-tp-build': MARKER, 'cache-control': 'no-cache' },
@@ -297,8 +322,16 @@ describe('verify-production, run against a fake deployment', () => {
 
   it('blames the container when the origin has no header either', async () => {
     const deployment = good();
-    deployment['/terminal'] = { status: 200, headers: { 'cache-control': 'no-cache' }, body: '<html>terminal</html>' };
-    deployment['/login'] = { status: 200, headers: { 'cache-control': 'no-cache' }, body: '<html>login</html>' };
+    deployment['/terminal'] = {
+      status: 200,
+      headers: { 'cache-control': 'no-cache' },
+      body: '<html>terminal</html>',
+    };
+    deployment['/login'] = {
+      status: 200,
+      headers: { 'cache-control': 'no-cache' },
+      body: '<html>login</html>',
+    };
     const run = await verify(deployment);
     expect(run.failed).toEqual(['the web says which build it runs']);
     expect(run.output).toContain('predates the header, or was not rebuilt');

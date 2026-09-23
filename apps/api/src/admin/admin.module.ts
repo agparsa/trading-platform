@@ -25,6 +25,12 @@ import { AdminInstrumentsService } from './instruments.service';
     BlotterService,
     AdminInstrumentsService,
   ],
-  exports: [AdminService, RiskConsoleService, RiskHierarchyService, BlotterService, AuditQueryService],
+  exports: [
+    AdminService,
+    RiskConsoleService,
+    RiskHierarchyService,
+    BlotterService,
+    AuditQueryService,
+  ],
 })
 export class AdminModule {}

@@ -265,9 +265,15 @@ export class ExternalExecutionService {
         where: { id: order.id, status: OrderStatus.UNCONFIRMED },
         data: { status: OrderStatus.CANCELLED, rejectionCode: 'VENUE_NEVER_RECEIVED' },
       });
-      await this.recordEvent(order.id, 'CANCELLED', OrderStatus.UNCONFIRMED, OrderStatus.CANCELLED, {
-        reason: 'the venue has no record of this order',
-      });
+      await this.recordEvent(
+        order.id,
+        'CANCELLED',
+        OrderStatus.UNCONFIRMED,
+        OrderStatus.CANCELLED,
+        {
+          reason: 'the venue has no record of this order',
+        },
+      );
       await this.audit.record({
         actorId: null,
         actorType: 'SYSTEM',
@@ -296,7 +302,11 @@ export class ExternalExecutionService {
   }
 
   /** Every order still waiting on a venue's answer, oldest first. */
-  async unconfirmed(limit = 100): Promise<readonly { id: string; clientOrderId: string | null; accountId: string; createdAt: Date }[]> {
+  async unconfirmed(
+    limit = 100,
+  ): Promise<
+    readonly { id: string; clientOrderId: string | null; accountId: string; createdAt: Date }[]
+  > {
     return this.prisma.order.findMany({
       where: { status: OrderStatus.UNCONFIRMED },
       orderBy: { createdAt: 'asc' },
@@ -362,8 +372,7 @@ export class ExternalExecutionService {
     // FILLED or PARTIALLY_FILLED.
     const filledVolume = sumVolume(result.fills.map((fill) => fill.volume));
     const averagePrice = weightedAverage(result.fills);
-    const status =
-      result.outcome === 'FILLED' ? OrderStatus.FILLED : OrderStatus.PARTIALLY_FILLED;
+    const status = result.outcome === 'FILLED' ? OrderStatus.FILLED : OrderStatus.PARTIALLY_FILLED;
 
     const recorded = await this.prisma.$transaction(async (tx) => {
       await tx.order.updateMany({
@@ -516,13 +525,9 @@ export class ExternalExecutionService {
         where: { id: orderId, status: OrderStatus.ACCEPTED },
         data: { status: OrderStatus.UNCONFIRMED },
       });
-      await this.recordEvent(
-        orderId,
-        'REJECTED',
-        OrderStatus.ACCEPTED,
-        OrderStatus.UNCONFIRMED,
-        { reason },
-      );
+      await this.recordEvent(orderId, 'REJECTED', OrderStatus.ACCEPTED, OrderStatus.UNCONFIRMED, {
+        reason,
+      });
     }
     await this.audit.record({
       actorId: request.userId,
@@ -578,7 +583,8 @@ export function sumVolume(volumes: readonly string[]): string {
   const toInt = (value: string): bigint => {
     const [whole = '0', fraction = ''] = value.split('.');
     const negative = whole.startsWith('-');
-    const digits = (negative ? whole.slice(1) : whole) + fraction.padEnd(scale, '0').slice(0, scale);
+    const digits =
+      (negative ? whole.slice(1) : whole) + fraction.padEnd(scale, '0').slice(0, scale);
     const magnitude = BigInt(digits === '' ? '0' : digits);
     return negative ? -magnitude : magnitude;
   };

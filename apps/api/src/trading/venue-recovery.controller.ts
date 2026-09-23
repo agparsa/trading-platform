@@ -41,7 +41,12 @@ export class VenueRecoveryController {
   @RequirePermissions(Permission.ACCOUNTS_READ_ANY)
   @ApiOperation({ summary: 'Orders still waiting on a venue’s answer, oldest first' })
   async unconfirmed(): Promise<{
-    orders: readonly { id: string; clientOrderId: string | null; accountId: string; createdAt: Date }[];
+    orders: readonly {
+      id: string;
+      clientOrderId: string | null;
+      accountId: string;
+      createdAt: Date;
+    }[];
   }> {
     return { orders: await this.external.unconfirmed() };
   }

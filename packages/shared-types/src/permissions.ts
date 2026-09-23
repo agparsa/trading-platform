@@ -889,7 +889,10 @@ const MASTER_TRADER_CAPS: readonly Permission[] = [
   Permission.POSITIONS_CLOSE,
   Permission.POSITIONS_MODIFY,
 ];
-const MASTER_MANAGER_CAPS: readonly Permission[] = [...MASTER_TRADER_CAPS, Permission.ACCOUNTS_MANAGE];
+const MASTER_MANAGER_CAPS: readonly Permission[] = [
+  ...MASTER_TRADER_CAPS,
+  Permission.ACCOUNTS_MANAGE,
+];
 
 /**
  * What each preset expands to.

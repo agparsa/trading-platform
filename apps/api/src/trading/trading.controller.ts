@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IDEMPOTENCY_HEADER } from '@tp/shared-types';
@@ -28,12 +39,7 @@ import {
   OpenPositionDto,
   PlacePendingDto,
 } from './dto/trading.dto';
-import type {
-  CloseAllResult,
-  CloseResult,
-  OrderPreview,
-  OrderResult,
-} from './trading.types';
+import type { CloseAllResult, CloseResult, OrderPreview, OrderResult } from './trading.types';
 
 /**
  * Runs an operation under an idempotency key.

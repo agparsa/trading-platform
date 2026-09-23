@@ -72,7 +72,9 @@ describe('the smoke gate reads the boot log for a sentence the boot actually pri
       const argument = call[1]!.trim();
       calls.push(variables.get(argument) ?? literals(argument));
     }
-    expect(calls.length, 'no logger calls parsed out of announceIsolation').toBeGreaterThanOrEqual(3);
+    expect(calls.length, 'no logger calls parsed out of announceIsolation').toBeGreaterThanOrEqual(
+      3,
+    );
     return calls;
   };
 
@@ -89,9 +91,7 @@ describe('the smoke gate reads the boot log for a sentence the boot actually pri
     const list = sentinels();
     expect(list.length, 'no sentinels parsed').toBeGreaterThanOrEqual(3);
     const uncovered = announced().filter((line) => !list.some((s) => line.includes(s)));
-    expect(uncovered, 'a boot on this posture would fail the smoke gate for no reason').toEqual(
-      [],
-    );
+    expect(uncovered, 'a boot on this posture would fail the smoke gate for no reason').toEqual([]);
   });
 
   it('is not the enforced-only sentinel again', () => {
@@ -128,7 +128,11 @@ describe('no gate places an order on an instrument it assumed was open', () => {
    * looking once it had a pattern; the fourth file matched the pattern and not
    * the fault.
    */
-  const ORDER_PLACING = ['scripts/failure-injection.ts', 'scripts/pentest.ts', 'scripts/smoke-api.ts'];
+  const ORDER_PLACING = [
+    'scripts/failure-injection.ts',
+    'scripts/pentest.ts',
+    'scripts/smoke-api.ts',
+  ];
 
   it('resolves the instrument from what is quoting', () => {
     const offenders: string[] = [];

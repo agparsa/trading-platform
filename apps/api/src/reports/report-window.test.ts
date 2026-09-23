@@ -72,7 +72,11 @@ describe('a report window asked for as dates', () => {
   });
 
   it('leaves an instant alone, so an integration keeps the window it asked for', () => {
-    const asked = resolveWindowInput('Asia/Tokyo', '2026-03-01T04:30:00.000Z', '2026-03-02T00:00:00+09:00');
+    const asked = resolveWindowInput(
+      'Asia/Tokyo',
+      '2026-03-01T04:30:00.000Z',
+      '2026-03-02T00:00:00+09:00',
+    );
     expect(asked.from).toBe('2026-03-01T04:30:00.000Z');
     expect(asked.to).toBe('2026-03-02T00:00:00+09:00');
   });

@@ -219,7 +219,10 @@ suite('Blotter (integration)', () => {
   });
 
   it('answers “why was that rejected” from the order’s own events', async () => {
-    const alice = await createAccount(prisma, { balance: '10', email: `p-${Date.now()}@test.local` });
+    const alice = await createAccount(prisma, {
+      balance: '10',
+      email: `p-${Date.now()}@test.local`,
+    });
     await expect(buy(alice.userId, alice.accountId, '5.00')).rejects.toBeInstanceOf(DomainError);
     // A refused order writes no row — so the history that exists is a real one.
     const filled = await trader(`q-${Date.now()}@test.local`);

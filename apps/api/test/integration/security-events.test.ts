@@ -275,7 +275,9 @@ suite('Security events (integration)', () => {
     expect(payload['ipAddress']).toBe('198.51.100.7');
 
     // The event points at the row it came from, both ways.
-    const row = await prisma.securityEvent.findFirstOrThrow({ where: { kind: 'TWO_FACTOR_DISABLED' } });
+    const row = await prisma.securityEvent.findFirstOrThrow({
+      where: { kind: 'TWO_FACTOR_DISABLED' },
+    });
     expect(payload['securityEventId']).toBe(row.id);
     expect(event?.aggregateId).toBe(row.id);
     expect(payload['auditLogId']).toBe(row.auditLogId);

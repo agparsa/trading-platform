@@ -322,7 +322,7 @@ docker exec trading-platform-prod-api-1 node -e "
   const { Queue } = require('bullmq');
   const q = new Queue(process.env.Q, { connection: { url: process.env.REDIS_URL } });
   q.clean(0, 1000, 'failed').then((ids) => { console.log('cleared', ids.length); return q.close(); });
-" 
+"
 ```
 
 **Do not retry blindly.** Some of these jobs are financial and some are not

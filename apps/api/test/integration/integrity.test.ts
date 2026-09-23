@@ -407,7 +407,12 @@ suite('Integrity engine (integration)', () => {
     async function seedTinySymbol() {
       const symbol = await prisma.symbol.upsert({
         where: { code: 'TINY' },
-        create: { code: 'TINY', description: 'A rounding error', category: 'Test', quoteCurrency: 'USD' },
+        create: {
+          code: 'TINY',
+          description: 'A rounding error',
+          category: 'Test',
+          quoteCurrency: 'USD',
+        },
         update: {},
       });
       await prisma.symbolSpec.upsert({

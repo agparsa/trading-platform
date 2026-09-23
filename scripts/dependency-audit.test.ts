@@ -60,7 +60,9 @@ describe('the dependency audit', () => {
 
     // And the other direction: a row for a package no longer overridden is a
     // reason a reader will apply to a pin that is not there.
-    const rows = [...decisions.matchAll(/^\| `([@a-z0-9/-]+)` \| `([^`]+)` \|/gm)].map(
+    // Cells padded or not: Prettier aligns a table's columns, and a parser that
+    // wanted exactly one space found no rows the day the file was formatted.
+    const rows = [...decisions.matchAll(/^\| `([@a-z0-9/-]+)`\s+\| `([^`]+)`\s+\|/gm)].map(
       (match) => match[1]!,
     );
     expect(rows.length, 'no override rows parsed out of the decisions file').toBeGreaterThan(0);

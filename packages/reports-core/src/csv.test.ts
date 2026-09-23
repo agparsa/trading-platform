@@ -16,12 +16,9 @@ describe('csvField', () => {
    * and the contents came from user input — a description an operator typed, a
    * rejection reason. Every one of these is a live formula unguarded.
    */
-  it.each(['=cmd|calc', '+1', '-1+1', '@SUM(A1)', '\t=cmd', '\r=cmd'])(
-    'defuses %j',
-    (payload) => {
-      expect(csvField(payload)).toBe(`"'${payload}"`);
-    },
-  );
+  it.each(['=cmd|calc', '+1', '-1+1', '@SUM(A1)', '\t=cmd', '\r=cmd'])('defuses %j', (payload) => {
+    expect(csvField(payload)).toBe(`"'${payload}"`);
+  });
 
   it('leaves a value that merely contains those characters alone', () => {
     // Only the *leading* character matters, and over-quoting would corrupt

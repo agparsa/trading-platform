@@ -157,8 +157,12 @@ suite('a caller-chosen key is unique within a firm, not across the platform', ()
       // A unique index that counted them would refuse the second order every
       // trader ever placed — worth pinning, because it is the failure a
       // hand-written `CREATE UNIQUE INDEX` gets wrong.
-      expect(await attempt(order(alphaAccount.accountId, null as never, alpha.tenantId))).toBeNull();
-      expect(await attempt(order(alphaAccount.accountId, null as never, alpha.tenantId))).toBeNull();
+      expect(
+        await attempt(order(alphaAccount.accountId, null as never, alpha.tenantId)),
+      ).toBeNull();
+      expect(
+        await attempt(order(alphaAccount.accountId, null as never, alpha.tenantId)),
+      ).toBeNull();
     });
   });
 
@@ -184,9 +188,7 @@ suite('a caller-chosen key is unique within a firm, not across the platform', ()
      * them from 1. Nothing about Firm A's broker constrains Firm B's.
      */
     it('lets two firms both hold venue position `100045`', async () => {
-      expect(
-        await attempt(position(alphaAccount.accountId, '100045', alpha.tenantId)),
-      ).toBeNull();
+      expect(await attempt(position(alphaAccount.accountId, '100045', alpha.tenantId))).toBeNull();
       expect(
         await withTenant(beta, () =>
           attempt(position(betaAccount.accountId, '100045', beta.tenantId)),
@@ -204,8 +206,7 @@ suite('a caller-chosen key is unique within a firm, not across the platform', ()
 
     it('scopes an execution id the same way, and still deduplicates within a firm', async () => {
       const execution =
-        (accountId: string, externalExecutionId: string, tenantId: string, orderId: string) =>
-        () =>
+        (accountId: string, externalExecutionId: string, tenantId: string, orderId: string) => () =>
           prisma.execution.create({
             data: {
               tenantId,
@@ -227,9 +228,7 @@ suite('a caller-chosen key is unique within a firm, not across the platform', ()
       );
 
       expect(
-        await attempt(
-          execution(alphaAccount.accountId, 'fill-9', alpha.tenantId, alphaOrder.id),
-        ),
+        await attempt(execution(alphaAccount.accountId, 'fill-9', alpha.tenantId, alphaOrder.id)),
       ).toBeNull();
       expect(
         await withTenant(beta, () =>
@@ -238,9 +237,7 @@ suite('a caller-chosen key is unique within a firm, not across the platform', ()
       ).toBeNull();
       // A redelivered event from *this* firm's venue must still not book twice.
       expect(
-        await attempt(
-          execution(alphaAccount.accountId, 'fill-9', alpha.tenantId, alphaOrder.id),
-        ),
+        await attempt(execution(alphaAccount.accountId, 'fill-9', alpha.tenantId, alphaOrder.id)),
       ).toContain('P2002');
     });
   });
@@ -363,7 +360,9 @@ suite('a caller-chosen key is unique within a firm, not across the platform', ()
     it('lets two firms hold the same provider reference', async () => {
       expect(await attempt(intent(alphaAccount.userId, alpha.tenantId, 'pi_test_1'))).toBeNull();
       expect(
-        await withTenant(beta, () => attempt(intent(betaAccount.userId, beta.tenantId, 'pi_test_1'))),
+        await withTenant(beta, () =>
+          attempt(intent(betaAccount.userId, beta.tenantId, 'pi_test_1')),
+        ),
       ).toBeNull();
     });
 

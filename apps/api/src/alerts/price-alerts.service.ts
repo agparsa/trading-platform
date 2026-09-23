@@ -67,9 +67,13 @@ export class PriceAlertsService {
 
     const price = toDecimal(request.price);
     if (!price.isFinite() || price.lessThanOrEqualTo(0)) {
-      throw new DomainError(TradingErrorCode.VALIDATION_FAILED, 'A price alert needs a positive level', {
-        price: request.price,
-      });
+      throw new DomainError(
+        TradingErrorCode.VALIDATION_FAILED,
+        'A price alert needs a positive level',
+        {
+          price: request.price,
+        },
+      );
     }
     if (request.expiresAt !== null && request.expiresAt !== undefined) {
       if (request.expiresAt.getTime() <= Date.now()) {
@@ -133,11 +137,9 @@ export class PriceAlertsService {
       data: { status: 'CANCELLED' },
     });
     if (count === 0) {
-      throw new DomainError(
-        TradingErrorCode.RESOURCE_NOT_FOUND,
-        'No active alert with that id',
-        { id },
-      );
+      throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'No active alert with that id', {
+        id,
+      });
     }
     return this.prisma.priceAlert.findUniqueOrThrow({ where: { id } });
   }

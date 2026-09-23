@@ -153,9 +153,9 @@ suite('break-glass', () => {
 
     it('refuses a subject who does not exist', async () => {
       const admin = await person(UserRole.ADMIN);
-      await expect(
-        open(admin, '00000000-0000-4000-8000-0000000000aa'),
-      ).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND' });
+      await expect(open(admin, '00000000-0000-4000-8000-0000000000aa')).rejects.toMatchObject({
+        code: 'RESOURCE_NOT_FOUND',
+      });
     });
 
     it('refuses a disabled account — there is nothing to look at', async () => {

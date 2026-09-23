@@ -160,7 +160,7 @@ The hold and the release are foreign keys on **three** columns —
 `wallet_transactions(tenant_id, wallet_id, id)` — and the extra two columns are
 the whole point. Until September they were bare `uuid` columns with no key at
 all, and the database accepted a withdrawal naming a movement that did not
-exist, *and* one naming a movement from another wallet: money held from one
+exist, _and_ one naming a movement from another wallet: money held from one
 person and paid to another. A key on the id alone would only have caught the
 first. Neither was reachable through `request`, which writes the hold and the
 row in one transaction — but the service being correct today is not a

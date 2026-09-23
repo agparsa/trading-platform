@@ -27,6 +27,7 @@ Validation errors print **field names only**. Values are secrets.
   error to say so — a name no schema knows is a name nothing rejects.
   `scripts/env-example.test.ts` now checks every name in that file against the
   two schemas.
+
 - Refresh tokens: only a SHA-256 hash is stored. A database leak yields no usable
   sessions.
 - Token rotation: each refresh issues a new token and records `replacedBy`. Reuse

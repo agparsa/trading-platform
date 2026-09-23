@@ -1,9 +1,4 @@
-import {
-  checkVolume,
-  requiredMargin,
-  toDecimal,
-  type SymbolSpec,
-} from '@tp/financial-core';
+import { checkVolume, requiredMargin, toDecimal, type SymbolSpec } from '@tp/financial-core';
 import { DomainError } from '@tp/shared-types';
 import {
   outcomeAt,

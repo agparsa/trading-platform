@@ -75,11 +75,39 @@ const SEARCHED = [
 
 /** What money and quantities are called here. Matched case-insensitively. */
 const MONEY_WORDS = [
-  'amount', 'balance', 'equity', 'price', 'notional', 'volume', 'margin',
-  'pnl', 'profit', 'loss', 'commission', 'swap', 'fee', 'exposure', 'credit',
-  'debit', 'ledger', 'payout', 'deposit', 'withdrawal', 'rate', 'lot',
-  'quantity', 'cost', 'value', 'total', 'sum', 'net', 'gross',
-  'money', 'currency', 'threshold', 'ceiling',
+  'amount',
+  'balance',
+  'equity',
+  'price',
+  'notional',
+  'volume',
+  'margin',
+  'pnl',
+  'profit',
+  'loss',
+  'commission',
+  'swap',
+  'fee',
+  'exposure',
+  'credit',
+  'debit',
+  'ledger',
+  'payout',
+  'deposit',
+  'withdrawal',
+  'rate',
+  'lot',
+  'quantity',
+  'cost',
+  'value',
+  'total',
+  'sum',
+  'net',
+  'gross',
+  'money',
+  'currency',
+  'threshold',
+  'ceiling',
 ];
 
 /**
@@ -153,9 +181,7 @@ export function offencesIn(
       if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return;
       for (const match of text.matchAll(call)) {
         const identifier = (match[1] as string).replace(/\?\.$/, '');
-        const looksLikeMoney = MONEY_WORDS.some((word) =>
-          identifier.toLowerCase().includes(word),
-        );
+        const looksLikeMoney = MONEY_WORDS.some((word) => identifier.toLowerCase().includes(word));
         if (!looksLikeMoney) continue;
         const key = `${path}:${identifier}`;
         if (key in allowed) {

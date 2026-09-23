@@ -145,7 +145,9 @@ async function main(): Promise<void> {
     return;
   }
   if (beat!.role !== 'all' || beat!.queues.length === 0) {
-    fail(`the heartbeat reports role ${beat!.role} with queues ${beat!.queues.join(',') || 'none'}`);
+    fail(
+      `the heartbeat reports role ${beat!.role} with queues ${beat!.queues.join(',') || 'none'}`,
+    );
     return;
   }
   console.log(`  ok  it wrote a heartbeat the API can read, on build ${beat!.build}`);
@@ -153,7 +155,9 @@ async function main(): Promise<void> {
   worker.kill('SIGTERM');
   const gone = await waitUntil(async () => (await readHeartbeats()).length === 0, 10_000);
   if (!gone) {
-    console.error('  FAIL the heartbeat was still in Redis 10s after SIGTERM; a clean stop must withdraw it');
+    console.error(
+      '  FAIL the heartbeat was still in Redis 10s after SIGTERM; a clean stop must withdraw it',
+    );
     process.exitCode = 1;
     return;
   }
@@ -292,7 +296,13 @@ async function readHeartbeats() {
     const keys: string[] = [];
     let cursor = '0';
     do {
-      const [next, batch] = await redis.scan(cursor, 'MATCH', `${WORKER_HEARTBEAT_PREFIX}*`, 'COUNT', 100);
+      const [next, batch] = await redis.scan(
+        cursor,
+        'MATCH',
+        `${WORKER_HEARTBEAT_PREFIX}*`,
+        'COUNT',
+        100,
+      );
       cursor = next;
       keys.push(...batch);
     } while (cursor !== '0');

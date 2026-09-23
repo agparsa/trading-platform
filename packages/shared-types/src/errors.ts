@@ -117,11 +117,7 @@ export class DomainError extends Error {
   readonly code: TradingErrorCode;
   readonly details?: Record<string, ErrorDetail>;
 
-  constructor(
-    code: TradingErrorCode,
-    message: string,
-    details?: Record<string, ErrorDetail>,
-  ) {
+  constructor(code: TradingErrorCode, message: string, details?: Record<string, ErrorDetail>) {
     super(message);
     this.name = 'DomainError';
     this.code = code;

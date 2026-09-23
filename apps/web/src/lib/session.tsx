@@ -268,7 +268,6 @@ export function useSession(): SessionValue {
   return value;
 }
 
-
 /**
  * The last account this browser was looking at.
  *

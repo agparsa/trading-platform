@@ -56,7 +56,9 @@ const results: Result[] = [];
 
 function record(name: string, ok: boolean, detail = ''): void {
   results.push({ name, ok, detail });
-  console.log(`  ${ok ? 'ok      ' : 'FAIL    '}${name}${detail === '' ? '' : `\n            ${detail}`}`);
+  console.log(
+    `  ${ok ? 'ok      ' : 'FAIL    '}${name}${detail === '' ? '' : `\n            ${detail}`}`,
+  );
 }
 
 async function get(
@@ -130,7 +132,11 @@ async function main(): Promise<void> {
         'BUILD_SHA=$(git rev-parse HEAD) so the next person can tell what is running.',
     );
   } else if (EXPECT === null) {
-    record('the build identifies itself', true, `build ${build} (pass --expect <sha> to confirm it)`);
+    record(
+      'the build identifies itself',
+      true,
+      `build ${build} (pass --expect <sha> to confirm it)`,
+    );
   } else {
     const want = marker(EXPECT);
     record(
@@ -139,7 +145,7 @@ async function main(): Promise<void> {
       build === want
         ? `${build} matches ${EXPECT.slice(0, 12)}`
         : `running ${build}, expected ${want} for ${EXPECT.slice(0, 12)} — the deploy did not land, ` +
-          `or the old containers are still serving`,
+            `or the old containers are still serving`,
     );
   }
 
@@ -147,11 +153,12 @@ async function main(): Promise<void> {
   const ready = await get('/ready');
   const readyBody = ready === null ? null : json(ready.body);
   const info = (readyBody?.['data'] as Record<string, unknown> | undefined)?.['info'] as
-    | Record<string, { status?: string; latencyMs?: number }>
-    | undefined;
+    Record<string, { status?: string; latencyMs?: number }> | undefined;
   record(
     'the database and Redis are reachable from the API',
-    ready?.status === 200 && info?.['database']?.status === 'up' && info?.['redis']?.status === 'up',
+    ready?.status === 200 &&
+      info?.['database']?.status === 'up' &&
+      info?.['redis']?.status === 'up',
     info === undefined
       ? `got ${ready?.status ?? 'no answer'}`
       : `database ${info['database']?.latencyMs ?? '?'}ms, redis ${info['redis']?.latencyMs ?? '?'}ms`,
@@ -176,11 +183,12 @@ async function main(): Promise<void> {
    * that predates it being here — on a 503 the old filter dropped the report
    * altogether, so on those builds this is `{}` and every check below says so.
    */
-  const indicators = ((jobsInfo['details'] ?? jobsInfo['info'] ?? jobsInfo['error']) ??
-    {}) as Record<string, Record<string, unknown>>;
+  const indicators = (jobsInfo['details'] ?? jobsInfo['info'] ?? jobsInfo['error'] ?? {}) as Record<
+    string,
+    Record<string, unknown>
+  >;
   const jobsDetail = indicators['scheduled-jobs'] as
-    | { status?: string; problems?: string[]; jobs?: number }
-    | undefined;
+    { status?: string; problems?: string[]; jobs?: number } | undefined;
   const problems = jobsDetail?.problems ?? [];
 
   if (jobs === null || (jobs.status !== 200 && jobs.status !== 503)) {
@@ -189,9 +197,9 @@ async function main(): Promise<void> {
       false,
       jobs?.status === 404
         ? 'got 404 from /health/jobs — either this deployment predates the probe, or the route is ' +
-          'being served under the API prefix. Try /api/health/jobs before concluding it is old: ' +
-          'that is what a missing entry in the global prefix exclusion list looks like, and it is ' +
-          'how this probe spent its first week invisible.'
+            'being served under the API prefix. Try /api/health/jobs before concluding it is old: ' +
+            'that is what a missing entry in the global prefix exclusion list looks like, and it is ' +
+            'how this probe spent its first week invisible.'
         : `got ${jobs?.status ?? 'no answer'} from /health/jobs — this deployment predates the probe`,
     );
   } else {
@@ -256,8 +264,7 @@ async function main(): Promise<void> {
      * existed. Every heartbeat names its build; each is compared here.
      */
     const workers = indicators['workers'] as
-      | { instances?: Array<{ instance: string; build: string; ageMs?: number }> }
-      | undefined;
+      { instances?: Array<{ instance: string; build: string; ageMs?: number }> } | undefined;
     const instances = workers?.instances ?? [];
     if (workers === undefined) {
       record(
@@ -287,7 +294,7 @@ async function main(): Promise<void> {
         stale.length === 0
           ? `${String(instances.length)} worker(s) on ${want}`
           : `on another build: ${stale.map((one) => `${one.instance} (${one.build})`).join(', ')} — ` +
-            'the worker was not rebuilt or not recreated; compare its age to api in `docker ps`',
+              'the worker was not rebuilt or not recreated; compare its age to api in `docker ps`',
       );
     }
   }
@@ -316,12 +323,12 @@ async function main(): Promise<void> {
    * deployment whose isolation is asked for and absent, and requires this
    * line to fail.
    */
-  const tenancyReport =
-    ((tenancyBody?.['data'] as Record<string, unknown> | undefined) ?? tenancyBody ?? {}) as Record<
-      string,
-      unknown
-    >;
-  const isolation = ((tenancyReport['details'] ?? tenancyReport['info'] ?? tenancyReport['error']) ??
+  const tenancyReport = ((tenancyBody?.['data'] as Record<string, unknown> | undefined) ??
+    tenancyBody ??
+    {}) as Record<string, unknown>;
+  const isolation = (tenancyReport['details'] ??
+    tenancyReport['info'] ??
+    tenancyReport['error'] ??
     {}) as Record<string, Record<string, unknown>>;
   const enforced = isolation['tenant-isolation']?.['enforced'];
   const configured = isolation['tenant-isolation']?.['configured'] === true;
@@ -330,7 +337,7 @@ async function main(): Promise<void> {
     tenancy !== null && !(configured && enforced === false),
     enforced === undefined
       ? `/health/tenancy answered ${tenancy?.status ?? 'nothing'} — this deployment predates the probe, ` +
-        'or the route is under the API prefix (see the note on /health/jobs above)'
+          'or the route is under the API prefix (see the note on /health/jobs above)'
       : configured
         ? `DATABASE_URL_TENANT is set; row-level security enforced: ${String(enforced)}`
         : `single-role deployment (layer one only); row-level security enforced: ${String(enforced)}`,
@@ -443,7 +450,11 @@ async function main(): Promise<void> {
       'the socket image was built without BUILD_SHA',
     );
   } else if (EXPECT === null) {
-    record('the real-time service says which build it runs', true, `build ${wsBuild} (pass --expect <sha> to confirm it)`);
+    record(
+      'the real-time service says which build it runs',
+      true,
+      `build ${wsBuild} (pass --expect <sha> to confirm it)`,
+    );
   } else {
     const want = marker(EXPECT);
     record(
@@ -452,7 +463,7 @@ async function main(): Promise<void> {
       wsBuild === want
         ? `${wsBuild} matches ${EXPECT.slice(0, 12)}`
         : `socket service runs ${wsBuild}, expected ${want} — api-ws was not rebuilt or not recreated; ` +
-          `compare its age to api in \`docker ps\``,
+            `compare its age to api in \`docker ps\``,
     );
   }
 
@@ -495,13 +506,17 @@ async function main(): Promise<void> {
       originBuild === null
         ? 'no x-tp-build header on the page — this web container predates the header, or was not rebuilt'
         : `the origin serves ${path} on build ${originBuild}, but the public ${path} carries no build header — ` +
-          'something between the origin and the visitor (a CDN cache or rule) is answering for this path ' +
-          'with a copy that predates the deploy. Purge it, and look at what caches HTML for this host.',
+            'something between the origin and the visitor (a CDN cache or rule) is answering for this path ' +
+            'with a copy that predates the deploy. Purge it, and look at what caches HTML for this host.',
     );
   } else if (webBuild === 'unknown') {
     record('the web says which build it runs', false, 'the web image was built without BUILD_SHA');
   } else if (EXPECT === null) {
-    record('the web says which build it runs', true, `build ${webBuild} (pass --expect <sha> to confirm it)`);
+    record(
+      'the web says which build it runs',
+      true,
+      `build ${webBuild} (pass --expect <sha> to confirm it)`,
+    );
   } else {
     const want = marker(EXPECT);
     record(

@@ -393,8 +393,8 @@ function VenueItems() {
             not that anybody has looked recently, which is the Runs tab's
             question and a different one.
           */}
-          Nothing disagrees in the runs on record. The Runs tab says when that was
-          last checked, and whether any account could not be reached.
+          Nothing disagrees in the runs on record. The Runs tab says when that was last checked, and
+          whether any account could not be reached.
         </Loading>
       ) : (
         <Table>
@@ -443,9 +443,7 @@ function VenueItems() {
                       rule somebody set".
                     */}
                     {row.tolerance === null ? null : (
-                      <span className="ml-1 text-[10px] text-terminal-muted">
-                        ±{row.tolerance}
-                      </span>
+                      <span className="ml-1 text-[10px] text-terminal-muted">±{row.tolerance}</span>
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-terminal-muted">{utcTime(row.createdAt)}</td>

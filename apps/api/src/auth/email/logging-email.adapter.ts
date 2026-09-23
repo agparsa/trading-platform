@@ -31,8 +31,6 @@ export class NoopEmailAdapter extends EmailPort {
   private readonly logger = new Logger('Email');
 
   async send(message: EmailMessage): Promise<void> {
-    this.logger.warn(
-      `Email discarded (EMAIL_PROVIDER=none): from=${this.from} to=${message.to}`,
-    );
+    this.logger.warn(`Email discarded (EMAIL_PROVIDER=none): from=${this.from} to=${message.to}`);
   }
 }

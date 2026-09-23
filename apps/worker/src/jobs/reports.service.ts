@@ -2,13 +2,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import { SecretBox, parseEncryptionKeys, reportSealContext } from '@tp/crypto-core';
-import {
-  MAX_REPORT_ROWS,
-  ReportKind,
-  UTF8_BOM,
-  csvRow,
-  definitionOf,
-} from '@tp/reports-core';
+import { MAX_REPORT_ROWS, ReportKind, UTF8_BOM, csvRow, definitionOf } from '@tp/reports-core';
 import { withTenant, withoutTenantScope } from '@tp/tenancy';
 import { PrismaService } from '../prisma.service';
 import type { WorkerEnv } from '../env';
@@ -121,7 +115,10 @@ export class ReportsService {
       }),
     );
     if (claimed.count === 0) {
-      this.logger.log({ reportId, status: report.status }, 'Report already claimed; not rebuilding');
+      this.logger.log(
+        { reportId, status: report.status },
+        'Report already claimed; not rebuilding',
+      );
       return 'skipped';
     }
 

@@ -158,16 +158,11 @@ describe('orders against the venue', () => {
       [theirs({ volume: '1.00', filledVolume: '0.50' })],
     );
     expect(items.map((item) => item.field)).toEqual(['volume', 'filledVolume']);
-    expect(statuses(items)).toEqual([
-      ItemStatus.QUANTITY_MISMATCH,
-      ItemStatus.QUANTITY_MISMATCH,
-    ]);
+    expect(statuses(items)).toEqual([ItemStatus.QUANTITY_MISMATCH, ItemStatus.QUANTITY_MISMATCH]);
   });
 
   it('reports a price that disagrees as a price mismatch', () => {
-    const item = only(
-      compareOrders([ours({ price: '4600.00' })], [theirs({ price: '4600.10' })]),
-    );
+    const item = only(compareOrders([ours({ price: '4600.00' })], [theirs({ price: '4600.10' })]));
     expect(item.status).toBe(ItemStatus.PRICE_MISMATCH);
     expect(item.difference).toBe('-0.1');
   });
@@ -244,9 +239,9 @@ describe('executions against the venue', () => {
    * assumption rather than about the money.
    */
   it('says nothing about a commission the venue does not quote', () => {
-    expect(
-      statuses(compareExecutions([ours], [{ ...theirs, commission: null }])),
-    ).toEqual([ItemStatus.MATCHED]);
+    expect(statuses(compareExecutions([ours], [{ ...theirs, commission: null }]))).toEqual([
+      ItemStatus.MATCHED,
+    ]);
   });
 
   it('reports a fill the venue never made', () => {

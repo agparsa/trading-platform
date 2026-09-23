@@ -173,10 +173,12 @@ suite('Risk hierarchy (integration)', () => {
 
     it('allows a tighter one, and allows restating the same value', async () => {
       await hierarchy.setPlatform(actorId, { maxPositionVolume: '1.00' });
-      expect((await hierarchy.setBroker(actorId, { maxPositionVolume: '0.50' })).maxPositionVolume)
-        .toBe('0.5');
-      expect((await hierarchy.setBroker(actorId, { maxPositionVolume: '1.00' })).maxPositionVolume)
-        .toBe('1');
+      expect(
+        (await hierarchy.setBroker(actorId, { maxPositionVolume: '0.50' })).maxPositionVolume,
+      ).toBe('0.5');
+      expect(
+        (await hierarchy.setBroker(actorId, { maxPositionVolume: '1.00' })).maxPositionVolume,
+      ).toBe('1');
     });
 
     it('refuses a desk ceiling looser than either layer above it', async () => {
@@ -191,21 +193,21 @@ suite('Risk hierarchy (integration)', () => {
 
       // Looser than the broker, though tighter than the platform.
       expect(
-        await codeOf(() =>
-          hierarchy.setDesk(actorId, master.id, { maxPositionVolume: '1.50' }),
-        ),
+        await codeOf(() => hierarchy.setDesk(actorId, master.id, { maxPositionVolume: '1.50' })),
       ).toBe(TradingErrorCode.VALIDATION_FAILED);
-      expect((await hierarchy.setDesk(actorId, master.id, { maxPositionVolume: '0.25' }))
-        .maxPositionVolume).toBe('0.25');
+      expect(
+        (await hierarchy.setDesk(actorId, master.id, { maxPositionVolume: '0.25' }))
+          .maxPositionVolume,
+      ).toBe('0.25');
     });
 
     it('refuses an account configured looser than the layers above it', async () => {
       const { accountId } = await createAccount(prisma, { balance: '1000' });
       await hierarchy.setBroker(actorId, { maxOpenPositions: 3 });
 
-      expect(
-        await codeOf(() => hierarchy.assertWithinCeiling({ maxOpenPositions: 10 })),
-      ).toBe(TradingErrorCode.VALIDATION_FAILED);
+      expect(await codeOf(() => hierarchy.assertWithinCeiling({ maxOpenPositions: 10 }))).toBe(
+        TradingErrorCode.VALIDATION_FAILED,
+      );
       // And the account keeps whatever it had, rather than a half-applied set.
       const settings = await prisma.accountSettings.findUniqueOrThrow({ where: { accountId } });
       expect(settings.maxOpenPositions).toBe(null);
@@ -215,11 +217,12 @@ suite('Risk hierarchy (integration)', () => {
       // '9' sorts after '10' as text. A ceiling compared lexically is a
       // ceiling that is sometimes exactly the wrong way round.
       await hierarchy.setPlatform(actorId, { maxPositionVolume: '10.00' });
-      expect((await hierarchy.setBroker(actorId, { maxPositionVolume: '9.00' })).maxPositionVolume)
-        .toBe('9');
       expect(
-        await codeOf(() => hierarchy.setBroker(actorId, { maxPositionVolume: '11.00' })),
-      ).toBe(TradingErrorCode.VALIDATION_FAILED);
+        (await hierarchy.setBroker(actorId, { maxPositionVolume: '9.00' })).maxPositionVolume,
+      ).toBe('9');
+      expect(await codeOf(() => hierarchy.setBroker(actorId, { maxPositionVolume: '11.00' }))).toBe(
+        TradingErrorCode.VALIDATION_FAILED,
+      );
     });
   });
 

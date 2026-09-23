@@ -143,9 +143,9 @@ suite('leadership', () => {
     const results = await Promise.all(contenders.map((service) => attempt(service)));
 
     expect(results.filter((result) => result.acquired)).toHaveLength(1);
-    expect(contenders.filter((service) => service.isLeading(LeaderLoop.TRIGGER_ENGINE))).toHaveLength(
-      1,
-    );
+    expect(
+      contenders.filter((service) => service.isLeading(LeaderLoop.TRIGGER_ENGINE)),
+    ).toHaveLength(1);
 
     const row = await prisma.leaderLease.findUniqueOrThrow({
       where: { name: LeaderLoop.TRIGGER_ENGINE },

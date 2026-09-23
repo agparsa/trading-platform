@@ -102,8 +102,10 @@ export function measure(): Figures {
 
 function head(): string {
   try {
-    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT, encoding: 'utf8' })
-      .trim();
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+    }).trim();
   } catch {
     return 'unknown';
   }

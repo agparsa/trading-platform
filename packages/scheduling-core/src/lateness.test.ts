@@ -90,7 +90,11 @@ describe('cronIntervalMs', () => {
     // forward. A daily 02:30 job therefore has a 23-hour gap across it.
     const gap = cronIntervalMs('30 2 * * *', 'Europe/London', at('2026-03-28T12:00:00Z'));
     expect(gap).toBe(86_400_000);
-    const acrossTheChange = cronIntervalMs('30 2 * * *', 'Europe/London', at('2026-03-29T03:00:00Z'));
+    const acrossTheChange = cronIntervalMs(
+      '30 2 * * *',
+      'Europe/London',
+      at('2026-03-29T03:00:00Z'),
+    );
     expect(acrossTheChange).toBe(86_400_000);
   });
 });
@@ -192,7 +196,12 @@ describe('judgeSchedule', () => {
     const fourMinutesAgo = new Date(now.getTime() - 4 * 60_000);
     expect(
       judgeSchedule(
-        { name: 'outbox-relay', cron: '* * * * *', lastFinishedAt: fourMinutesAgo, lastOutcome: 'OK' },
+        {
+          name: 'outbox-relay',
+          cron: '* * * * *',
+          lastFinishedAt: fourMinutesAgo,
+          lastOutcome: 'OK',
+        },
         TZ,
         now,
       ).verdict,

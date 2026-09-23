@@ -296,7 +296,6 @@ function Field({
   );
 }
 
-
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 /** `540` → `09:00`. Minutes are what is stored; a clock is what a person reads. */
@@ -434,8 +433,8 @@ function SessionEditor({ code }: { code: string }) {
           </div>
           {malformed ? (
             <p className="text-[11px] text-terminal-warning">
-              Give each open day both an opening and a closing time, as HH:MM. A window that
-              crosses midnight is two days: one ending 24:00, one starting 00:00.
+              Give each open day both an opening and a closing time, as HH:MM. A window that crosses
+              midnight is two days: one ending 24:00, one starting 00:00.
             </p>
           ) : null}
           <Button

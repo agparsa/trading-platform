@@ -21,7 +21,11 @@ function controller(): {
 } {
   const seen: { installationId?: string | null }[] = [];
   const auth = {
-    login: async (_email: string, _password: string, context: { installationId?: string | null }) => {
+    login: async (
+      _email: string,
+      _password: string,
+      context: { installationId?: string | null },
+    ) => {
       seen.push(context);
       return { kind: 'authenticated' as const, pair: pair() };
     },
@@ -98,7 +102,11 @@ describe('sign-in carries the installation to the session', () => {
   it('forwards it through the second factor too', async () => {
     const { controller: subject, seen } = controller();
     await subject.loginTwoFactor(
-      { challengeToken: 'challenge', code: '123456', installationId: 'installation-ipad-0002' } as never,
+      {
+        challengeToken: 'challenge',
+        code: '123456',
+        installationId: 'installation-ipad-0002',
+      } as never,
       request,
       response,
     );

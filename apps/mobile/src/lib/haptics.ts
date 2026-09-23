@@ -26,11 +26,7 @@ export interface HapticPreferences {
 export interface HapticDecision {
   readonly haptic: TradingHaptic | null;
   readonly reason:
-    | 'vibrate'
-    | 'muted'
-    | 'category-muted'
-    | 'no-haptic-for-category'
-    | 'app-in-background';
+    'vibrate' | 'muted' | 'category-muted' | 'no-haptic-for-category' | 'app-in-background';
 }
 
 /**

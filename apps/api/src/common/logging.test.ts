@@ -53,12 +53,7 @@ async function capture(redact: ReturnType<typeof redactionOptions> | null): Prom
   const lines: string[] = [];
   const app = express();
   app.use(express.json());
-  app.use(
-    pinoHttp(
-      { level: 'info', ...(redact === null ? {} : { redact }) },
-      collect(lines),
-    ),
-  );
+  app.use(pinoHttp({ level: 'info', ...(redact === null ? {} : { redact }) }, collect(lines)));
   app.post('/probe', (_request, response) => {
     response.setHeader('set-cookie', `tp_rt=${SECRETS.setCookie}; HttpOnly`);
     response.status(200).json({ ok: true });
@@ -148,9 +143,7 @@ describe('log redaction', () => {
    * would otherwise take the whole API down at boot rather than in a test.
    */
   it('gives pino paths it accepts', () => {
-    expect(() =>
-      pinoHttp({ redact: redactionOptions() }, collect([])),
-    ).not.toThrow();
+    expect(() => pinoHttp({ redact: redactionOptions() }, collect([]))).not.toThrow();
   });
 
   it('matches every name it claims to protect against the secret-name pattern', () => {

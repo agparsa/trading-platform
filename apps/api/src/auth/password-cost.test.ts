@@ -58,8 +58,11 @@ describe('password hashing cost', () => {
    * properly.
    */
   it('refuses a cost below the OWASP baseline, rather than accepting a weaker one', () => {
-    const shape = (envSchema as unknown as { shape: Record<string, { safeParse(value: unknown): { success: boolean } }> })
-      .shape;
+    const shape = (
+      envSchema as unknown as {
+        shape: Record<string, { safeParse(value: unknown): { success: boolean } }>;
+      }
+    ).shape;
 
     expect(shape['PASSWORD_HASH_MEMORY_COST']?.safeParse(1024).success).toBe(false);
     expect(shape['PASSWORD_HASH_MEMORY_COST']?.safeParse(19_456).success).toBe(true);
@@ -71,8 +74,9 @@ describe('password hashing cost', () => {
   });
 
   it('defaults to the OWASP baseline when nothing is set', () => {
-    const shape = (envSchema as unknown as { shape: Record<string, { parse(value: unknown): unknown }> })
-      .shape;
+    const shape = (
+      envSchema as unknown as { shape: Record<string, { parse(value: unknown): unknown }> }
+    ).shape;
     expect(shape['PASSWORD_HASH_MEMORY_COST']?.parse(undefined)).toBe(19_456);
     expect(shape['PASSWORD_HASH_TIME_COST']?.parse(undefined)).toBe(2);
   });

@@ -372,7 +372,9 @@ export class BrokerConnectionsService {
         { connectionId },
       );
     }
-    const credentials = deserialiseCredentials(this.secrets.open(row.sealed, idSealContext(connectionId)));
+    const credentials = deserialiseCredentials(
+      this.secrets.open(row.sealed, idSealContext(connectionId)),
+    );
     const adapter = this.registry.create(
       connection.adapterKind,
       connection.settings as Record<string, unknown>,

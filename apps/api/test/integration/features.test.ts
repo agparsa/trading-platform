@@ -126,7 +126,9 @@ suite('features', () => {
     await withTenant({ tenantId: platformId, slug: 'the-platform', kind: 'PLATFORM' }, () =>
       service.setForBroker(operator, TENANT, Feature.EXTERNAL_EXECUTION, true, 'venue connected'),
     );
-    expect(await withTenant(TENANT, () => service.isEnabled(Feature.EXTERNAL_EXECUTION))).toBe(true);
+    expect(await withTenant(TENANT, () => service.isEnabled(Feature.EXTERNAL_EXECUTION))).toBe(
+      true,
+    );
 
     // And not from a broker's own scope, whatever the caller claims to be.
     const fromBroker = await failure(
@@ -150,9 +152,9 @@ suite('features', () => {
       }),
     );
     expect(await withTenant(other, () => service.isEnabled(Feature.TRAILING_STOP))).toBe(true);
-    expect((await withTenant(other, () => service.list())).every((row) => row.override === null)).toBe(
-      true,
-    );
+    expect(
+      (await withTenant(other, () => service.list())).every((row) => row.override === null),
+    ).toBe(true);
   });
 
   it('audits every change without a secret to leak, naming the authority', async () => {
@@ -253,7 +255,12 @@ suite('features', () => {
 
       const refused = await failure(
         withTenant(TENANT, () =>
-          stack.orders.openPosition(userId, { accountId, symbol: 'XAUUSD', side: 'BUY', volume: '0.10' }),
+          stack.orders.openPosition(userId, {
+            accountId,
+            symbol: 'XAUUSD',
+            side: 'BUY',
+            volume: '0.10',
+          }),
         ),
       );
       expect(refused.code).toBe(TradingErrorCode.FEATURE_DISABLED);

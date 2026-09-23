@@ -336,7 +336,6 @@ function Signals() {
   );
 }
 
-
 /**
  * The layers above an account: platform → broker → desk → account.
  *
@@ -364,18 +363,22 @@ function Ceilings() {
   return (
     <div className="space-y-3 px-3 py-3" data-testid="risk-ceilings">
       <p className="text-[11px] text-terminal-muted">
-        A layer may tighten what the layer above it allows and may never loosen it. A limit no
-        layer sets is not enforced — silence is not permission, it is silence.
+        A layer may tighten what the layer above it allows and may never loosen it. A limit no layer
+        sets is not enforced — silence is not permission, it is silence.
       </p>
       <ErrorLine error={limits.error ?? save.error} />
 
       {limits.isLoading ? (
         <Loading />
       ) : rows.length === 0 ? (
-        <Loading>No ceiling is set above the accounts. Each account&apos;s own limits apply.</Loading>
+        <Loading>
+          No ceiling is set above the accounts. Each account&apos;s own limits apply.
+        </Loading>
       ) : (
         <Table>
-          <Head columns={['Layer', 'Lots per position', 'Open positions', 'Gross notional', 'Changed']} />
+          <Head
+            columns={['Layer', 'Lots per position', 'Open positions', 'Gross notional', 'Changed']}
+          />
           <tbody>
             {rows.map((row) => (
               <tr key={row.level} className="border-t border-terminal-border/60">

@@ -152,9 +152,7 @@ suite('reports', () => {
         ADMIN(admin.userId),
       );
       expect(view.status).toBe('QUEUED');
-      expect(published).toEqual([
-        { name: 'reports', payload: { reportId: view.id } },
-      ]);
+      expect(published).toEqual([{ name: 'reports', payload: { reportId: view.id } }]);
       const audit = await prisma.auditLog.findFirst({ where: { action: 'report.requested' } });
       expect(audit?.resourceId).toBe(view.id);
     });
@@ -212,8 +210,9 @@ suite('reports', () => {
 
       const file = await reports.download(view.id, ADMIN(admin.userId));
       const text = file.bytes.toString('utf8');
-      expect(text.startsWith('﻿'), 'Excel reads UTF-8 without a BOM as the local code page')
-        .toBe(true);
+      expect(text.startsWith('﻿'), 'Excel reads UTF-8 without a BOM as the local code page').toBe(
+        true,
+      );
       expect(text).toContain('"entry_id","account_number"');
       expect(text).toContain('"250"');
       expect(file.filename).toMatch(/^ledger-\d{4}-\d{2}-\d{2}-to-\d{4}-\d{2}-\d{2}\.csv$/);
@@ -568,9 +567,10 @@ suite('reports', () => {
       const text = (await reports.download(view.id, ADMIN(admin.userId))).bytes.toString('utf8');
 
       expect(text).toContain('"111"');
-      expect(text, 'the other firm’s deposit is in the same table and the same window').not.toContain(
-        '"999"',
-      );
+      expect(
+        text,
+        'the other firm’s deposit is in the same table and the same window',
+      ).not.toContain('"999"');
     });
 
     it('does not show one firm another firm’s reports', async () => {
@@ -672,7 +672,6 @@ suite('reports', () => {
       expect(listed[0]).not.toHaveProperty('content');
     });
   });
-
 
   /**
    * When a report stops, and what happens next.

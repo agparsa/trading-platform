@@ -335,8 +335,7 @@ function MappingsPane({ connectionId, mayManage }: { connectionId: string; mayMa
       {sync.data === undefined ? null : (
         <div className="border border-terminal-border px-3 py-2 text-[11px]">
           <p className="text-terminal-muted">
-            Checked {sync.data.checked}{' '}
-            {sync.data.checked === 1 ? 'mapping' : 'mappings'}.
+            Checked {sync.data.checked} {sync.data.checked === 1 ? 'mapping' : 'mappings'}.
           </p>
           {sync.data.changed.map((change) => (
             <p key={change.symbolCode} className="text-terminal-warning">
@@ -495,7 +494,9 @@ function InboxPane({ connectionId, mayManage }: { connectionId: string; mayManag
                 <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
                   {event.externalAccountId ?? '—'}
                 </td>
-                <td className={cn('px-3 py-1.5', INBOX_TONE[event.status] ?? 'text-terminal-muted')}>
+                <td
+                  className={cn('px-3 py-1.5', INBOX_TONE[event.status] ?? 'text-terminal-muted')}
+                >
                   {event.status}
                   {event.lastError === null ? null : (
                     <p className="text-[10px] text-terminal-muted">{event.lastError}</p>

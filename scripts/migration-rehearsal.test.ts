@@ -44,10 +44,7 @@ import { describe, expect, it } from 'vitest';
  * reasoning that justified three was written when it was true.
  */
 
-const SOURCE = readFileSync(
-  join(import.meta.dirname, 'migration-rehearsal.ts'),
-  'utf8',
-);
+const SOURCE = readFileSync(join(import.meta.dirname, 'migration-rehearsal.ts'), 'utf8');
 
 describe('the migration rehearsal', () => {
   it('does not use an environment variable Prisma has never had', () => {
@@ -91,10 +88,9 @@ describe('the migration rehearsal', () => {
    */
   it('rehearses every position by default, with no sample size to go stale', () => {
     expect(SOURCE).toMatch(/MIGRATION_REHEARSAL_CUTS.*undefined[\s\S]{0,120}POSITIVE_INFINITY/);
-    expect(
-      SOURCE,
-      'a fixed default sample is an assumption with an expiry date on it',
-    ).not.toMatch(/MIGRATION_REHEARSAL_CUTS'\] \?\? '\d+'/);
+    expect(SOURCE, 'a fixed default sample is an assumption with an expiry date on it').not.toMatch(
+      /MIGRATION_REHEARSAL_CUTS'\] \?\? '\d+'/,
+    );
   });
 
   it('says so when a run is partial, rather than letting it read as a full sweep', () => {

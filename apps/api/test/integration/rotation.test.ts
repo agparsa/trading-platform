@@ -172,7 +172,10 @@ suite('key rotation', () => {
    */
   it('refuses bytes that change without the key id changing with them', async () => {
     const id = await documentUnderKeyOne();
-    const other = after().sealBytes(Buffer.from('somebody else’s passport'), documentSealContext(id));
+    const other = after().sealBytes(
+      Buffer.from('somebody else’s passport'),
+      documentSealContext(id),
+    );
 
     await expect(
       withTenant(alpha, () =>
@@ -353,8 +356,10 @@ suite('key rotation', () => {
         }
       }
 
-      expect(checked, 'the sweep found no sealing at all, which means it stopped sweeping')
-        .toBeGreaterThan(10);
+      expect(
+        checked,
+        'the sweep found no sealing at all, which means it stopped sweeping',
+      ).toBeGreaterThan(10);
       expect(
         offenders,
         'a context built anywhere but the registry is one a rotation cannot reproduce',

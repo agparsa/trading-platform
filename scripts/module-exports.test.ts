@@ -172,8 +172,14 @@ describe('every Nest module exports what it can export', () => {
     // A walker that found nothing would make the check below vacuous, and the
     // application would look impeccably wired.
     expect(modules.length, 'no @Module decorators parsed').toBeGreaterThan(30);
-    expect(modules.some((m) => m.exports.length > 0), 'nothing exports anything').toBe(true);
-    expect(modules.some((m) => m.imports.length > 0), 'nothing imports anything').toBe(true);
+    expect(
+      modules.some((m) => m.exports.length > 0),
+      'nothing exports anything',
+    ).toBe(true);
+    expect(
+      modules.some((m) => m.imports.length > 0),
+      'nothing imports anything',
+    ).toBe(true);
   });
 
   it('provides, or imports the provider of, everything it exports', () => {

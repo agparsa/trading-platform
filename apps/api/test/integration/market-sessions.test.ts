@@ -241,9 +241,11 @@ describe('trading-week validation', () => {
   });
 
   it('sorts the week, so two descriptions of the same week are one row order', () => {
-    expect(
-      normaliseWindows([window(3, 60, 120), window(1, 600, 700), window(1, 0, 60)]),
-    ).toEqual([window(1, 0, 60), window(1, 600, 700), window(3, 60, 120)]);
+    expect(normaliseWindows([window(3, 60, 120), window(1, 600, 700), window(1, 0, 60)])).toEqual([
+      window(1, 0, 60),
+      window(1, 600, 700),
+      window(3, 60, 120),
+    ]);
   });
 
   it('refuses a window that closes before it opens, and says how to cross midnight', () => {

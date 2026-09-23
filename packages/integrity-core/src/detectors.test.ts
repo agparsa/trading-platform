@@ -287,9 +287,7 @@ function churn(
 
 describe('rapid cancel and replace', () => {
   it('notices one order amended over and over', () => {
-    const signal = detectRapidCancelReplace(
-      window({ orderChurn: churn('o-1', 10, 30_000) }),
-    );
+    const signal = detectRapidCancelReplace(window({ orderChurn: churn('o-1', 10, 30_000) }));
     expect(signal?.code).toBe(SignalCode.RAPID_CANCEL_REPLACE);
     expect(signal?.evidence['orderId']).toBe('o-1');
     expect(signal?.evidence['observed']).toBe(10);
@@ -333,14 +331,13 @@ describe('rapid cancel and replace', () => {
       ...event,
       atMs: event.atMs - 180_000,
     }));
-    expect(detectRapidCancelReplace(window({ orderChurn: shifted }))?.evidence['observed']).toBe(10);
+    expect(detectRapidCancelReplace(window({ orderChurn: shifted }))?.evidence['observed']).toBe(
+      10,
+    );
   });
 
   it('counts cancellations as well as amendments', () => {
-    const mixed = [
-      ...churn('o-1', 5, 10_000, 'MODIFIED'),
-      ...churn('o-1', 5, 10_000, 'CANCELLED'),
-    ];
+    const mixed = [...churn('o-1', 5, 10_000, 'MODIFIED'), ...churn('o-1', 5, 10_000, 'CANCELLED')];
     expect(detectRapidCancelReplace(window({ orderChurn: mixed }))).not.toBeNull();
   });
 

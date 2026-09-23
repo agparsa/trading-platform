@@ -8,7 +8,7 @@ pnpm test              # 761 tests (integration ones opt-in)
 pnpm db:test:prepare   # create + migrate the integration test database, and its roles
 pnpm db:roles          # create the unprivileged role row-level security constrains
 pnpm test:coverage     # thresholds enforced
-pnpm verify            # lint → typecheck → test → build
+pnpm verify            # lint → format → typecheck → inventory → schema → test → build
 pnpm check:schema      # no floating-point columns exist
 pnpm smoke             # boots the built API and drives a full trade round trip
 pnpm smoke:ws          # boots it again and drives a real Socket.IO client
