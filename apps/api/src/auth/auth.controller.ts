@@ -17,7 +17,13 @@ import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { API_VERSION, DomainError, TradingErrorCode } from '@tp/shared-types';
+import {
+  API_VERSION,
+  DomainError,
+  TradingErrorCode,
+  type AuthTokenResponse,
+  type TwoFactorChallengeResponse,
+} from '@tp/shared-types';
 import { corsOrigins, rateLimits, RATE_LIMIT_WINDOW_MS, type Env } from '../config/env.schema';
 import { parseDuration } from './token.service';
 import {
@@ -25,6 +31,7 @@ import {
   isAllowedOrigin,
   readRefreshCookie,
   refreshCookiePath,
+  issuesBodyRefreshToken,
   setRefreshCookie,
   type CookieOptions,
 } from './refresh-cookie';
@@ -134,17 +141,18 @@ export class AuthController {
       // No cookie is set and no access token is returned: nobody has signed in
       // yet. The challenge is the only thing that crosses, and on its own it
       // opens nothing.
-      return {
-        twoFactorRequired: true as const,
+      const challenge: TwoFactorChallengeResponse = {
+        twoFactorRequired: true,
         challengeToken: result.challengeToken,
         expiresIn: result.expiresIn,
       };
+      return challenge;
     }
     setRefreshCookie(response, result.pair.refreshToken, this.cookieOptions());
-    // The refresh token is deliberately absent from the body. Returning it here
-    // would put it back within reach of any injected script, which is the whole
-    // thing this change exists to prevent.
-    return { accessToken: result.pair.accessToken, expiresIn: result.pair.expiresIn };
+    // The refresh token is absent from the body for a browser: returning it
+    // there would put it back within reach of any injected script. A native
+    // client, which cannot be one, gets it — see `issuesBodyRefreshToken`.
+    return tokenResponse(result.pair, issuesBodyRefreshToken(request, body));
   }
 
   /**
@@ -169,7 +177,7 @@ export class AuthController {
       installationId: body.installationId ?? null,
     });
     setRefreshCookie(response, pair.refreshToken, this.cookieOptions());
-    return { accessToken: pair.accessToken, expiresIn: pair.expiresIn };
+    return tokenResponse(pair, issuesBodyRefreshToken(request, body));
   }
 
   @SelfService()
@@ -298,13 +306,20 @@ export class AuthController {
     // clients that hold the value themselves — that is not a weakness, because
     // the risk this change addresses is a *script reading* the token, and no
     // response ever hands one out.
-    const presented = readRefreshCookie(request) ?? body.refreshToken ?? null;
+    const fromCookie = readRefreshCookie(request);
+    const presented = fromCookie ?? body.refreshToken ?? null;
     if (presented === null) {
       throw new DomainError(TradingErrorCode.UNAUTHENTICATED, 'No refresh token was presented');
     }
     const pair = await this.auth.refresh(presented, contextOf(request));
     setRefreshCookie(response, pair.refreshToken, this.cookieOptions());
-    return { accessToken: pair.accessToken, expiresIn: pair.expiresIn };
+    // A client that presented its token in the body holds it itself, and gets
+    // the rotated one back the same way — or its next refresh would present a
+    // token the server has already retired, which reads as replay.
+    return tokenResponse(
+      pair,
+      issuesBodyRefreshToken(request, { presentedInBody: fromCookie === null }),
+    );
   }
 
   @Public()
@@ -368,4 +383,16 @@ export class AuthController {
   me(@CurrentUser() user: AuthenticatedUser): AuthenticatedUser {
     return user;
   }
+}
+
+/** The one shape every sign-in and refresh answers with. See `AuthTokenResponse`. */
+function tokenResponse(
+  pair: { accessToken: string; refreshToken: string; expiresIn: number },
+  includeRefreshToken: boolean,
+): AuthTokenResponse {
+  return {
+    accessToken: pair.accessToken,
+    expiresIn: pair.expiresIn,
+    ...(includeRefreshToken ? { refreshToken: pair.refreshToken } : {}),
+  };
 }

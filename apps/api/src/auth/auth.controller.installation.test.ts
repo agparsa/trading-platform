@@ -47,6 +47,7 @@ function controller(): {
     API_GLOBAL_PREFIX: 'api',
     NODE_ENV: 'test',
     JWT_REFRESH_TTL: '30d',
+    CORS_ORIGINS: 'https://devopss.ir',
   };
   const config = { get: (key: string) => settings[key] };
   return {
@@ -111,5 +112,94 @@ describe('sign-in carries the installation to the session', () => {
       response,
     );
     expect(seen[0]?.installationId).toBe('installation-ipad-0002');
+  });
+});
+
+/**
+ * Who is handed the refresh token in the body.
+ *
+ * The API accepted a body token from "non-browser clients that hold the value
+ * themselves" and never gave one out, so the phone — the only such client —
+ * stored `undefined` in its keychain and could not sign in. The rule now: a
+ * request with no `Origin` (a browser cannot omit it on a POST) that
+ * identified itself as a native client gets the token in the body. A browser
+ * never does.
+ */
+describe('the refresh token in the body', () => {
+  const withOrigin = {
+    ...(request as object),
+    headers: { origin: 'https://devopss.ir' },
+    header: (name: string) => (name === 'origin' ? 'https://devopss.ir' : undefined),
+  } as never;
+  const refreshing = (headers: Record<string, string>) =>
+    ({
+      ...(request as object),
+      headers,
+      header: (name: string) => headers[name],
+    }) as never;
+
+  function withRefresh() {
+    const built = controller();
+    Object.assign((built.controller as unknown as { auth: object }).auth, {
+      refresh: async () => pair(),
+    });
+    return built.controller;
+  }
+
+  it('is handed to a native client at sign-in', async () => {
+    const { controller: subject } = controller();
+    const answer = await subject.login(
+      { email: 'a@b.test', password: 'x', installationId: 'installation-iphone-0001' } as never,
+      request,
+      response,
+    );
+    expect(answer).toEqual({ accessToken: 'access', expiresIn: 900, refreshToken: 'refresh' });
+  });
+
+  it('is handed to a native client at the second factor', async () => {
+    const { controller: subject } = controller();
+    const answer = await subject.loginTwoFactor(
+      { challengeToken: 'c', code: '123456', installationId: 'installation-ipad-0002' } as never,
+      request,
+      response,
+    );
+    expect(answer).toMatchObject({ refreshToken: 'refresh' });
+  });
+
+  it('is never handed to a browser, installation or not — an injected script cannot drop Origin', async () => {
+    const { controller: subject } = controller();
+    const answer = await subject.login(
+      { email: 'a@b.test', password: 'x', installationId: 'installation-iphone-0001' } as never,
+      withOrigin,
+      response,
+    );
+    expect(answer).toEqual({ accessToken: 'access', expiresIn: 900 });
+  });
+
+  it('is not handed to a caller that did not identify itself as holding its own token', async () => {
+    const { controller: subject } = controller();
+    const answer = await subject.login(
+      { email: 'a@b.test', password: 'x' } as never,
+      request,
+      response,
+    );
+    expect(answer).not.toHaveProperty('refreshToken');
+  });
+
+  it('comes back rotated to a client that presented its token in the body, and not to one using the cookie', async () => {
+    const subject = withRefresh();
+    const native = await subject.refresh(
+      { refreshToken: 'old' } as never,
+      refreshing({}),
+      response,
+    );
+    expect(native).toMatchObject({ refreshToken: 'refresh' });
+
+    const browser = await subject.refresh(
+      {} as never,
+      refreshing({ cookie: 'tp_refresh=old' }),
+      response,
+    );
+    expect(browser).not.toHaveProperty('refreshToken');
   });
 });

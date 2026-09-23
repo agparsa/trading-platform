@@ -215,6 +215,63 @@ const checks: Check[] = [
     },
   },
   {
+    name: 'a native client signs in and renews with the token in the body; a browser never sees it',
+    /**
+     * The phone keeps its refresh token in the keychain, because it has no
+     * httpOnly cookie. The API accepted a body token and never handed one out,
+     * so the app could not sign anybody in. Checked over HTTP on the real
+     * build: Node's fetch sends no Origin, like the native client; the same
+     * request with an Origin — which a browser cannot omit — gets no token.
+     */
+    run: async () => {
+      const email = `smoke-native-${Date.now()}@test.local`;
+      const password = 'a-sufficiently-long-passphrase';
+      await fetch(`${BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: registration(email, password, 'Smoke Native'),
+      });
+      const signIn = (headers: Record<string, string>) =>
+        fetch(`${BASE}/api/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ email, password, installationId: 'smoke-installation-0001' }),
+        });
+
+      const native = (await (await signIn({})).json()) as {
+        data: { accessToken?: string; refreshToken?: string; expiresIn?: number };
+      };
+      assert(typeof native.data.refreshToken === 'string', 'a native sign-in got no refresh token');
+      assert(typeof native.data.expiresIn === 'number', 'the sign-in did not say when it expires');
+
+      const browser = (await (await signIn({ Origin: 'http://localhost:3000' })).json()) as {
+        data: Record<string, unknown>;
+      };
+      assert(
+        !('refreshToken' in browser.data),
+        'a request with an Origin was handed a refresh token',
+      );
+
+      const renew = async (refreshToken: string) =>
+        fetch(`${BASE}/api/v1/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+      const renewed = await renew(native.data.refreshToken!);
+      assert(renewed.status === 200, `renewing with the body token answered ${renewed.status}`);
+      const next = (await renewed.json()) as { data: { refreshToken?: string } };
+      assert(
+        typeof next.data.refreshToken === 'string' &&
+          next.data.refreshToken !== native.data.refreshToken,
+        'the renewal did not hand back a rotated token in the body',
+      );
+      // Rotation holds for the native path too: the retired token is refused.
+      const replay = await renew(native.data.refreshToken!);
+      assert(replay.status === 401, `the retired token was accepted again: ${replay.status}`);
+    },
+  },
+  {
     name: 'the served resolutions are what the candles route answers, and nothing else',
     /**
      * `GET /market/resolutions` is what every chart builds its row of

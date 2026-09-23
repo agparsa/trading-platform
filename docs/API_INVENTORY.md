@@ -205,13 +205,23 @@ handler is responsible for scoping the result to that user — which for
 
 ### `features/features.controller.ts` — base `/features`
 
-| Verb   | Path                          | Handler     | Requires                             |
-| ------ | ----------------------------- | ----------- | ------------------------------------ |
-| `GET`  | `/features`                   | `effective` | SELF-SERVICE                         |
-| `GET`  | `/features`                   | `list`      | SESSION-ONLY, SYSTEM_OPERATIONS      |
-| `POST` | `/features/:key`              | `set`       | SESSION-ONLY, TENANT_SETTINGS_MANAGE |
-| `GET`  | `/features/:id/features`      | `list`      | SESSION-ONLY, TENANTS_READ           |
-| `POST` | `/features/:id/features/:key` | `set`       | SESSION-ONLY, TENANTS_MANAGE         |
+| Verb  | Path        | Handler     | Requires     |
+| ----- | ----------- | ----------- | ------------ |
+| `GET` | `/features` | `effective` | SELF-SERVICE |
+
+### `features/features.controller.ts` — base `/admin/features`
+
+| Verb   | Path                   | Handler | Requires                                                   |
+| ------ | ---------------------- | ------- | ---------------------------------------------------------- |
+| `GET`  | `/admin/features`      | `list`  | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS      |
+| `POST` | `/admin/features/:key` | `set`   | SESSION-ONLY (class), SESSION-ONLY, TENANT_SETTINGS_MANAGE |
+
+### `features/features.controller.ts` — base `/admin/brokers`
+
+| Verb   | Path                               | Handler | Requires                                           |
+| ------ | ---------------------------------- | ------- | -------------------------------------------------- |
+| `GET`  | `/admin/brokers/:id/features`      | `list`  | SESSION-ONLY (class), SESSION-ONLY, TENANTS_READ   |
+| `POST` | `/admin/brokers/:id/features/:key` | `set`   | SESSION-ONLY (class), SESSION-ONLY, TENANTS_MANAGE |
 
 ### `health/health.controller.ts` — base `/`
 

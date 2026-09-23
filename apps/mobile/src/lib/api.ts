@@ -22,18 +22,8 @@ export function apiBaseUrl(): string {
   return configured;
 }
 
-/** Reads the token pair out of a sign-in or refresh response. */
-export function toTokens(payload: {
-  accessToken: string;
-  refreshToken: string;
-  expiresInSeconds: number;
-}): Tokens {
-  return {
-    accessToken: payload.accessToken,
-    refreshToken: payload.refreshToken,
-    accessTokenExpiresAt: Date.now() + payload.expiresInSeconds * 1_000,
-  };
-}
+/** Re-exported: the parser lives beside the store, where it can be tested without a device. */
+export { toTokens } from './token-store';
 
 /**
  * The one client the app uses.

@@ -201,10 +201,11 @@ sent as a bearer header. The refresh token is issued **only** as a cookie:
 | `Path=/api/v1/auth` | It never rides along on a trading request, so a proxy logging headers on those paths cannot capture it.                                     |
 | `Secure`            | In production. Omitted in development, because a Secure cookie is silently never stored over plain http and that looks like a broken login. |
 
-**No response body ever contains a refresh token.** Login and refresh return an
-access token and an expiry, and nothing else. That is what makes the `HttpOnly`
-flag meaningful: a flag on a cookie whose value was also printed in the JSON
-beside it would protect nothing.
+**No response to a browser contains a refresh token.** Login and refresh return
+an access token and an expiry, and nothing else. That is what makes the
+`HttpOnly` flag meaningful: a flag on a cookie whose value was also printed in
+the JSON beside it would protect nothing. The one exception is a native client,
+below — and a browser cannot qualify for it.
 
 Before Phase 11 the token was returned in the body and kept in `sessionStorage`,
 where any injected script could take it and mint access tokens for a month. The
@@ -231,12 +232,32 @@ cross-site form post — it is how non-browser clients and same-origin navigatio
 arrive — and refusing them would break every API client to defend against
 something they cannot do.
 
-### Non-browser clients
+### Native clients
 
-`POST /auth/refresh` still accepts a token in the request body. This is not a
-hole: the risk being addressed is a _script reading_ the token, and no response
-ever hands one out. A client that wants to manage the value itself must read it
-from the `Set-Cookie` header, which only a non-browser client can do.
+The phone has no httpOnly cookie; the operating system's keychain is its
+equivalent, and it holds the refresh token itself. So a native client is handed
+the token in the body — by the server's rule, never by the client asking
+(`issuesBodyRefreshToken` in `refresh-cookie.ts`):
+
+- **the request has no `Origin` header.** A browser attaches one to every
+  POST, same-origin included, and a script cannot remove it — it is a forbidden
+  header. A script injected into the web terminal therefore never qualifies,
+  which is the whole of what keeping tokens out of bodies was for;
+- **and the client identified itself as one**: at sign-in and at the second
+  factor by sending its installation, at refresh by presenting the old token in
+  the body rather than as the cookie — and it gets the rotated one back the
+  same way, or its next refresh would present a retired token and read as
+  replay. Rotation, reuse detection and revocation are unchanged.
+
+This paragraph used to say that a native client "must read it from the
+`Set-Cookie` header", beside an API that returned no body token and a mobile
+app written to expect one. The app stored `undefined` in the keychain,
+`expo-secure-store` refused it, and no build of the app could sign anybody in —
+unnoticed because it had never been opened. `MOBILE_AUDIT.md` had prescribed
+exactly this rule in August. The response shape now lives in
+`@tp/shared-types` (`AuthTokenResponse`), so a client reading a field the API
+does not send fails to compile; `smoke-api` signs in and renews as a native
+client over HTTP and checks a request with an `Origin` gets no token.
 
 ## Sessions and devices
 

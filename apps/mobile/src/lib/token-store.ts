@@ -1,3 +1,5 @@
+import type { AuthTokenResponse } from '@tp/shared-types';
+
 /**
  * The access and refresh tokens, and the rule for renewing them.
  *
@@ -129,4 +131,31 @@ export class TokenStore {
       return null;
     }
   }
+}
+
+/**
+ * Reads the token pair out of a sign-in, second-factor or refresh response.
+ *
+ * Typed by the API's own contract (`AuthTokenResponse` in `@tp/shared-types`).
+ * It was typed by a guess — `refreshToken` and `expiresInSeconds` — and the API
+ * sends `expiresIn`, and a refresh token only to a client that identifies itself
+ * as native. So every sign-in on the phone stored `undefined` in the keychain,
+ * which `expo-secure-store` refuses, and the app could not sign anybody in.
+ *
+ * A response with no refresh token is refused here, by name, rather than
+ * stored: it means the request did not identify itself as a native client (no
+ * installation, or an `Origin` header), and a session that cannot be renewed
+ * would end silently fifteen minutes later.
+ */
+export function toTokens(payload: AuthTokenResponse, now: number = Date.now()): Tokens {
+  if (typeof payload.refreshToken !== 'string' || payload.refreshToken === '') {
+    throw new Error(
+      'The server did not return a refresh token. The request must carry the installation and no Origin header.',
+    );
+  }
+  return {
+    accessToken: payload.accessToken,
+    refreshToken: payload.refreshToken,
+    accessTokenExpiresAt: now + payload.expiresIn * 1_000,
+  };
 }

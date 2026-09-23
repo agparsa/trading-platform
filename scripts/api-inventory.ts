@@ -56,8 +56,38 @@ function basePath(argument: string): string {
  * wrong about working code is worse than no document, because the reader has no
  * reason to doubt it.
  */
-function routesIn(file: string): { controller: string; base: string; routes: Route[] } {
+/**
+ * One section per `@Controller` in the file.
+ *
+ * The parser read the first `@Controller` and attributed every route in the
+ * file to its base. `features.controller.ts` holds three controllers —
+ * `features`, `admin/features`, `admin/brokers` — so this inventory listed
+ * `GET /features` twice and `GET /features/:id/features`, and did not list
+ * `GET /admin/features` or `GET /admin/brokers/:id/features` at all, both of
+ * which the web calls. Found by checking every client call against this table
+ * (`client-routes.test.ts`). Each section is now read with its own base and
+ * its own class-level decorators — those between the previous class's closing
+ * brace and this `@Controller`.
+ */
+function routesIn(file: string): Array<{ controller: string; base: string; routes: Route[] }> {
   const source = readFileSync(file, 'utf8');
+  const starts = [...source.matchAll(/@Controller\(/g)].map((match) => match.index);
+  if (starts.length <= 1) return [routesInSection(file, source)];
+  return starts.map((start, index) => {
+    const previousClassEnd = index === 0 ? 0 : source.lastIndexOf('\n}\n', start) + 3;
+    const end = starts[index + 1] ?? source.length;
+    // The class-level decorators sit between the previous class and this one;
+    // the section runs to the next `@Controller`, whose own decorators are
+    // not part of this class — they are cut at the last closing brace.
+    const sectionEnd = index + 1 < starts.length ? source.lastIndexOf('\n}\n', end) + 3 : end;
+    return routesInSection(file, source.slice(previousClassEnd, sectionEnd));
+  });
+}
+
+function routesInSection(
+  file: string,
+  source: string,
+): { controller: string; base: string; routes: Route[] } {
   const controllerMatch = /@Controller\(([^)]*)\)/.exec(source);
   const base = basePath(controllerMatch?.[1] ?? '');
   const classLevelPublic = source.slice(0, controllerMatch?.index ?? 0).includes('@Public()');
@@ -144,8 +174,7 @@ function render(): string {
   let total = 0;
   const byVerb = new Map<string, number>();
 
-  for (const file of controllerFiles(ROOT)) {
-    const { controller, base, routes } = routesIn(file);
+  for (const { controller, base, routes } of controllerFiles(ROOT).flatMap(routesIn)) {
     if (routes.length === 0) continue;
     parts.push(`### \`${controller}\` — base \`/${base}\``, '');
     parts.push('| Verb | Path | Handler | Requires |', '| --- | --- | --- | --- |');
@@ -216,3 +245,10 @@ function main(): void {
 }
 
 if (process.argv[1]?.endsWith('api-inventory.ts')) main();
+
+/** Every route, as data, for tests that check callers against it. */
+export function allRoutes(): Array<{ verb: string; path: string }> {
+  return controllerFiles(ROOT)
+    .flatMap(routesIn)
+    .flatMap((section) => section.routes.map((route) => ({ verb: route.verb, path: route.path })));
+}

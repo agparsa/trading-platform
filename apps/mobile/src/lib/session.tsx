@@ -12,7 +12,12 @@ import * as Notifications from 'expo-notifications';
 import * as Application from 'expo-application';
 import * as Localization from 'expo-localization';
 import type { ApiClient } from '@tp/api-client';
-import type { NotificationSettingsDto } from '@tp/shared-types';
+import {
+  isTwoFactorChallenge,
+  type AuthTokenResponse,
+  type NotificationSettingsDto,
+  type SignInResponse,
+} from '@tp/shared-types';
 import { apiBaseUrl, createApi, toTokens, tokenStore } from './api';
 import type { TokenStore } from './token-store';
 import {
@@ -28,8 +33,11 @@ interface SessionValue {
   readonly api: ApiClient;
   readonly signedIn: boolean;
   readonly loading: boolean;
-  signIn(email: string, password: string): Promise<{ twoFactorRequired: boolean }>;
-  completeTwoFactor(challengeId: string, code: string): Promise<void>;
+  signIn(
+    email: string,
+    password: string,
+  ): Promise<{ twoFactorRequired: true; challengeToken: string } | { twoFactorRequired: false }>;
+  completeTwoFactor(challengeToken: string, code: string): Promise<void>;
   signOut(): Promise<void>;
   /**
    * A token good for right now, refreshing first if it is close to expiry.
@@ -46,14 +54,6 @@ interface SessionValue {
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
-
-interface SignInResponse {
-  accessToken?: string;
-  refreshToken?: string;
-  expiresInSeconds?: number;
-  twoFactorRequired?: boolean;
-  challengeId?: string;
-}
 
 /**
  * Holds the session, the API client, and the one handler that turns events into
@@ -87,7 +87,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
           body: JSON.stringify({ refreshToken }),
         });
         if (!response.ok) throw new Error(`refresh failed: ${response.status}`);
-        const payload = (await response.json()) as { data: Required<SignInResponse> };
+        const payload = (await response.json()) as { data: AuthTokenResponse };
         return toTokens(payload.data);
       }),
     [],
@@ -208,26 +208,35 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
         { email, password, installationId },
         { idempotencyKey: `login:${email}:${Date.now()}` },
       );
-      if (result.twoFactorRequired === true) return { twoFactorRequired: true };
+      // The challenge goes back to the screen that asked. It used to be
+      // dropped here and the screen stored the literal 'pending' in its place,
+      // so the second step presented a challenge the server had never issued.
+      if (isTwoFactorChallenge(result)) {
+        return { twoFactorRequired: true as const, challengeToken: result.challengeToken };
+      }
 
-      await tokens.save(toTokens(result as Required<SignInResponse>));
+      await tokens.save(toTokens(result));
       setSignedIn(true);
       await registerDevice();
       await refreshPreferences();
-      return { twoFactorRequired: false };
+      return { twoFactorRequired: false as const };
     },
     [api, tokens, registerDevice, refreshPreferences],
   );
 
   const completeTwoFactor = useCallback(
-    async (challengeId: string, code: string) => {
+    async (challengeToken: string, code: string) => {
       // The half that issues the session carries the installation, or a phone
       // with two-factor on would end up with a session belonging to no device.
+      // `/auth/login/2fa` with `challengeToken` — the route and field the API
+      // serves. This posted `challengeId` to `/auth/2fa/verify`, which has
+      // never existed; `client-routes.test.ts` now checks every path a client
+      // calls against the API's own route table.
       const installationId = await installationIdentifier();
-      const result = await api.post<Required<SignInResponse>>(
-        '/auth/2fa/verify',
-        { challengeId, code, installationId },
-        { idempotencyKey: `2fa:${challengeId}` },
+      const result = await api.post<AuthTokenResponse>(
+        '/auth/login/2fa',
+        { challengeToken, code: code.trim(), installationId },
+        { idempotencyKey: `2fa:${challengeToken.slice(0, 16)}:${Date.now()}` },
       );
       await tokens.save(toTokens(result));
       setSignedIn(true);

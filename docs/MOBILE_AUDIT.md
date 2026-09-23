@@ -70,6 +70,12 @@ whichever it prefers. Rotation, reuse detection and revocation are unchanged;
 only the carrier differs. Roughly a day of work, plus tests that assert the web
 path still refuses a body-delivered token.
 
+> **Done on 23 September 2026**, a month after this was written and only when a
+> check of every client call against the API's routes found the phone posting
+> to one that did not exist. Until then the app was built against the body token
+> this section describes and the API never sent one. See
+> [security.md](./security.md#native-clients).
+
 ## 4. Everything else mobile needs, none of which exists
 
 | Requirement                   | State   | Note                                                                  |

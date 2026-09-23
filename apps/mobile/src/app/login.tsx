@@ -12,7 +12,7 @@ export default function Login(): React.ReactElement {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -38,7 +38,7 @@ export default function Login(): React.ReactElement {
     }
   };
 
-  if (challengeId !== null) {
+  if (challengeToken !== null) {
     return (
       <Screen>
         <Text style={styles.heading}>Two-factor code</Text>
@@ -61,7 +61,7 @@ export default function Login(): React.ReactElement {
           disabled={code.length < 6}
           onPress={() => {
             void attempt(async () => {
-              await completeTwoFactor(challengeId, code);
+              await completeTwoFactor(challengeToken, code);
               router.replace('/(tabs)');
             });
           }}
@@ -109,10 +109,12 @@ export default function Login(): React.ReactElement {
             void attempt(async () => {
               const result = await signIn(email, password);
               if (result.twoFactorRequired) {
-                // The challenge id travels back on the response; the session
+                // The challenge travels back on the response; the session
                 // provider does not keep it, because it is single-use and
-                // belongs to this screen's flow.
-                setChallengeId('pending');
+                // belongs to this screen's flow. This stored the literal
+                // 'pending' until 23 September, so the second step presented a
+                // challenge the server had never issued.
+                setChallengeToken(result.challengeToken);
                 return;
               }
               router.replace('/(tabs)');

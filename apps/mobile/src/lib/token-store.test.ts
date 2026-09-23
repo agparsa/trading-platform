@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { REFRESH_MARGIN_MS, TokenStore, type SecureStorePort, type Tokens } from './token-store';
+import {
+  REFRESH_MARGIN_MS,
+  TokenStore,
+  toTokens,
+  type SecureStorePort,
+  type Tokens,
+} from './token-store';
 
 class MemoryStore implements SecureStorePort {
   readonly values = new Map<string, string>();
@@ -143,5 +149,21 @@ describe('holding the session', () => {
     // The in-flight guard must clear itself, or the session freezes on the
     // first token it ever refreshed.
     expect((await store.current())?.accessToken).toBe('access-3');
+  });
+});
+
+/**
+ * The parser is typed by the API's own contract now. It was typed by a guess —
+ * `refreshToken` in every body and `expiresInSeconds` — so every sign-in on
+ * the phone stored `undefined` in the keychain and the app could not sign in.
+ */
+describe('toTokens, against what the API actually sends', () => {
+  it('reads a native sign-in: expiresIn in seconds, the refresh token in the body', () => {
+    const tokens = toTokens({ accessToken: 'a', expiresIn: 900, refreshToken: 'r' }, 1_000);
+    expect(tokens).toEqual({ accessToken: 'a', refreshToken: 'r', accessTokenExpiresAt: 901_000 });
+  });
+
+  it('refuses a response with no refresh token instead of storing undefined', () => {
+    expect(() => toTokens({ accessToken: 'a', expiresIn: 900 }, 1_000)).toThrow(/refresh token/);
   });
 });

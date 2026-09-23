@@ -89,3 +89,31 @@ export function isAllowedOrigin(origin: string | undefined, allowed: readonly st
   if (origin === undefined || origin === '') return true;
   return allowed.includes(origin);
 }
+
+/**
+ * Whether this response may carry the refresh token in its body.
+ *
+ * Only for a client that holds its own token: a native app, which keeps it in
+ * the operating system's keychain. Two conditions, both required:
+ *
+ * - **No `Origin`.** A browser attaches one to every POST — same-origin
+ *   included — and a script cannot remove it: it is a forbidden header. So a
+ *   script injected into the web terminal can never meet this condition, which
+ *   is the whole of what keeping the token out of bodies was for.
+ * - **The client identified itself as one.** At sign-in, by sending its
+ *   installation; at refresh, by presenting the old token in the body rather
+ *   than as the cookie.
+ *
+ * Until this existed the API accepted a body token "for non-browser clients
+ * that hold the value themselves" and never handed one out — so the only
+ * non-browser client, the phone, could not sign in at all.
+ */
+export function issuesBodyRefreshToken(
+  request: Request,
+  identifiedAs: { installationId?: string | null } | { presentedInBody: boolean },
+): boolean {
+  const origin = request.headers.origin;
+  if (typeof origin === 'string' && origin !== '') return false;
+  if ('presentedInBody' in identifiedAs) return identifiedAs.presentedInBody;
+  return typeof identifiedAs.installationId === 'string' && identifiedAs.installationId !== '';
+}
