@@ -27,6 +27,11 @@ const config: NextConfig = {
   transpilePackages: ['@tp/ui', '@tp/shared-types', '@tp/api-client', '@tp/financial-core'],
   typedRoutes: true,
   poweredByHeader: false,
+  /**
+   * The same marker, readable by the pages themselves: `/status` shows it beside
+   * the API's. Inlined at build for the same reason the header is computed then.
+   */
+  env: { TP_WEB_BUILD: build },
   headers: async () => [{ source: '/:path*', headers: [{ key: BUILD_HEADER, value: build }] }],
 };
 

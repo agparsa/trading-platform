@@ -1,143 +1,27 @@
 import { fetchApiLiveness } from '@/lib/api';
 
 /**
- * Build-status page.
+ * Which build is serving, and whether the API answers.
  *
- * Kept after the terminal shipped, because "what is actually finished" is a
- * question this project answers honestly. A phase is marked complete when its
- * behaviour is tested and verified end to end, not when its files exist.
+ * This page used to carry a hand-typed list of fifteen phases, each marked
+ * Complete or In progress — the first plan's list, retired on 3 September and
+ * never updated after. It told every trader who followed the terminal's "Build
+ * status" link that performance under load was finished (the thousand-trader
+ * run has not been done) and that security testing stood at 25 attacks (it is
+ * over sixty), beside an API line reading "up · undefineds", because the
+ * liveness probe was read without unwrapping its envelope.
+ *
+ * A public page is the wrong place for a roadmap, and a hand-typed one goes
+ * stale the day it is written. What stays is what the running system can say
+ * about itself: the build each half is on, and whether they are the same one.
+ * Progress against the plan is tracked in the repository, measured and dated.
  */
-
-interface Phase {
-  readonly id: string;
-  readonly name: string;
-  readonly state: 'done' | 'in-progress' | 'planned';
-  readonly detail: string;
-}
-
-const PHASES: readonly Phase[] = [
-  {
-    id: '0',
-    name: 'Product definition',
-    state: 'done',
-    detail:
-      'Architecture, domain model, ERD, state machines, financial formulas, API and WebSocket contracts.',
-  },
-  {
-    id: '1',
-    name: 'Project foundation',
-    state: 'done',
-    detail: 'Monorepo, strict TypeScript, Docker, PostgreSQL, Redis, NestJS, Next.js, CI.',
-  },
-  {
-    id: '2',
-    name: 'Account system',
-    state: 'done',
-    detail: 'Authentication, users, accounts, balances, settings.',
-  },
-  {
-    id: '3',
-    name: 'Market core',
-    state: 'done',
-    detail: 'Symbols, contract specs, tick stream, candle aggregation.',
-  },
-  {
-    id: '4',
-    name: 'Trading core',
-    state: 'done',
-    detail: 'Orders, executions, positions, close, partial close, modify, reverse.',
-  },
-  {
-    id: '5',
-    name: 'Financial engine',
-    state: 'done',
-    detail: 'P&L, equity, margin, commission, swap, rounding.',
-  },
-  {
-    id: '6',
-    name: 'SL/TP engine',
-    state: 'done',
-    detail: 'Server-side triggers with race protection.',
-  },
-  {
-    id: '7',
-    name: 'Realtime',
-    state: 'done',
-    detail:
-      'WebSocket gateway with sequenced frames, account-scoped channels, Redis fan-out and tick-driven P&L.',
-  },
-  {
-    id: '8',
-    name: 'Trading terminal',
-    state: 'done',
-    detail:
-      'Watchlist, order ticket, positions with close/partial/modify/reverse, history, live candles.',
-  },
-  {
-    id: '9',
-    name: 'Charting',
-    state: 'in-progress',
-    detail:
-      'Datafeed boundary, lightweight-charts rendering, chart trading and drag-to-modify are done, and both halves of the seam — datafeed and command adapter — are driven end to end by tests. TradingView Advanced Charts: the widget is waiting on the licensed bundle, and nothing else.',
-  },
-  {
-    id: '10',
-    name: 'Advanced trading UX',
-    state: 'done',
-    detail:
-      'Resting orders placed, fired, expired, cancelled and modified from the table or the chart. Order command lifecycle, projected outcome and reward-to-risk on the ticket, keyboard trading with a help card, watchlist with change and favourites, notifications and toasts.',
-  },
-  {
-    id: '11',
-    name: 'Security hardening',
-    state: 'done',
-    detail:
-      'Refresh tokens are httpOnly, SameSite=Strict cookies. Two-factor with replay prevention, sealed secrets, RBAC, an administrative surface where moving money needs a second factor and a reason, a readable audit trail, and a socket that re-checks its own authority every minute. 25 attacks attempted and refused.',
-  },
-  {
-    id: '12',
-    name: 'Performance under load',
-    state: 'done',
-    detail:
-      'A hundred traders, two hundred sockets, three phases. It found three real faults — the stop-out sweep back-pressuring the feed, the same mistake in realtime valuation, and simulator timestamps that drifted and never recovered. Idle feed staleness on a loaded platform: 7000ms to 350ms.',
-  },
-  {
-    id: '13',
-    name: 'Production readiness',
-    state: 'done',
-    detail:
-      'Split ingest and serving processes behind one Nginx door, migrations as a job, non-root images, a rehearsed restore that fingerprints the evidence tables as well as the money, and a failure-mode suite proving a dead feed closes nothing.',
-  },
-  {
-    id: '14',
-    name: 'Market data integrity',
-    state: 'done',
-    detail:
-      'Every tick passes a gate: crossed books, negative prices, out-of-order arrivals and future timestamps are refused outright; implausible spreads and spikes are refused and then followed, because a guard that never re-opens freezes the price. Conversion rates must be fresh.',
-  },
-  {
-    id: '15',
-    name: 'Administration and oversight',
-    state: 'done',
-    detail:
-      'User and account lifecycle, a risk console valuing accounts live, exposure by instrument, integrity signals, reconciliation runs and findings that reopen when a drift comes back, and an audit trail with no write path.',
-  },
-];
-
-const STATE_LABEL: Record<Phase['state'], string> = {
-  done: 'Complete',
-  'in-progress': 'In progress',
-  planned: 'Planned',
-};
-
-const STATE_CLASS: Record<Phase['state'], string> = {
-  done: 'text-terminal-long border-terminal-long/40 bg-terminal-long/10',
-  'in-progress': 'text-terminal-warning border-terminal-warning/40 bg-terminal-warning/10',
-  planned: 'text-terminal-muted border-terminal-border bg-terminal-raised',
-};
+export const dynamic = 'force-dynamic';
 
 export default async function StatusPage() {
   const liveness = await fetchApiLiveness();
+  const web = process.env.TP_WEB_BUILD ?? 'unknown';
+  const agree = liveness !== null && liveness.build === web && web !== 'unknown';
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-16">
@@ -147,8 +31,8 @@ export default async function StatusPage() {
         </p>
         <h1 className="mt-3 text-3xl font-semibold text-terminal-text">Build status</h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-terminal-muted">
-          The trading engine is the product. This page tracks what is finished and verified, and
-          what is not.
+          Which build is serving, and whether the API answers. The build is a short digest of the
+          release, the same one support will ask you for.
         </p>
         <a
           href="/"
@@ -158,49 +42,69 @@ export default async function StatusPage() {
         </a>
       </header>
 
-      <section className="mt-8 rounded-lg border border-terminal-border bg-terminal-surface p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-medium text-terminal-text">API</h2>
-            <p className="numeric mt-1 text-xs text-terminal-muted">
-              {liveness === null
-                ? 'Not reachable from the web process'
-                : `up · ${liveness.uptimeSeconds}s`}
-            </p>
-          </div>
-          <span
-            className={`numeric rounded border px-2.5 py-1 text-xs ${
-              liveness === null
-                ? 'border-terminal-short/40 bg-terminal-short/10 text-terminal-short'
-                : 'border-terminal-long/40 bg-terminal-long/10 text-terminal-long'
-            }`}
-          >
-            {liveness === null ? 'DOWN' : 'OK'}
-          </span>
-        </div>
+      <section
+        className="mt-8 divide-y divide-terminal-border rounded-lg border border-terminal-border bg-terminal-surface"
+        data-testid="build-status"
+      >
+        <Row
+          label="API"
+          detail={
+            liveness === null
+              ? 'not reachable from the web process'
+              : `up ${liveness.uptimeSeconds}s · build ${liveness.build}`
+          }
+          ok={liveness !== null}
+          verdict={liveness === null ? 'DOWN' : 'OK'}
+        />
+        <Row
+          label="Web"
+          detail={`build ${web}`}
+          ok={web !== 'unknown'}
+          verdict={web === 'unknown' ? 'UNSTAMPED' : 'OK'}
+        />
+        <Row
+          label="Same release"
+          detail={
+            liveness === null
+              ? 'cannot tell while the API is unreachable'
+              : agree
+                ? 'the web and the API are on the same build'
+                : `web ${web}, API ${liveness.build} — a deploy is in progress, or one half was not updated`
+          }
+          ok={agree}
+          verdict={agree ? 'YES' : 'NO'}
+        />
       </section>
-
-      <ol className="mt-8 space-y-2">
-        {PHASES.map((phase) => (
-          <li
-            key={phase.id}
-            className="flex items-start gap-4 rounded-lg border border-terminal-border bg-terminal-surface px-5 py-4"
-          >
-            <span className="numeric mt-0.5 w-6 shrink-0 text-xs text-terminal-muted">
-              {phase.id}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-terminal-text">{phase.name}</p>
-              <p className="mt-1 text-xs leading-relaxed text-terminal-muted">{phase.detail}</p>
-            </div>
-            <span
-              className={`numeric shrink-0 rounded border px-2.5 py-1 text-[11px] ${STATE_CLASS[phase.state]}`}
-            >
-              {STATE_LABEL[phase.state]}
-            </span>
-          </li>
-        ))}
-      </ol>
     </main>
+  );
+}
+
+function Row({
+  label,
+  detail,
+  ok,
+  verdict,
+}: {
+  label: string;
+  detail: string;
+  ok: boolean;
+  verdict: string;
+}) {
+  return (
+    <div className="flex items-center justify-between px-5 py-4">
+      <div>
+        <h2 className="text-sm font-medium text-terminal-text">{label}</h2>
+        <p className="numeric mt-1 text-xs text-terminal-muted">{detail}</p>
+      </div>
+      <span
+        className={`numeric rounded border px-2.5 py-1 text-xs ${
+          ok
+            ? 'border-terminal-long/40 bg-terminal-long/10 text-terminal-long'
+            : 'border-terminal-short/40 bg-terminal-short/10 text-terminal-short'
+        }`}
+      >
+        {verdict}
+      </span>
+    </div>
   );
 }

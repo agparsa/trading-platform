@@ -301,7 +301,13 @@ interface UndeterminedContrast {
   /** Elements axe would not judge that this could, and that read fine. */
   readonly checked: number;
   /** Elements axe would not judge that this could, and that do not. */
-  readonly failed: readonly { target: string; fg: string; bg: string; ratio: string; wants: number }[];
+  readonly failed: readonly {
+    target: string;
+    fg: string;
+    bg: string;
+    ratio: string;
+    wants: number;
+  }[];
   /** Elements neither could judge — a background image, or nothing opaque above. */
   readonly stillUnknown: number;
 }
@@ -511,7 +517,12 @@ async function auditAccessibility(page: Page, label: string): Promise<void> {
         nodes: Array<{
           target: string[];
           any?: Array<{
-            data?: { fgColor?: string; bgColor?: string; contrastRatio?: number; expectedContrastRatio?: string };
+            data?: {
+              fgColor?: string;
+              bgColor?: string;
+              contrastRatio?: number;
+              expectedContrastRatio?: string;
+            };
           }>;
         }>;
       }>;
@@ -533,8 +544,9 @@ async function auditAccessibility(page: Page, label: string): Promise<void> {
        * assume the latter. axe already knows both colours and the ratio it
        * wanted, so the report carries them.
        */
-      const data = violation.nodes[0]?.any?.find((check) => check.data?.contrastRatio !== undefined)
-        ?.data;
+      const data = violation.nodes[0]?.any?.find(
+        (check) => check.data?.contrastRatio !== undefined,
+      )?.data;
       return {
         id: violation.id,
         impact: violation.impact ?? 'unknown',
@@ -575,7 +587,10 @@ async function auditAccessibility(page: Page, label: string): Promise<void> {
   void incomplete;
   if (undetermined.failed.length > 0) {
     const detail = undetermined.failed
-      .map((item) => `${item.target} — ${item.fg} on ${item.bg} is ${item.ratio}:1, wants ${item.wants}`)
+      .map(
+        (item) =>
+          `${item.target} — ${item.fg} on ${item.bg} is ${item.ratio}:1, wants ${item.wants}`,
+      )
       .join('; ');
     ok(false, `${label} has readable text where axe could not judge`, detail);
     problems.push(`${label}: ${detail}`);
@@ -603,8 +618,7 @@ async function auditAccessibility(page: Page, label: string): Promise<void> {
   );
   const detail = blocking
     .map(
-      (violation) =>
-        `${violation.id}×${violation.count} (${violation.first})${violation.measured}`,
+      (violation) => `${violation.id}×${violation.count} (${violation.first})${violation.measured}`,
     )
     .join('; ');
   ok(blocking.length === 0, `${label} has no serious accessibility violations`, detail);
@@ -1078,6 +1092,22 @@ async function main(): Promise<void> {
     const adminContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const adminPage = await adminContext.newPage();
     await signIn(adminPage, people.admin.email);
+    /**
+     * The build status page, which every trader reaches from the terminal's
+     * header. It said "up · undefineds" in production — the liveness probe was
+     * read without unwrapping its envelope — beside a hand-typed phase list
+     * from a retired plan. Now it states builds, so the check is that it
+     * states them: a number of seconds, a twelve-character build on each half.
+     */
+    await visit(adminPage, '/status', { url: '/status', text: /Build status/ });
+    const status = await adminPage.getByTestId('build-status').innerText();
+    ok(
+      /up \d+s · build [0-9a-f]{12}|up \d+s · build unknown/.test(status) &&
+        !/undefined/.test(status),
+      'the build status page says how long the API has been up and which build it is',
+      status.replace(/\s+/g, ' ').slice(0, 200),
+    );
+
     await visit(adminPage, '/admin', { url: '/admin/overview' });
     await visit(adminPage, '/admin/people', { url: '/admin/people' });
     await auditAccessibility(adminPage, 'the admin people screen');
