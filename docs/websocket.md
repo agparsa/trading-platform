@@ -15,14 +15,20 @@ than one that is pushed to, and the specification (§16) is explicit about it.
 
 ## Channels
 
-| Channel     | Visibility | Carries                                              |
-| ----------- | ---------- | ---------------------------------------------------- |
-| `quotes`    | public     | `quotes.updated` — conflated, see below              |
-| `candles`   | public     | `candle.update`                                      |
-| `orders`    | private    | `order.created` / `updated` / `filled` / `cancelled` |
-| `positions` | private    | `position.created` / `updated` / `closed`            |
-| `account`   | private    | `account.updated`                                    |
-| `pnl`       | private    | `pnl.updated` — every open position, one frame       |
+| Channel     | Visibility | Carries                                                                                       |
+| ----------- | ---------- | --------------------------------------------------------------------------------------------- |
+| `quotes`    | public     | `quotes.updated` — conflated, see below                                                       |
+| `candles`   | public     | `candle.update`                                                                               |
+| `orders`    | private    | `order.created`, `order.updated`, `order.filled`, `order.cancelled`, `order.rejected`         |
+| `positions` | private    | `position.created`, `position.updated`, `position.closed` — a liquidation arrives as the last |
+| `account`   | private    | `account.updated`, `risk.updated` — the second on a margin transition only, see below         |
+| `pnl`       | private    | `pnl.updated` — every open position, one frame                                                |
+
+This table is read by `scripts/websocket-channels.test.ts` against every place
+the server sends a frame, so a new event cannot reach sockets without a row
+here, and a row cannot name an event no socket is sent. It said `orders`
+carried four events and `account` one, for as long as `order.rejected` and
+`risk.updated` had existed — the two events a trader most needs to act on.
 
 Private channels are scoped to the authenticated account. One user's account
 data is never broadcast to another's socket — the account set is resolved from

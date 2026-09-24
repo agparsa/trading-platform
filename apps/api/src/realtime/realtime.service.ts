@@ -12,6 +12,7 @@ import {
   RiskState,
   type RiskUpdatePayload,
   WsChannel,
+  WsEvent,
 } from '@tp/shared-types';
 import { withTenant, type TenantContext } from '@tp/tenancy';
 import { PrismaService } from '../prisma/prisma.service';
@@ -316,7 +317,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     this.gateway.sendToAccount(
       accountId,
       WsChannel.ACCOUNT,
-      'account.updated',
+      WsEvent.ACCOUNT_UPDATED,
       this.accountState.toDto(valuation),
     );
 
@@ -335,7 +336,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       this.gateway.sendToAccount(
         accountId,
         WsChannel.PNL,
-        'pnl.updated',
+        WsEvent.PNL_UPDATED,
         valuation.positions.map(
           (position) =>
             ({
@@ -386,7 +387,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
     if (state === previous) return;
     this.lastRiskState.set(accountId, state);
 
-    this.gateway.sendToAccount(accountId, WsChannel.ACCOUNT, 'risk.updated', {
+    this.gateway.sendToAccount(accountId, WsChannel.ACCOUNT, WsEvent.RISK_UPDATED, {
       accountId,
       state,
       previous,

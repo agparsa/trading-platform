@@ -73,16 +73,16 @@ const SOCKET_WINDOW_MS = 60_000;
  * An event with no mapping is simply not broadcast — adding one is a deliberate
  * act, not something that happens because a name looked similar.
  */
-export const EVENT_ROUTING: Readonly<Record<string, { channel: WsChannel; wire: string }>> = {
-  'order.created': { channel: WsChannel.ORDERS, wire: 'order.created' },
-  'order.accepted': { channel: WsChannel.ORDERS, wire: 'order.updated' },
+export const EVENT_ROUTING: Readonly<Record<string, { channel: WsChannel; wire: WsEvent }>> = {
+  'order.created': { channel: WsChannel.ORDERS, wire: WsEvent.ORDER_CREATED },
+  'order.accepted': { channel: WsChannel.ORDERS, wire: WsEvent.ORDER_UPDATED },
   // Its own wire event, not `order.updated`. See WsEvent.ORDER_REJECTED.
-  'order.rejected': { channel: WsChannel.ORDERS, wire: 'order.rejected' },
-  'order.filled': { channel: WsChannel.ORDERS, wire: 'order.filled' },
-  'order.cancelled': { channel: WsChannel.ORDERS, wire: 'order.cancelled' },
-  'position.opened': { channel: WsChannel.POSITIONS, wire: 'position.created' },
-  'position.modified': { channel: WsChannel.POSITIONS, wire: 'position.updated' },
-  'position.closed': { channel: WsChannel.POSITIONS, wire: 'position.closed' },
+  'order.rejected': { channel: WsChannel.ORDERS, wire: WsEvent.ORDER_REJECTED },
+  'order.filled': { channel: WsChannel.ORDERS, wire: WsEvent.ORDER_FILLED },
+  'order.cancelled': { channel: WsChannel.ORDERS, wire: WsEvent.ORDER_CANCELLED },
+  'position.opened': { channel: WsChannel.POSITIONS, wire: WsEvent.POSITION_CREATED },
+  'position.modified': { channel: WsChannel.POSITIONS, wire: WsEvent.POSITION_UPDATED },
+  'position.closed': { channel: WsChannel.POSITIONS, wire: WsEvent.POSITION_CLOSED },
   /*
    * `balance.changed` and `margin.call` are deliberately not here. Both were
    * routed to `account.updated`, whose contract (see WsEvent.ACCOUNT_UPDATED)
@@ -95,7 +95,7 @@ export const EVENT_ROUTING: Readonly<Record<string, { channel: WsChannel; wire: 
    * `risk.updated`. Found by `pnpm smoke:contracts`, which checks real frames
    * against the types the clients read them as.
    */
-  liquidation: { channel: WsChannel.POSITIONS, wire: 'position.closed' },
+  liquidation: { channel: WsChannel.POSITIONS, wire: WsEvent.POSITION_CLOSED },
 };
 
 /**
@@ -686,7 +686,7 @@ export class RealtimeGateway
       if (socket.state.candleSymbols.size > 0 && !socket.state.candleSymbols.has(candle.symbol))
         continue;
       if (!socket.state.resolutions.has(candle.resolution)) continue;
-      this.send(socket, 'candle.update', WsChannel.CANDLES, null, {
+      this.send(socket, WsEvent.CANDLE_UPDATE, WsChannel.CANDLES, null, {
         ...candle,
         closed: update.closed,
       });
@@ -715,7 +715,7 @@ export class RealtimeGateway
   }
 
   /** Pushes a frame to one account's sockets. Used by the tick-driven valuations. */
-  sendToAccount(accountId: string, channel: WsChannel, event: string, data: unknown): number {
+  sendToAccount(accountId: string, channel: WsChannel, event: WsEvent, data: unknown): number {
     let delivered = 0;
     for (const socket of this.sockets) {
       if (!socket.state.channels.has(channel)) continue;
@@ -787,7 +787,7 @@ export class RealtimeGateway
    */
   private send(
     socket: TradingSocket,
-    event: string,
+    event: WsEvent,
     channel: WsChannel,
     accountId: string | null,
     data: unknown,
@@ -795,7 +795,7 @@ export class RealtimeGateway
   ): void {
     socket.state.seq += 1;
     socket.emit('frame', {
-      event: event as WsEvent,
+      event,
       eventId,
       channel,
       accountId,
