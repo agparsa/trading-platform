@@ -123,12 +123,48 @@ export interface WsEnvelope<E extends WsEvent, D> {
   timestamp: EpochMillis;
 }
 
+/**
+ * One open position's figures in a `pnl.updated` frame.
+ *
+ * This interface said `currentPrice: DecimalString` and had no `netPnl` or
+ * `stale` for as long as the server has sent them — nothing compiled against
+ * it. The server's frame now `satisfies` it, and `pnpm smoke:contracts` holds
+ * the clients' reading of the real frame to their own types.
+ */
 export interface PnlUpdatePayload {
   accountId: string;
   positionId: string;
   symbol: string;
   floatingPnl: DecimalString;
-  currentPrice: DecimalString;
+  /** The floating figure less the costs already charged. Computed by the server, never a client. */
+  netPnl: DecimalString;
+  /** `null` when no fresh price exists — never a stale one presented as current. */
+  currentPrice: DecimalString | null;
+  stale: boolean;
+}
+
+/** `order.filled`: the order, and the position its fill became. */
+export interface OrderFilledPayload {
+  orderId: string;
+  /** `null` when a venue filled an order this platform could not yet match to a position. */
+  positionId: string | null;
+  symbol: string;
+  side: string;
+  volume: DecimalString;
+  /** `null` when a venue reported the fill without an average price. */
+  price: DecimalString | null;
+}
+
+/**
+ * `order.cancelled` and `order.rejected`: the order is not coming, and why.
+ * `reason` is `MANUAL` or `EXPIRED` for a cancellation and the refusal in
+ * words for a rejection; `code` is the refusal's error code, when there is one.
+ */
+export interface OrderEndedPayload {
+  orderId: string;
+  symbol: string;
+  reason: string;
+  code?: string;
 }
 
 /**
@@ -153,6 +189,16 @@ export interface RiskUpdatePayload {
   marginCallLevelPercent: DecimalString | null;
   stopOutLevelPercent: DecimalString | null;
 }
+
+/**
+ * A frame as a client receives it, before it has looked at `event`.
+ *
+ * `data` is `unknown` because what it is depends on `event` — a list of quotes
+ * for one, an account for another. The web typed it `Record<string, unknown>`,
+ * which two of its events are not, and the phone named the timestamp `at`,
+ * which the server has never sent. Both now use this.
+ */
+export type WsFrame = WsEnvelope<WsEvent, unknown>;
 
 export type WsMessage =
   | WsEnvelope<typeof WsEvent.QUOTES_UPDATED, QuoteDto[]>

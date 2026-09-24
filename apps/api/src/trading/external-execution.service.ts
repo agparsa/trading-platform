@@ -11,6 +11,8 @@ import {
 import {
   DomainError,
   DomainEvent,
+  type OrderEndedPayload,
+  type OrderFilledPayload,
   OrderStatus,
   TradingErrorCode,
   type OrderSide,
@@ -337,7 +339,7 @@ export class ExternalExecutionService {
         symbol: request.symbolCode,
         // The venue's own words, for staff. The trader is shown the platform's.
         reason: result.reason ?? 'the venue rejected this order',
-      });
+      } satisfies OrderEndedPayload);
       return {
         orderId,
         clientOrderId: result.clientOrderId,
@@ -476,7 +478,7 @@ export class ExternalExecutionService {
         price: averagePrice,
         venue: request.account.brokerConnectionId,
         externalOrderId: result.externalOrderId,
-      };
+      } satisfies OrderFilledPayload & Record<string, unknown>;
       const event = await this.outbox.record(
         tx,
         DomainEvent.ORDER_FILLED,

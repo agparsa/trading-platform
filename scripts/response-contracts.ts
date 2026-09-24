@@ -280,6 +280,169 @@ export function typedCalls(): TypedCall[] {
 }
 
 /**
+ * What a client reads out of one socket event: `frame.data` cast to a type in
+ * the handler for that event, or one field read off it by name.
+ */
+export interface FrameRead extends Checked {
+  /** The wire event this read is made for: `account.updated`. */
+  readonly event: string;
+  /**
+   * `cast` for `frame.data as T`; `field` for `frame.data['orderId']`;
+   * `envelope` for the handler's own parameter, `socket.on('frame', (frame: Frame) => …)`,
+   * which every event's frame must be — its `event` is `*`.
+   */
+  readonly kind: 'cast' | 'field' | 'envelope';
+}
+
+/** The literal a `case` or an `if (frame.event !== '…') return` names. */
+function stringLiteral(node: ts.Expression | undefined): string | null {
+  if (node === undefined) return null;
+  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ? node.text : null;
+}
+
+/**
+ * The events a read belongs to, from where it sits.
+ *
+ * Inside a `switch (frame.event)`: its own `case` and every empty `case`
+ * falling through into it. Otherwise: an earlier `if (frame.event !== 'x')
+ * return` in the same function, which is how the phone's quote handler is
+ * written. `null` when neither says — the read is reported rather than
+ * guessed at.
+ */
+function eventsOf(node: ts.Node): string[] | null {
+  for (let at: ts.Node | undefined = node; at !== undefined; at = at.parent) {
+    if (ts.isCaseClause(at)) {
+      const clauses = (at.parent as ts.CaseBlock).clauses;
+      const index = clauses.indexOf(at);
+      const events: string[] = [];
+      for (let i = index; i >= 0; i -= 1) {
+        const clause = clauses[i]!;
+        if (i < index && clause.statements.length > 0) break;
+        if (!ts.isCaseClause(clause)) break;
+        const literal = stringLiteral(clause.expression);
+        if (literal === null) return null;
+        events.push(literal);
+      }
+      return events;
+    }
+    if (ts.isFunctionLike(at)) {
+      const body = (at as ts.FunctionLikeDeclarationBase).body;
+      if (body === undefined || !ts.isBlock(body)) return null;
+      for (const statement of body.statements) {
+        if (statement.pos >= node.pos) break;
+        if (
+          ts.isIfStatement(statement) &&
+          ts.isBinaryExpression(statement.expression) &&
+          statement.expression.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken &&
+          /\.event$/.test(statement.expression.left.getText())
+        ) {
+          const literal = stringLiteral(statement.expression.right);
+          if (literal !== null) return [literal];
+        }
+      }
+      return null;
+    }
+  }
+  return null;
+}
+
+let cachedFrames: { reads: FrameRead[]; unread: UnreadCall[] } | undefined;
+
+/**
+ * Every place a client reads a socket frame's `data`, and as what.
+ *
+ * `frame.data` is `unknown` on the wire type, so each handler casts it — the
+ * same cast `api.get<T>` is, with the same failure: the compiler believes it.
+ * Read here so that `smoke:contracts` can hold the frames it captures to it.
+ */
+export function frameReads(): { reads: FrameRead[]; unread: UnreadCall[] } {
+  if (cachedFrames !== undefined) return cachedFrames;
+  const reads: FrameRead[] = [];
+  const unread: UnreadCall[] = [];
+  for (const app of CLIENT_APPS) {
+    for (const file of sourceFiles(app.sources)) {
+      const text = readFileSync(file, 'utf8');
+      if (!text.includes('frame')) continue;
+      const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true);
+      const visit = (node: ts.Node): void => {
+        if (
+          ts.isCallExpression(node) &&
+          ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.name.text === 'on' &&
+          stringLiteral(node.arguments[0]) === 'frame'
+        ) {
+          const handler = node.arguments[1];
+          const parameter =
+            handler !== undefined &&
+            (ts.isArrowFunction(handler) || ts.isFunctionExpression(handler))
+              ? handler.parameters[0]
+              : undefined;
+          const line = source.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+          if (parameter?.type === undefined) {
+            unread.push({ file: relative(ROOT, file), line, text: 'an untyped frame handler' });
+          } else {
+            reads.push({
+              app: app.name,
+              file: relative(ROOT, file),
+              line,
+              kind: 'envelope',
+              typeText: parameter.type.getText(source),
+              event: '*',
+              key: 'FRAME *',
+            });
+          }
+        }
+        if (
+          ts.isPropertyAccessExpression(node) &&
+          node.name.text === 'data' &&
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === 'frame'
+        ) {
+          const line = source.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+          const where = { app: app.name, file: relative(ROOT, file), line };
+          // `frame.data as unknown as T`, possibly in parentheses: the last `as` is the type read.
+          let outer: ts.Node = node;
+          let cast: ts.AsExpression | null = null;
+          while (ts.isParenthesizedExpression(outer.parent) || ts.isAsExpression(outer.parent)) {
+            outer = outer.parent;
+            if (ts.isAsExpression(outer)) cast = outer;
+          }
+          let read: { kind: 'cast' | 'field'; typeText: string } | null = null;
+          if (cast !== null) {
+            read = { kind: 'cast', typeText: cast.type.getText(source) };
+          } else if (
+            ts.isElementAccessExpression(node.parent) &&
+            node.parent.expression === node &&
+            stringLiteral(node.parent.argumentExpression) !== null
+          ) {
+            const field = stringLiteral(node.parent.argumentExpression)!;
+            read = { kind: 'field', typeText: `{ ${JSON.stringify(field)}: unknown }` };
+          }
+          if (read !== null) {
+            const events = eventsOf(node);
+            if (events === null) {
+              unread.push({ file: where.file, line, text: node.parent.getText(source) });
+            } else {
+              for (const event of events) {
+                reads.push({ ...where, ...read, event, key: `FRAME ${event}` });
+              }
+            }
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+    }
+  }
+  // `frame.data['orderId']` read twice on one line is one read.
+  const unique = new Map(
+    reads.map((read) => [`${read.file}:${read.line}:${read.event}:${read.typeText}`, read]),
+  );
+  cachedFrames = { reads: [...unique.values()], unread };
+  return cachedFrames;
+}
+
+/**
  * A JSON value as a TypeScript type: every leaf its literal type, arrays as
  * tuples of their first elements. Assigning this to the client's `T` is the
  * check — the compiler does the comparing, unions and optionals included.
@@ -314,14 +477,27 @@ export function literalType(value: unknown, depth = 0): string {
 /** Elements of an array compared. Enough to meet each state a row can be in. */
 export const ARRAY_SAMPLE = 25;
 
+/**
+ * Anything a client reads as a type: a typed call's answer, or a socket
+ * frame's `data` cast in the handler for its event.
+ */
+export interface Checked {
+  readonly app: ClientApp['name'];
+  readonly file: string;
+  readonly line: number;
+  readonly typeText: string;
+  /** `GET /positions`, or `FRAME account.updated`. */
+  readonly key: string;
+}
+
 export interface Sample {
-  readonly call: TypedCall;
-  /** The response's `data`, as the client's `api` hands it back. */
+  readonly call: Checked;
+  /** The response's `data`, as the client's `api` hands it back — or a frame's. */
   readonly data: unknown;
 }
 
 export interface Mismatch {
-  readonly call: TypedCall;
+  readonly call: Checked;
   /** The answer that was not a `T` — the same object that was passed in. */
   readonly sample: Sample;
   readonly message: string;

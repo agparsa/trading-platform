@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
-import { WsChannel, type WsChannel as Channel } from '@tp/shared-types';
+import { WsChannel, type WsChannel as Channel, type WsFrame } from '@tp/shared-types';
 import type { SeenEvents } from './seen-events';
 
 /**
@@ -22,14 +22,12 @@ import type { SeenEvents } from './seen-events';
  * — otherwise discarding a duplicate would manufacture a gap and force a
  * pointless re-snapshot.
  */
-export interface Frame {
-  readonly event: string;
-  readonly channel: Channel;
-  readonly seq: number;
-  readonly eventId?: string;
-  readonly data: unknown;
-  readonly at: number;
-}
+/**
+ * The envelope, as the server defines it. This was a local interface that
+ * named the frame's time `at`; the server sends `timestamp`, and has since
+ * the socket was written.
+ */
+export type Frame = WsFrame;
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'live' | 'reconnecting';
 

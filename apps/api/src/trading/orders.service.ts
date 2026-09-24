@@ -15,6 +15,8 @@ import { DEFAULT_RISK_RULES, RiskEngine, type ProposedOrder } from '@tp/risk-cor
 import {
   DomainError,
   DomainEvent,
+  type OrderEndedPayload,
+  type OrderFilledPayload,
   type OrderSide,
   OrderStatus,
   Permission,
@@ -596,7 +598,7 @@ export class OrdersService {
         side: request.side,
         volume: volume.toString(),
         price: entryPrice.toString(),
-      };
+      } satisfies OrderFilledPayload;
       const opened = {
         positionId: position.id,
         symbol: symbolCode,
@@ -1090,7 +1092,7 @@ export class OrdersService {
         side,
         volume: volume.toString(),
         price: fillPrice.toString(),
-      });
+      } satisfies OrderFilledPayload);
       await this.events.publish(DomainEvent.POSITION_OPENED, order.accountId, {
         positionId: result.id,
         symbol: symbolCode,
@@ -1166,7 +1168,7 @@ export class OrdersService {
       symbol: symbolCode,
       reason,
       code: first?.code ?? TradingErrorCode.VALIDATION_FAILED,
-    });
+    } satisfies OrderEndedPayload);
   }
 
   /** Let a resting order lapse. Called by the trigger engine and by maintenance. */
@@ -1201,7 +1203,7 @@ export class OrdersService {
       orderId,
       symbol: order.symbol.code,
       reason: 'EXPIRED',
-    });
+    } satisfies OrderEndedPayload);
     return true;
   }
 
@@ -1261,7 +1263,7 @@ export class OrdersService {
       orderId,
       symbol: order.symbol.code,
       reason: 'MANUAL',
-    });
+    } satisfies OrderEndedPayload);
     await this.audit.record({
       actorId: userId,
       actorType: 'USER',

@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { WsChannel } from '@tp/shared-types';
 import type { Candle, Tick } from '@tp/market-core';
-import { BUILD_HEADER, RealtimeGateway } from './realtime.gateway';
+import { BUILD_HEADER, EVENT_ROUTING, RealtimeGateway } from './realtime.gateway';
 import { buildMarker } from '@tp/crypto-core';
 import { initialState, type TradingSocket } from './socket.types';
 import { CandleBus } from '../market/candle-bus';
@@ -561,5 +561,30 @@ describe('RealtimeGateway handshake', () => {
       if (before === undefined) delete process.env['BUILD_SHA'];
       else process.env['BUILD_SHA'] = before;
     }
+  });
+});
+
+/**
+ * One wire event, one payload.
+ *
+ * `account.updated` promises the whole account in one frame, and the
+ * valuation loop is what sends it. `balance.changed` and `margin.call` were
+ * also routed to it, carrying `{ balance, cause }` and a margin-call payload,
+ * and the terminal applied those as the account. A domain event whose payload
+ * is not the wire event's type must not be given that wire name.
+ */
+describe('domain-event routing', () => {
+  it('routes nothing to account.updated, which only the valuation sends', () => {
+    expect(
+      Object.entries(EVENT_ROUTING)
+        .filter(([, route]) => route.wire === 'account.updated')
+        .map(([event]) => event),
+    ).toEqual([]);
+  });
+
+  it('routes the order events to their own wire names', () => {
+    expect(EVENT_ROUTING['order.filled']?.wire).toBe('order.filled');
+    expect(EVENT_ROUTING['order.cancelled']?.wire).toBe('order.cancelled');
+    expect(EVENT_ROUTING['order.rejected']?.wire).toBe('order.rejected');
   });
 });

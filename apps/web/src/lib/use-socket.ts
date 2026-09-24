@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { io, type Socket } from 'socket.io-client';
+import type { OrderEndedPayload, OrderFilledPayload, WsFrame } from '@tp/shared-types';
 import {
   useRealtime,
   type AccountState,
@@ -14,16 +15,12 @@ import { useToasts } from './toasts';
 
 const WS_URL = process.env['NEXT_PUBLIC_WS_URL'] ?? 'http://localhost:4000';
 
-interface Frame {
-  event: string;
-  /** Identifies the occurrence. Two frames sharing one describe one thing. */
-  eventId: string;
-  channel: string;
-  accountId: string | null;
-  data: Record<string, unknown>;
-  seq: number;
-  timestamp: number;
-}
+/**
+ * The envelope, as the server defines it. This was a local interface whose
+ * `data` was `Record<string, unknown>` — which `quotes.updated` and
+ * `pnl.updated`, both lists, are not — so every read needed `as unknown as`.
+ */
+type Frame = WsFrame;
 
 /**
  * `orders` was missing from this list, which made the three `order.*` cases in
@@ -148,28 +145,31 @@ export function useSocket(
       switch (frame.event) {
         case 'quotes.updated':
           // Conflated: every instrument that moved since the last frame.
-          for (const quote of frame.data as unknown as Quote[]) live.applyQuote(quote);
+          for (const quote of frame.data as Quote[]) live.applyQuote(quote);
           break;
         case 'account.updated':
-          live.applyAccount(frame.data as unknown as AccountState);
+          live.applyAccount(frame.data as AccountState);
           break;
         case 'pnl.updated':
           // One frame per valuation, every open position in it.
-          for (const pnl of frame.data as unknown as LivePnl[]) live.applyPnl(pnl);
+          for (const pnl of frame.data as LivePnl[]) live.applyPnl(pnl);
           break;
         case 'candle.update':
-          live.applyBar(frame.data as unknown as Bar);
+          live.applyBar(frame.data as Bar);
           break;
         case 'order.filled':
           // A resting order placed minutes or hours ago has just become a
           // position. The submission that created it is matched on order id —
           // the command id belongs to the attempt, and nothing on this frame
           // carries it.
-          if (typeof frame.data['orderId'] === 'string') {
-            live.orderFilled(
-              frame.data['orderId'],
-              typeof frame.data['positionId'] === 'string' ? frame.data['positionId'] : null,
-            );
+          {
+            const filled = frame.data as OrderFilledPayload;
+            if (typeof filled.orderId === 'string') {
+              live.orderFilled(
+                filled.orderId,
+                typeof filled.positionId === 'string' ? filled.positionId : null,
+              );
+            }
           }
           notify.current();
           break;
@@ -178,11 +178,14 @@ export function useSocket(
           // Cancelled, expired, or refused when it triggered. Whichever it was,
           // the order is not coming, and a command left reading "accepted"
           // would say the opposite.
-          if (typeof frame.data['orderId'] === 'string') {
-            live.orderClosed(
-              frame.data['orderId'],
-              typeof frame.data['reason'] === 'string' ? frame.data['reason'] : 'cancelled',
-            );
+          {
+            const ended = frame.data as OrderEndedPayload;
+            if (typeof ended.orderId === 'string') {
+              live.orderClosed(
+                ended.orderId,
+                typeof ended.reason === 'string' ? ended.reason : 'cancelled',
+              );
+            }
           }
           notify.current();
           break;
@@ -196,7 +199,7 @@ export function useSocket(
         case 'risk.updated': {
           // Transition-only by construction on the server, so this fires when
           // the account crosses a level and not while it sits at one.
-          const risk = frame.data as unknown as RiskUpdate;
+          const risk = frame.data as RiskUpdate;
           live.applyRiskState(risk);
           raiseRiskToast(risk);
           break;

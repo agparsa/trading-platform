@@ -228,7 +228,7 @@ a stale binary is the worst failure mode there is.
   payment settled, a withdrawal paid, identity documents reviewed, a venue
   connection, a webhook, a master account — and every call is either checked
   or listed in `SKIPPED` with its reason; an empty list counts as unchecked
-  unless `MAY_BE_EMPTY` says why. 168 answers on its first green run.
+  unless `MAY_BE_EMPTY` says why.
 
   **Why it exists.** `api.get<T>` is a cast. The build believes `T`, and a
   field the server never sends is `undefined` at run time. Its first run found
@@ -243,6 +243,16 @@ a stale binary is the worst failure mode there is.
   sides, and `smoke:web` presses the switch both ways.
   `response-contracts.test.ts` proves the reader and the comparer without a
   running API, and that the smoke run accounts for every typed call.
+
+  **Socket frames too.** The run holds the trader's socket open throughout and
+  keeps one frame per payload shape of every event. Each place a client reads
+  a frame — the handler's envelope type, `frame.data as T` in the `case` for
+  an event, a field read by name — is found by the compiler and checked
+  against the frames that came (193 answers and frames in all). Its first run
+  found the server sending `{ balance, cause }` as `account.updated` after
+  every close, and the phone reading the frame's time as `at`, which the server
+  calls `timestamp`. Events it cannot provoke (`order.rejected`,
+  `risk.updated`) are listed in `FRAMES_NOT_SEEN` with the reason.
 
 - `pnpm pentest` — 63 attacks attempted against the compiled binary; an attack
   that succeeds fails the run.

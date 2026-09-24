@@ -25,7 +25,14 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { PrismaClient } from '@prisma/client';
 import { Permission } from '@tp/shared-types';
 import { base32Decode, codeForStep, stepFor } from '../apps/api/src/auth/totp';
-import { type Sample, type TypedCall, checkSamples, typedCalls } from './response-contracts';
+import { io, type Socket } from 'socket.io-client';
+import {
+  type Sample,
+  type TypedCall,
+  checkSamples,
+  frameReads,
+  typedCalls,
+} from './response-contracts';
 
 const BASE = `http://127.0.0.1:${process.env.API_PORT ?? '4000'}`;
 const API = `${BASE}/api/v1`;
@@ -54,6 +61,22 @@ export const MAY_BE_EMPTY: Readonly<Record<string, string>> = {
   'GET /reconciliation/items':
     'items are where a real venue disagrees with the book; there is no real venue here',
 };
+
+/**
+ * Socket events a client handles that this run cannot make the server send,
+ * and why. Each is still read by the compiler at its handler; only the
+ * comparison with a real frame is missing, so each reason says what would be
+ * needed.
+ */
+export const FRAMES_NOT_SEEN: Readonly<Record<string, string>> = {
+  'order.rejected':
+    'sent when a resting order is refused as it triggers — nearly always for margin, which needs the market to move against a full account',
+  'risk.updated':
+    'sent when an account crosses its margin-call or stop-out level, which needs the price to move an account there; the payload is built in realtime.service.ts next to RiskUpdate',
+};
+
+/** Frames compared per event: enough to meet each state a payload can be in. */
+const FRAMES_PER_EVENT = 6;
 
 /** `/admin/${kind}${search}` — the paths it takes, and the type each is read as. */
 export const COMPUTED: Readonly<
@@ -152,6 +175,9 @@ async function waitForBoot(): Promise<void> {
 /** Recorded answers to the calls setup makes, by `VERB /path` and, where it differs, app. */
 class Answers {
   private readonly byKey = new Map<string, unknown>();
+  /** Every socket frame the trader received, whole, by wire event. */
+  readonly frames = new Map<string, unknown[]>();
+  socket: Socket | null = null;
   record(key: string, data: unknown, app?: TypedCall['app']): unknown {
     this.byKey.set(app === undefined ? key : `${app} ${key}`, data);
     return data;
@@ -206,6 +232,52 @@ async function freshQuote(token: string, symbol: string) {
   throw new Error(`setup: no fresh ${symbol} quote within 20s`);
 }
 
+/** The channels the terminal subscribes to, and the chart's candles. */
+const SUBSCRIPTIONS: ReadonlyArray<Record<string, unknown>> = [
+  { channel: 'quotes' },
+  { channel: 'orders' },
+  { channel: 'positions' },
+  { channel: 'account' },
+  { channel: 'pnl' },
+  { channel: 'candles', symbols: ['EURUSD'], resolutions: ['1'] },
+];
+
+async function openSocket(token: string, frames: Map<string, unknown[]>): Promise<Socket> {
+  const socket = io(BASE, { path: '/ws', transports: ['websocket'], auth: { token } });
+  const shapes = new Map<string, Set<string>>();
+  socket.on('frame', (frame: { event?: unknown; data?: unknown }) => {
+    const event = typeof frame.event === 'string' ? frame.event : '(no event)';
+    /**
+     * One frame per *shape* of payload, not the first few.
+     *
+     * A wire event can be sent from more than one place — `account.updated`
+     * was, with two different payloads — and the rarer one arrives between
+     * hundreds of the common one. Keeping the first N would keep only the
+     * common one. The shape is the payload's keys, and a list's first row's.
+     */
+    const payload = Array.isArray(frame.data) ? frame.data[0] : frame.data;
+    const shape =
+      typeof payload === 'object' && payload !== null
+        ? Object.keys(payload).sort().join(',')
+        : typeof payload;
+    const known = shapes.get(event) ?? new Set<string>();
+    if (known.has(shape) || known.size >= FRAMES_PER_EVENT) return;
+    known.add(shape);
+    shapes.set(event, known);
+    frames.set(event, [...(frames.get(event) ?? []), frame]);
+  });
+  await new Promise<void>((resolve, reject) => {
+    socket.once('connect', () => resolve());
+    socket.once('connect_error', (error) => reject(error));
+  });
+  for (const subscription of SUBSCRIPTIONS) {
+    const reply = (await socket.emitWithAck('subscribe', subscription)) as { ok?: boolean };
+    if (reply?.ok === false)
+      throw new Error(`setup: subscribe ${JSON.stringify(subscription)} refused`);
+  }
+  return socket;
+}
+
 async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
   const ids: Record<string, string> = {};
   const trader = await register(prisma, 'trader');
@@ -253,6 +325,10 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
     appVersion: '1.0.0',
   });
 
+  // --- The trader's socket, open before anything happens, so every frame the
+  // screens would have received is received here too.
+  answers.socket = await openSocket(traderToken, answers.frames);
+
   // --- Trading: an open position, a closed trade, a resting order.
   const eurusd = await freshQuote(traderToken, 'EURUSD');
   await freshQuote(traderToken, 'GBPUSD');
@@ -289,6 +365,17 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
     'POST /positions/close-all',
     await as.guarded('POST', '/positions/close-all', { accountId: guardedAccount }),
   );
+
+  // A resting order withdrawn, for `order.cancelled`.
+  const withdrawn = (await as.trader('POST', '/orders/pending', {
+    accountId,
+    symbol: 'EURUSD',
+    side: 'BUY',
+    type: 'LIMIT',
+    volume: '0.10',
+    price: (Number(eurusd.bid) * 0.8).toFixed(5),
+  })) as { orderId: string };
+  await as.trader('DELETE', `/orders/${withdrawn.orderId}`);
 
   // --- The trader's other things.
   const alertBody = {
@@ -823,6 +910,36 @@ async function main(): Promise<void> {
         } catch (error) {
           failures.push(`${where}: ${(error as Error).message}`);
         }
+      }
+    }
+
+    // --- Frames: every read of a frame's data, against the frames that came.
+    answers.socket?.close();
+    const { reads, unread: unreadFrames } = frameReads();
+    for (const miss of unreadFrames) {
+      failures.push(
+        `a frame read this run cannot place: ${miss.text}  (${miss.file}:${miss.line})`,
+      );
+    }
+    for (const read of reads) {
+      const where = `${read.key}  (${read.file}:${read.line})`;
+      const seen =
+        read.event === '*'
+          ? [...answers.frames.values()].flat()
+          : (answers.frames.get(read.event) ?? []);
+      if (seen.length === 0) {
+        if (FRAMES_NOT_SEEN[read.event] === undefined) {
+          failures.push(
+            `${where}: no ${read.event} frame arrived, and FRAMES_NOT_SEEN does not say why`,
+          );
+        }
+        continue;
+      }
+      for (const frame of seen) {
+        samples.push({
+          call: read,
+          data: read.kind === 'envelope' ? frame : (frame as { data?: unknown }).data,
+        });
       }
     }
 

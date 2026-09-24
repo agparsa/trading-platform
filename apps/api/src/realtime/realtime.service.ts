@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Tick } from '@tp/market-core';
-import { RiskState, WsChannel } from '@tp/shared-types';
+import {
+  type PnlUpdatePayload,
+  RiskState,
+  type RiskUpdatePayload,
+  WsChannel,
+} from '@tp/shared-types';
 import { withTenant, type TenantContext } from '@tp/tenancy';
 import { PrismaService } from '../prisma/prisma.service';
 import { TickBus } from '../market/tick-bus';
@@ -331,18 +336,21 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
         accountId,
         WsChannel.PNL,
         'pnl.updated',
-        valuation.positions.map((position) => ({
-          accountId,
-          positionId: position.positionId,
-          symbol: position.symbol,
-          floatingPnl: position.floatingPnl.toString(),
-          // Sent alongside the floating figure rather than derived in the browser:
-          // a net number the server never computed is a number nobody can
-          // reconcile against the ledger after a dispute.
-          netPnl: position.netPnl.toString(),
-          currentPrice: position.currentPrice,
-          stale: position.stale,
-        })),
+        valuation.positions.map(
+          (position) =>
+            ({
+              accountId,
+              positionId: position.positionId,
+              symbol: position.symbol,
+              floatingPnl: position.floatingPnl.toString(),
+              // Sent alongside the floating figure rather than derived in the browser:
+              // a net number the server never computed is a number nobody can
+              // reconcile against the ledger after a dispute.
+              netPnl: position.netPnl.toString(),
+              currentPrice: position.currentPrice,
+              stale: position.stale,
+            }) satisfies PnlUpdatePayload,
+        ),
       );
     }
 
@@ -385,7 +393,7 @@ export class RealtimeService implements OnApplicationBootstrap, OnApplicationShu
       marginLevel: marginLevel === null ? null : marginLevel.toString(),
       marginCallLevelPercent: thresholds.marginCall,
       stopOutLevelPercent: thresholds.stopOut,
-    });
+    } satisfies RiskUpdatePayload);
 
     /**
      * And a notice that survives the browser being shut.

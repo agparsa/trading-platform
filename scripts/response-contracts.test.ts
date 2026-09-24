@@ -3,14 +3,17 @@ import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   ROOT,
+  type Checked,
+  type FrameRead,
   type Mismatch,
   type Sample,
   type TypedCall,
   checkSamples,
+  frameReads,
   literalType,
   typedCalls,
 } from './response-contracts';
-import { COMPUTED, MAY_BE_EMPTY, SKIPPED } from './smoke-contracts';
+import { COMPUTED, FRAMES_NOT_SEEN, MAY_BE_EMPTY, SKIPPED } from './smoke-contracts';
 
 /**
  * The reader and the comparer behind `pnpm smoke:contracts`, without a
@@ -54,6 +57,33 @@ describe('the reader', () => {
   it('keeps the type argument exactly as written', () => {
     expect(find('mobile', 'GET /accounts/*/state').typeText).toBe('AccountState');
     expect(find('web', 'GET /operations/summary').typeText).toBe('OperationsSummary');
+  });
+});
+
+const frames = frameReads();
+const frameRead = (app: FrameRead['app'], event: string, kind: FrameRead['kind']): FrameRead => {
+  const read = frames.reads.find((r) => r.app === app && r.event === event && r.kind === kind);
+  if (read === undefined) throw new Error(`no ${app} ${kind} read for ${event}`);
+  return read;
+};
+
+describe('the frame reader', () => {
+  it('finds every handler and every cast in it (the probe that cannot fail is the one that never looked)', () => {
+    expect(frames.unread).toEqual([]);
+    expect(frameRead('web', '*', 'envelope').typeText).toBe('Frame');
+    expect(frameRead('mobile', '*', 'envelope').typeText).toBe('Frame');
+    expect(frameRead('web', 'account.updated', 'cast').typeText).toBe('AccountState');
+    expect(frameRead('web', 'order.filled', 'cast').typeText).toBe('OrderFilledPayload');
+  });
+
+  it('places a read after `if (frame.event !== …) return`, as the phone writes it', () => {
+    expect(frameRead('mobile', 'quotes.updated', 'cast').typeText).toBe('LiveQuote[]');
+  });
+
+  it('gives each case of a fall-through its own read', () => {
+    expect(frameRead('web', 'order.rejected', 'cast').line).toBe(
+      frameRead('web', 'order.cancelled', 'cast').line,
+    );
   });
 });
 
@@ -115,7 +145,7 @@ describe('the comparer', () => {
   };
 
   const cases: Array<{ name: string; sample: Sample; wrong: RegExp | null }> = [];
-  const add = (name: string, call: TypedCall, data: unknown, wrong: RegExp | null) =>
+  const add = (name: string, call: Checked, data: unknown, wrong: RegExp | null) =>
     cases.push({ name, sample: { call, data }, wrong });
 
   {
@@ -144,6 +174,34 @@ describe('the comparer', () => {
       book,
       [position, { ...position, id: 'q', side: 'LONG' }],
       /LONG/,
+    );
+
+    const account = frameRead('web', 'account.updated', 'cast');
+    const phoneFrame = frameRead('mobile', '*', 'envelope');
+    const frame = {
+      event: 'account.updated',
+      eventId: 'e',
+      channel: 'account',
+      accountId: 'a',
+      data: state,
+      seq: 1,
+      timestamp: 2,
+    };
+    // The terminal's account carries two figures the phone's home screen does not.
+    const webState = { ...state, marginUtilisation: null, grossExposure: '0.00', openPositions: 0 };
+    add('an account frame carrying the account', account, webState, null);
+    add(
+      'the balance-change frame the server sent as account.updated after every close',
+      account,
+      { balance: '99997.65', cause: 'POSITION_CLOSE' },
+      /accountId/,
+    );
+    add('a frame envelope as the server sends it', phoneFrame, frame, null);
+    add(
+      'the envelope the phone used to read, with `at`',
+      phoneFrame,
+      { ...frame, timestamp: undefined, at: 2 },
+      /timestamp/,
     );
   }
 
@@ -174,6 +232,11 @@ describe('the smoke run accounts for every typed call', () => {
       )
       .map((call) => `${call.key}  (${call.file}:${call.line})`);
     expect(unaccounted).toEqual([]);
+  });
+
+  it('names, among the frames it cannot provoke, only events a client reads', () => {
+    const read = new Set(frames.reads.map((r) => r.event));
+    expect(Object.keys(FRAMES_NOT_SEEN).filter((event) => !read.has(event))).toEqual([]);
   });
 
   it('lists nothing in its exemptions that no client calls', () => {

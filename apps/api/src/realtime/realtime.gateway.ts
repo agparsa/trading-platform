@@ -73,7 +73,7 @@ const SOCKET_WINDOW_MS = 60_000;
  * An event with no mapping is simply not broadcast — adding one is a deliberate
  * act, not something that happens because a name looked similar.
  */
-const EVENT_ROUTING: Readonly<Record<string, { channel: WsChannel; wire: string }>> = {
+export const EVENT_ROUTING: Readonly<Record<string, { channel: WsChannel; wire: string }>> = {
   'order.created': { channel: WsChannel.ORDERS, wire: 'order.created' },
   'order.accepted': { channel: WsChannel.ORDERS, wire: 'order.updated' },
   // Its own wire event, not `order.updated`. See WsEvent.ORDER_REJECTED.
@@ -83,8 +83,18 @@ const EVENT_ROUTING: Readonly<Record<string, { channel: WsChannel; wire: string 
   'position.opened': { channel: WsChannel.POSITIONS, wire: 'position.created' },
   'position.modified': { channel: WsChannel.POSITIONS, wire: 'position.updated' },
   'position.closed': { channel: WsChannel.POSITIONS, wire: 'position.closed' },
-  'balance.changed': { channel: WsChannel.ACCOUNT, wire: 'account.updated' },
-  'margin.call': { channel: WsChannel.ACCOUNT, wire: 'account.updated' },
+  /*
+   * `balance.changed` and `margin.call` are deliberately not here. Both were
+   * routed to `account.updated`, whose contract (see WsEvent.ACCOUNT_UPDATED)
+   * is the whole consistent set of account figures in one frame — and both
+   * carried their own small payloads instead: `{ balance, cause }` after every
+   * close. The terminal applied it as the account, replacing every figure it
+   * held with a two-field object; only the header's account-id guard kept the
+   * screen from showing it. The figures a close changes arrive with the next
+   * valuation, the REST refetch the close triggers, and — for a margin call —
+   * `risk.updated`. Found by `pnpm smoke:contracts`, which checks real frames
+   * against the types the clients read them as.
+   */
   liquidation: { channel: WsChannel.POSITIONS, wire: 'position.closed' },
 };
 

@@ -148,6 +148,18 @@ a used margin from 10:00:00.750, and a free margin matching neither. One frame
 carrying a consistent set is a stronger guarantee than four carrying the same
 information, and it is a quarter of the traffic.
 
+**Only the valuation sends it.** Until 24 September two domain events —
+`balance.changed` and `margin.call` — were also routed to `account.updated`,
+each with its own small payload: after every close the terminal received
+`{ balance, cause }` under this name and applied it as the account. The header's
+account-id guard hid it; the store did not. They are no longer routed (a unit
+test in `realtime.gateway.test.ts` refuses any domain event on this name), and
+`pnpm smoke:contracts` now checks every frame a client handles against the type
+it reads it as. The payloads of `pnl.updated`, `risk.updated`, `order.filled`,
+`order.cancelled` and `order.rejected` are shared types in `@tp/shared-types`
+that the server's senders `satisfies`, and the clients read the envelope as
+`WsFrame` rather than local copies — the phone's had called `timestamp` `at`.
+
 ## `risk.updated` fires on transition only
 
 An account crossing into or out of margin call or stop-out proximity produces
