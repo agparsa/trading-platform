@@ -153,6 +153,11 @@ add_if_missing TENANT_DEFAULT_SLUG default \
   "The tenant a request falls back to when no tenant claims its hostname."
 add_if_missing TENANT_HOST_STRICT false \
   "Turn on the moment a second tenant exists; see docs/multi-tenancy.md."
+# The worker's own reachability probe asks the host the build just proved it can
+# reach — the mirror when there is one — rather than the public CDN, which the
+# Alpine mirror script records as unreliable from inside containers here.
+add_if_missing EGRESS_PROBE_URL "$EGRESS_TARGET" \
+  "Where each worker asks whether it can reach the internet; see EgressProbe. 'off' to stop."
 
 # ---------------------------------------------------------------------------
 say "3/9  Database backup"

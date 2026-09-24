@@ -347,6 +347,14 @@ export class WorkerHealthIndicator {
         role: beat.role,
         queues: beat.queues,
         ageMs: Math.max(0, now - Date.parse(beat.at)),
+        /**
+         * Whether it could last reach the internet: `null` when it was not
+         * asked. Reported, not judged here — a worker that cannot get out
+         * still runs every schedule that stays inside, and `/health/jobs`
+         * turning 503 for it would page for the wrong thing. The verifier
+         * judges it; see `EgressProbe`.
+         */
+        egress: beat.egress,
       })),
       builds: [...new Set(beats.map((beat) => beat.build))].sort(),
     };

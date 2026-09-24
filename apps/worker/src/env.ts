@@ -141,6 +141,18 @@ export const workerEnvSchema = z.object({
    * queues optionally narrowed by WORKER_QUEUES. See `roles.ts`.
    */
   WORKER_ROLE: z.enum(['all', 'scheduler', 'processor']).default('all'),
+
+  /**
+   * Where the worker asks, every five minutes, whether it can reach the
+   * internet — the answer goes in its heartbeat and out through
+   * `/health/jobs`, where `verify:production` reads it. Any HTTP answer counts.
+   * `off` stops the asking. The default is the Alpine CDN the images are built
+   * from: public, neutral, and a host the deployment already depends on.
+   * See `EgressProbe` in `@tp/shared-types` for why this exists.
+   */
+  EGRESS_PROBE_URL: z
+    .union([z.literal('off'), z.string().url()])
+    .default('https://dl-cdn.alpinelinux.org/alpine/'),
   /** Comma-separated queue names a processor takes. Unset means every queue. */
   WORKER_QUEUES: z.string().optional(),
 

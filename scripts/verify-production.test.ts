@@ -58,7 +58,19 @@ function good(): Deployment {
         status: 'up',
         workers: 1,
         instances: [
-          { instance: 'host:1', build: MARKER, role: 'all', queues: ['swap-accrual'], ageMs: 5 },
+          {
+            instance: 'host:1',
+            build: MARKER,
+            role: 'all',
+            queues: ['swap-accrual'],
+            ageMs: 5,
+            egress: {
+              target: 'dl-cdn.alpinelinux.org',
+              ok: true,
+              checkedAt: '2026-09-24T16:00:00.000Z',
+              error: null,
+            },
+          },
         ],
         builds: [MARKER],
       },
@@ -228,6 +240,36 @@ describe('verify-production, run against a fake deployment', () => {
     const run = await verify(deployment);
     expect(run.failed).toEqual(['every worker runs the build that was deployed']);
     expect(run.output).toContain('host:1 (aaaaaaaaaaaa)');
+  }, 60_000);
+
+  it('fails the egress check alone when a worker cannot get out, and says where to look', async () => {
+    const deployment = good();
+    const jobs = JSON.parse(deployment['/health/jobs']!.body!) as {
+      data: { details: Record<string, unknown> };
+    };
+    const instance = (
+      jobs.data.details['workers'] as { instances: Array<{ egress: Record<string, unknown> }> }
+    ).instances[0]!;
+    instance.egress = { ...instance.egress, ok: false, error: 'ETIMEDOUT' };
+    deployment['/health/jobs'] = { status: 200, body: JSON.stringify(jobs) };
+    const run = await verify(deployment);
+    expect(run.failed).toEqual(['the workers can reach the internet']);
+    expect(run.output).toContain('host:1 (ETIMEDOUT)');
+    expect(run.output).toContain('MASQUERADE');
+  }, 60_000);
+
+  it('does not pass the egress check when no worker was asked', async () => {
+    const deployment = good();
+    const jobs = JSON.parse(deployment['/health/jobs']!.body!) as {
+      data: { details: Record<string, unknown> };
+    };
+    (
+      jobs.data.details['workers'] as { instances: Array<{ egress: unknown }> }
+    ).instances[0]!.egress = null;
+    deployment['/health/jobs'] = { status: 200, body: JSON.stringify(jobs) };
+    const run = await verify(deployment);
+    expect(run.failed).toEqual(['the workers can reach the internet']);
+    expect(run.output).toContain('EGRESS_PROBE_URL is off');
   }, 60_000);
 
   it('reads a 503 report from the failure envelope and names the late schedule', async () => {

@@ -14,6 +14,12 @@ const beat = {
   queues: ['swap-accrual', 'reconciliation'],
   startedAt: '2026-09-21T08:00:00.000Z',
   at: '2026-09-21T08:05:00.000Z',
+  egress: {
+    target: 'dl-cdn.alpinelinux.org',
+    ok: false,
+    checkedAt: '2026-09-21T08:04:00.000Z',
+    error: 'ETIMEDOUT',
+  },
 };
 
 describe('worker heartbeat contract', () => {
@@ -36,6 +42,11 @@ describe('worker heartbeat contract', () => {
     expect(parseWorkerHeartbeat(beat)).toEqual(beat);
   });
 
+  it('reads a worker older than the egress probe as not asked, rather than as no heartbeat', () => {
+    const { egress: _dropped, ...older } = beat;
+    expect(parseWorkerHeartbeat(older)).toEqual({ ...older, egress: null });
+  });
+
   it('copies the queue list rather than aliasing the input', () => {
     const parsed = parseWorkerHeartbeat(beat);
     expect(parsed?.queues).not.toBe(beat.queues);
@@ -51,6 +62,9 @@ describe('worker heartbeat contract', () => {
     ['queues that are not a list', { ...beat, queues: 'swap-accrual' }],
     ['an unreadable timestamp', { ...beat, at: 'yesterday' }],
     ['no start', { ...beat, startedAt: undefined }],
+    ['an egress answer that is not a yes or no', { ...beat, egress: { ...beat.egress, ok: 'no' } }],
+    ['an egress answer with no time', { ...beat, egress: { ...beat.egress, checkedAt: 'now' } }],
+    ['an egress error that is not text', { ...beat, egress: { ...beat.egress, error: 42 } }],
   ])('treats %s as no heartbeat at all', (_label, raw) => {
     expect(parseWorkerHeartbeat(raw)).toBeNull();
   });

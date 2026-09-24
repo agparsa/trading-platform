@@ -157,6 +157,16 @@ the deployed commit. Until the worker's heartbeat and the web's header existed,
 either could sit on last week's image with nothing outside the host able to
 tell. See [worker.md](./worker.md#is-a-worker-there-now).
 
+Each heartbeat also says whether that worker could last reach the internet: it
+asks `EGRESS_PROBE_URL` every five minutes (any HTTP answer counts), and the
+script fails **the workers can reach the internet** on a no, naming the cause
+and where to look. On 24 September an automatic CSF upgrade removed Docker's
+NAT rules and every check here passed for thirteen hours while nothing could
+leave the host — see
+[deployment-cpanel.md](./deployment-cpanel.md#the-firewall-which-removes-dockers-rules-when-it-restarts).
+The upgrade script seeds `EGRESS_PROBE_URL` with the Alpine mirror the build
+reached.
+
 The script itself is tested: `verify-production.test.ts` runs it as a process
 against a fake deployment that answers every path as a healthy one does, then
 breaks one answer at a time and requires the matching check — and only it — to

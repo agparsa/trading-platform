@@ -36,6 +36,7 @@ const beat = (
   queues: ['swap-accrual'],
   startedAt: '2026-09-21T07:00:00.000Z',
   at,
+  egress: null,
 });
 
 const NOW = Date.parse('2026-09-21T08:00:10.000Z');
@@ -75,6 +76,7 @@ describe('worker health', () => {
         role: 'all',
         queues: ['swap-accrual'],
         ageMs: 10_000,
+        egress: null,
       },
       {
         instance: 'b:2',
@@ -82,6 +84,7 @@ describe('worker health', () => {
         role: 'all',
         queues: ['swap-accrual'],
         ageMs: 30_000,
+        egress: null,
       },
       {
         instance: 'c:3',
@@ -89,6 +92,7 @@ describe('worker health', () => {
         role: 'all',
         queues: ['swap-accrual'],
         ageMs: 10_000,
+        egress: null,
       },
     ]);
   });

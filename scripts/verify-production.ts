@@ -264,7 +264,20 @@ async function main(): Promise<void> {
      * existed. Every heartbeat names its build; each is compared here.
      */
     const workers = indicators['workers'] as
-      { instances?: Array<{ instance: string; build: string; ageMs?: number }> } | undefined;
+      | {
+          instances?: Array<{
+            instance: string;
+            build: string;
+            ageMs?: number;
+            egress?: {
+              target: string;
+              ok: boolean;
+              checkedAt: string;
+              error: string | null;
+            } | null;
+          }>;
+        }
+      | undefined;
     const instances = workers?.instances ?? [];
     if (workers === undefined) {
       record(
@@ -295,6 +308,31 @@ async function main(): Promise<void> {
           ? `${String(instances.length)} worker(s) on ${want}`
           : `on another build: ${stale.map((one) => `${one.instance} (${one.build})`).join(', ')} — ` +
               'the worker was not rebuilt or not recreated; compare its age to api in `docker ps`',
+      );
+    }
+
+    /**
+     * And that the workers can reach the internet.
+     *
+     * On 24 September an automatic firewall upgrade removed Docker's NAT
+     * rules at 02:40. Every check here passed for the thirteen hours that
+     * followed: inbound was untouched, so the public surface was right, and
+     * nothing that leaves the host — builds, webhooks, push — could. Each
+     * worker now asks every five minutes and says so in its heartbeat.
+     */
+    if (instances.length > 0) {
+      const asked = instances.filter((one) => one.egress !== undefined && one.egress !== null);
+      const cut = asked.filter((one) => one.egress?.ok === false);
+      record(
+        'the workers can reach the internet',
+        asked.length > 0 && cut.length === 0,
+        asked.length === 0
+          ? 'no worker says — EGRESS_PROBE_URL is off, or the workers predate the probe'
+          : cut.length === 0
+            ? `${String(asked.length)} worker(s) reached ${asked[0]!.egress!.target}`
+            : `cannot reach ${cut[0]!.egress!.target}: ` +
+              cut.map((one) => `${one.instance} (${one.egress!.error ?? 'no answer'})`).join(', ') +
+              ' — if every container is cut off, check `iptables -t nat -S POSTROUTING` for MASQUERADE (docs/deployment-cpanel.md)',
       );
     }
   }

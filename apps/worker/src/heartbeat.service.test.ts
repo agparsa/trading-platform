@@ -119,3 +119,75 @@ describe('HeartbeatService', () => {
     await expect(service.onModuleDestroy()).resolves.toBeUndefined();
   });
 });
+
+/**
+ * Whether the worker can reach the internet, asked and carried in its beat.
+ *
+ * On 24 September a firewall upgrade cut every container off from the
+ * outside for thirteen hours and nothing outside the host could tell. The
+ * worker asks every five minutes; `verify:production` reads the answer.
+ */
+describe('HeartbeatService egress', () => {
+  const at = new Date('2026-09-24T16:00:00Z');
+  const make = (env: Record<string, string | undefined>, answer: string | null) => {
+    const store = fakeStore();
+    const asked: string[] = [];
+    const service = new HeartbeatService(config({ WORKER_ROLE: 'all', ...env }), store, (url) => {
+      asked.push(url);
+      return Promise.resolve(answer);
+    });
+    const written = () => parseWorkerHeartbeat([...store.entries.values()][0]!.value);
+    return { service, asked, written };
+  };
+
+  it('carries a yes, naming only the host it asked', async () => {
+    const { service, asked, written } = make(
+      { EGRESS_PROBE_URL: 'https://user:secret@mirror.example.org/alpine/?token=x' },
+      null,
+    );
+    await service.askEgress(at);
+    await service.beat(at);
+    expect(asked).toEqual(['https://user:secret@mirror.example.org/alpine/?token=x']);
+    expect(written()?.egress).toEqual({
+      target: 'mirror.example.org',
+      ok: true,
+      checkedAt: at.toISOString(),
+      error: null,
+    });
+    expect(JSON.stringify(written())).not.toContain('secret');
+  });
+
+  it('carries a no, with the cause', async () => {
+    const { service, written } = make(
+      { EGRESS_PROBE_URL: 'https://mirror.example.org/' },
+      'ETIMEDOUT',
+    );
+    await service.askEgress(at);
+    await service.beat(at);
+    expect(written()?.egress).toMatchObject({ ok: false, error: 'ETIMEDOUT' });
+  });
+
+  it('does not ask, and says it did not, when turned off', async () => {
+    const { service, asked, written } = make({ EGRESS_PROBE_URL: 'off' }, null);
+    expect(await service.askEgress(at)).toBeNull();
+    await service.beat(at);
+    expect(asked).toEqual([]);
+    expect(written()?.egress).toBeNull();
+  });
+
+  it('reports a network failure by its code, and any HTTP answer as reachable', async () => {
+    const { askOverHttp } = await import('./heartbeat.service');
+    const realFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (() =>
+        Promise.reject(
+          Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } }),
+        )) as never;
+      expect(await askOverHttp('https://nowhere.example/')).toBe('ENOTFOUND');
+      globalThis.fetch = (() => Promise.resolve(new Response(null, { status: 404 }))) as never;
+      expect(await askOverHttp('https://somewhere.example/')).toBeNull();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+});

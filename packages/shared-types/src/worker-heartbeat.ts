@@ -51,6 +51,47 @@ export interface WorkerHeartbeat {
   readonly startedAt: string;
   /** When this beat was written, ISO 8601. */
   readonly at: string;
+  /**
+   * Whether this process could last reach the internet, or `null` when it
+   * was not asked (`EGRESS_PROBE_URL=off`, a worker older than the probe, or
+   * the first probe not yet answered).
+   *
+   * On 24 September a firewall upgrade removed Docker's NAT rules at 02:40 and
+   * nothing that could be asked from outside noticed for thirteen hours: the
+   * site served, every health check passed, and builds, webhooks and push had
+   * no way out. A worker is the process that sends to the outside, so it asks,
+   * and says.
+   */
+  readonly egress: EgressProbe | null;
+}
+
+export interface EgressProbe {
+  /** The host asked — only the host, never a path or credentials. */
+  readonly target: string;
+  /** Any HTTP answer at all counts: the question is reachability, not health. */
+  readonly ok: boolean;
+  readonly checkedAt: string;
+  /** Why not, when not: a network error's code (`ETIMEDOUT`, `ENOTFOUND`). */
+  readonly error: string | null;
+}
+
+/** How often a worker asks. A minute is plenty for a question about hours. */
+export const WORKER_EGRESS_INTERVAL_MS = 5 * 60_000;
+
+function parseEgress(value: unknown): EgressProbe | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  if (!isString(record['target']) || typeof record['ok'] !== 'boolean') return undefined;
+  if (!isIso(record['checkedAt'])) return undefined;
+  const error = record['error'];
+  if (error !== null && typeof error !== 'string') return undefined;
+  return {
+    target: record['target'],
+    ok: record['ok'],
+    checkedAt: record['checkedAt'],
+    error,
+  };
 }
 
 export function workerHeartbeatKey(instance: string): string {
@@ -86,6 +127,10 @@ export function parseWorkerHeartbeat(raw: unknown): WorkerHeartbeat | null {
   }
   if (!Array.isArray(record['queues']) || !record['queues'].every(isString)) return null;
   if (!isIso(record['startedAt']) || !isIso(record['at'])) return null;
+  // Absent is an older worker, which is not asked — `null`. Present and
+  // malformed is not a heartbeat, by the same rule as every other field.
+  const egress = parseEgress(record['egress']);
+  if (egress === undefined) return null;
   return {
     instance: record['instance'],
     build: record['build'],
@@ -93,5 +138,6 @@ export function parseWorkerHeartbeat(raw: unknown): WorkerHeartbeat | null {
     queues: [...(record['queues'] as string[])],
     startedAt: record['startedAt'],
     at: record['at'],
+    egress,
   };
 }
