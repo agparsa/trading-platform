@@ -660,16 +660,23 @@ suite('reports', () => {
     });
 
     it('never puts the file bytes in a listing', async () => {
-      await ledgerEntry(admin.accountId, alpha.tenantId, '111');
+      const entry = await ledgerEntry(admin.accountId, alpha.tenantId, '111');
       const view = await reports.request(
         { kind: ReportKind.LEDGER, ...window() },
         ADMIN(admin.userId),
       );
       await build(view.id);
 
-      const listed = await reports.list();
-      expect(JSON.stringify(listed)).not.toContain('111');
-      expect(listed[0]).not.toHaveProperty('content');
+      /**
+       * Looked for by the ledger row's id and the file's header, which are in
+       * the file and can be nowhere else. This looked for the amount, `111`,
+       * and failed whenever the listing's SHA-256 happened to contain three
+       * ones in a row — about one run in fifty.
+       */
+      const listed = JSON.stringify(await reports.list());
+      expect(listed).not.toContain(entry.id);
+      expect(listed).not.toContain('entry_id');
+      expect(JSON.parse(listed)[0]).not.toHaveProperty('content');
     });
   });
 
