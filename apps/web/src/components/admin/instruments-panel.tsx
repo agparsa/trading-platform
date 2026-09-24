@@ -230,11 +230,14 @@ function InstrumentEditor({ row }: { row: AdminInstrumentRow }) {
           title={setTerms.allowed ? undefined : `Your role does not carry ${setTerms.requires}`}
           onClick={() =>
             setTerms.mutate(
-              Object.fromEntries([
-                ['code', row.code],
-                ['reason', reason.trim()],
-                ...changed.map((field) => [field, terms[field]]),
-              ]) as never,
+              {
+                code: row.code,
+                reason: reason.trim(),
+                // Only the terms that changed. Built as a typed object, not
+                // `Object.fromEntries(…) as never`: a cast to `never` is a body
+                // nothing can compare with the route's schema.
+                ...Object.fromEntries(changed.map((field) => [field, terms[field]])),
+              },
               { onSuccess: () => setReason('') },
             )
           }

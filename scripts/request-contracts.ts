@@ -90,7 +90,7 @@ function shapesOf(type: ts.Type, checker: ts.TypeChecker, depth: number): SentSh
   return alternatives.map((alternative) => {
     if (
       checker.getIndexInfosOfType(alternative).length > 0 ||
-      alternative.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)
+      alternative.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)
     ) {
       return null;
     }

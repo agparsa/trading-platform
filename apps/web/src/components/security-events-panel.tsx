@@ -36,6 +36,15 @@ const WORDING: Record<string, string> = {
   BREAK_GLASS_OPENED: 'A member of staff viewed your account, with a recorded reason',
   BREAK_GLASS_CLOSED: 'The staff view of your account ended',
   IP_RULE_CHANGED: 'You changed where this firm can be reached from',
+  // The five device events were recorded from the day devices were, and shown
+  // here as their raw names — including DEVICE_REGISTERED, a WARNING, which is
+  // the one a person is meant to recognise as not theirs. Found by
+  // `client-vocabularies.test.ts`, which holds this list to the enum.
+  DEVICE_REGISTERED: 'A new device was signed in to this account',
+  DEVICE_REVIVED: 'A device you had removed was signed in again',
+  DEVICE_REVOKED: 'You removed a device',
+  DEVICE_REVOKED_BY_STAFF: 'Staff removed one of your devices',
+  DEVICE_RESTORED_BY_STAFF: 'Staff restored one of your devices',
 };
 
 /**

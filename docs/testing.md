@@ -272,6 +272,16 @@ a stale binary is the worst failure mode there is.
   `api-query-docs.test.ts`; `request-contracts.test.ts` proves the reader and
   one refusal of each kind.
 
+  **And the words for the platform's vocabularies.** A client that labels a
+  status or a kind does it with a map — `WORDING[row.kind] ?? row.kind` — and a
+  `Record<string, string>` compiles whatever keys it holds. The trader's
+  security feed had no words for the five device events, so it showed
+  `DEVICE_REGISTERED` — a WARNING, the one a person is meant to recognise as
+  not theirs — as its raw name, and the phone's settings showed `PRICE_ALERT`.
+  `client-vocabularies.test.ts` finds every map keyed by an enum's values,
+  requires it to be listed with the enum it words, and fails if a value is
+  unworded or a key is not a value.
+
 - `pnpm pentest` — 63 attacks attempted against the compiled binary; an attack
   that succeeds fails the run.
 

@@ -19,6 +19,8 @@ const LABELS: Record<string, string> = {
   STOP_LOSS: 'Stop loss',
   TAKE_PROFIT: 'Take profit',
   RISK_ALERT: 'Risk alerts',
+  // Missing until 24 September: the switch was labelled PRICE_ALERT.
+  PRICE_ALERT: 'Price alerts',
   SECURITY_ALERT: 'Security alerts',
   SYSTEM: 'System',
 };
