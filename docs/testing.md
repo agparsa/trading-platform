@@ -254,6 +254,24 @@ a stale binary is the worst failure mode there is.
   calls `timestamp`. Events it cannot provoke (`order.rejected`,
   `risk.updated`) are listed in `FRAMES_NOT_SEEN` with the reason.
 
+  **And what the clients send.** The compiler also reads the type of every
+  body a client sends (`api.post|put|patch(path, body)`, one level into
+  objects and lists) and the query keys of every call, and the run compares
+  them with the schemas the API publishes at boot (`/developer/openapi.json`):
+  a field a strict schema refuses, a required field the client may omit, a
+  value of the wrong kind, a query key the route requires and the call does not
+  send. The phone's positions tab — refused on every open for want of
+  `accountId` — would now fail this before anything boots a phone. Its first
+  run found no refused request, and two things that made the check unable to
+  tell: the web's `mutate` typed every body as still carrying `commandId` (it
+  is stripped into a header; the cast is gone), and thirteen query
+  parameters the API document published wrongly — twelve optional ones as
+  required, and
+  `currency` on the withdrawal terms not at all. Each named query parameter
+  now carries an `@ApiQuery` saying what its signature means, held there by
+  `api-query-docs.test.ts`; `request-contracts.test.ts` proves the reader and
+  one refusal of each kind.
+
 - `pnpm pentest` — 63 attacks attempted against the compiled binary; an attack
   that succeeds fails the run.
 

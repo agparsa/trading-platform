@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Permission } from '@tp/shared-types';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -28,6 +28,8 @@ export class AdminPaymentsController {
   @Get()
   @RequirePermissions(Permission.PAYMENTS_READ_ANY)
   @ApiOperation({ summary: 'Payments, newest first, optionally by status' })
+  @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiQuery({ name: 'userId', required: false, type: String })
   async list(
     @Query('status') status?: string,
     @Query('userId') userId?: string,

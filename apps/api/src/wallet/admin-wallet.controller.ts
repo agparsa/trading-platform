@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Permission } from '@tp/shared-types';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -24,6 +24,7 @@ export class AdminWalletController {
   @Get()
   @RequirePermissions(Permission.WALLET_READ_ANY)
   @ApiOperation({ summary: "One person's wallets" })
+  @ApiQuery({ name: 'userId', required: true, type: String })
   async forUser(@Query('userId', ParseUUIDPipe) userId: string): Promise<{
     wallets: readonly WalletView[];
   }> {
@@ -33,6 +34,7 @@ export class AdminWalletController {
   @Get(':id/transactions')
   @RequirePermissions(Permission.WALLET_READ_ANY)
   @ApiOperation({ summary: 'Movements on any wallet' })
+  @ApiQuery({ name: 'limit', required: false, type: String })
   async transactions(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('limit') limit?: string,

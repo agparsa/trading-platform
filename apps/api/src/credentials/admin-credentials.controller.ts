@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Permission } from '@tp/shared-types';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -28,6 +28,8 @@ export class AdminCredentialsController {
   @Get('api-keys')
   @RequirePermissions(Permission.API_KEYS_READ_ANY)
   @ApiOperation({ summary: "Everyone's keys: holder, capabilities, last use. Never the secret." })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'limit', required: false, type: String })
   async keys(
     @Query('search') search?: string,
     @Query('limit') limit?: string,

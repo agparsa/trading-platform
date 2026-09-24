@@ -1,5 +1,5 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Permission } from '@tp/shared-types';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
@@ -69,6 +69,7 @@ export class AdminSecurityController {
   @RequirePermissions(Permission.SECURITY_READ)
   @Get('summary')
   @ApiOperation({ summary: 'Counts by kind and severity over the last day' })
+  @ApiQuery({ name: 'since', required: false, type: String })
   summary(@Query('since') since?: string): Promise<SecurityFeedSummary> {
     const parsed = since === undefined ? Number.NaN : Date.parse(since);
     return this.events.summary(

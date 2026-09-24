@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Permission } from '@tp/shared-types';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -26,6 +26,7 @@ export class WithdrawalsController {
   @Get('terms')
   @RequirePermissions(Permission.WITHDRAWALS_READ)
   @ApiOperation({ summary: 'What you may withdraw right now, and why not' })
+  @ApiQuery({ name: 'currency', required: false, type: String })
   async terms(
     @CurrentUser() user: AuthenticatedUser,
     @Query('currency') currency = 'USD',

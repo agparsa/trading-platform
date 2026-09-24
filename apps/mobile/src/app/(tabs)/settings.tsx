@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import type { NotificationCategory } from '@tp/shared-types';
+import type {
+  NotificationCategory,
+  NotificationPreferenceDto,
+  NotificationSettingsDto,
+} from '@tp/shared-types';
 import { useSession } from '../../lib/session';
 import { Button, Card, Empty, ErrorNote, Screen } from '../../components/ui';
 import { theme } from '../../lib/theme';
@@ -24,7 +28,12 @@ export default function Settings(): React.ReactElement {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
-  const patchSettings = async (patch: Record<string, unknown>) => {
+  /**
+   * Typed as the fields the settings route accepts, not `Record<string, …>`:
+   * a record is a body nobody — the compiler included — can check against the
+   * route's schema, and `smoke:contracts` compares every body with it.
+   */
+  const patchSettings = async (patch: Partial<Omit<NotificationSettingsDto, 'categories'>>) => {
     setError(null);
     try {
       await api.patch('/notifications/preferences', patch, {
@@ -36,7 +45,10 @@ export default function Settings(): React.ReactElement {
     }
   };
 
-  const patchCategory = async (category: NotificationCategory, patch: Record<string, boolean>) => {
+  const patchCategory = async (
+    category: NotificationCategory,
+    patch: Partial<Pick<NotificationPreferenceDto, 'inApp' | 'push' | 'sound' | 'email'>>,
+  ) => {
     setError(null);
     try {
       await api.patch(`/notifications/preferences/${category}`, patch, {

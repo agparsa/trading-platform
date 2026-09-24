@@ -30,9 +30,11 @@ import {
   type Sample,
   type TypedCall,
   checkSamples,
+  clientCalls,
   frameReads,
   typedCalls,
 } from './response-contracts';
+import { type OpenApiDocument, checkRequests, sentBodies } from './request-contracts';
 
 const BASE = `http://127.0.0.1:${process.env.API_PORT ?? '4000'}`;
 const API = `${BASE}/api/v1`;
@@ -913,6 +915,29 @@ async function main(): Promise<void> {
       }
     }
 
+    // --- Requests: every body and query a client sends, against the schema
+    // the API published for its route at boot.
+    const document = (await request(
+      world.trader,
+      'GET',
+      '/developer/openapi.json',
+    )) as OpenApiDocument;
+    const bodies = sentBodies();
+    const { problems, opaque } = checkRequests(bodies, typedAndUntyped(), document);
+    for (const problem of problems) {
+      failures.push(
+        `${problem.call.key}  (${problem.call.file}:${problem.call.line}) ${problem.message}`,
+      );
+    }
+    for (const body of opaque) {
+      failures.push(
+        `${body.call.key}  (${body.call.file}:${body.call.line}) sends ${body.typeText}, whose fields nothing can check`,
+      );
+    }
+    console.log(
+      `  ${bodies.length} request bodies and every query compared with the published schemas.`,
+    );
+
     // --- Frames: every read of a frame's data, against the frames that came.
     answers.socket?.close();
     const { reads, unread: unreadFrames } = frameReads();
@@ -967,6 +992,11 @@ async function main(): Promise<void> {
     api.kill('SIGTERM');
     worker.kill('SIGTERM');
   }
+}
+
+/** Every call, typed or not: a query is sent whether or not the answer is typed. */
+function typedAndUntyped() {
+  return clientCalls().calls;
 }
 
 /** A list, or an object whose only list is empty (`{ keys: [] }`). */

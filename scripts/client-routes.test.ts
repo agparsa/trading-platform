@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { allRoutes } from './api-inventory';
-import { clientCalls } from './response-contracts';
+import { COMPUTED_PATHS, clientCalls } from './response-contracts';
 
 /**
  * Every path a client asks the API for, against the routes the API serves.
@@ -24,17 +24,8 @@ import { clientCalls } from './response-contracts';
  * fails the test, rather than being skipped.
  */
 
-/** Calls whose path is built from a variable, and every value it can take. */
-const COMPUTED: Readonly<Record<string, readonly string[]>> = {
-  // apps/web/src/lib/admin-queries.ts, the firm's book: `/admin/${kind}${search}`.
-  'GET /admin/**': ['GET /admin/orders', 'GET /admin/positions', 'GET /admin/trades'],
-  // The same file, the risk limits: `/admin/risk/limits/${level.toLowerCase()}`
-  // for the two levels without an id (the desk's is its own branch).
-  'POST /admin/risk/limits/*': [
-    'POST /admin/risk/limits/platform',
-    'POST /admin/risk/limits/broker',
-  ],
-};
+// Calls whose path is built from a variable: `COMPUTED_PATHS` in response-contracts.ts.
+const COMPUTED = COMPUTED_PATHS;
 
 function calls(): Array<{ call: string; file: string }> {
   return clientCalls().calls.map((call) => ({ call: call.key, file: call.file }));

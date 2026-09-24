@@ -1,5 +1,5 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Permission } from '@tp/shared-types';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
@@ -57,6 +57,7 @@ export class AdminNotificationsController {
   @ApiOperation({
     summary: 'Delivery counts by outcome, error code and platform over the last day',
   })
+  @ApiQuery({ name: 'since', required: false, type: String })
   summary(@Query('since') since?: string): Promise<PushDeliverySummary> {
     const parsed = since === undefined ? Number.NaN : Date.parse(since);
     return this.deliveries.summary(

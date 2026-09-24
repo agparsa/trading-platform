@@ -408,11 +408,18 @@ export interface CommandInput {
 
 function mutate<TInput extends CommandInput, TResult>(
   api: ApiClient,
-  run: (api: ApiClient, input: TInput, key: string) => Promise<TResult>,
+  /**
+   * `input` is typed without `commandId`, because it has none: it was typed
+   * as the whole `TInput` through a cast, so every body sent through here
+   * claimed a field the server's strict schemas would refuse — true of the
+   * type, false of the request. `smoke:contracts` compares the type of each
+   * body with the schema its route accepts; a type that lies defeats it.
+   */
+  run: (api: ApiClient, input: Omit<TInput, 'commandId'>, key: string) => Promise<TResult>,
 ) {
   return (input: TInput) => {
     const { commandId, ...body } = input;
-    return run(api, body as unknown as TInput, commandId ?? crypto.randomUUID());
+    return run(api, body, commandId ?? crypto.randomUUID());
   };
 }
 

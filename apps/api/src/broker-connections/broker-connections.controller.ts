@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { BrokerCredentialKind } from '@tp/broker-sdk';
 import { Permission } from '@tp/shared-types';
 import { createZodDto } from 'nestjs-zod';
@@ -227,6 +227,7 @@ export class BrokerConnectionsController {
   @Get(':id/inbox')
   @RequirePermissions(Permission.BROKER_CONNECTIONS_READ)
   @ApiOperation({ summary: 'What this venue has sent, most recent first' })
+  @ApiQuery({ name: 'limit', required: false, type: String })
   inboxList(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('limit') limit?: string,
@@ -237,6 +238,7 @@ export class BrokerConnectionsController {
   @Get(':id/inbox/pending')
   @RequirePermissions(Permission.BROKER_CONNECTIONS_READ)
   @ApiOperation({ summary: "Not yet applied, in the venue's own ordering" })
+  @ApiQuery({ name: 'limit', required: false, type: String })
   inboxPending(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('limit') limit?: string,

@@ -9,7 +9,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { Permission } from '@tp/shared-types';
 import { CurrentUser, type AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -34,6 +34,7 @@ export class AdminKycController {
   @Get()
   @RequirePermissions(Permission.KYC_READ_ANY)
   @ApiOperation({ summary: 'Verifications waiting for a decision, oldest first' })
+  @ApiQuery({ name: 'status', required: false, type: String })
   async queue(@Query('status') status?: string): Promise<{ records: readonly QueueRow[] }> {
     return { records: await this.kyc.queue(status === undefined ? {} : { status }) };
   }

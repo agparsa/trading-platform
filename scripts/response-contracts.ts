@@ -215,6 +215,22 @@ function queryOf(
   return query;
 }
 
+/**
+ * Calls whose path is built from a variable, and every value it can take —
+ * shared by the route check (client-routes.test.ts) and the request check
+ * (request-contracts.ts), which both need the real paths.
+ */
+export const COMPUTED_PATHS: Readonly<Record<string, readonly string[]>> = {
+  // apps/web/src/lib/admin-queries.ts, the firm's book: `/admin/${kind}${search}`.
+  'GET /admin/**': ['GET /admin/orders', 'GET /admin/positions', 'GET /admin/trades'],
+  // The same file, the risk limits: `/admin/risk/limits/${level.toLowerCase()}`
+  // for the two levels without an id (the desk's is its own branch).
+  'POST /admin/risk/limits/*': [
+    'POST /admin/risk/limits/platform',
+    'POST /admin/risk/limits/broker',
+  ],
+};
+
 let cached: { calls: ClientCall[]; unread: UnreadCall[] } | undefined;
 
 /** Every `api.<verb>(path, …)` in every client, typed or not, and those it cannot read. */
