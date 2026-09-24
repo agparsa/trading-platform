@@ -55,6 +55,7 @@ export function ReconciliationPanel() {
             </span>
           ) : null}
           <Button
+            gate={request}
             variant="neutral"
             className="px-2 py-0.5"
             disabled={request.isPending}
@@ -164,6 +165,7 @@ function Findings() {
                   <td className="px-2 py-1.5">
                     <div className="flex flex-wrap justify-end gap-1">
                       <Button
+                        gate={setFindingStatus}
                         variant="ghost"
                         className="px-2 py-0.5"
                         disabled={setFindingStatus.isPending}
@@ -178,6 +180,7 @@ function Findings() {
                         Investigating
                       </Button>
                       <ReasonedAction
+                        gate={setFindingStatus}
                         label="Resolve"
                         title="What was done about it"
                         minLength={8}
@@ -187,6 +190,7 @@ function Findings() {
                         }
                       />
                       <ReasonedAction
+                        gate={setFindingStatus}
                         label="Not a fault"
                         title="Why the records were right"
                         minLength={8}
@@ -449,6 +453,7 @@ function VenueItems() {
                   <td className="px-2 py-1.5 text-terminal-muted">{utcTime(row.createdAt)}</td>
                   <td className="px-3 py-1.5 text-right">
                     <ReasonedAction
+                      gate={record}
                       label={row.resolutionCount === 0 ? 'Record a decision' : 'Add a decision'}
                       title="What did you conclude, and why? This is read months from now."
                       minLength={8}

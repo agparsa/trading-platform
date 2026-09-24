@@ -13,7 +13,6 @@ import {
   type AdminApiKeyRow,
   type ServiceTokenRow,
 } from '@/lib/admin-queries';
-import { usePermissions } from '@/lib/queries';
 import { utcTime } from '@/lib/format';
 import { ErrorLine, Head, Loading, ReasonedAction, SearchBox, Table } from './shared';
 
@@ -67,8 +66,7 @@ function KeysTab() {
   const [search, setSearch] = useState('');
   const list = useAdminApiKeys(search);
   const revoke = useRevokeAnyApiKey();
-  const permissions = usePermissions();
-  const mayRevoke = permissions.data?.permissions.includes('api_keys.revoke_any') ?? false;
+  const mayRevoke = revoke.allowed;
   const rows = list.data?.keys ?? [];
 
   return (
@@ -109,6 +107,7 @@ function KeysTab() {
                 <td className="px-3 py-1.5 text-right">
                   {row.status === 'ACTIVE' && mayRevoke ? (
                     <ReasonedAction
+                      gate={revoke}
                       label="Revoke"
                       variant="danger"
                       title="Why — the holder is told this"
@@ -228,6 +227,7 @@ function TokensTab() {
           </p>
         )}
         <Button
+          gate={mint}
           disabled={name.trim().length === 0 || chosen.size === 0 || mint.isPending}
           onClick={() =>
             mint.mutate(
@@ -285,6 +285,7 @@ function TokensTab() {
                 <td className="px-3 py-1.5 text-right">
                   {row.status === 'ACTIVE' ? (
                     <ReasonedAction
+                      gate={revoke}
                       label="Revoke"
                       variant="danger"
                       title="Why"

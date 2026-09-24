@@ -11,7 +11,6 @@ import {
   useRiskLimits,
   useSetRiskLimits,
 } from '@/lib/admin-queries';
-import { usePermissions } from '@/lib/queries';
 import { money, percent, signedMoney, toneClass, toneOf, utcTime, volume } from '@/lib/format';
 import { ErrorLine, Head, Loading, SeverityPill, Table } from './shared';
 
@@ -351,8 +350,7 @@ function Signals() {
 function Ceilings() {
   const limits = useRiskLimits();
   const save = useSetRiskLimits();
-  const permissions = usePermissions();
-  const mayManage = permissions.data?.permissions.includes('risk.manage') ?? false;
+  const mayManage = save.allowed;
 
   const [level, setLevel] = useState<'PLATFORM' | 'BROKER'>('BROKER');
   const [volume, setVolume] = useState('');
@@ -425,6 +423,7 @@ function Ceilings() {
           </Field>
           <div className="flex items-end">
             <Button
+              gate={save}
               onClick={() =>
                 save.mutate(
                   {

@@ -20,7 +20,7 @@ Everything below was checked against the build at the head of
 | `pnpm smoke` (boots the API build)                   | 22 checks, including the boot log reaching stdout           |
 | `pnpm smoke:worker`                                  | 7 checks, including a narrowed processor and a file secret  |
 | `pnpm smoke:ws`                                      | 9 checks                                                    |
-| `pnpm smoke:web` (Playwright)                        | 174 checks                                                  |
+| `pnpm smoke:web` (Playwright)                        | 177 checks                                                  |
 | `pnpm pentest`                                       | 62 attacks refused, every one enumerated in the checklist   |
 | `pnpm chaos` (§75)                                   | 7 scenarios hold the invariant, including SIGTERM mid-burst |
 | `pnpm load` at 500 traders / 1,000 sockets           | passes; every refusal a safe one                            |

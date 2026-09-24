@@ -207,7 +207,7 @@ a stale binary is the worst failure mode there is.
   spent — a skip there would hide the whole path.
 - `pnpm smoke:ws` — 8 checks: quote and candle streaming, gapless sequencing,
   private-channel refusal, cross-account isolation.
-- `pnpm smoke:web` — 174 checks across all 35 routes, in a real browser: every screen
+- `pnpm smoke:web` — 177 checks across all 35 routes, in a real browser: every screen
   signed into, landed on, and read for console errors, plus checks about
   content — that the roles screen shows real grants, that the wallet page
   offers the deposit method this deployment actually has, and that a key

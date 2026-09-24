@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { cn } from '@tp/ui';
-import { Button, Field, inputClass } from '@/components/primitives';
+import { Button, type ButtonGate, Field, inputClass } from '@/components/primitives';
 import {
   useBrokerCatalogue,
   useBrokerConnections,
@@ -20,7 +20,6 @@ import {
   type BrokerConnectionRow,
   type ConnectorRow,
 } from '@/lib/admin-queries';
-import { usePermissions } from '@/lib/queries';
 import { utcTime } from '@/lib/format';
 import { ErrorLine, Head, Loading, ReasonedAction, Table } from './shared';
 
@@ -60,8 +59,8 @@ export function ConnectionsPanel() {
   const create = useCreateBrokerConnection();
   const setEnabled = useSetBrokerConnectionEnabled();
   const test = useTestBrokerConnection();
-  const permissions = usePermissions();
-  const mayManage = permissions.data?.permissions.includes('broker_connections.manage') ?? false;
+  // The capability every action on this screen needs, read from the hooks' gate.
+  const mayManage = setEnabled.allowed;
 
   const [name, setName] = useState('');
   const [kind, setKind] = useState('');
@@ -98,8 +97,10 @@ export function ConnectionsPanel() {
                 connector={available.find((one) => one.kind === row.adapterKind)}
                 onTest={() => test.mutate(row.id)}
                 testing={test.isPending}
+                testGate={test}
                 onEnabled={(enabled, reason) => setEnabled.mutate({ id: row.id, enabled, reason })}
                 busy={setEnabled.isPending}
+                enabledGate={setEnabled}
               />
             ))}
           </tbody>
@@ -151,6 +152,7 @@ export function ConnectionsPanel() {
                 </p>
               ) : null}
               <Button
+                gate={create}
                 onClick={() =>
                   create.mutate(
                     { name: name.trim(), adapterKind: chosen?.kind ?? '' },
@@ -177,6 +179,8 @@ function ConnectionRow({
   testing,
   onEnabled,
   busy,
+  testGate,
+  enabledGate,
 }: {
   row: BrokerConnectionRow;
   connector: ConnectorRow | undefined;
@@ -185,6 +189,8 @@ function ConnectionRow({
   testing: boolean;
   onEnabled: (enabled: boolean, reason: string) => void;
   busy: boolean;
+  testGate: ButtonGate;
+  enabledGate: ButtonGate;
 }) {
   const [pane, setPane] = useState<Pane>(null);
   const live = row.credentials.find((credential) => credential.revokedAt === null);
@@ -252,7 +258,12 @@ function ConnectionRow({
                     ? 'Set credentials'
                     : 'Rotate'}
               </Button>
-              <Button variant="neutral" onClick={onTest} disabled={testing || live === undefined}>
+              <Button
+                variant="neutral"
+                onClick={onTest}
+                disabled={testing || live === undefined}
+                gate={testGate}
+              >
                 {testing ? 'Testing…' : 'Test'}
               </Button>
               <ReasonedAction
@@ -261,6 +272,7 @@ function ConnectionRow({
                 title="Why"
                 minLength={4}
                 busy={busy}
+                gate={enabledGate}
                 onConfirm={(reason) => onEnabled(!row.enabled, reason)}
               />
             </>
@@ -322,6 +334,7 @@ function MappingsPane({ connectionId, mayManage }: { connectionId: string; mayMa
         </p>
         {mayManage ? (
           <Button
+            gate={sync}
             variant="neutral"
             onClick={() => sync.mutate(connectionId)}
             disabled={sync.isPending}
@@ -376,6 +389,7 @@ function MappingsPane({ connectionId, mayManage }: { connectionId: string; mayMa
                 <td className="px-3 py-1.5 text-right">
                   {mayManage ? (
                     <Button
+                      gate={setEnabled}
                       variant={mapping.enabled ? 'danger' : 'neutral'}
                       onClick={() =>
                         setEnabled.mutate({
@@ -423,6 +437,7 @@ function MappingsPane({ connectionId, mayManage }: { connectionId: string; mayMa
           </Field>
           <div className="flex items-end">
             <Button
+              gate={map}
               onClick={() =>
                 map.mutate(
                   { id: connectionId, symbolCode: symbolCode.trim(), externalSymbol },
@@ -508,6 +523,7 @@ function InboxPane({ connectionId, mayManage }: { connectionId: string; mayManag
                 <td className="px-3 py-1.5 text-right">
                   {mayManage && event.status === 'FAILED' ? (
                     <Button
+                      gate={replay}
                       variant="neutral"
                       onClick={() => replay.mutate({ id: connectionId, eventId: event.id })}
                       disabled={replay.isPending}
@@ -571,6 +587,7 @@ function CredentialForm({
         ))}
       </div>
       <Button
+        gate={save}
         onClick={() =>
           save.mutate(
             { id: row.id, kind: kindFor(connector), fields },

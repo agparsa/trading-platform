@@ -155,6 +155,7 @@ function RecordReview({ id, onDone }: { id: string; onDone: () => void }) {
             <div className="flex flex-wrap items-center gap-1">
               {detail.status === 'PENDING' ? (
                 <Button
+                  gate={claim}
                   variant="neutral"
                   className="px-2 py-0.5"
                   disabled={busy}
@@ -165,6 +166,7 @@ function RecordReview({ id, onDone }: { id: string; onDone: () => void }) {
               ) : null}
               {detail.status === 'UNDER_REVIEW' ? (
                 <Button
+                  gate={release}
                   variant="ghost"
                   className="px-2 py-0.5"
                   disabled={busy}
@@ -176,6 +178,7 @@ function RecordReview({ id, onDone }: { id: string; onDone: () => void }) {
               {awaiting ? (
                 <>
                   <ReasonedAction
+                    gate={decide}
                     label="Verify"
                     title="Which document, checked against what"
                     minLength={8}
@@ -183,6 +186,7 @@ function RecordReview({ id, onDone }: { id: string; onDone: () => void }) {
                     onConfirm={(reason) => decide.mutate({ id, outcome: 'VERIFIED', reason })}
                   />
                   <ReasonedAction
+                    gate={decide}
                     label="Reject"
                     variant="danger"
                     title="What to fix — the person is shown this"
@@ -194,6 +198,7 @@ function RecordReview({ id, onDone }: { id: string; onDone: () => void }) {
               ) : null}
               {detail.status === 'VERIFIED' ? (
                 <ReasonedAction
+                  gate={revoke}
                   label="Revoke"
                   variant="danger"
                   title="Why the verification is withdrawn"
@@ -254,6 +259,7 @@ function DocumentCard({ recordId, document }: { recordId: string; document: Admi
           <span className="text-[10px] text-terminal-muted">Purged under retention</span>
         ) : url === null ? (
           <Button
+            gate={open}
             variant="neutral"
             className="px-2 py-0.5"
             disabled={open.isPending}

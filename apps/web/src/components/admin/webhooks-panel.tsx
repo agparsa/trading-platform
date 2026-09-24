@@ -104,6 +104,7 @@ function Register({ onSecret }: { onSecret: (url: string, secret: string) => voi
           onChange={(event) => setDescription(event.target.value)}
         />
         <Button
+          gate={create}
           variant="neutral"
           className="px-2 py-0.5"
           disabled={!ready || create.isPending}
@@ -207,6 +208,7 @@ function Endpoints({
               <td className="px-3 py-1.5" onClick={(event) => event.stopPropagation()}>
                 <div className="flex items-center justify-end gap-1">
                   <Button
+                    gate={toggle}
                     variant="ghost"
                     className="px-2 py-0.5"
                     disabled={toggle.isPending}
@@ -215,6 +217,7 @@ function Endpoints({
                     {row.enabled ? 'Turn off' : 'Turn on'}
                   </Button>
                   <Button
+                    gate={rotate}
                     variant="ghost"
                     className="px-2 py-0.5"
                     disabled={rotate.isPending}
@@ -231,6 +234,7 @@ function Endpoints({
                     Rotate secret
                   </Button>
                   <Button
+                    gate={remove}
                     variant="danger"
                     className="px-2 py-0.5"
                     disabled={remove.isPending}
@@ -305,6 +309,7 @@ function Deliveries({ endpointId }: { endpointId: string }) {
                 </td>
                 <td className="px-3 py-1.5 text-right">
                   <Button
+                    gate={replay}
                     variant="ghost"
                     className="px-2 py-0.5"
                     disabled={replay.isPending}

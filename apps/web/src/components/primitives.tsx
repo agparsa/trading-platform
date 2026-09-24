@@ -94,13 +94,27 @@ export function Field({
 export const inputClass =
   'numeric w-full rounded border border-terminal-border bg-terminal-bg px-2.5 py-1.5 text-sm text-terminal-text outline-none transition-colors focus:border-terminal-muted disabled:opacity-50';
 
+/**
+ * What a control needs the signed-in person to hold. Given, and not held, the
+ * button is disabled and says which capability — rather than being pressed and
+ * answered with a 403. The server refuses either way; this is the courtesy of
+ * saying so first. See `Gate` in lib/admin-queries.ts.
+ */
+export interface ButtonGate {
+  readonly allowed: boolean;
+  readonly requires: string;
+}
+
 export function Button({
   variant = 'neutral',
   className,
+  gate,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'neutral' | 'long' | 'short' | 'ghost' | 'danger';
+  gate?: ButtonGate;
 }) {
+  const refused = gate !== undefined && !gate.allowed;
   const variants: Record<string, string> = {
     neutral:
       'border border-terminal-border bg-terminal-raised text-terminal-text hover:border-terminal-muted',
@@ -112,6 +126,9 @@ export function Button({
   return (
     <button
       {...props}
+      disabled={props.disabled === true || refused}
+      title={refused ? `Your role does not carry ${gate.requires}` : props.title}
+      data-requires={refused ? gate.requires : undefined}
       className={cn(
         'rounded px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
         variants[variant],

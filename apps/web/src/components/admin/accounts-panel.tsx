@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { cn } from '@tp/ui';
-import { Button, inputClass } from '@/components/primitives';
+import { Button, type ButtonGate, inputClass } from '@/components/primitives';
 import {
   useAdjustBalance,
   useAdminAccounts,
@@ -77,6 +77,7 @@ export function AccountsPanel() {
                   setStatus.mutate({ accountId: account.id, status, reason })
                 }
                 busy={setStatus.isPending}
+                gate={setStatus}
               />
             ))}
           </tbody>
@@ -92,12 +93,15 @@ export function AccountRow({
   onAdjustToggle,
   onStatus,
   busy,
+  gate,
 }: {
   account: AdminAccountRow;
   adjusting: boolean;
   onAdjustToggle: () => void;
   onStatus: (status: string, reason: string) => void;
   busy: boolean;
+  /** Whether the viewer may change an account's state: `accounts.manage`. */
+  gate: ButtonGate;
 }) {
   const [status, setStatus] = useState<string>(account.status);
 
@@ -135,6 +139,7 @@ export function AccountRow({
               title="Why the state is changing"
               variant={status === 'ACTIVE' ? 'neutral' : 'danger'}
               busy={busy}
+              gate={gate}
               onConfirm={(reason) => onStatus(status, reason)}
             />
             <Button variant="ghost" className="px-2 py-0.5" onClick={onAdjustToggle}>
@@ -242,6 +247,7 @@ function AdjustmentForm({ account }: { account: AdminAccountRow }) {
         </label>
 
         <Button
+          gate={adjust}
           variant="danger"
           disabled={!ready || adjust.isPending}
           onClick={() =>

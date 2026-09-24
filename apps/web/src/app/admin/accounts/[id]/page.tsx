@@ -69,6 +69,7 @@ export default function Page() {
                 setStatus.mutate({ accountId: account.data.id, status, reason })
               }
               busy={setStatus.isPending}
+              gate={setStatus}
             />
           </tbody>
         </Table>

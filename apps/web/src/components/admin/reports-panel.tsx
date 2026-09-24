@@ -139,6 +139,7 @@ export function ReportsPanel() {
             />
           </label>
           <Button
+            gate={request}
             disabled={chosen === undefined || request.isPending}
             onClick={() => {
               if (chosen === undefined) return;

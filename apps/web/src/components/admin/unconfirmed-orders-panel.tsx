@@ -6,7 +6,6 @@ import {
   useUnconfirmedOrders,
   type UnconfirmedOrderRow,
 } from '@/lib/admin-queries';
-import { usePermissions } from '@/lib/queries';
 import { utcTime } from '@/lib/format';
 import { ErrorLine, Head, Loading, Table } from './shared';
 
@@ -32,8 +31,13 @@ import { ErrorLine, Head, Loading, Table } from './shared';
 export function UnconfirmedOrdersPanel() {
   const orders = useUnconfirmedOrders();
   const resolve = useResolveUnconfirmed();
-  const permissions = usePermissions();
-  const mayAsk = permissions.data?.permissions.includes('orders.modify') ?? false;
+  /*
+   * This read `orders.modify`, while the route requires
+   * `broker_connections.manage`: the button went to people the server then
+   * refused, and was hidden from the ones it would have served. The hook's
+   * gate is named after the route (see `Gate` in lib/admin-queries.ts).
+   */
+  const mayAsk = resolve.allowed;
   const rows = orders.data?.orders ?? [];
 
   return (
@@ -70,6 +74,7 @@ export function UnconfirmedOrdersPanel() {
                 <td className="px-3 py-1.5 text-right">
                   {mayAsk ? (
                     <Button
+                      gate={resolve}
                       variant="neutral"
                       onClick={() => resolve.mutate(row.id)}
                       disabled={resolve.isPending}

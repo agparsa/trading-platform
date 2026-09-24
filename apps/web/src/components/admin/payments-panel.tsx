@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Tabs } from '@/components/primitives';
+import { Button, type ButtonGate, Tabs } from '@/components/primitives';
 import {
   useAdminPaymentEvents,
   useAdminPayments,
@@ -100,6 +100,7 @@ export function PaymentsPanel() {
                 busy={settle.isPending}
                 onToggle={() => setExpanded(expanded === row.id ? null : row.id)}
                 onSettle={(outcome, reason) => settle.mutate({ id: row.id, outcome, reason })}
+                settleGate={settle}
               />
             ))}
           </tbody>
@@ -115,12 +116,15 @@ function PaymentRows({
   busy,
   onToggle,
   onSettle,
+  settleGate,
 }: {
   row: AdminPaymentRow;
   expanded: boolean;
   busy: boolean;
   onToggle: () => void;
   onSettle: (outcome: 'SUCCEEDED' | 'FAILED' | 'CANCELLED', reason: string) => void;
+  /** `payments.confirm`: finance's, not every administrator's. */
+  settleGate: ButtonGate;
 }) {
   const events = useAdminPaymentEvents(expanded ? row.id : null);
   const open = row.status === 'REQUIRES_ACTION' || row.status === 'PROCESSING';
@@ -151,6 +155,7 @@ function PaymentRows({
                   label="Confirm"
                   title="Where you saw it — statement line, date"
                   busy={busy}
+                  gate={settleGate}
                   onConfirm={(reason) => onSettle('SUCCEEDED', reason)}
                 />
                 <ReasonedAction
@@ -158,6 +163,7 @@ function PaymentRows({
                   variant="danger"
                   title="Why this payment did not arrive"
                   busy={busy}
+                  gate={settleGate}
                   onConfirm={(reason) => onSettle('FAILED', reason)}
                 />
               </>

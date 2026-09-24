@@ -252,3 +252,23 @@ export function allRoutes(): Array<{ verb: string; path: string }> {
     .flatMap(routesIn)
     .flatMap((section) => section.routes.map((route) => ({ verb: route.verb, path: route.path })));
 }
+
+/**
+ * Every route with the capabilities its `@RequirePermissions` names, as the
+ * `Permission` enum's member names (`RISK_MANAGE`). Empty for a route that
+ * names none — public, self-service, or authenticated only.
+ */
+export function routePermissions(): Array<{ verb: string; path: string; permissions: string[] }> {
+  return controllerFiles(ROOT)
+    .flatMap(routesIn)
+    .flatMap((section) =>
+      section.routes.map((route) => ({
+        verb: route.verb,
+        path: route.path,
+        permissions: route.guard
+          .split(',')
+          .map((part) => part.trim())
+          .filter((part) => /^[A-Z][A-Z0-9_]+$/.test(part)),
+      })),
+    );
+}

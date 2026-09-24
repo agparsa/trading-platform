@@ -10,7 +10,6 @@ import {
   type BrokerCreated,
   type BrokerRow,
 } from '@/lib/admin-queries';
-import { usePermissions } from '@/lib/queries';
 import { utcTime } from '@/lib/format';
 import { ErrorLine, Head, Loading, ReasonedAction, StatusPill, Table } from './shared';
 
@@ -27,8 +26,7 @@ export function BrokersPanel() {
   const list = useBrokers();
   const create = useCreateBroker();
   const setStatus = useSetBrokerStatus();
-  const permissions = usePermissions();
-  const mayManage = permissions.data?.permissions.includes('tenants.manage') ?? false;
+  const mayManage = create.allowed;
 
   const [created, setCreated] = useState<BrokerCreated | null>(null);
   const [slug, setSlug] = useState('');
@@ -139,6 +137,7 @@ export function BrokersPanel() {
                 <td className="px-3 py-1.5 text-right">
                   {mayManage && row.status === 'ACTIVE' ? (
                     <ReasonedAction
+                      gate={setStatus}
                       label="Suspend"
                       variant="danger"
                       title="Why — this stops every request on the broker's hostname"
@@ -150,6 +149,7 @@ export function BrokersPanel() {
                     />
                   ) : mayManage && row.status === 'SUSPENDED' ? (
                     <ReasonedAction
+                      gate={setStatus}
                       label="Reinstate"
                       title="Why"
                       minLength={4}
@@ -216,7 +216,7 @@ export function BrokersPanel() {
             </Field>
           </div>
           <div className="mt-3">
-            <Button onClick={submit} disabled={!canCreate}>
+            <Button onClick={submit} disabled={!canCreate} gate={create}>
               {create.isPending ? 'Creating…' : 'Create broker and mint the owner invitation'}
             </Button>
           </div>

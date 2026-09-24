@@ -1,7 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { KillSwitchState } from '@tp/shared-types';
+import { type KillSwitchState, Permission } from '@tp/shared-types';
+import { usePermissions } from './queries';
 import { useSession } from './session';
 
 /**
@@ -344,6 +345,40 @@ export function useIntegritySignals() {
 }
 
 /** Invalidates everything an administrative action could have changed. */
+// ─── Who may press what ─────────────────────────────────────────────────────
+
+/**
+ * The capability an action needs, and whether the signed-in person holds it.
+ *
+ * Every mutation hook below carries one, named after the route it calls, and
+ * every control that fires one is given it (`gate={hook}`): without it, it is
+ * shown disabled with the capability named. On 24 September sixteen admin
+ * screens offered actions to anybody who could open them — the withdrawal
+ * queue's Approve to an administrator, whose role does not review withdrawals;
+ * the kill switch to support — and the server's 403 was the first the operator
+ * heard of it. The venue-recovery screen gated its one button on
+ * `orders.modify` while its route requires `broker_connections.manage`, so it
+ * offered the action to the wrong people and hid it from the right ones.
+ *
+ * This is the interface only. The server refuses regardless, and
+ * `ui-gates.test.ts` holds each hook's capability to its route's.
+ */
+export interface Gate {
+  readonly allowed: boolean;
+  readonly requires: Permission;
+}
+
+function useGate(requires: Permission): Gate {
+  const mine = usePermissions();
+  return { allowed: mine.data?.permissions.includes(requires) ?? false, requires };
+}
+
+/** A mutation, with the gate for the capability its route requires. */
+function useGated<T extends object>(requires: Permission, mutation: T): T & Gate {
+  const gate = useGate(requires);
+  return { ...mutation, ...gate };
+}
+
 function useAdminInvalidate() {
   const client = useQueryClient();
   return () => void client.invalidateQueries({ queryKey: ['admin'] });
@@ -352,15 +387,18 @@ function useAdminInvalidate() {
 export function useSuspendUser() {
   const { api } = useSession();
   const invalidate = useAdminInvalidate();
-  return useMutation({
-    mutationFn: (input: { userId: string; suspend: boolean; reason: string }) =>
-      api.post(
-        `/admin/users/${input.userId}/${input.suspend ? 'suspend' : 'reinstate'}`,
-        { reason: input.reason },
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.USERS_MANAGE,
+    useMutation({
+      mutationFn: (input: { userId: string; suspend: boolean; reason: string }) =>
+        api.post(
+          `/admin/users/${input.userId}/${input.suspend ? 'suspend' : 'reinstate'}`,
+          { reason: input.reason },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 /** A device as staff see it. Mirrors `AdminDeviceDto`; no token, ever. */
@@ -398,55 +436,76 @@ export function useAdminUserDevices(id: string | null) {
 export function useRevokeDevice() {
   const { api } = useSession();
   const invalidate = useAdminInvalidate();
-  return useMutation({
-    mutationFn: (input: { userId: string; deviceId: string; reason: string; restore?: boolean }) =>
-      api.post(
-        `/admin/users/${input.userId}/devices/${input.deviceId}/${
-          input.restore === true ? 'restore' : 'revoke'
-        }`,
-        { reason: input.reason },
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.USERS_MANAGE,
+    useMutation({
+      mutationFn: (input: {
+        userId: string;
+        deviceId: string;
+        reason: string;
+        restore?: boolean;
+      }) =>
+        api.post(
+          `/admin/users/${input.userId}/devices/${input.deviceId}/${
+            input.restore === true ? 'restore' : 'revoke'
+          }`,
+          { reason: input.reason },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 export function useForceSignOut() {
   const { api } = useSession();
   const invalidate = useAdminInvalidate();
-  return useMutation({
-    mutationFn: (input: { userId: string; reason: string }) =>
-      api.post(
-        `/admin/users/${input.userId}/sign-out`,
-        { reason: input.reason },
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.USERS_MANAGE,
+    useMutation({
+      mutationFn: (input: { userId: string; reason: string }) =>
+        api.post(
+          `/admin/users/${input.userId}/sign-out`,
+          { reason: input.reason },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 export function useUnlockUser() {
   const { api } = useSession();
   const invalidate = useAdminInvalidate();
-  return useMutation({
-    mutationFn: (input: { userId: string }) =>
-      api.post(`/admin/users/${input.userId}/unlock`, {}, { idempotencyKey: crypto.randomUUID() }),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.USERS_MANAGE,
+    useMutation({
+      mutationFn: (input: { userId: string }) =>
+        api.post(
+          `/admin/users/${input.userId}/unlock`,
+          {},
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 export function useSetAccountStatus() {
   const { api } = useSession();
   const invalidate = useAdminInvalidate();
-  return useMutation({
-    mutationFn: (input: { accountId: string; status: string; reason: string }) =>
-      api.post(
-        `/admin/accounts/${input.accountId}/status`,
-        { status: input.status, reason: input.reason },
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.ACCOUNTS_MANAGE,
+    useMutation({
+      mutationFn: (input: { accountId: string; status: string; reason: string }) =>
+        api.post(
+          `/admin/accounts/${input.accountId}/status`,
+          { status: input.status, reason: input.reason },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 export interface AdjustmentInput {
@@ -469,33 +528,39 @@ export interface AdjustmentInput {
 export function useAdjustBalance() {
   const { api } = useSession();
   const invalidate = useAdminInvalidate();
-  return useMutation({
-    mutationFn: (input: AdjustmentInput) => {
-      const { accountId, ...body } = input;
-      return api.post<{ entryId: string; balanceAfter: string; amount: string }>(
-        `/admin/accounts/${accountId}/adjustments`,
-        body,
-        { idempotencyKey: crypto.randomUUID() },
-      );
-    },
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.ACCOUNTS_ADJUST,
+    useMutation({
+      mutationFn: (input: AdjustmentInput) => {
+        const { accountId, ...body } = input;
+        return api.post<{ entryId: string; balanceAfter: string; amount: string }>(
+          `/admin/accounts/${accountId}/adjustments`,
+          body,
+          { idempotencyKey: crypto.randomUUID() },
+        );
+      },
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 export function useHaltTrading() {
   const { api } = useSession();
   const invalidate = useAdminInvalidate();
-  return useMutation({
-    mutationFn: (input: { halt: boolean; reason: string }) =>
-      // The reason is kept either way: the console asks why it is safe to
-      // resume, and the audit trail should have the answer it was given.
-      api.post(
-        `/operations/${input.halt ? 'halt' : 'resume'}`,
-        { reason: input.reason },
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.SYSTEM_KILL_SWITCH,
+    useMutation({
+      mutationFn: (input: { halt: boolean; reason: string }) =>
+        // The reason is kept either way: the console asks why it is safe to
+        // resume, and the audit trail should have the answer it was given.
+        api.post(
+          `/operations/${input.halt ? 'halt' : 'resume'}`,
+          { reason: input.reason },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 // ─── Reconciliation ────────────────────────────────────────────────────────
@@ -561,29 +626,35 @@ export function useReconciliationFindings(status: string) {
 export function useSetFindingStatus() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { id: string; status: string; note: string | null }) =>
-      api.post(
-        `/reconciliation/findings/${input.id}/status`,
-        { status: input.status, ...(input.note === null ? {} : { note: input.note }) },
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ['admin'] }),
-  });
+  return useGated(
+    Permission.RECONCILIATION_MANAGE,
+    useMutation({
+      mutationFn: (input: { id: string; status: string; note: string | null }) =>
+        api.post(
+          `/reconciliation/findings/${input.id}/status`,
+          { status: input.status, ...(input.note === null ? {} : { note: input.note }) },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: () => void client.invalidateQueries({ queryKey: ['admin'] }),
+    }),
+  );
 }
 
 export function useRequestReconciliation() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      api.post<{ runId: string; alreadyRunning: boolean }>(
-        '/reconciliation/runs',
-        {},
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ['admin'] }),
-  });
+  return useGated(
+    Permission.RECONCILIATION_RUN,
+    useMutation({
+      mutationFn: () =>
+        api.post<{ runId: string; alreadyRunning: boolean }>(
+          '/reconciliation/runs',
+          {},
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: () => void client.invalidateQueries({ queryKey: ['admin'] }),
+    }),
+  );
 }
 
 /** What the platform trades, and on what terms. */
@@ -606,40 +677,46 @@ export function useAdminInstruments() {
 export function useSetInstrumentEnabled() {
   const { api } = useSession();
   const invalidate = useAdminInvalidate();
-  return useMutation({
-    mutationFn: (input: { code: string; enabled: boolean; reason: string }) =>
-      api.post<{ code: string; enabled: boolean; openPositions: number }>(
-        `/admin/instruments/${input.code}/enabled`,
-        { enabled: input.enabled, reason: input.reason },
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.INSTRUMENTS_MANAGE,
+    useMutation({
+      mutationFn: (input: { code: string; enabled: boolean; reason: string }) =>
+        api.post<{ code: string; enabled: boolean; openPositions: number }>(
+          `/admin/instruments/${input.code}/enabled`,
+          { enabled: input.enabled, reason: input.reason },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 /** Margin, commission, swap and the largest order accepted. */
 export function useSetInstrumentTerms() {
   const { api } = useSession();
   const invalidate = useAdminInvalidate();
-  return useMutation({
-    mutationFn: (input: {
-      code: string;
-      reason: string;
-      marginRate?: string;
-      commissionPerLot?: string;
-      swapLongPerLot?: string;
-      swapShortPerLot?: string;
-      maxVolume?: string;
-    }) => {
-      const { code, ...body } = input;
-      return api.post<{ code: string; changed: string[]; openPositions: number }>(
-        `/admin/instruments/${code}/terms`,
-        body,
-        { idempotencyKey: crypto.randomUUID() },
-      );
-    },
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.INSTRUMENTS_MANAGE,
+    useMutation({
+      mutationFn: (input: {
+        code: string;
+        reason: string;
+        marginRate?: string;
+        commissionPerLot?: string;
+        swapLongPerLot?: string;
+        swapShortPerLot?: string;
+        maxVolume?: string;
+      }) => {
+        const { code, ...body } = input;
+        return api.post<{ code: string; changed: string[]; openPositions: number }>(
+          `/admin/instruments/${code}/terms`,
+          body,
+          { idempotencyKey: crypto.randomUUID() },
+        );
+      },
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 export interface RoleRow {
@@ -694,34 +771,40 @@ export function useRoles() {
 export function useResetRolePermissions() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ key }: { key: string }) =>
-      api.post<RoleRow>(
-        `/permissions/roles/${key}/reset`,
-        {},
-        {
-          idempotencyKey: crypto.randomUUID(),
-        },
-      ),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.roles });
-      void client.invalidateQueries({ queryKey: ['permissions', 'me'] });
-    },
-  });
+  return useGated(
+    Permission.ROLES_MANAGE,
+    useMutation({
+      mutationFn: ({ key }: { key: string }) =>
+        api.post<RoleRow>(
+          `/permissions/roles/${key}/reset`,
+          {},
+          {
+            idempotencyKey: crypto.randomUUID(),
+          },
+        ),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.roles });
+        void client.invalidateQueries({ queryKey: ['permissions', 'me'] });
+      },
+    }),
+  );
 }
 
 export function useSetRolePermissions() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ key, permissions }: { key: string; permissions: string[] }) =>
-      api.put<RoleRow>(`/permissions/roles/${key}`, { permissions }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.roles });
-      // The signed-in operator's own capabilities may have just changed.
-      void client.invalidateQueries({ queryKey: ['permissions', 'me'] });
-    },
-  });
+  return useGated(
+    Permission.ROLES_MANAGE,
+    useMutation({
+      mutationFn: ({ key, permissions }: { key: string; permissions: string[] }) =>
+        api.put<RoleRow>(`/permissions/roles/${key}`, { permissions }),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.roles });
+        // The signed-in operator's own capabilities may have just changed.
+        void client.invalidateQueries({ queryKey: ['permissions', 'me'] });
+      },
+    }),
+  );
 }
 
 export interface AdminPaymentRow {
@@ -788,27 +871,30 @@ export function useAdminPaymentEvents(id: string | null) {
 export function useSettlePayment() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      id,
-      outcome,
-      reason,
-    }: {
-      id: string;
-      outcome: 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
-      reason: string;
-    }) =>
-      api.post<AdminPaymentRow>(
-        `/admin/payments/${id}/settle`,
-        { outcome, reason },
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: (_result, input) => {
-      void client.invalidateQueries({ queryKey: ['admin', 'payments'] });
-      void client.invalidateQueries({ queryKey: adminKeys.paymentEvents(input.id) });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    Permission.PAYMENTS_CONFIRM,
+    useMutation({
+      mutationFn: ({
+        id,
+        outcome,
+        reason,
+      }: {
+        id: string;
+        outcome: 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+        reason: string;
+      }) =>
+        api.post<AdminPaymentRow>(
+          `/admin/payments/${id}/settle`,
+          { outcome, reason },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: (_result, input) => {
+        void client.invalidateQueries({ queryKey: ['admin', 'payments'] });
+        void client.invalidateQueries({ queryKey: adminKeys.paymentEvents(input.id) });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 export interface AdminKycRow {
@@ -871,35 +957,42 @@ export function useKycRecord(id: string | null) {
  */
 export function useOpenKycDocument() {
   const { api } = useSession();
-  return useMutation({
-    mutationFn: ({ recordId, documentId }: { recordId: string; documentId: string }) =>
-      api.getBytes(`/admin/kyc/${recordId}/documents/${documentId}`),
-  });
+  return useGated(
+    Permission.KYC_REVIEW,
+    useMutation({
+      mutationFn: ({ recordId, documentId }: { recordId: string; documentId: string }) =>
+        api.getBytes(`/admin/kyc/${recordId}/documents/${documentId}`),
+    }),
+  );
 }
 
 function useKycAction<TInput extends { id: string }>(
+  requires: Permission,
   run: (api: ReturnType<typeof useSession>['api'], input: TInput) => Promise<AdminKycDetail>,
 ) {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: TInput) => run(api, input),
-    onSuccess: (_result, input) => {
-      void client.invalidateQueries({ queryKey: ['admin', 'kyc'] });
-      void client.invalidateQueries({ queryKey: adminKeys.kycRecord(input.id) });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    requires,
+    useMutation({
+      mutationFn: (input: TInput) => run(api, input),
+      onSuccess: (_result, input) => {
+        void client.invalidateQueries({ queryKey: ['admin', 'kyc'] });
+        void client.invalidateQueries({ queryKey: adminKeys.kycRecord(input.id) });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 export function useClaimKyc() {
-  return useKycAction<{ id: string }>((api, { id }) =>
+  return useKycAction<{ id: string }>(Permission.KYC_REVIEW, (api, { id }) =>
     api.post<AdminKycDetail>(`/admin/kyc/${id}/claim`, {}, { idempotencyKey: crypto.randomUUID() }),
   );
 }
 
 export function useReleaseKyc() {
-  return useKycAction<{ id: string }>((api, { id }) =>
+  return useKycAction<{ id: string }>(Permission.KYC_REVIEW, (api, { id }) =>
     api.post<AdminKycDetail>(
       `/admin/kyc/${id}/release`,
       {},
@@ -910,6 +1003,7 @@ export function useReleaseKyc() {
 
 export function useDecideKyc() {
   return useKycAction<{ id: string; outcome: 'VERIFIED' | 'REJECTED'; reason: string }>(
+    Permission.KYC_REVIEW,
     (api, { id, outcome, reason }) =>
       api.post<AdminKycDetail>(
         `/admin/kyc/${id}/decide`,
@@ -920,12 +1014,14 @@ export function useDecideKyc() {
 }
 
 export function useRevokeKyc() {
-  return useKycAction<{ id: string; reason: string }>((api, { id, reason }) =>
-    api.post<AdminKycDetail>(
-      `/admin/kyc/${id}/revoke`,
-      { reason },
-      { idempotencyKey: crypto.randomUUID() },
-    ),
+  return useKycAction<{ id: string; reason: string }>(
+    Permission.KYC_REVIEW,
+    (api, { id, reason }) =>
+      api.post<AdminKycDetail>(
+        `/admin/kyc/${id}/revoke`,
+        { reason },
+        { idempotencyKey: crypto.randomUUID() },
+      ),
   );
 }
 
@@ -968,42 +1064,50 @@ export function useAdminWithdrawals(status: string) {
  */
 export function useOpenWithdrawalDestination() {
   const { api } = useSession();
-  return useMutation({
-    mutationFn: ({ id }: { id: string }) =>
-      api.get<{ destination: string }>(`/admin/withdrawals/${id}/destination`),
-  });
+  return useGated(
+    Permission.WITHDRAWALS_PAY,
+    useMutation({
+      mutationFn: ({ id }: { id: string }) =>
+        api.get<{ destination: string }>(`/admin/withdrawals/${id}/destination`),
+    }),
+  );
 }
 
 function useWithdrawalAction<TInput extends { id: string }>(
+  requires: Permission,
   run: (api: ReturnType<typeof useSession>['api'], input: TInput) => Promise<AdminWithdrawalRow>,
 ) {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: TInput) => run(api, input),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ['admin', 'withdrawals'] });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    requires,
+    useMutation({
+      mutationFn: (input: TInput) => run(api, input),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: ['admin', 'withdrawals'] });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 const key = () => ({ idempotencyKey: crypto.randomUUID() });
 
 export function useClaimWithdrawal() {
-  return useWithdrawalAction<{ id: string }>((api, { id }) =>
+  return useWithdrawalAction<{ id: string }>(Permission.WITHDRAWALS_REVIEW, (api, { id }) =>
     api.post<AdminWithdrawalRow>(`/admin/withdrawals/${id}/claim`, {}, key()),
   );
 }
 
 export function useReleaseWithdrawal() {
-  return useWithdrawalAction<{ id: string }>((api, { id }) =>
+  return useWithdrawalAction<{ id: string }>(Permission.WITHDRAWALS_REVIEW, (api, { id }) =>
     api.post<AdminWithdrawalRow>(`/admin/withdrawals/${id}/release`, {}, key()),
   );
 }
 
 export function useDecideWithdrawal() {
   return useWithdrawalAction<{ id: string; outcome: 'APPROVED' | 'REJECTED'; reason: string }>(
+    Permission.WITHDRAWALS_REVIEW,
     (api, { id, outcome, reason }) =>
       api.post<AdminWithdrawalRow>(`/admin/withdrawals/${id}/decide`, { outcome, reason }, key()),
   );
@@ -1011,6 +1115,7 @@ export function useDecideWithdrawal() {
 
 export function useStartPayout() {
   return useWithdrawalAction<{ id: string; providerReference: string }>(
+    Permission.WITHDRAWALS_PAY,
     (api, { id, providerReference }) =>
       api.post<AdminWithdrawalRow>(`/admin/withdrawals/${id}/payout`, { providerReference }, key()),
   );
@@ -1018,6 +1123,7 @@ export function useStartPayout() {
 
 export function useSettlePayout() {
   return useWithdrawalAction<{ id: string; outcome: 'PAID' | 'FAILED'; reason: string }>(
+    Permission.WITHDRAWALS_PAY,
     (api, { id, outcome, reason }) =>
       api.post<AdminWithdrawalRow>(`/admin/withdrawals/${id}/settle`, { outcome, reason }, key()),
   );
@@ -1027,19 +1133,22 @@ export function useSettlePayout() {
 export function useAssignRole() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, role, reason }: { id: string; role: string; reason: string }) =>
-      api.post<{ userId: string; role: string; sessionsEnded: number }>(
-        `/admin/users/${id}/role`,
-        { role, reason },
-        key(),
-      ),
-    onSuccess: (_result, input) => {
-      void client.invalidateQueries({ queryKey: adminKeys.user(input.id) });
-      void client.invalidateQueries({ queryKey: ['admin', 'users'] });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    Permission.ROLES_ASSIGN,
+    useMutation({
+      mutationFn: ({ id, role, reason }: { id: string; role: string; reason: string }) =>
+        api.post<{ userId: string; role: string; sessionsEnded: number }>(
+          `/admin/users/${id}/role`,
+          { role, reason },
+          key(),
+        ),
+      onSuccess: (_result, input) => {
+        void client.invalidateQueries({ queryKey: adminKeys.user(input.id) });
+        void client.invalidateQueries({ queryKey: ['admin', 'users'] });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1096,14 +1205,17 @@ export function useAdminApiKeys(search: string) {
 export function useRevokeAnyApiKey() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      api.post<AdminApiKeyRow>(`/admin/api-keys/${id}/revoke`, { reason }, key()),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ['admin', 'api-keys'] });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    Permission.API_KEYS_REVOKE_ANY,
+    useMutation({
+      mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+        api.post<AdminApiKeyRow>(`/admin/api-keys/${id}/revoke`, { reason }, key()),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: ['admin', 'api-keys'] });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 export function useServiceTokens() {
@@ -1118,33 +1230,39 @@ export function useServiceTokens() {
 export function useMintServiceToken() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: {
-      name: string;
-      description?: string;
-      permissions: string[];
-      expiresInDays?: number;
-      rateLimitPerMinute?: number;
-    }) =>
-      api.post<{ token: ServiceTokenRow; secret: string }>('/admin/service-tokens', input, key()),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.serviceTokens });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    Permission.SERVICE_TOKENS_MANAGE,
+    useMutation({
+      mutationFn: (input: {
+        name: string;
+        description?: string;
+        permissions: string[];
+        expiresInDays?: number;
+        rateLimitPerMinute?: number;
+      }) =>
+        api.post<{ token: ServiceTokenRow; secret: string }>('/admin/service-tokens', input, key()),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.serviceTokens });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 export function useRevokeServiceToken() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      api.post<ServiceTokenRow>(`/admin/service-tokens/${id}/revoke`, { reason }, key()),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.serviceTokens });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    Permission.SERVICE_TOKENS_MANAGE,
+    useMutation({
+      mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+        api.post<ServiceTokenRow>(`/admin/service-tokens/${id}/revoke`, { reason }, key()),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.serviceTokens });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 // ---- Brokers (platform only) ---------------------------------------------
@@ -1179,39 +1297,45 @@ export function useBrokers() {
 export function useCreateBroker() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: {
-      slug: string;
-      name: string;
-      legalName?: string;
-      primaryHost?: string;
-      defaultExecutionMode?: 'INTERNAL' | 'EXTERNAL_BROKER';
-    }) => api.post<BrokerCreated>('/admin/brokers', input, key()),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.brokers });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    Permission.TENANTS_MANAGE,
+    useMutation({
+      mutationFn: (input: {
+        slug: string;
+        name: string;
+        legalName?: string;
+        primaryHost?: string;
+        defaultExecutionMode?: 'INTERNAL' | 'EXTERNAL_BROKER';
+      }) => api.post<BrokerCreated>('/admin/brokers', input, key()),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.brokers });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 export function useSetBrokerStatus() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      id,
-      status,
-      reason,
-    }: {
-      id: string;
-      status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
-      reason: string;
-    }) => api.post<BrokerRow>(`/admin/brokers/${id}/status`, { status, reason }, key()),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.brokers });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    Permission.TENANTS_MANAGE,
+    useMutation({
+      mutationFn: ({
+        id,
+        status,
+        reason,
+      }: {
+        id: string;
+        status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
+        reason: string;
+      }) => api.post<BrokerRow>(`/admin/brokers/${id}/status`, { status, reason }, key()),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.brokers });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 // ---- Security feed (the firm's) ------------------------------------------
@@ -1354,39 +1478,48 @@ function useIpRulesInvalidate() {
 export function useCreateIpRule() {
   const { api } = useSession();
   const invalidate = useIpRulesInvalidate();
-  return useMutation({
-    mutationFn: (input: {
-      cidr: string;
-      kind: 'ALLOW' | 'DENY';
-      scope: 'STAFF' | 'EVERYONE';
-      note: string;
-    }) => api.post('/security/ip-rules', input, { idempotencyKey: crypto.randomUUID() }),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.SYSTEM_OPERATIONS,
+    useMutation({
+      mutationFn: (input: {
+        cidr: string;
+        kind: 'ALLOW' | 'DENY';
+        scope: 'STAFF' | 'EVERYONE';
+        note: string;
+      }) => api.post('/security/ip-rules', input, { idempotencyKey: crypto.randomUUID() }),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 export function useSetIpRuleEnabled() {
   const { api } = useSession();
   const invalidate = useIpRulesInvalidate();
-  return useMutation({
-    mutationFn: (input: { id: string; enabled: boolean }) =>
-      api.post(
-        `/security/ip-rules/${input.id}/enabled`,
-        { enabled: input.enabled },
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.SYSTEM_OPERATIONS,
+    useMutation({
+      mutationFn: (input: { id: string; enabled: boolean }) =>
+        api.post(
+          `/security/ip-rules/${input.id}/enabled`,
+          { enabled: input.enabled },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 export function useDeleteIpRule() {
   const { api } = useSession();
   const invalidate = useIpRulesInvalidate();
-  return useMutation({
-    mutationFn: (input: { id: string }) =>
-      api.delete(`/security/ip-rules/${input.id}`, { idempotencyKey: crypto.randomUUID() }),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.SYSTEM_OPERATIONS,
+    useMutation({
+      mutationFn: (input: { id: string }) =>
+        api.delete(`/security/ip-rules/${input.id}`, { idempotencyKey: crypto.randomUUID() }),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 // ---- Feature flags (§95) ---------------------------------------------------
@@ -1419,24 +1552,33 @@ export function useBrokerFeatures(brokerId: string | null) {
   });
 }
 
-export function useSetFeature() {
+/**
+ * `brokerId` given: a broker's platform flags, which only the platform may
+ * set (`tenants.manage`). Absent: the firm's own (`tenant.settings.manage`).
+ */
+export function useSetFeature(brokerId?: string) {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { key: string; enabled: boolean; note: string; brokerId?: string }) =>
-      api.post(
-        input.brokerId === undefined
-          ? `/admin/features/${input.key}`
-          : `/admin/brokers/${input.brokerId}/features/${input.key}`,
-        { enabled: input.enabled, note: input.note },
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.features });
-      void client.invalidateQueries({ queryKey: ['admin', 'broker-features'] });
-      void client.invalidateQueries({ queryKey: ['features'] });
-    },
-  });
+  const requires =
+    brokerId === undefined ? Permission.TENANT_SETTINGS_MANAGE : Permission.TENANTS_MANAGE;
+  return useGated(
+    requires,
+    useMutation({
+      mutationFn: (input: { key: string; enabled: boolean; note: string; brokerId?: string }) =>
+        api.post(
+          input.brokerId === undefined
+            ? `/admin/features/${input.key}`
+            : `/admin/brokers/${input.brokerId}/features/${input.key}`,
+          { enabled: input.enabled, note: input.note },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.features });
+        void client.invalidateQueries({ queryKey: ['admin', 'broker-features'] });
+        void client.invalidateQueries({ queryKey: ['features'] });
+      },
+    }),
+  );
 }
 
 // ---- Webhooks (§49) --------------------------------------------------------
@@ -1513,69 +1655,84 @@ function useWebhooksInvalidate() {
 export function useCreateWebhook() {
   const { api } = useSession();
   const invalidate = useWebhooksInvalidate();
-  return useMutation({
-    mutationFn: (input: { url: string; description: string; events: string[] }) =>
-      api.post<{ endpoint: { id: string; url: string }; secret: string }>(
-        '/admin/webhooks',
-        input,
-        {
-          idempotencyKey: crypto.randomUUID(),
-        },
-      ),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.WEBHOOKS_MANAGE,
+    useMutation({
+      mutationFn: (input: { url: string; description: string; events: string[] }) =>
+        api.post<{ endpoint: { id: string; url: string }; secret: string }>(
+          '/admin/webhooks',
+          input,
+          {
+            idempotencyKey: crypto.randomUUID(),
+          },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 export function useSetWebhookEnabled() {
   const { api } = useSession();
   const invalidate = useWebhooksInvalidate();
-  return useMutation({
-    mutationFn: (input: { id: string; enabled: boolean }) =>
-      api.post(
-        `/admin/webhooks/${input.id}/enabled`,
-        { enabled: input.enabled },
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.WEBHOOKS_MANAGE,
+    useMutation({
+      mutationFn: (input: { id: string; enabled: boolean }) =>
+        api.post(
+          `/admin/webhooks/${input.id}/enabled`,
+          { enabled: input.enabled },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 export function useRotateWebhookSecret() {
   const { api } = useSession();
   const invalidate = useWebhooksInvalidate();
-  return useMutation({
-    mutationFn: (input: { id: string }) =>
-      api.post<{ id: string; secret: string; previousSecretValidUntil: string }>(
-        `/admin/webhooks/${input.id}/rotate-secret`,
-        {},
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.WEBHOOKS_MANAGE,
+    useMutation({
+      mutationFn: (input: { id: string }) =>
+        api.post<{ id: string; secret: string; previousSecretValidUntil: string }>(
+          `/admin/webhooks/${input.id}/rotate-secret`,
+          {},
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 export function useDeleteWebhook() {
   const { api } = useSession();
   const invalidate = useWebhooksInvalidate();
-  return useMutation({
-    mutationFn: (input: { id: string }) =>
-      api.delete(`/admin/webhooks/${input.id}`, { idempotencyKey: crypto.randomUUID() }),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.WEBHOOKS_MANAGE,
+    useMutation({
+      mutationFn: (input: { id: string }) =>
+        api.delete(`/admin/webhooks/${input.id}`, { idempotencyKey: crypto.randomUUID() }),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 export function useReplayWebhookDelivery() {
   const { api } = useSession();
   const invalidate = useWebhooksInvalidate();
-  return useMutation({
-    mutationFn: (input: { id: string }) =>
-      api.post(
-        `/admin/webhooks/deliveries/${input.id}/replay`,
-        {},
-        { idempotencyKey: crypto.randomUUID() },
-      ),
-    onSuccess: invalidate,
-  });
+  return useGated(
+    Permission.WEBHOOKS_MANAGE,
+    useMutation({
+      mutationFn: (input: { id: string }) =>
+        api.post(
+          `/admin/webhooks/deliveries/${input.id}/replay`,
+          {},
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
 }
 
 // ---- Broker connections ---------------------------------------------------
@@ -1647,14 +1804,17 @@ export function useBrokerConnections() {
 export function useCreateBrokerConnection() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { name: string; adapterKind: string }) =>
-      api.post<BrokerConnectionRow>('/admin/broker-connections', input, key()),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.brokerConnections });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    Permission.BROKER_CONNECTIONS_MANAGE,
+    useMutation({
+      mutationFn: (input: { name: string; adapterKind: string }) =>
+        api.post<BrokerConnectionRow>('/admin/broker-connections', input, key()),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.brokerConnections });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 /**
@@ -1665,58 +1825,67 @@ export function useCreateBrokerConnection() {
 export function useSetBrokerCredentials() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      id,
-      kind,
-      fields,
-    }: {
-      id: string;
-      kind: string;
-      fields: Record<string, string>;
-    }) =>
-      api.post<BrokerConnectionRow>(
-        `/admin/broker-connections/${id}/credentials`,
-        { kind, fields },
-        key(),
-      ),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.brokerConnections });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    Permission.BROKER_CONNECTIONS_MANAGE,
+    useMutation({
+      mutationFn: ({
+        id,
+        kind,
+        fields,
+      }: {
+        id: string;
+        kind: string;
+        fields: Record<string, string>;
+      }) =>
+        api.post<BrokerConnectionRow>(
+          `/admin/broker-connections/${id}/credentials`,
+          { kind, fields },
+          key(),
+        ),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.brokerConnections });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 export function useSetBrokerConnectionEnabled() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, enabled, reason }: { id: string; enabled: boolean; reason: string }) =>
-      api.post<BrokerConnectionRow>(
-        `/admin/broker-connections/${id}/enabled`,
-        { enabled, reason },
-        key(),
-      ),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.brokerConnections });
-    },
-  });
+  return useGated(
+    Permission.BROKER_CONNECTIONS_MANAGE,
+    useMutation({
+      mutationFn: ({ id, enabled, reason }: { id: string; enabled: boolean; reason: string }) =>
+        api.post<BrokerConnectionRow>(
+          `/admin/broker-connections/${id}/enabled`,
+          { enabled, reason },
+          key(),
+        ),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.brokerConnections });
+      },
+    }),
+  );
 }
 
 export function useTestBrokerConnection() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) =>
-      api.post<{
-        status: string;
-        capabilities: Record<string, unknown> | null;
-        failure: { code: string; message: string } | null;
-      }>(`/admin/broker-connections/${id}/test`, {}, key()),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.brokerConnections });
-    },
-  });
+  return useGated(
+    Permission.BROKER_CONNECTIONS_MANAGE,
+    useMutation({
+      mutationFn: (id: string) =>
+        api.post<{
+          status: string;
+          capabilities: Record<string, unknown> | null;
+          failure: { code: string; message: string } | null;
+        }>(`/admin/broker-connections/${id}/test`, {}, key()),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.brokerConnections });
+      },
+    }),
+  );
 }
 
 // ---- Instrument mappings, the inbox, and unconfirmed orders ---------------
@@ -1799,64 +1968,73 @@ export function useBrokerCatalogue(id: string | null) {
 export function useMapInstrument() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      id,
-      symbolCode,
-      externalSymbol,
-    }: {
-      id: string;
-      symbolCode: string;
-      externalSymbol: string;
-    }) =>
-      api.post<MappingRow>(
-        `/admin/broker-connections/${id}/mappings`,
-        { symbolCode, externalSymbol },
-        key(),
-      ),
-    onSuccess: (_row, variables) => {
-      void client.invalidateQueries({ queryKey: adminKeys.brokerMappings(variables.id) });
-      void client.invalidateQueries({ queryKey: adminKeys.brokerCatalogue(variables.id) });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    Permission.BROKER_CONNECTIONS_MANAGE,
+    useMutation({
+      mutationFn: ({
+        id,
+        symbolCode,
+        externalSymbol,
+      }: {
+        id: string;
+        symbolCode: string;
+        externalSymbol: string;
+      }) =>
+        api.post<MappingRow>(
+          `/admin/broker-connections/${id}/mappings`,
+          { symbolCode, externalSymbol },
+          key(),
+        ),
+      onSuccess: (_row, variables) => {
+        void client.invalidateQueries({ queryKey: adminKeys.brokerMappings(variables.id) });
+        void client.invalidateQueries({ queryKey: adminKeys.brokerCatalogue(variables.id) });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 export function useSetMappingEnabled() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      id,
-      symbolCode,
-      enabled,
-    }: {
-      id: string;
-      symbolCode: string;
-      enabled: boolean;
-    }) =>
-      api.post<MappingRow>(
-        `/admin/broker-connections/${id}/mappings/enabled`,
-        { symbolCode, enabled },
-        key(),
-      ),
-    onSuccess: (_row, variables) => {
-      void client.invalidateQueries({ queryKey: adminKeys.brokerMappings(variables.id) });
-    },
-  });
+  return useGated(
+    Permission.BROKER_CONNECTIONS_MANAGE,
+    useMutation({
+      mutationFn: ({
+        id,
+        symbolCode,
+        enabled,
+      }: {
+        id: string;
+        symbolCode: string;
+        enabled: boolean;
+      }) =>
+        api.post<MappingRow>(
+          `/admin/broker-connections/${id}/mappings/enabled`,
+          { symbolCode, enabled },
+          key(),
+        ),
+      onSuccess: (_row, variables) => {
+        void client.invalidateQueries({ queryKey: adminKeys.brokerMappings(variables.id) });
+      },
+    }),
+  );
 }
 
 export function useSyncMappings() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) =>
-      api.post<SyncReportRow>(`/admin/broker-connections/${id}/mappings/sync`, {}, key()),
-    onSuccess: (_report, id) => {
-      void client.invalidateQueries({ queryKey: adminKeys.brokerMappings(id) });
-      void client.invalidateQueries({ queryKey: adminKeys.brokerCatalogue(id) });
-    },
-  });
+  return useGated(
+    Permission.BROKER_CONNECTIONS_MANAGE,
+    useMutation({
+      mutationFn: (id: string) =>
+        api.post<SyncReportRow>(`/admin/broker-connections/${id}/mappings/sync`, {}, key()),
+      onSuccess: (_report, id) => {
+        void client.invalidateQueries({ queryKey: adminKeys.brokerMappings(id) });
+        void client.invalidateQueries({ queryKey: adminKeys.brokerCatalogue(id) });
+      },
+    }),
+  );
 }
 
 export function useBrokerInbox(id: string | null) {
@@ -1872,17 +2050,20 @@ export function useBrokerInbox(id: string | null) {
 export function useReplayInboundEvent() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, eventId }: { id: string; eventId: string }) =>
-      api.post<{ replayed: true }>(
-        `/admin/broker-connections/${id}/inbox/${eventId}/replay`,
-        {},
-        key(),
-      ),
-    onSuccess: (_result, variables) => {
-      void client.invalidateQueries({ queryKey: adminKeys.brokerInbox(variables.id) });
-    },
-  });
+  return useGated(
+    Permission.BROKER_CONNECTIONS_MANAGE,
+    useMutation({
+      mutationFn: ({ id, eventId }: { id: string; eventId: string }) =>
+        api.post<{ replayed: true }>(
+          `/admin/broker-connections/${id}/inbox/${eventId}/replay`,
+          {},
+          key(),
+        ),
+      onSuccess: (_result, variables) => {
+        void client.invalidateQueries({ queryKey: adminKeys.brokerInbox(variables.id) });
+      },
+    }),
+  );
 }
 
 export interface UnconfirmedOrderRow {
@@ -1905,17 +2086,20 @@ export function useUnconfirmedOrders() {
 export function useResolveUnconfirmed() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (orderId: string) =>
-      api.post<{ resolved: boolean; status: string | null; reason: string | null }>(
-        `/admin/venue-recovery/unconfirmed/${orderId}/resolve`,
-        {},
-        key(),
-      ),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.unconfirmedOrders });
-    },
-  });
+  return useGated(
+    Permission.BROKER_CONNECTIONS_MANAGE,
+    useMutation({
+      mutationFn: (orderId: string) =>
+        api.post<{ resolved: boolean; status: string | null; reason: string | null }>(
+          `/admin/venue-recovery/unconfirmed/${orderId}/resolve`,
+          {},
+          key(),
+        ),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.unconfirmedOrders });
+      },
+    }),
+  );
 }
 
 // ---- Master accounts, desks, and the risk hierarchy ------------------------
@@ -2035,41 +2219,50 @@ export function useDeskView(id: string | null) {
 export function useCreateMasterAccount() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { operatorUserId: string; name: string }) =>
-      api.post<MasterAccountRow>('/master-accounts', input, key()),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.masterAccounts });
-    },
-  });
+  return useGated(
+    Permission.MASTER_MANAGE,
+    useMutation({
+      mutationFn: (input: { operatorUserId: string; name: string }) =>
+        api.post<MasterAccountRow>('/master-accounts', input, key()),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.masterAccounts });
+      },
+    }),
+  );
 }
 
 export function useGrantMasterLink() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, accountId, role }: { id: string; accountId: string; role: string }) =>
-      api.post<MasterLinkRow>(`/master-accounts/${id}/links`, { accountId, role }, key()),
-    onSuccess: (_row, variables) => {
-      void client.invalidateQueries({ queryKey: adminKeys.masterLinks(variables.id) });
-      void client.invalidateQueries({ queryKey: adminKeys.desk(variables.id) });
-      void client.invalidateQueries({ queryKey: adminKeys.masterAccounts });
-    },
-  });
+  return useGated(
+    Permission.MASTER_MANAGE,
+    useMutation({
+      mutationFn: ({ id, accountId, role }: { id: string; accountId: string; role: string }) =>
+        api.post<MasterLinkRow>(`/master-accounts/${id}/links`, { accountId, role }, key()),
+      onSuccess: (_row, variables) => {
+        void client.invalidateQueries({ queryKey: adminKeys.masterLinks(variables.id) });
+        void client.invalidateQueries({ queryKey: adminKeys.desk(variables.id) });
+        void client.invalidateQueries({ queryKey: adminKeys.masterAccounts });
+      },
+    }),
+  );
 }
 
 export function useRevokeMasterLink() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, accountId }: { id: string; accountId: string }) =>
-      api.delete<MasterLinkRow>(`/master-accounts/${id}/links/${accountId}`, key()),
-    onSuccess: (_row, variables) => {
-      void client.invalidateQueries({ queryKey: adminKeys.masterLinks(variables.id) });
-      void client.invalidateQueries({ queryKey: adminKeys.desk(variables.id) });
-      void client.invalidateQueries({ queryKey: adminKeys.masterAccounts });
-    },
-  });
+  return useGated(
+    Permission.MASTER_MANAGE,
+    useMutation({
+      mutationFn: ({ id, accountId }: { id: string; accountId: string }) =>
+        api.delete<MasterLinkRow>(`/master-accounts/${id}/links/${accountId}`, key()),
+      onSuccess: (_row, variables) => {
+        void client.invalidateQueries({ queryKey: adminKeys.masterLinks(variables.id) });
+        void client.invalidateQueries({ queryKey: adminKeys.desk(variables.id) });
+        void client.invalidateQueries({ queryKey: adminKeys.masterAccounts });
+      },
+    }),
+  );
 }
 
 export function useRiskLimits() {
@@ -2084,28 +2277,31 @@ export function useRiskLimits() {
 export function useSetRiskLimits() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      level,
-      masterAccountId,
-      limits,
-    }: {
-      level: 'PLATFORM' | 'BROKER' | 'DESK';
-      masterAccountId?: string;
-      limits: RiskLimitInput;
-    }) =>
-      api.post<RiskLimitSetRow>(
-        level === 'DESK'
-          ? `/admin/risk/limits/desk/${masterAccountId}`
-          : `/admin/risk/limits/${level.toLowerCase()}`,
+  return useGated(
+    Permission.RISK_MANAGE,
+    useMutation({
+      mutationFn: ({
+        level,
+        masterAccountId,
         limits,
-        key(),
-      ),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: adminKeys.riskLimits });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+      }: {
+        level: 'PLATFORM' | 'BROKER' | 'DESK';
+        masterAccountId?: string;
+        limits: RiskLimitInput;
+      }) =>
+        api.post<RiskLimitSetRow>(
+          level === 'DESK'
+            ? `/admin/risk/limits/desk/${masterAccountId}`
+            : `/admin/risk/limits/${level.toLowerCase()}`,
+          limits,
+          key(),
+        ),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.riskLimits });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 // ---- The firm's book, and the trading week ---------------------------------
@@ -2257,29 +2453,32 @@ export function useInstrumentSessions(code: string | null) {
 export function useSetInstrumentSessions() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      code,
-      timezone,
-      windows,
-      reason,
-    }: {
-      code: string;
-      timezone: string;
-      windows: SessionWindowRow[];
-      reason: string;
-    }) =>
-      api.post<SessionsRow>(
-        `/admin/instruments/${code}/sessions`,
-        { timezone, windows, reason },
-        key(),
-      ),
-    onSuccess: (_row, variables) => {
-      void client.invalidateQueries({ queryKey: adminKeys.sessions(variables.code) });
-      void client.invalidateQueries({ queryKey: adminKeys.instruments });
-      void client.invalidateQueries({ queryKey: adminKeys.audit('') });
-    },
-  });
+  return useGated(
+    Permission.INSTRUMENTS_MANAGE,
+    useMutation({
+      mutationFn: ({
+        code,
+        timezone,
+        windows,
+        reason,
+      }: {
+        code: string;
+        timezone: string;
+        windows: SessionWindowRow[];
+        reason: string;
+      }) =>
+        api.post<SessionsRow>(
+          `/admin/instruments/${code}/sessions`,
+          { timezone, windows, reason },
+          key(),
+        ),
+      onSuccess: (_row, variables) => {
+        void client.invalidateQueries({ queryKey: adminKeys.sessions(variables.code) });
+        void client.invalidateQueries({ queryKey: adminKeys.instruments });
+        void client.invalidateQueries({ queryKey: adminKeys.audit('') });
+      },
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -2345,11 +2544,14 @@ export function useResolutions(itemId: string | null) {
 export function useRecordResolution() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { itemId: string; decision: string; note: string }) =>
-      api.post('/reconciliation/resolutions', input, { idempotencyKey: crypto.randomUUID() }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ['admin'] }),
-  });
+  return useGated(
+    Permission.RECONCILIATION_MANAGE,
+    useMutation({
+      mutationFn: (input: { itemId: string; decision: string; note: string }) =>
+        api.post('/reconciliation/resolutions', input, { idempotencyKey: crypto.randomUUID() }),
+      onSuccess: () => void client.invalidateQueries({ queryKey: ['admin'] }),
+    }),
+  );
 }
 
 /** Reports: asked for here, produced by the worker, downloaded when ready. */
@@ -2409,9 +2611,12 @@ export function useReports() {
 export function useRequestReport() {
   const { api } = useSession();
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { kind: string; from: string; to: string; accountId?: string }) =>
-      api.post<ReportRow>('/reports', input, { idempotencyKey: crypto.randomUUID() }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ['admin', 'reports'] }),
-  });
+  return useGated(
+    Permission.REPORTS_RUN,
+    useMutation({
+      mutationFn: (input: { kind: string; from: string; to: string; accountId?: string }) =>
+        api.post<ReportRow>('/reports', input, { idempotencyKey: crypto.randomUUID() }),
+      onSuccess: () => void client.invalidateQueries({ queryKey: ['admin', 'reports'] }),
+    }),
+  );
 }

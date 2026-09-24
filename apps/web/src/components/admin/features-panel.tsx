@@ -92,7 +92,7 @@ function Flags({
   authority: 'FIRM' | 'PLATFORM';
   brokerId?: string;
 }) {
-  const set = useSetFeature();
+  const set = useSetFeature(brokerId);
   return (
     <>
       <ErrorLine error={error ?? set.error} />
@@ -146,6 +146,7 @@ function Flags({
                   <td className="px-3 py-1.5 text-right">
                     {writable ? (
                       <ReasonedAction
+                        gate={set}
                         label={row.enabled ? 'Switch off' : 'Switch on'}
                         title="Why — read a year from now"
                         variant={row.enabled ? 'danger' : 'neutral'}

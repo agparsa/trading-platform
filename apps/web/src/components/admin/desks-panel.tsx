@@ -14,7 +14,6 @@ import {
   useSetRiskLimits,
   type MasterAccountRow,
 } from '@/lib/admin-queries';
-import { usePermissions } from '@/lib/queries';
 import { utcTime } from '@/lib/format';
 import { ErrorLine, Head, Loading, ReasonedAction, Table } from './shared';
 
@@ -38,8 +37,8 @@ const ROLES = [
  */
 export function DesksPanel() {
   const masters = useMasterAccounts();
-  const permissions = usePermissions();
-  const mayManage = permissions.data?.permissions.includes('master.manage') ?? false;
+  // Asked of a hook whose route needs `master.manage`, not by the string.
+  const mayManage = useCreateMasterAccount().allowed;
   const [selected, setSelected] = useState<string | null>(null);
   const rows = masters.data ?? [];
   const current = rows.find((row) => row.id === selected) ?? rows[0] ?? null;
@@ -129,6 +128,7 @@ function NewDesk() {
         </Field>
       </div>
       <Button
+        gate={create}
         onClick={() =>
           create.mutate(
             { name: name.trim(), operatorUserId: operatorUserId.trim() },
@@ -233,6 +233,7 @@ function DeskDetail({ desk, mayManage }: { desk: MasterAccountRow; mayManage: bo
               <td className="px-3 py-1.5 text-right">
                 {mayManage && link.status === 'ACTIVE' ? (
                   <ReasonedAction
+                    gate={revoke}
                     label="Revoke"
                     variant="danger"
                     title="Why"
@@ -272,6 +273,7 @@ function DeskDetail({ desk, mayManage }: { desk: MasterAccountRow; mayManage: bo
           </Field>
           <div className="flex items-end">
             <Button
+              gate={grant}
               onClick={() =>
                 grant.mutate(
                   { id: desk.id, accountId: accountId.trim(), role },
@@ -286,7 +288,7 @@ function DeskDetail({ desk, mayManage }: { desk: MasterAccountRow; mayManage: bo
         </div>
       ) : null}
 
-      <DeskCeiling masterAccountId={desk.id} mayManage={mayManage} />
+      <DeskCeiling masterAccountId={desk.id} />
     </div>
   );
 }
@@ -298,15 +300,13 @@ function DeskDetail({ desk, mayManage }: { desk: MasterAccountRow; mayManage: bo
  * holder trading their own account — which is the whole reason the layer
  * exists, and is said on the screen because nobody would guess it.
  */
-function DeskCeiling({
-  masterAccountId,
-  mayManage,
-}: {
-  masterAccountId: string;
-  mayManage: boolean;
-}) {
+function DeskCeiling({ masterAccountId }: { masterAccountId: string }) {
   const limits = useRiskLimits();
   const save = useSetRiskLimits();
+  // A desk's ceiling is a risk limit: `risk.manage`, which is not the same
+  // capability as managing desks. This was given the desk screen's flag, and
+  // offered the form to desk managers the server then refused.
+  const mayManage = save.allowed;
   const [volume, setVolume] = useState('');
   const [positions, setPositions] = useState('');
 
@@ -358,6 +358,7 @@ function DeskCeiling({
           </Field>
           <div className="flex items-end">
             <Button
+              gate={save}
               onClick={() =>
                 save.mutate(
                   {

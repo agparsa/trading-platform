@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { cn } from '@tp/ui';
 import { DomainError } from '@tp/shared-types';
-import { Button, inputClass } from '@/components/primitives';
+import { Button, type ButtonGate, inputClass } from '@/components/primitives';
 
 /**
  * The pieces every administrative panel needs, in one place.
@@ -89,6 +89,7 @@ export function ReasonedAction({
   variant = 'neutral',
   minLength = 4,
   busy = false,
+  gate,
   onConfirm,
 }: {
   label: string;
@@ -96,6 +97,8 @@ export function ReasonedAction({
   variant?: 'neutral' | 'danger' | 'ghost';
   minLength?: number;
   busy?: boolean;
+  /** The capability the action needs; not held, the action is offered disabled. */
+  gate?: ButtonGate;
   onConfirm: (reason: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -103,7 +106,7 @@ export function ReasonedAction({
 
   if (!open) {
     return (
-      <Button variant={variant} className="px-2 py-0.5" onClick={() => setOpen(true)}>
+      <Button variant={variant} className="px-2 py-0.5" gate={gate} onClick={() => setOpen(true)}>
         {label}
       </Button>
     );

@@ -274,6 +274,22 @@ be added without declaring what it requires. See
 [permissions.md](./permissions.md) — including why `ADMIN` deliberately cannot
 place an order.
 
+**The console says the same thing, first.** The server decides; the screen is
+a courtesy. But until 24 September sixteen admin screens offered every action
+to anybody who could open them — Approve in the withdrawal queue to
+administrators, whose role does not review withdrawals; Suspend and Sign out to
+support — and a 403 was the first an operator heard of the rule. The
+venue-recovery screen asked for `orders.modify` where its route requires
+`broker_connections.manage`, and a desk's risk ceiling was offered on the desk
+capability rather than `risk.manage`. Now every mutation hook in
+`apps/web/src/lib/admin-queries.ts` carries a gate named after its route, every
+control that fires one is given it, and a control whose capability the viewer
+lacks is shown disabled with the capability named. `scripts/ui-gates.test.ts`
+reads each hook's routes from the controllers and fails if the gate names
+anything else, if a control fires a hook without its gate, or if a screen
+spells a capability itself; `smoke:web` signs in as support and finds the
+people screen's changes disabled.
+
 ## The penetration checklist
 
 `pnpm pentest` boots the compiled API and attempts 22 attacks against it —

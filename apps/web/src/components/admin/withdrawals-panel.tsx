@@ -172,6 +172,7 @@ function WorkRow({ row, onDone }: { row: AdminWithdrawalRow | undefined; onDone:
         <div className="flex flex-wrap items-center gap-1">
           {row.status === 'REQUESTED' ? (
             <Button
+              gate={claim}
               variant="neutral"
               className="px-2 py-0.5"
               disabled={busy}
@@ -182,6 +183,7 @@ function WorkRow({ row, onDone }: { row: AdminWithdrawalRow | undefined; onDone:
           ) : null}
           {row.status === 'UNDER_REVIEW' ? (
             <Button
+              gate={release}
               variant="ghost"
               className="px-2 py-0.5"
               disabled={busy}
@@ -192,6 +194,7 @@ function WorkRow({ row, onDone }: { row: AdminWithdrawalRow | undefined; onDone:
           ) : null}
           {awaiting ? (
             <ReasonedAction
+              gate={decide}
               label="Approve"
               title="What you checked — name, account, identity"
               minLength={8}
@@ -201,6 +204,7 @@ function WorkRow({ row, onDone }: { row: AdminWithdrawalRow | undefined; onDone:
           ) : null}
           {awaiting || row.status === 'APPROVED' ? (
             <ReasonedAction
+              gate={decide}
               label="Reject"
               variant="danger"
               title="Why — the person is shown this, and the money goes back"
@@ -225,6 +229,7 @@ function WorkRow({ row, onDone }: { row: AdminWithdrawalRow | undefined; onDone:
           <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Pay it</p>
           {destination === null ? (
             <Button
+              gate={open}
               variant="neutral"
               className="px-2 py-0.5"
               disabled={open.isPending}
@@ -252,6 +257,7 @@ function WorkRow({ row, onDone }: { row: AdminWithdrawalRow | undefined; onDone:
                 onChange={(event) => setReference(event.target.value)}
               />
               <Button
+                gate={start}
                 variant="neutral"
                 className="px-2 py-0.5"
                 disabled={busy || reference.trim().length < 3}
@@ -263,6 +269,7 @@ function WorkRow({ row, onDone }: { row: AdminWithdrawalRow | undefined; onDone:
           ) : (
             <div className="flex flex-wrap items-center gap-1">
               <ReasonedAction
+                gate={settle}
                 label="It went — mark paid"
                 title="Where you saw it settle"
                 minLength={3}
@@ -272,6 +279,7 @@ function WorkRow({ row, onDone }: { row: AdminWithdrawalRow | undefined; onDone:
                 }
               />
               <ReasonedAction
+                gate={settle}
                 label="It bounced — mark failed"
                 variant="danger"
                 title="What the bank said; the money goes back"

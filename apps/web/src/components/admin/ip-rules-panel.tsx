@@ -116,6 +116,7 @@ function Rules({ data }: { data: NonNullable<ReturnType<typeof useIpRules>['data
           onChange={(event) => setNote(event.target.value)}
         />
         <Button
+          gate={create}
           variant="neutral"
           className="px-2 py-0.5"
           disabled={!ready || !data.enforceable || create.isPending}
@@ -188,6 +189,7 @@ function Rules({ data }: { data: NonNullable<ReturnType<typeof useIpRules>['data
                 <td className="px-3 py-1.5">
                   <div className="flex items-center justify-end gap-1">
                     <Button
+                      gate={toggle}
                       variant="ghost"
                       className="px-2 py-0.5"
                       disabled={toggle.isPending}
@@ -196,6 +198,7 @@ function Rules({ data }: { data: NonNullable<ReturnType<typeof useIpRules>['data
                       {rule.enabled ? 'Turn off' : 'Turn on'}
                     </Button>
                     <Button
+                      gate={remove}
                       variant="danger"
                       className="px-2 py-0.5"
                       disabled={remove.isPending}

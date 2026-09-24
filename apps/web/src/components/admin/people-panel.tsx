@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { cn } from '@tp/ui';
-import { Button, inputClass } from '@/components/primitives';
+import { Button, type ButtonGate, inputClass } from '@/components/primitives';
 import {
   useAdminUser,
   useAdminUserDevices,
@@ -110,6 +110,7 @@ export function PeoplePanel({
                     role={user.role}
                     busy={assignRole.isPending}
                     onAssign={(role, reason) => assignRole.mutate({ id: user.id, role, reason })}
+                    gate={assignRole}
                   />
                 </td>
                 <td className="px-2 py-1.5">
@@ -135,6 +136,7 @@ export function PeoplePanel({
                 <td className="px-2 py-1.5">
                   <div className="flex flex-wrap justify-end gap-1">
                     <ReasonedAction
+                      gate={suspend}
                       label={user.isActive ? 'Suspend' : 'Reinstate'}
                       title={
                         user.isActive ? 'Why they are being suspended' : 'Why they are cleared'
@@ -146,6 +148,7 @@ export function PeoplePanel({
                       }
                     />
                     <ReasonedAction
+                      gate={signOut}
                       label="Sign out"
                       title="Why their sessions are being ended"
                       busy={signOut.isPending}
@@ -153,6 +156,7 @@ export function PeoplePanel({
                     />
                     {user.lockedUntil === null ? null : (
                       <Button
+                        gate={unlock}
                         variant="ghost"
                         className="px-2 py-0.5"
                         disabled={unlock.isPending}
@@ -337,7 +341,10 @@ function DevicesSection({ userId, email }: { userId: string; email: string }) {
                   <td className="px-2 py-1.5 text-right">
                     <button
                       type="button"
-                      disabled={revoke.isPending || reason.trim().length === 0}
+                      disabled={revoke.isPending || reason.trim().length === 0 || !revoke.allowed}
+                      title={
+                        revoke.allowed ? undefined : `Your role does not carry ${revoke.requires}`
+                      }
                       onClick={() => {
                         setActing(device.id);
                         revoke.mutate(
@@ -400,15 +407,22 @@ function RoleCell({
   role,
   busy,
   onAssign,
+  gate,
 }: {
   userId: string;
   role: string;
   busy: boolean;
   onAssign: (role: string, reason: string) => void;
+  /** `roles.assign`. Without it the role is shown, not offered for change. */
+  gate: ButtonGate;
 }) {
   const [editing, setEditing] = useState(false);
   const [next, setNext] = useState(role);
   const [reason, setReason] = useState('');
+
+  if (!gate.allowed) {
+    return <span title={`Your role does not carry ${gate.requires}`}>{role}</span>;
+  }
 
   if (!editing) {
     return (

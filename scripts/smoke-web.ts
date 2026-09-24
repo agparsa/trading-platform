@@ -139,14 +139,16 @@ async function waitFor(url: string, name: string): Promise<void> {
 async function seedPeople(prisma: PrismaClient): Promise<{
   trader: { email: string };
   admin: { email: string };
+  support: { email: string };
   userId: string;
   accountId: string | null;
 }> {
   const stamp = Date.now();
   const trader = `smoke-web-${stamp}@test.local`;
   const admin = `smoke-web-admin-${stamp}@test.local`;
+  const support = `smoke-web-support-${stamp}@test.local`;
 
-  for (const email of [trader, admin]) {
+  for (const email of [trader, admin, support]) {
     const response = await fetch(`${API}/api/v1/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
@@ -158,10 +160,11 @@ async function seedPeople(prisma: PrismaClient): Promise<{
   }
 
   await prisma.user.updateMany({
-    where: { email: { in: [trader, admin] } },
+    where: { email: { in: [trader, admin, support] } },
     data: { emailVerified: true },
   });
   await prisma.user.updateMany({ where: { email: admin }, data: { role: 'ADMIN' } });
+  await prisma.user.updateMany({ where: { email: support }, data: { role: 'SUPPORT' } });
   const traderRow = await prisma.user.findFirstOrThrow({ where: { email: trader } });
 
   const account = await prisma.account.findFirst({ where: { userId: traderRow.id } });
@@ -189,6 +192,7 @@ async function seedPeople(prisma: PrismaClient): Promise<{
   return {
     trader: { email: trader },
     admin: { email: admin },
+    support: { email: support },
     userId: traderRow.id,
     accountId: account?.id ?? null,
   };
@@ -1154,6 +1158,40 @@ async function main(): Promise<void> {
       'resuming from the overview shows "Open" again',
       (await tradingState.innerText()).replace(/\s+/g, ' ').slice(0, 160),
     );
+
+    /**
+     * An action a role does not hold is offered disabled, and says why.
+     *
+     * Support reads people and may not change them. Before every admin
+     * mutation carried its route's capability, the people screen offered
+     * support Suspend and Sign out, and the first they heard of the rule was a
+     * 403. Now each such control is disabled and names `users.manage`.
+     */
+    {
+      const supportContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const supportPage = await supportContext.newPage();
+      await signIn(supportPage, people.support.email);
+      await visit(supportPage, '/admin/people', { url: '/admin/people' });
+      const refused = supportPage.locator('button[data-requires="users.manage"]');
+      const shown = await refused
+        .first()
+        .waitFor({ timeout: 10_000 })
+        .then(
+          () => true,
+          () => false,
+        );
+      const count = await refused.count();
+      let disabled = true;
+      for (let index = 0; index < count; index += 1) {
+        if (!(await refused.nth(index).isDisabled())) disabled = false;
+      }
+      ok(
+        shown && count > 0 && disabled,
+        'support sees the people screen with every change it may not make disabled, naming users.manage',
+        `${count} refused control(s)`,
+      );
+      await supportContext.close();
+    }
 
     await visit(adminPage, '/admin/people', { url: '/admin/people' });
     await auditAccessibility(adminPage, 'the admin people screen');

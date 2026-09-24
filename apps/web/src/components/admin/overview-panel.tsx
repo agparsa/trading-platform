@@ -57,6 +57,7 @@ export function OverviewPanel() {
           ) : null}
         </div>
         <ReasonedAction
+          gate={halt}
           label={halted ? 'Resume trading' : 'Halt new risk'}
           title={halted ? 'Why it is safe to resume' : 'Why trading is being halted'}
           variant={halted ? 'neutral' : 'danger'}

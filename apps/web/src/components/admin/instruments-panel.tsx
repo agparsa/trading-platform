@@ -226,7 +226,8 @@ function InstrumentEditor({ row }: { row: AdminInstrumentRow }) {
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          disabled={changed.length === 0 || !reasonOk || setTerms.isPending}
+          disabled={changed.length === 0 || !reasonOk || setTerms.isPending || !setTerms.allowed}
+          title={setTerms.allowed ? undefined : `Your role does not carry ${setTerms.requires}`}
           onClick={() =>
             setTerms.mutate(
               Object.fromEntries([
@@ -244,7 +245,8 @@ function InstrumentEditor({ row }: { row: AdminInstrumentRow }) {
 
         <button
           type="button"
-          disabled={!reasonOk || setEnabled.isPending}
+          disabled={!reasonOk || setEnabled.isPending || !setEnabled.allowed}
+          title={setEnabled.allowed ? undefined : `Your role does not carry ${setEnabled.requires}`}
           onClick={() =>
             setEnabled.mutate(
               { code: row.code, enabled: !row.enabled, reason: reason.trim() },
@@ -438,6 +440,7 @@ function SessionEditor({ code }: { code: string }) {
             </p>
           ) : null}
           <Button
+            gate={save}
             onClick={() =>
               save.mutate(
                 { code, timezone: zone.trim(), windows, reason: reason.trim() },

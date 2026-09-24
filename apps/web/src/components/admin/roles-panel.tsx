@@ -151,6 +151,7 @@ export function RolesPanel() {
 
                   <div className="flex items-center gap-2">
                     <Button
+                      gate={save}
                       onClick={() =>
                         save.mutate(
                           { key: role.key, permissions: [...draft].sort() },
@@ -163,6 +164,7 @@ export function RolesPanel() {
                     </Button>
                     {role.isSystem ? (
                       <Button
+                        gate={reset}
                         variant="ghost"
                         onClick={() =>
                           reset.mutate({ key: role.key }, { onSuccess: () => setEditing(null) })
