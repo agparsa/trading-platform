@@ -8,12 +8,18 @@ import type { SoundPlayerPort } from './sound-player';
 /**
  * One trading event arriving from anywhere, handled once.
  *
- * ## The three routes in
+ * ## The two routes in
  *
- * A WebSocket frame while the app is open; a push notification received in the
- * foreground; a push the trader tapped from the lock screen. All three describe
- * the same occurrence and all three carry the same `eventId`, so all three come
- * through here and the first one wins.
+ * A push notification received in the foreground, and a push the trader tapped
+ * from the lock screen. Both describe the same occurrence and carry the same
+ * `eventId`, so both come through here and the first one wins.
+ *
+ * The socket frame for the same fill is **not** a third route, though this
+ * said it was and typed `source: 'socket'` for it. Nothing ever sent a frame
+ * here. It does not now either, on purpose: the frame carries no word from the
+ * server on whether this notification should sound, and a frame claiming the
+ * event first would make the push that does carry it a duplicate. Frames
+ * refresh the screens instead — see `LiveProvider`.
  *
  * ## Why this is not in a React component
  *
@@ -30,7 +36,7 @@ export interface IncomingTradingEvent {
   readonly accountId: string | null;
   /** What the server decided about the sound for this specific notification. */
   readonly playSound: boolean;
-  readonly source: 'socket' | 'push-foreground' | 'push-tapped';
+  readonly source: 'push-foreground' | 'push-tapped';
 }
 
 export interface HandledEvent {

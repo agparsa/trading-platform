@@ -11,6 +11,8 @@ import {
 import { DomainError } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
 import { useAccounts } from '../../lib/accounts';
+import { useLiveBook } from '../../lib/live';
+import { applyPnl } from '../../lib/live-book';
 import { Button, Empty, ErrorNote, Screen } from '../../components/ui';
 import { describePatch, protectivePatch } from '../../lib/protective-levels';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
@@ -36,7 +38,14 @@ export default function Positions(): React.ReactElement {
   const { api } = useSession();
   // The account whose book this is — the one the trader chose, as on every tab.
   const { selected: account } = useAccounts();
-  const [positions, setPositions] = useState<Position[] | null>(null);
+  const live = useLiveBook();
+  const [loaded, setPositions] = useState<Position[] | null>(null);
+  /**
+   * The rows REST returned, marked by the newest P&L frame. The list itself
+   * — which positions exist — comes only from REST, refetched when a frame
+   * says it changed; the figures on each row follow the server's valuation.
+   */
+  const positions = applyPnl(loaded, account === null ? undefined : live.pnl[account.id]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   /** The position awaiting a second press. §43: closing is irreversible. */
@@ -68,7 +77,7 @@ export default function Positions(): React.ReactElement {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, live.versions.positions]);
 
   /**
    * Closes a position, after it has been confirmed.

@@ -97,8 +97,8 @@ export class RealtimeClient {
       if (gap > 0) handlers.onResnapshot();
 
       if (typeof frame.eventId === 'string' && frame.eventId.length > 0) {
-        // The same memory the push path uses, so a fill that arrives by both
-        // routes is handled once between them rather than once each.
+        // The socket's own memory, not the push path's: see `LiveProvider`
+        // for why sharing one would silence the fill sounds.
         if (!this.seen.claim(frame.eventId)) return;
       }
 

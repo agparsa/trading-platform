@@ -1,5 +1,6 @@
 import { AccountPicker } from '../../components/account-picker';
 import { useAccounts } from '../../lib/accounts';
+import { useLiveBook } from '../../lib/live';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
@@ -44,6 +45,8 @@ export default function Orders(): React.ReactElement {
   // One account for the whole app, chosen by the trader rather than by the
   // order the server happened to list them in. See lib/accounts.tsx.
   const { selected: account } = useAccounts();
+  // Moves when an order fills, is cancelled or is refused, and on reconnect.
+  const { versions } = useLiveBook();
   const [orders, setOrders] = useState<PendingOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -69,7 +72,7 @@ export default function Orders(): React.ReactElement {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, versions.orders]);
 
   const cancel = async (order: PendingOrder) => {
     setBusy(true);

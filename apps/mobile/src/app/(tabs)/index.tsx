@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, Text } from 'react-native';
 import { useSession } from '../../lib/session';
+import { useLiveBook } from '../../lib/live';
+import { applyAccount } from '../../lib/live-book';
 import { Card, Empty, ErrorNote, Figure, Screen } from '../../components/ui';
 
 interface AccountSummary {
@@ -55,6 +57,12 @@ interface AccountState {
  */
 export default function AccountScreen(): React.ReactElement {
   const { api } = useSession();
+  /**
+   * The valuation each tick sends, laid over the snapshot below; and a counter
+   * that moves when a fill or a close changes what only a refetch can bring —
+   * the balance after a close, the realised P&L. See `live-book.ts`.
+   */
+  const live = useLiveBook();
   const [accounts, setAccounts] = useState<AccountSummary[] | null>(null);
   const [states, setStates] = useState<Record<string, AccountState>>({});
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +98,7 @@ export default function AccountScreen(): React.ReactElement {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, live.versions.account]);
 
   return (
     <Screen>
@@ -112,7 +120,7 @@ export default function AccountScreen(): React.ReactElement {
           <Empty message="No trading accounts yet." />
         ) : (
           accounts.map((account) => {
-            const state = states[account.id];
+            const state = applyAccount(states[account.id], live.accounts[account.id]);
             return (
               <Card key={account.id} title={`${account.number} · ${account.currency}`}>
                 <Figure label="Balance" value={state?.balance ?? account.balance} />

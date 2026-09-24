@@ -76,8 +76,10 @@ describe('the frame reader', () => {
     expect(frameRead('web', 'order.filled', 'cast').typeText).toBe('OrderFilledPayload');
   });
 
-  it('places a read after `if (frame.event !== …) return`, as the phone writes it', () => {
+  it("places a read inside a case's callback, as the phone's P&L handler writes it", () => {
     expect(frameRead('mobile', 'quotes.updated', 'cast').typeText).toBe('LiveQuote[]');
+    expect(frameRead('mobile', 'pnl.updated', 'cast').typeText).toBe('PnlUpdatePayload[]');
+    expect(frameRead('mobile', 'account.updated', 'cast').typeText).toBe('LiveAccountFigures');
   });
 
   it('gives each case of a fall-through its own read', () => {

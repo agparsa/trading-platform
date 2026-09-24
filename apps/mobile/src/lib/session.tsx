@@ -167,8 +167,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
      * A push that arrived while the app was open.
      *
      * The OS was told not to play a sound for it (see `notifications.ts`); this
-     * decides, after deduplicating against the socket frame that may already
-     * have arrived for the same occurrence.
+     * decides, after deduplicating against a tap on the same notification.
+     *
+     * Not against the socket frame for the same fill, which usually arrives
+     * first: the frame refreshes the screens (`LiveProvider`) and carries no
+     * word from the server on whether this notice should sound, so letting it
+     * claim the event would drop the push that does.
      */
     const received = Notifications.addNotificationReceivedListener((notification) => {
       const event = toTradingEvent(notification.request.content.data, 'push-foreground');

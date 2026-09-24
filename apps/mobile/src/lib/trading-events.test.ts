@@ -19,7 +19,7 @@ const event = (overrides: Partial<IncomingTradingEvent> = {}): IncomingTradingEv
   body: '0.10 BTCUSDT BUY at 64120.50',
   accountId: 'account-1',
   playSound: true,
-  source: 'socket',
+  source: 'push-foreground',
   ...overrides,
 });
 
@@ -45,10 +45,10 @@ describe('handling a trading event on the device', () => {
     const player = new RecordingPlayer();
     const handler = new TradingEventHandler(player);
 
-    handler.handle(event({ source: 'socket' }), true);
-    // The push for the same fill arrives a moment after the socket frame. It
-    // must not buzz, and it must not sound.
-    const second = handler.handle(event({ source: 'push-foreground' }), true);
+    handler.handle(event({ source: 'push-foreground' }), true);
+    // The trader taps the notice for the fill they just heard. It must not
+    // buzz, and it must not sound.
+    const second = handler.handle(event({ source: 'push-tapped' }), true);
 
     expect(second.duplicate).toBe(true);
     expect(player.played).toHaveLength(1);
@@ -110,8 +110,8 @@ describe('handling a trading event on the device', () => {
     handler.handle(event(), false);
     const later = handler.handle(event(), true);
 
-    // Otherwise the socket frame that arrives when the app returns to the
-    // foreground would sound for something the trader already saw.
+    // Otherwise tapping that notice later, with the app in the foreground,
+    // would be handled as new for something the trader already saw.
     expect(later.duplicate).toBe(true);
     expect(player.played).toEqual([]);
   });
@@ -181,7 +181,7 @@ describe('haptics alongside sound', () => {
     body: '1.00 XAUUSD',
     accountId: null,
     playSound: true,
-    source: 'socket',
+    source: 'push-foreground',
     ...over,
   });
 

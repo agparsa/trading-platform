@@ -118,12 +118,19 @@ existing Vitest setup. Anything that would need a renderer lives in
 `src/components` or `src/app` and is checked by the compiler rather than by a
 test.
 
-## The three routes an event takes in
+## The two routes an event takes in
 
-A single fill can reach this app three ways: a WebSocket frame while the app is
-open, a push received in the foreground, and a push the trader taps from the
-lock screen. All three carry the same `eventId`, all three go through
-`TradingEventHandler`, and the first one wins.
+A fill is heard through push: a notification received in the foreground, or one
+the trader taps from the lock screen. Both carry the same `eventId`, both go
+through `TradingEventHandler`, and the first one wins.
+
+This section used to name a third route — the WebSocket frame for the same fill
+— and `TradingEventHandler` typed a `'socket'` source for it. No frame was ever
+handed to it. It is not now either, deliberately: a frame carries no word from
+the server on whether this notice should sound, and a frame that claimed the
+event first would turn the push that does carry that decision into a
+"duplicate". The socket keeps its own `SeenEvents`, for its own duplicates, and
+its frames refresh the screens instead (below).
 
 `SeenEvents` is a bounded, insertion-ordered set of the last 500 event ids. It
 is bounded because an unbounded one is a leak in the session of every trader who
@@ -197,17 +204,39 @@ substitute for the realtime architecture" — and it is right. A refetch every t
 seconds costs the same whether or not anything moved, and arrives late by up to
 the interval on the one tick that mattered.
 
-`RealtimeClient` connects with the access token, subscribes to quotes, orders,
-positions, account and P&L, and re-snapshots after every reconnect: whatever
-happened while disconnected was never delivered, and a client that carries on
-from stale state shows a P&L that is quietly wrong and stays wrong.
+One `RealtimeClient` for the whole app, opened by `LiveProvider` above the tabs
+when someone is signed in and closed when they sign out. It subscribes to
+quotes, orders, positions, account and P&L, and every frame it is sent is used
+(`src/lib/live-book.ts`):
+
+| Frame                                       | What the app does with it                                    |
+| ------------------------------------------- | ------------------------------------------------------------ |
+| `quotes.updated`                            | the market tab's prices                                      |
+| `account.updated`                           | laid over the home screen's snapshot, unless it is older     |
+| `pnl.updated`                               | laid over the positions tab's rows, by position id           |
+| `order.*`, `position.*`                     | the lists they change are refetched — once per event         |
+| any frame after a reconnect, or a `seq` gap | every list is refetched: whatever happened meanwhile is lost |
+
+Until this, the socket was opened by the market tab, subscribed to the private
+channels, and discarded every frame but quotes. The home screen's equity, the
+positions tab's P&L and the orders tab were fetched once and then only when
+pulled: an order that filled stayed "working" until the trader dragged the list,
+while the server valued the account on every tick for a socket that threw the
+answer away. The re-snapshot on reconnect this section described was a handler
+that did nothing.
+
+A refetch per event is not the polling the lint rule forbids. It costs nothing
+while nothing happens, and it happens at the moment something did.
+
+`account.updated` carries every figure the valuation computes and not the
+realised P&L, which is read from the ledger per request. So the frame's figures
+win, the snapshot's realised ones stay, and a close — which changes them — makes
+the account stale and brings a refetch.
 
 `seq` and `eventId` are two different checks and both are needed. `seq` counts
 every frame the server _sent_, duplicates included, so it is noted **before** the
 duplicate check — discarding a duplicate first would manufacture a gap and force
-a pointless re-snapshot. The `eventId` memory is the same `SeenEvents` the push
-path uses, so a fill arriving by both routes is handled once between them rather
-than once each.
+a pointless re-snapshot.
 
 ## The order ticket
 

@@ -1,5 +1,6 @@
 import { AccountPicker } from '../../components/account-picker';
 import { useAccounts } from '../../lib/accounts';
+import { useLiveBook } from '../../lib/live';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useSession } from '../../lib/session';
@@ -46,6 +47,8 @@ export default function History(): React.ReactElement {
   // One account for the whole app, chosen by the trader rather than by the
   // order the server happened to list them in. See lib/accounts.tsx.
   const { selected: account } = useAccounts();
+  // Moves when a position closes — which is what adds a row here.
+  const { versions } = useLiveBook();
   const [trades, setTrades] = useState<Trade[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -67,7 +70,7 @@ export default function History(): React.ReactElement {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, versions.trades]);
 
   return (
     <Screen>

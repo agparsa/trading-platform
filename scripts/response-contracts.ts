@@ -310,25 +310,31 @@ export interface FrameRead extends Checked {
   readonly kind: 'cast' | 'field' | 'envelope';
 }
 
-/** The literal a `case` or an `if (frame.event !== '…') return` names. */
+/** The literal a `case` names. */
 function stringLiteral(node: ts.Expression | undefined): string | null {
   if (node === undefined) return null;
   return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ? node.text : null;
 }
 
 /**
- * The events a read belongs to, from where it sits.
+ * The events a read belongs to, from where it sits: the `case` of a
+ * `switch (frame.event)` it is inside — however deep, so a read in a state
+ * updater's callback belongs to the case that calls it — and every empty
+ * `case` falling through into that one. `null` when no case says: the read
+ * is reported rather than guessed at.
  *
- * Inside a `switch (frame.event)`: its own `case` and every empty `case`
- * falling through into it. Otherwise: an earlier `if (frame.event !== 'x')
- * return` in the same function, which is how the phone's quote handler is
- * written. `null` when neither says — the read is reported rather than
- * guessed at.
+ * This also understood `if (frame.event !== 'x') return`, which is how the
+ * phone's one handler was written while it read quotes and nothing else. The
+ * phone reads every frame it is sent now, in a `switch`, and a form no client
+ * uses is a form this reader would be trusted on without anything to prove it.
+ * A read written that way again is reported, not missed.
  */
 function eventsOf(node: ts.Node): string[] | null {
   for (let at: ts.Node | undefined = node; at !== undefined; at = at.parent) {
-    if (ts.isCaseClause(at)) {
-      const clauses = (at.parent as ts.CaseBlock).clauses;
+    // Only a switch on the frame's event names events; a switch on anything
+    // else inside one is passed through on the way out.
+    if (ts.isCaseClause(at) && /\.event$/.test(at.parent.parent.expression.getText())) {
+      const clauses = at.parent.clauses;
       const index = clauses.indexOf(at);
       const events: string[] = [];
       for (let i = index; i >= 0; i -= 1) {
@@ -340,23 +346,6 @@ function eventsOf(node: ts.Node): string[] | null {
         events.push(literal);
       }
       return events;
-    }
-    if (ts.isFunctionLike(at)) {
-      const body = (at as ts.FunctionLikeDeclarationBase).body;
-      if (body === undefined || !ts.isBlock(body)) return null;
-      for (const statement of body.statements) {
-        if (statement.pos >= node.pos) break;
-        if (
-          ts.isIfStatement(statement) &&
-          ts.isBinaryExpression(statement.expression) &&
-          statement.expression.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken &&
-          /\.event$/.test(statement.expression.left.getText())
-        ) {
-          const literal = stringLiteral(statement.expression.right);
-          if (literal !== null) return [literal];
-        }
-      }
-      return null;
     }
   }
   return null;
