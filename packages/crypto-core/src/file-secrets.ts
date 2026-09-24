@@ -44,6 +44,14 @@ export const FILE_BACKED_SECRETS: readonly string[] = [
   'JWT_REFRESH_SECRET',
   'SECRET_ENCRYPTION_KEYS',
   'FCM_SERVICE_ACCOUNT_JSON',
+  /**
+   * The APNs signing key — a private key, in JSON with its key and team ids.
+   * Missing from this list for as long as iOS push existed, so the one
+   * credential here that is literally a private key could only be given to
+   * the worker as an environment variable. `scripts/secrets.test.ts` now
+   * fails for a secret declared in a schema and absent here.
+   */
+  'APNS_CREDENTIALS_JSON',
   'POSTGRES_PASSWORD',
   'GRAFANA_ADMIN_PASSWORD',
 ];

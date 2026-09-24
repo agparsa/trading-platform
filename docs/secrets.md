@@ -34,14 +34,22 @@ resolves only the variables on its list, and only those:
 | `REDIS_URL`                                   | API, worker                                      |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`     | API                                              |
 | `SECRET_ENCRYPTION_KEYS`                      | API, worker                                      |
-| `FCM_SERVICE_ACCOUNT_JSON`                    | API                                              |
+| `FCM_SERVICE_ACCOUNT_JSON`                    | worker                                           |
+| `APNS_CREDENTIALS_JSON`                       | worker                                           |
 | `POSTGRES_PASSWORD`, `GRAFANA_ADMIN_PASSWORD` | compose (their images honour `_FILE` themselves) |
 
 A generic "any `_FILE` suffix" rule was rejected on purpose: `TRUSTED_PROXIES_FILE`
 is a real path the edge is given, present in the API's environment through
 `env_file`, and not inside the API container. The list is the contract; a new
 secret is added to the platform by adding it there, and a deployment test
-checks the production example against it.
+checks the production example against it, and `scripts/secrets.test.ts` checks
+this table against the list and against the process that declares each one.
+
+It said the push credential was read by the API, which has never sent a push;
+and it had no row for `APNS_CREDENTIALS_JSON` — the APNs signing key, the one
+secret here that is literally a private key — because the list had none
+either. That key could only be given to the worker as an environment variable,
+readable in `docker inspect` by anyone with the Docker socket.
 
 Every ambiguity refuses the boot rather than guessing, by variable name and
 never by value: both `X` and `X_FILE` set (two sources, one of them stale); a
