@@ -38,7 +38,7 @@ Each platform resolves a sound differently, and the mapping is in
 | Platform | Where it looks               | Form                        |
 | -------- | ---------------------------- | --------------------------- |
 | Android  | `android.notification.sound` | resource name, no extension |
-| iOS      | `apns.payload.aps.sound`     | file name, `.caf`           |
+| iOS      | `apns.payload.aps.sound`     | file name, `.wav`           |
 | Any      | `data.sound`                 | the bare identifier         |
 
 `data.sound` is there for the foreground case, where the app is open and plays
@@ -47,6 +47,11 @@ the sound itself rather than letting the OS do it.
 Omitting any one of the three produces a notification that is silent on exactly
 one platform — the kind of bug that ships because the developer tested on the
 other two. There is a test for it.
+
+The iOS form used to name a `.caf` file, and the app bundles `.wav`. iOS plays
+the default sound, without a word, for a name it cannot find — so every iOS
+notice would have made the same generic noise. The name is now held to the
+files `app.json` bundles by `bundled-sounds.test.ts`.
 
 ## Interruption level
 

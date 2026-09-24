@@ -12,6 +12,7 @@ import {
   androidChannelFor,
   androidChannels,
 } from '@tp/shared-types';
+import { androidSound, appleSound } from '@tp/push-core';
 
 /**
  * Every sound the server can name is one the phone can play, from every place
@@ -52,6 +53,23 @@ describe('the sounds the phone carries', () => {
       .map((path) => path.replace(/^.*\/(.+)\.wav$/, '$1'))
       .sort();
     expect(bundled).toEqual(SOUNDS);
+  });
+
+  it('is named by the push in the form each platform finds it under', () => {
+    // iOS looks for a file by its full name and plays the default when there
+    // is none; Android looks for a resource name, which has no extension.
+    const app = JSON.parse(readFileSync(resolve(APP, 'app.json'), 'utf8')) as {
+      expo: { plugins: unknown[] };
+    };
+    const plugin = app.expo.plugins.find(
+      (entry): entry is [string, { sounds: string[] }] =>
+        Array.isArray(entry) && entry[0] === 'expo-notifications',
+    );
+    const files = new Set((plugin?.[1].sounds ?? []).map((path) => path.replace(/^.*\//, '')));
+    for (const sound of Object.values(TradingSound)) {
+      expect(files.has(appleSound(sound)), `iOS: ${appleSound(sound)}`).toBe(true);
+      expect(files.has(`${androidSound(sound)}.wav`), `Android: ${androidSound(sound)}`).toBe(true);
+    }
   });
 
   it('checks every one in the Android build', () => {

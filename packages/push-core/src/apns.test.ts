@@ -34,7 +34,7 @@ describe('the APNs payload', () => {
   });
 
   it('names the sound with the extension iOS expects', () => {
-    expect(buildApnsPayload(base).aps.sound).toBe('trade_opened.caf');
+    expect(buildApnsPayload(base).aps.sound).toBe('trade_opened.wav');
   });
 
   it('sends no sound when the user turned it off', () => {

@@ -164,14 +164,19 @@ export function androidSound(sound: TradingSound): string {
 }
 
 /**
- * iOS resolves a sound by file name, with one.
+ * iOS resolves a sound by file name, extension included: "specify only the
+ * filename of the sound file … If the system does not find a suitable sound
+ * file, it plays the default sound." No error, no log.
  *
- * `.caf` because Core Audio Format is what the APNs documentation specifies for
- * bundled notification sounds; the file has to exist in the app bundle under
- * exactly this name or iOS plays the default without complaining.
+ * So the name is the name of the file the app bundles, and the app bundles
+ * `.wav` (`apps/mobile/app.json`) — an extension iOS accepts for notification
+ * sounds alongside `.aiff` and `.caf`. This said `.caf`, on the grounds that
+ * Core Audio Format is what Apple suggests; no `.caf` file has ever been in the
+ * app, so every iOS notice would have played the default sound.
+ * `apps/mobile/src/lib/bundled-sounds.test.ts` holds this to the bundle.
  */
 export function appleSound(sound: TradingSound): string {
-  return `${sound}.caf`;
+  return `${sound}.wav`;
 }
 
 /**

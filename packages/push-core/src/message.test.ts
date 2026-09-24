@@ -37,7 +37,7 @@ describe('building an FCM message', () => {
     const ios = buildFcmMessage({ ...base, platform: DevicePlatform.IOS });
     // iOS wants a file name with an extension; Android wants a resource name
     // without one. Getting this wrong is silent on exactly one platform.
-    expect(ios.apns?.payload.aps.sound).toBe('trade_opened.caf');
+    expect(ios.apns?.payload.aps.sound).toBe('trade_opened.wav');
     expect(ios.data['sound']).toBe('trade_opened');
   });
 
