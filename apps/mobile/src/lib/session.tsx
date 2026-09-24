@@ -26,7 +26,7 @@ import {
   platformOf,
   requestPushToken,
 } from './notifications';
-import { TradingEventHandler, type IncomingTradingEvent } from './trading-events';
+import { TradingEventHandler, toTradingEvent } from './trading-events';
 import { ExpoSoundPlayer, silentPlayer, type SoundPlayerPort } from './sound-player';
 
 interface SessionValue {
@@ -296,38 +296,6 @@ export function useSession(): SessionValue {
   const value = useContext(SessionContext);
   if (value === null) throw new Error('useSession must be used inside a SessionProvider');
   return value;
-}
-
-/**
- * Reads a push payload into an event this app can handle.
- *
- * Returns null rather than throwing for anything that does not look like a
- * trading event — a payload from a future version of the server, or a
- * notification from another source entirely.
- */
-export function toTradingEvent(
-  data: unknown,
-  source: IncomingTradingEvent['source'],
-): IncomingTradingEvent | null {
-  if (data === null || typeof data !== 'object') return null;
-  const record = data as Record<string, unknown>;
-  const eventId = record['eventId'];
-  const category = record['category'];
-  if (typeof eventId !== 'string' || typeof category !== 'string') return null;
-
-  return {
-    eventId,
-    // The server sends the category; `kind` is only needed for the mapping,
-    // which has already happened. Passing the category through as the kind
-    // would be wrong, so the handler is given a kind that maps to it.
-    kind: typeof record['kind'] === 'string' ? record['kind'] : '',
-    title: typeof record['title'] === 'string' ? record['title'] : '',
-    body: typeof record['body'] === 'string' ? record['body'] : '',
-    accountId: typeof record['accountId'] === 'string' ? record['accountId'] : null,
-    // A payload with no `sound` key is one the server decided should be silent.
-    playSound: typeof record['sound'] === 'string',
-    source,
-  };
 }
 
 async function installationIdentifier(): Promise<string> {

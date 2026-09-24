@@ -1,5 +1,4 @@
-import { categoryForKind } from '@tp/shared-types';
-import type { NotificationCategory } from '@tp/shared-types';
+import { NOTIFICATION_CATEGORIES, NotificationCategory } from '@tp/shared-types';
 import { SeenEvents } from './seen-events';
 import { decideSound, type SoundPreferences } from './sound-decision';
 import { decideHaptic, silentHaptics, type HapticPort } from './haptics';
@@ -29,14 +28,53 @@ import type { SoundPlayerPort } from './sound-player';
  */
 export interface IncomingTradingEvent {
   readonly eventId: string;
-  /** The server's machine name, e.g. 'position.opened'. */
-  readonly kind: string;
-  readonly title: string;
-  readonly body: string;
+  /**
+   * The category the server resolved, as the push carries it.
+   *
+   * This was a `kind` — `'position.opened'` — mapped here with
+   * `categoryForKind`. No push has ever carried a kind: the payload names the
+   * category. So every push arrived with `kind: ''`, which maps to `SYSTEM`,
+   * which has no sound and no haptic — and a fill received with the app open
+   * made no noise and no buzz, on every phone, whatever the settings said.
+   * `trading-events.test.ts` now builds real push payloads with
+   * `@tp/push-core` and runs them through `toTradingEvent`.
+   */
+  readonly category: NotificationCategory;
   readonly accountId: string | null;
   /** What the server decided about the sound for this specific notification. */
   readonly playSound: boolean;
   readonly source: 'push-foreground' | 'push-tapped';
+}
+
+/**
+ * Reads a push's custom data — FCM's `data`, or the keys beside `aps` — into
+ * an event, or `null` when it is not one of ours.
+ *
+ * A category this build does not know is read as `SYSTEM` rather than
+ * dropped: a notice the server added after this app was built still reaches
+ * the handler, silently, instead of vanishing.
+ */
+export function toTradingEvent(
+  data: unknown,
+  source: IncomingTradingEvent['source'],
+): IncomingTradingEvent | null {
+  if (data === null || typeof data !== 'object') return null;
+  const record = data as Record<string, unknown>;
+  const eventId = record['eventId'];
+  const category = record['category'];
+  if (typeof eventId !== 'string' || eventId.length === 0 || typeof category !== 'string') {
+    return null;
+  }
+  return {
+    eventId,
+    category: (NOTIFICATION_CATEGORIES as readonly string[]).includes(category)
+      ? (category as NotificationCategory)
+      : NotificationCategory.SYSTEM,
+    accountId: typeof record['accountId'] === 'string' ? record['accountId'] : null,
+    // A payload with no `sound` key is one the server decided should be silent.
+    playSound: typeof record['sound'] === 'string',
+    source,
+  };
 }
 
 export interface HandledEvent {
@@ -90,7 +128,7 @@ export class TradingEventHandler {
    * show why a sound did or did not play — which is the question support gets.
    */
   handle(event: IncomingTradingEvent, appActive: boolean): HandledEvent {
-    const category = categoryForKind(event.kind);
+    const { category } = event;
 
     if (!this.seen.claim(event.eventId)) {
       return {

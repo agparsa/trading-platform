@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { NotificationCategory, type TradingSound } from '@tp/shared-types';
-import { TradingEventHandler, type IncomingTradingEvent } from './trading-events';
+import {
+  DevicePlatform,
+  NOTIFICATION_CATEGORIES,
+  NotificationCategory,
+  SOUND_FOR_CATEGORY,
+  type TradingSound,
+} from '@tp/shared-types';
+import { buildApnsPayload, buildFcmMessage, type PushRequest } from '@tp/push-core';
+import { TradingEventHandler, toTradingEvent, type IncomingTradingEvent } from './trading-events';
 import type { SoundPlayerPort } from './sound-player';
 import { SeenEvents } from './seen-events';
 
@@ -14,9 +21,7 @@ class RecordingPlayer implements SoundPlayerPort {
 
 const event = (overrides: Partial<IncomingTradingEvent> = {}): IncomingTradingEvent => ({
   eventId: 'evt-1',
-  kind: 'position.opened',
-  title: 'BTCUSDT BUY opened',
-  body: '0.10 BTCUSDT BUY at 64120.50',
+  category: NotificationCategory.TRADE_OPENED,
   accountId: 'account-1',
   playSound: true,
   source: 'push-foreground',
@@ -68,8 +73,8 @@ describe('handling a trading event on the device', () => {
     const player = new RecordingPlayer();
     const handler = new TradingEventHandler(player);
 
-    handler.handle(event({ eventId: 'a', kind: 'position.opened' }), true);
-    handler.handle(event({ eventId: 'b', kind: 'position.modified' }), true);
+    handler.handle(event({ eventId: 'a', category: NotificationCategory.TRADE_OPENED }), true);
+    handler.handle(event({ eventId: 'b', category: NotificationCategory.TRADE_MODIFIED }), true);
 
     // §18, at the point where it is finally audible.
     expect(player.played.map((entry) => entry.sound)).toEqual(['trade_opened', 'trade_modified']);
@@ -78,7 +83,7 @@ describe('handling a trading event on the device', () => {
   it('gives a stop loss its own sound', () => {
     const player = new RecordingPlayer();
     const handler = new TradingEventHandler(player);
-    handler.handle(event({ kind: 'position.stop_loss' }), true);
+    handler.handle(event({ category: NotificationCategory.STOP_LOSS }), true);
     expect(player.played[0]?.sound).toBe('stop_loss');
   });
 
@@ -176,9 +181,7 @@ describe('haptics alongside sound', () => {
 
   const event = (over: Partial<IncomingTradingEvent> = {}): IncomingTradingEvent => ({
     eventId: `e${Math.random()}`,
-    kind: 'order.filled',
-    title: 'Filled',
-    body: '1.00 XAUUSD',
+    category: NotificationCategory.ORDER_FILLED,
     accountId: null,
     playSound: true,
     source: 'push-foreground',
@@ -261,5 +264,69 @@ describe('haptics alongside sound', () => {
       haptics as never,
     );
     expect(handler.handle(event({ source: 'push-tapped' }), true).vibrated).toBeNull();
+  });
+});
+
+/**
+ * The push the worker builds, read by the phone.
+ *
+ * Every test above hands the handler an event built by hand, in the shape the
+ * handler wanted. The phone's parser read a `kind` the server has never sent,
+ * defaulted it to `''`, and `''` is `SYSTEM`: silent, and still. So a fill
+ * received with the app open made no sound and no buzz on any phone, and
+ * every test here passed. These build the real payloads with `@tp/push-core`.
+ */
+describe('a real push, from the payload the worker builds', () => {
+  const request = (category: NotificationCategory, playSound = true): PushRequest => ({
+    token: 't',
+    platform: DevicePlatform.ANDROID,
+    title: 'x',
+    body: 'y',
+    category,
+    severity: 'INFO',
+    notificationId: 'n',
+    eventId: `e-${category}-${String(playSound)}`,
+    accountId: 'a',
+    playSound,
+  });
+
+  const payloads = (category: NotificationCategory, playSound = true) =>
+    [
+      ['FCM data', buildFcmMessage(request(category, playSound)).data],
+      [
+        'APNs custom keys',
+        buildApnsPayload({ ...request(category, playSound), platform: DevicePlatform.IOS }),
+      ],
+    ] as const;
+
+  it.each(NOTIFICATION_CATEGORIES.map((category) => [category] as const))(
+    'plays what the server chose for %s, in the foreground',
+    (category) => {
+      for (const [, payload] of payloads(category)) {
+        const player = new RecordingPlayer();
+        const event = toTradingEvent(payload, 'push-foreground');
+        expect(event?.category).toBe(category);
+        new TradingEventHandler(player).handle(event!, true);
+        expect(player.played.map((p) => p.sound)).toEqual(
+          SOUND_FOR_CATEGORY[category] === null ? [] : [SOUND_FOR_CATEGORY[category]],
+        );
+      }
+    },
+  );
+
+  it('stays silent for a push the server sent without a sound', () => {
+    for (const [, payload] of payloads(NotificationCategory.STOP_LOSS, false)) {
+      const player = new RecordingPlayer();
+      new TradingEventHandler(player).handle(toTradingEvent(payload, 'push-foreground')!, true);
+      expect(player.played).toEqual([]);
+    }
+  });
+
+  it('reads a category it does not know as SYSTEM rather than dropping it', () => {
+    expect(
+      toTradingEvent({ eventId: 'e', category: 'SOMETHING_NEW' }, 'push-tapped')?.category,
+    ).toBe(NotificationCategory.SYSTEM);
+    expect(toTradingEvent({ category: 'STOP_LOSS' }, 'push-tapped')).toBeNull();
+    expect(toTradingEvent('not an object', 'push-tapped')).toBeNull();
   });
 });
