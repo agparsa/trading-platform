@@ -15,8 +15,8 @@ Apple developer account.
 
 **No screen has been opened on a device.** Compiling and running are different
 claims. What is verified is that it typechecks under the same strict
-configuration as the rest of the repository, that it lints, that 7 test files
-cover the logic that does not need a device, and that the package Android
+configuration as the rest of the repository, that it lints, that the logic
+which does not need a device is covered by tests, and that the package Android
 produces is complete and correctly signed. Layout, navigation, whether a push
 actually arrives, whether the sounds are audible — none of that is verified, and
 §46.22 says not to call it complete.
@@ -307,12 +307,20 @@ of the whole patch being refused over one blank field. Stop loss and take profit
 keep the clearing semantics. Two different rules on one form is exactly what
 gets written by hand twice and then quietly diverges.
 
-## What the profile screen deliberately does not show
+## What the profile screen shows, and what it does not
 
-KYC. §17 wants verification states there, and there is no KYC anywhere in this
-platform — no model, no endpoint, no provider. A "Verification: pending" row
-would be a screen inventing a status for a process that does not exist, which is
-worse than the gap it hides.
+Identity verification: the status of the trader's KYC record, the reason when
+it was refused, when it expires, and what is still missing. This section used
+to say the screen showed no verification because there was no KYC anywhere in
+the platform. That stopped being true when the record, the review queue and the
+decisions were built (see [kyc.md](kyc.md)); the screen was changed and this
+page was not.
+
+What it does not do is take documents. A photograph of a passport needs the
+camera and the file picker, native modules this build does not carry, and a
+button that opened nothing would be worse than the sentence that sends people to
+the web. When they are added the endpoint is the same one the web uses,
+`PUT /kyc/documents/:kind`.
 
 Two-factor _enrolment_ is also absent, for a different reason: it displays a
 shared secret once and never again, and a screen that can show a secret is a
@@ -322,8 +330,10 @@ never finished, and warns when no recovery codes remain.
 
 ## What is not built yet
 
-KYC (which needs Phase 6 on the server first) and support. Phase 13 of
-`IMPLEMENTATION_PLAN.md` is otherwise done: account, market, the chart,
-positions with closing and SL/TP editing, the order ticket, resting orders with
-modification and cancellation, trade history, profile with sessions and devices,
-the notification centre and settings all exist and read real endpoints.
+Uploading identity documents from the phone (above), and support, which the
+platform does not have on any surface. Phase 13 of `IMPLEMENTATION_PLAN.md` is
+otherwise done: account, market, the chart, positions with closing and SL/TP
+editing, the order ticket, resting orders with modification and cancellation,
+trade history, profile with verification status, sessions and devices, the
+notification centre and settings all exist and read real endpoints — and the
+account, positions, orders and history follow the socket.
