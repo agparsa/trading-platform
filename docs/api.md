@@ -111,10 +111,32 @@ about a price format is written once instead of once per layer.
 
 ## Rate limits
 
-Trading actions are protected more tightly than reads:
+Per caller address, per minute. Trading actions are protected more tightly than
+reads, and anything that takes a password or a code more tightly than that:
 
-| Bucket                        | Default      |
-| ----------------------------- | ------------ |
-| Login                         | 5 / minute   |
-| Order create / modify / close | 120 / minute |
-| Everything else               | 600 / minute |
+| Bucket                  | Routes                                                                                                                                                                                                           | Default      | Setting                                                        |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | -------------------------------------------------------------- |
+| Sign-in and credentials | `POST /auth/register`, `POST /auth/login`, `POST /auth/login/2fa`, `POST /auth/2fa/enrol`, `POST /auth/2fa/activate`, `POST /auth/2fa/disable`, `POST /auth/password-reset`, `POST /auth/password-reset/confirm` | 5 / minute   | `RATE_LIMIT_LOGIN_PER_MINUTE`                                  |
+| Token refresh           | `POST /auth/refresh`                                                                                                                                                                                             | 30 / minute  | six times `RATE_LIMIT_LOGIN_PER_MINUTE`                        |
+| Orders and positions    | `POST /orders`, `POST /orders/pending`, `PATCH /orders/:id`, `DELETE /orders/:id`, `POST /positions/:id/close`, `POST /positions/close-all`, `PATCH /positions/:id`                                              | 120 / minute | `RATE_LIMIT_ORDERS_PER_MINUTE`                                 |
+| Reversing a position    | `POST /positions/:id/reverse`                                                                                                                                                                                    | 60 / minute  | half `RATE_LIMIT_ORDERS_PER_MINUTE` — a reversal is two orders |
+| Order preview           | `POST /orders/preview`                                                                                                                                                                                           | 600 / minute | `RATE_LIMIT_API_PER_MINUTE` — it places nothing                |
+| Everything else         |                                                                                                                                                                                                                  | 600 / minute | `RATE_LIMIT_API_PER_MINUTE`                                    |
+
+This table listed three buckets — login, "order create / modify / close", and
+the rest — while registration, two-factor and password reset shared the sign-in
+bucket, token refresh had one of its own, and a reversal counted double. It is
+now checked against every `@Throttle` in the controllers by
+`scripts/rate-limits.test.ts`, route by route and default by default.
+
+### Ceilings that are not per address
+
+Beneath the per-address buckets, so that many addresses cannot add up to more
+than one account, one firm or one key should do:
+
+| Ceiling                                          | Default        | Setting                                   |
+| ------------------------------------------------ | -------------- | ----------------------------------------- |
+| Orders from one trading account                  | 120 / minute   | `ORDER_RATE_LIMIT_PER_ACCOUNT_PER_MINUTE` |
+| Orders from one firm, all its accounts together  | 6,000 / minute | `ORDER_RATE_LIMIT_PER_TENANT_PER_MINUTE`  |
+| Requests made with one API key                   | 300 / minute   | `API_KEY_RATE_LIMIT_PER_MINUTE`           |
+| Messages a WebSocket may send (subscribes, etc.) | 100 / minute   | `RATE_LIMIT_SOCKET_MESSAGES_PER_MINUTE`   |

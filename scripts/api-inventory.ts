@@ -23,6 +23,8 @@ interface Route {
   path: string;
   handler: string;
   guard: string;
+  /** The limit expression of a route's own `@Throttle`, e.g. `rateLimits.login * 6`. */
+  throttle: string | null;
 }
 
 function controllerFiles(directory: string): string[] {
@@ -128,6 +130,7 @@ function routesInSection(
         }
       }
 
+      let throttle: string | null = null;
       const guards: string[] = [];
       if (classLevelPublic) guards.push('PUBLIC (class)');
       if (classLevelSessionOnly) guards.push('SESSION-ONLY (class)');
@@ -143,7 +146,10 @@ function routesInSection(
         else if (decorator.startsWith('@SessionOnly')) guards.push('SESSION-ONLY');
         else if (decorator.startsWith('@Roles')) {
           guards.push(`roles: ${/\((.*)\)/.exec(decorator)?.[1] ?? ''}`);
-        } else if (decorator.startsWith('@Throttle')) guards.push('throttled');
+        } else if (decorator.startsWith('@Throttle')) {
+          guards.push('throttled');
+          throttle = /limit:\s*([^,}]+?)\s*,\s*ttl/.exec(decorator)?.[1] ?? decorator;
+        }
       }
 
       routes.push({
@@ -151,6 +157,7 @@ function routesInSection(
         path: `/${base}/${routePath}`.replace(/\/+/g, '/').replace(/\/$/, '') || '/',
         handler,
         guard: guards.length > 0 ? guards.join(', ') : '_authenticated only_',
+        throttle,
       });
       pending = [];
       continue;
@@ -270,5 +277,20 @@ export function routePermissions(): Array<{ verb: string; path: string; permissi
           .map((part) => part.trim())
           .filter((part) => /^[A-Z][A-Z0-9_]+$/.test(part)),
       })),
+    );
+}
+
+/**
+ * Every route with its own `@Throttle`, as `VERB /path` and the limit
+ * expression it names. Read by `rate-limits.test.ts` against `docs/api.md`.
+ */
+export function routeThrottles(): Array<{ route: string; expression: string }> {
+  return controllerFiles(ROOT)
+    .flatMap(routesIn)
+    .flatMap((section) => section.routes)
+    .flatMap((route) =>
+      route.throttle === null
+        ? []
+        : [{ route: `${route.verb} ${route.path}`, expression: route.throttle }],
     );
 }
