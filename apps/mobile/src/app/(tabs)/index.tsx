@@ -24,9 +24,20 @@ interface AccountState {
   freeMargin: string;
   marginLevel: string | null;
   floatingPnl: string;
-  realizedPnl: string;
-  commission: string;
-  swap: string;
+  /**
+   * Closed-trade P&L since the trading day began (`realizedSince`), and in
+   * total. Required: this screen reads the REST snapshot, which always carries
+   * them (the socket's tick frames do not, and the web's type says so).
+   *
+   * This interface used to read `realizedPnl`, `commission` and `swap`, none of
+   * which the server has ever sent: the home screen showed three dashes to
+   * every trader, and TypeScript, told the answer was an `AccountState`,
+   * believed it. `pnpm smoke:contracts` now checks the real answer against
+   * this type.
+   */
+  realizedPnlToday: string;
+  realizedPnlTotal: string;
+  realizedSince: number;
   updatedAt: number;
 }
 
@@ -107,12 +118,11 @@ export default function AccountScreen(): React.ReactElement {
                 <Figure label="Balance" value={state?.balance ?? account.balance} />
                 <Figure label="Equity" value={state?.equity ?? '—'} />
                 <Figure label="Floating P&L" value={state?.floatingPnl ?? '—'} signed />
-                <Figure label="Realised P&L" value={state?.realizedPnl ?? '—'} signed />
+                <Figure label="Realised today" value={state?.realizedPnlToday ?? '—'} signed />
+                <Figure label="Realised, all time" value={state?.realizedPnlTotal ?? '—'} signed />
                 <Figure label="Used margin" value={state?.usedMargin ?? '—'} />
                 <Figure label="Free margin" value={state?.freeMargin ?? '—'} />
                 <Figure label="Margin level" value={state?.marginLevel ?? '—'} />
-                <Figure label="Commission" value={state?.commission ?? '—'} />
-                <Figure label="Swap" value={state?.swap ?? '—'} />
                 <Figure label="Leverage" value={`1:${account.leverage}`} />
                 <Figure label="Status" value={account.status} />
               </Card>

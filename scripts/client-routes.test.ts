@@ -1,8 +1,6 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { allRoutes } from './api-inventory';
+import { clientCalls } from './response-contracts';
 
 /**
  * Every path a client asks the API for, against the routes the API serves.
@@ -15,54 +13,31 @@ import { allRoutes } from './api-inventory';
  * `GET /admin/brokers/:id/features`, both called by the web, appeared nowhere
  * in it.
  *
- * Read statically: every `api.get|post|put|patch|delete('…')` in the web app,
- * the phone and the shared client packages, with `${…}` standing for a path
- * parameter. A call whose whole path is computed (`/admin/${kind}`) is listed
- * below with the paths it can take, and those are checked instead.
+ * Read by the TypeScript compiler (`response-contracts.ts`, which also
+ * checks the answers): every `api.<verb>(…)` in the web app, the phone and the
+ * shared chart package — and `client_.…`, the name the web's mutations give
+ * the same client — with `${…}` standing for a path parameter and both
+ * branches of `cond ? '/a' : '/b'`. This used to be a regular expression; it
+ * missed the admin KYC queue, whose path is a conditional. A call whose whole
+ * path is computed (`/admin/${kind}`) is listed below with the paths it can
+ * take, and those are checked instead. A path the reader cannot see at all
+ * fails the test, rather than being skipped.
  */
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SOURCES = [
-  'apps/web/src',
-  'apps/mobile/src',
-  'packages/api-client/src',
-  'packages/chart-core/src',
-];
 
 /** Calls whose path is built from a variable, and every value it can take. */
 const COMPUTED: Readonly<Record<string, readonly string[]>> = {
   // apps/web/src/lib/admin-queries.ts, the firm's book: `/admin/${kind}${search}`.
   'GET /admin/**': ['GET /admin/orders', 'GET /admin/positions', 'GET /admin/trades'],
+  // The same file, the risk limits: `/admin/risk/limits/${level.toLowerCase()}`
+  // for the two levels without an id (the desk's is its own branch).
+  'POST /admin/risk/limits/*': [
+    'POST /admin/risk/limits/platform',
+    'POST /admin/risk/limits/broker',
+  ],
 };
 
-function files(directory: string): string[] {
-  const found: string[] = [];
-  for (const entry of readdirSync(directory)) {
-    const path = join(directory, entry);
-    if (statSync(path).isDirectory()) {
-      if (entry === 'node_modules' || entry === 'dist' || entry === '.next') continue;
-      found.push(...files(path));
-    } else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry)) found.push(path);
-  }
-  return found;
-}
-
 function calls(): Array<{ call: string; file: string }> {
-  const found: Array<{ call: string; file: string }> = [];
-  for (const source of SOURCES) {
-    for (const file of files(join(ROOT, source))) {
-      const text = readFileSync(file, 'utf8');
-      for (const match of text.matchAll(
-        /\bapi\.(get|post|put|patch|delete)\s*(?:<[^()]*?>)?\(\s*(['`])([^'`]+)\2/gs,
-      )) {
-        const path = match[3]!.replace(/\$\{[^}]+\}/g, '*').split('?')[0]!;
-        found.push({
-          call: `${match[1]!.toUpperCase()} ${path}`,
-          file: file.slice(ROOT.length + 1),
-        });
-      }
-    }
-  }
-  return found;
+  return clientCalls().calls.map((call) => ({ call: call.key, file: call.file }));
 }
 
 const served = new Set(
@@ -76,6 +51,10 @@ describe('every path a client calls is a route the API serves', () => {
     expect(found.length).toBeGreaterThan(150);
     expect(found.some(({ file }) => file.startsWith('apps/mobile/'))).toBe(true);
     expect(served.size).toBeGreaterThan(200);
+  });
+
+  it('can read every path a client passes', () => {
+    expect(clientCalls().unread).toEqual([]);
   });
 
   it('calls nothing the API does not serve', () => {

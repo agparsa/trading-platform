@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { KillSwitchState } from '@tp/shared-types';
 import { useSession } from './session';
 
 /**
@@ -114,7 +115,7 @@ export interface AuditRow {
 }
 
 export interface OperationsSummary {
-  trading: { halted: boolean; reason?: string | null; since?: string | null };
+  trading: KillSwitchState;
   accounts: { total: number; active: number; withOpenPositions: number };
   positions: { open: number };
   orders: { resting: number; lastHour: number; rejectedLastHour: number };
@@ -486,9 +487,11 @@ export function useHaltTrading() {
   const invalidate = useAdminInvalidate();
   return useMutation({
     mutationFn: (input: { halt: boolean; reason: string }) =>
+      // The reason is kept either way: the console asks why it is safe to
+      // resume, and the audit trail should have the answer it was given.
       api.post(
         `/operations/${input.halt ? 'halt' : 'resume'}`,
-        input.halt ? { reason: input.reason } : {},
+        { reason: input.reason },
         { idempotencyKey: crypto.randomUUID() },
       ),
     onSuccess: invalidate,

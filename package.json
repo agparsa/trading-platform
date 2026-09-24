@@ -36,6 +36,7 @@
     "db:test:prepare": "tsx --env-file-if-exists=.env scripts/prepare-test-db.ts",
     "db:roles": "tsx --env-file-if-exists=.env scripts/provision-db-roles.ts",
     "smoke:ws": "tsx --env-file-if-exists=.env scripts/smoke-ws.ts",
+    "smoke:contracts": "tsx --env-file-if-exists=.env scripts/smoke-contracts.ts",
     "smoke:web": "tsx --env-file-if-exists=.env scripts/smoke-web.ts",
     "smoke:worker": "tsx --env-file-if-exists=.env scripts/smoke-worker.ts",
     "load": "tsx --env-file-if-exists=.env scripts/load-test.ts",

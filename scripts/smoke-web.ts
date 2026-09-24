@@ -1109,6 +1109,52 @@ async function main(): Promise<void> {
     );
 
     await visit(adminPage, '/admin', { url: '/admin/overview' });
+
+    /**
+     * The kill switch, both ways, in a browser.
+     *
+     * The overview read `trading.halted`, which the API has never sent: it said
+     * "Open" while trading was halted, and its one button said "Halt new risk"
+     * in both states — so on a halted platform it halted again, and nobody
+     * could resume from the console. Halted here, and resumed, by the buttons
+     * an operator would press; the state line has to follow each press.
+     */
+    const tradingState = adminPage.locator('section', { hasText: /^Trading/ }).first();
+    const press = async (label: RegExp, reason: string) => {
+      await adminPage.getByRole('button', { name: label }).click();
+      await adminPage.getByRole('textbox').first().fill(reason);
+      await adminPage.getByRole('button', { name: /^Confirm$/ }).click();
+    };
+    await press(/Halt new risk/, 'smoke: proving the switch');
+    const haltedShown = await tradingState
+      .getByText(/^Halted$/)
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    const resumeOffered = await adminPage
+      .getByRole('button', { name: /Resume trading/ })
+      .isVisible();
+    ok(
+      haltedShown && resumeOffered,
+      'halting from the overview shows "Halted" and offers to resume',
+      (await tradingState.innerText()).replace(/\s+/g, ' ').slice(0, 160),
+    );
+    if (resumeOffered) await press(/Resume trading/, 'smoke: the switch works both ways');
+    const openShown = await tradingState
+      .getByText(/^Open$/)
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    ok(
+      openShown,
+      'resuming from the overview shows "Open" again',
+      (await tradingState.innerText()).replace(/\s+/g, ' ').slice(0, 160),
+    );
+
     await visit(adminPage, '/admin/people', { url: '/admin/people' });
     await auditAccessibility(adminPage, 'the admin people screen');
     await visit(adminPage, `/admin/people/${people.userId}`, {
@@ -1267,22 +1313,21 @@ async function main(): Promise<void> {
       where: { email: people.admin.email },
     });
 
-    await adminPage.getByPlaceholder('London desk').fill(`Smoke desk ${Date.now()}`);
+    // This run's desk, by name: `.last()` found whichever desk was already listed.
+    const deskName = `Smoke desk ${Date.now()}`;
+    await adminPage.getByPlaceholder('London desk').fill(deskName);
     await adminPage.getByPlaceholder('user id').fill(operatorRow.id);
     await adminPage.getByRole('button', { name: /Create desk/i }).click();
-    const opened = await adminPage
+    const deskRow = adminPage.locator('tr', { hasText: deskName });
+    const opened = await deskRow
       .getByRole('button', { name: /^Open$/ })
-      .last()
       .waitFor({ timeout: 10_000 })
       .then(
         () => true,
         () => false,
       );
     ok(opened, 'a desk can be created from the console');
-    await adminPage
-      .getByRole('button', { name: /^Open$/ })
-      .last()
-      .click();
+    await deskRow.getByRole('button', { name: /^Open$/ }).click();
 
     const detail = adminPage.getByTestId('desk-detail');
     await detail.waitFor({ timeout: 10_000 });
@@ -1386,14 +1431,19 @@ async function main(): Promise<void> {
     const venueName = `Smoke venue ${Date.now()}`;
     await adminPage.getByPlaceholder('Primary liquidity').fill(venueName);
     await adminPage.getByRole('button', { name: /Create connection/i }).click();
-    await adminPage
-      .getByRole('button', { name: /Set credentials/i })
-      .last()
-      .waitFor({ timeout: 10_000 });
-    await adminPage
-      .getByRole('button', { name: /Set credentials/i })
-      .last()
-      .click();
+    /**
+     * Every button is found inside this run's own row.
+     *
+     * This used to take the last "Set credentials" and the last "Test" on the
+     * page, which is this run's row only while it is the one row without
+     * credentials. A connection left without them by anything else — another
+     * script, an operator — answered the wait at once, received this run's
+     * credentials, and left the new row's Test button disabled for thirty
+     * seconds of retries.
+     */
+    const venueRow = adminPage.locator('tr', { hasText: venueName });
+    await venueRow.getByRole('button', { name: /Set credentials/i }).waitFor({ timeout: 10_000 });
+    await venueRow.getByRole('button', { name: /Set credentials/i }).click();
     const credentialForm = adminPage.getByTestId('broker-credential-form');
     await credentialForm.waitFor({ timeout: 10_000 });
     const venueSecret = `web-smoke-secret-${Date.now()}`;
@@ -1401,14 +1451,8 @@ async function main(): Promise<void> {
     await credentialForm.locator('input[type="password"]').first().fill(venueSecret);
     await credentialForm.locator('input[type="text"]').nth(1).fill('Mock-Live');
     await credentialForm.getByRole('button', { name: /Save credentials/i }).click();
-    await adminPage
-      .getByRole('button', { name: /^Test$/ })
-      .last()
-      .waitFor({ timeout: 10_000 });
-    await adminPage
-      .getByRole('button', { name: /^Test$/ })
-      .last()
-      .click();
+    await venueRow.getByRole('button', { name: /Rotate/i }).waitFor({ timeout: 10_000 });
+    await venueRow.getByRole('button', { name: /^Test$/ }).click();
     const connected = await adminPage
       .getByText(/Connected/i)
       .first()
@@ -1433,10 +1477,7 @@ async function main(): Promise<void> {
      * back with the venue's own lot terms on it, the screen is lying about
      * something that decides where money goes.
      */
-    await adminPage
-      .getByRole('button', { name: /^Instruments$/ })
-      .last()
-      .click();
+    await venueRow.getByRole('button', { name: /^Instruments$/ }).click();
     const mappings = adminPage.getByTestId('broker-mappings');
     await mappings.waitFor({ timeout: 10_000 });
     // `<option>` elements are never "visible" to Playwright, so the catalogue
@@ -1470,10 +1511,7 @@ async function main(): Promise<void> {
       mappingsBody.replace(/\s+/g, ' ').slice(0, 200),
     );
 
-    await adminPage
-      .getByRole('button', { name: /^Inbox$/ })
-      .last()
-      .click();
+    await venueRow.getByRole('button', { name: /^Inbox$/ }).click();
     const inbox = adminPage.getByTestId('broker-inbox');
     await inbox.waitFor({ timeout: 10_000 });
     let inboxBody = '';
@@ -1513,10 +1551,29 @@ async function main(): Promise<void> {
     });
     await auditAccessibility(adminPage, 'the push deliveries screen');
     const deliveries = await adminPage.getByTestId('push-deliveries').innerText();
+    /**
+     * Which answer is right depends on the database, so it is read first.
+     * These three screens were checked only for their empty state, which held
+     * while nothing else wrote to the tenant; `pnpm smoke:contracts` runs a
+     * worker and registers things, and a check that fails because the world
+     * has data in it is testing the world, not the screen. Empty says so;
+     * not empty shows what is there.
+     */
+    const adminTenant = (
+      await prisma.user.findFirstOrThrow({ where: { email: people.admin.email } })
+    ).tenantId;
+    const pushedLastDay = await prisma.pushDelivery.count({
+      where: { tenantId: adminTenant, createdAt: { gte: new Date(Date.now() - 86_400_000) } },
+    });
+    const attempted = /Attempted, last day\s*(\d+)/i.exec(deliveries.replace(/\n/g, ' '));
     ok(
-      /Attempted, last day\s*0/i.test(deliveries.replace(/\n/g, ' ')) &&
-        /Nothing recorded/.test(deliveries),
-      'the push delivery screen answers with figures — none yet — rather than a refusal',
+      attempted !== null &&
+        (pushedLastDay === 0
+          ? attempted[1] === '0' && /Nothing recorded/.test(deliveries)
+          : Number(attempted[1]) > 0 && !/Nothing recorded/.test(deliveries)),
+      pushedLastDay === 0
+        ? 'the push delivery screen answers with figures — none yet — rather than a refusal'
+        : 'the push delivery screen answers with the deliveries the worker recorded',
       deliveries.replace(/\s+/g, ' ').slice(0, 160),
     );
 
@@ -1584,9 +1641,14 @@ async function main(): Promise<void> {
       'the reports page offers all five kinds the API defines',
       reportsText.replace(/\s+/g, ' ').slice(0, 200),
     );
+    const reportCount = await prisma.report.count({ where: { tenantId: adminTenant } });
     ok(
-      /No reports yet/i.test(reportsText),
-      'an empty reports list says so, rather than showing an empty table',
+      reportCount === 0
+        ? /No reports yet/i.test(reportsText)
+        : !/No reports yet/i.test(reportsText),
+      reportCount === 0
+        ? 'an empty reports list says so, rather than showing an empty table'
+        : 'the reports list shows the reports that exist, and does not call itself empty',
       reportsText.replace(/\s+/g, ' ').slice(0, 160),
     );
     await auditAccessibility(adminPage, 'the reports screen');
@@ -1597,9 +1659,17 @@ async function main(): Promise<void> {
     });
     await auditAccessibility(adminPage, 'the webhooks screen');
     const webhooks = await adminPage.getByTestId('webhooks').innerText();
+    const latestEndpoint = await prisma.webhookEndpoint.findFirst({
+      where: { tenantId: adminTenant },
+      orderBy: { createdAt: 'desc' },
+    });
     ok(
-      /No endpoints/i.test(webhooks),
-      'the webhooks page opens with nothing registered and says so',
+      latestEndpoint === null
+        ? /No endpoints/i.test(webhooks)
+        : webhooks.includes(latestEndpoint.url) && !/No endpoints/i.test(webhooks),
+      latestEndpoint === null
+        ? 'the webhooks page opens with nothing registered and says so'
+        : 'the webhooks page lists the endpoints that are registered',
       webhooks.replace(/\s+/g, ' ').slice(0, 160),
     );
 

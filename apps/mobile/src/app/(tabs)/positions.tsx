@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { DomainError } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
+import { useAccounts } from '../../lib/accounts';
 import { Button, Empty, ErrorNote, Screen } from '../../components/ui';
 import { describePatch, protectivePatch } from '../../lib/protective-levels';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
@@ -33,6 +34,8 @@ interface Position {
 
 export default function Positions(): React.ReactElement {
   const { api } = useSession();
+  // The account whose book this is — the one the trader chose, as on every tab.
+  const { selected: account } = useAccounts();
   const [positions, setPositions] = useState<Position[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,14 +45,26 @@ export default function Positions(): React.ReactElement {
   const [form, setForm] = useState({ stopLoss: '', takeProfit: '' });
   const [busy, setBusy] = useState(false);
 
+  /**
+   * The open book of the selected account.
+   *
+   * The server lists positions per account and refuses a request that does not
+   * name one. This asked for `/positions` alone, was refused every time, and
+   * the tab showed "Could not refresh positions" to everybody who opened it —
+   * found by `pnpm smoke:contracts`, which makes each client call as written.
+   */
   const load = useCallback(async () => {
     try {
-      setPositions(await api.get<Position[]>('/positions'));
+      if (account === null) {
+        setPositions([]);
+        return;
+      }
+      setPositions(await api.get<Position[]>('/positions', { query: { accountId: account.id } }));
       setError(null);
     } catch {
       setError('Could not refresh positions.');
     }
-  }, [api]);
+  }, [api, account]);
 
   useEffect(() => {
     void load();

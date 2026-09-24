@@ -12,3 +12,4 @@ export * from './role-seed';
 export * from './notifications';
 export * from './worker-heartbeat';
 export * from './auth';
+export * from './operations';

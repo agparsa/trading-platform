@@ -1,5 +1,6 @@
 'use client';
 
+import { isTradingHalted } from '@tp/shared-types';
 import { cn } from '@tp/ui';
 import { Stat } from '@/components/primitives';
 import { useHaltTrading, useOperationsSummary } from '@/lib/admin-queries';
@@ -24,7 +25,7 @@ export function OverviewPanel() {
   const data = summary.data;
   if (data === undefined) return <Loading>Nothing to show yet.</Loading>;
 
-  const halted = data.trading.halted;
+  const halted = isTradingHalted(data.trading);
 
   return (
     <div className="flex flex-col gap-4 p-3">

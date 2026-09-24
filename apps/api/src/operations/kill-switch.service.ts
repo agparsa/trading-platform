@@ -1,21 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DomainError, TradingErrorCode } from '@tp/shared-types';
+import {
+  DomainError,
+  type KillSwitchState,
+  TradingErrorCode,
+  TradingState,
+} from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../common/audit/audit.service';
 import { currentTenant, requireTenantId } from '@tp/tenancy';
 
-export const TradingState = {
-  ENABLED: 'TRADING_ENABLED',
-  DISABLED: 'TRADING_DISABLED',
-} as const;
-export type TradingState = (typeof TradingState)[keyof typeof TradingState];
-
-export interface KillSwitchState {
-  state: TradingState;
-  reason: string | null;
-  changedAt: string | null;
-  changedByUserId: string | null;
-}
+// The states and their shape are the console's contract too: see shared-types.
+export { TradingState, type KillSwitchState } from '@tp/shared-types';
 
 /** The setting these rows live under. One name, no ambiguity about which. */
 const KEY = 'trading';

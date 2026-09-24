@@ -295,6 +295,7 @@ no Prisma, no Redis, no Node I/O. **Enforced by ESLint**, not by convention.
 | `pnpm check:schema`                                                            | Fails if any floating-point column exists        |
 | `pnpm smoke`                                                                   | Boots the built API and probes it                |
 | `pnpm smoke:ws`                                                                | Connects a real socket and checks the contract   |
+| `pnpm smoke:contracts`                                                         | Checks every client's reading of every answer    |
 | `pnpm pentest`                                                                 | Boots it again and attacks it                    |
 | `pnpm load`                                                                    | 100 traders, 200 sockets, three phases           |
 | `pnpm soak`                                                                    | Boots it again and leaves it running             |

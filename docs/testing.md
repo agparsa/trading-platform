@@ -13,6 +13,7 @@ pnpm check:schema      # no floating-point columns exist
 pnpm smoke             # boots the built API and drives a full trade round trip
 pnpm smoke:ws          # boots it again and drives a real Socket.IO client
 pnpm smoke:web         # boots the API and the web app and opens every screen
+pnpm smoke:contracts   # boots the API and worker; checks every client's reading of every answer
 pnpm pentest           # boots it again and attacks it
 pnpm soak              # boots it again and leaves it running
 pnpm restore:rehearse  # dumps it, restores it elsewhere, compares the two
@@ -185,7 +186,7 @@ testing money.**
 
 ## End-to-end checks
 
-Two scripts drive a real build rather than a mock, and both refuse to run if
+These scripts drive a real build rather than a mock, and each refuses to run if
 something is already holding the port — a smoke test that silently passes against
 a stale binary is the worst failure mode there is.
 
@@ -206,13 +207,43 @@ a stale binary is the worst failure mode there is.
   spent — a skip there would hide the whole path.
 - `pnpm smoke:ws` — 8 checks: quote and candle streaming, gapless sequencing,
   private-channel refusal, cross-account isolation.
-- `pnpm smoke:web` — 124 checks across 28 routes, in a real browser: every screen
+- `pnpm smoke:web` — 174 checks across all 35 routes, in a real browser: every screen
   signed into, landed on, and read for console errors, plus checks about
   content — that the roles screen shows real grants, that the wallet page
   offers the deposit method this deployment actually has, and that a key
   minted from the security page is shown once and never again. Set
   `PLAYWRIGHT_CHROMIUM_PATH` where Chromium is provisioned outside Playwright's
   own download.
+- `pnpm smoke:contracts` — every typed call the web app, the phone and the
+  chart package make (`api.get<T>(…)` and its siblings, read by the TypeScript
+  compiler), made against the compiled API and worker with the query keys the
+  call site sends, and each answer checked **by the compiler** against the `T`
+  the client reads it as: the answer is turned into a type whose every leaf is
+  its literal value, and appended — in memory — to the client's own file, under
+  its own tsconfig, as an assignment to `T`. A field the client requires and
+  the server omits, a string where it reads a number, `'LONG'` where it reads
+  `'BUY' | 'SELL'`, a bad row twenty rows down: each is a compile error on a
+  line nobody wrote. Extra fields are allowed. The setup gives the API
+  something to say — an open position, a closed trade, a resting order, a
+  payment settled, a withdrawal paid, identity documents reviewed, a venue
+  connection, a webhook, a master account — and every call is either checked
+  or listed in `SKIPPED` with its reason; an empty list counts as unchecked
+  unless `MAY_BE_EMPTY` says why. 168 answers on its first green run.
+
+  **Why it exists.** `api.get<T>` is a cast. The build believes `T`, and a
+  field the server never sends is `undefined` at run time. Its first run found
+  three screens reading answers the API has never given: the phone's positions
+  tab asked for `/positions` without the account the server requires and was
+  refused on every open; the phone's home screen read `realizedPnl`,
+  `commission` and `swap`, which account state does not carry, and showed three
+  dashes to everybody; and the console's overview read `trading.halted` where
+  the API sends `trading.state` — it said "Open" while trading was halted, and
+  its only button halted again, so the platform could not be resumed from the
+  console. The kill-switch type now lives in `@tp/shared-types` for both
+  sides, and `smoke:web` presses the switch both ways.
+  `response-contracts.test.ts` proves the reader and the comparer without a
+  running API, and that the smoke run accounts for every typed call.
+
 - `pnpm pentest` — 63 attacks attempted against the compiled binary; an attack
   that succeeds fails the run.
 

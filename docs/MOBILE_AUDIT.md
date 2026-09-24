@@ -75,6 +75,16 @@ path still refuses a body-delivered token.
 > to one that did not exist. Until then the app was built against the body token
 > this section describes and the API never sent one. See
 > [security.md](./security.md#native-clients).
+>
+> **And on 24 September, the answers.** Signing in was not the only thing the
+> app had been written against from memory. `pnpm smoke:contracts` makes every
+> typed call a client makes and has the compiler check the real answer against
+> the type the client reads it as. For the phone it found the positions tab
+> asking for `/positions` without the account the server requires — refused on
+> every open — and the home screen reading `realizedPnl`, `commission` and
+> `swap`, which account state has never carried. Both are fixed; the other
+> eighteen typed calls the phone makes read what the server sends. See
+> [testing.md](./testing.md#end-to-end-checks).
 
 ## 4. Everything else mobile needs, none of which exists
 

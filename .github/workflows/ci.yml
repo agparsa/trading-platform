@@ -130,6 +130,14 @@ jobs:
       - name: Smoke test the WebSocket gateway
         run: pnpm smoke:ws
 
+      # Every typed call the web, the phone and the chart package make, made
+      # against the compiled API and worker, with the answer checked by the
+      # compiler against the type the client reads it as. See
+      # scripts/response-contracts.ts for why a green typecheck proves nothing
+      # about an answer.
+      - name: Check every client's reading of the API's answers
+        run: pnpm smoke:contracts
+
       # Attacks, attempted against the compiled binary. An attack that succeeds
       # fails the build. See docs/penetration-checklist.md — including why a
       # green run is not a claim that there is nothing to find.
