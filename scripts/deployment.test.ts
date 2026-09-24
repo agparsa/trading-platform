@@ -2081,3 +2081,66 @@ describe('a deploy script that updates itself', () => {
     });
   });
 });
+
+/**
+ * Before an upgrade touches anything, it asks whether a container can reach
+ * the internet — the network every build step uses.
+ *
+ * On 24 September an automatic CSF upgrade restarted the firewall and removed
+ * Docker's NAT rules. The site kept serving; every build failed at step 5 as
+ * `apk … DNS: transient error` and "no such package", which names a package
+ * when what failed was the network. The probe runs `node` inside the running
+ * API container through whatever compose command it is given; here that is a
+ * stand-in that runs the same `node` on this machine.
+ */
+describe('the container egress probe', () => {
+  const probe = resolve(ROOT, 'scripts/container-egress.sh');
+  const withStandIn = (target: string, compose = 'stand-in') => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'egress-'));
+    const standIn = resolve(directory, 'stand-in');
+    // Drops everything before `node`, as `docker compose … exec -T api` would.
+    writeFileSync(
+      standIn,
+      '#!/bin/sh\nwhile [ "$#" -gt 0 ] && [ "$1" != node ]; do shift; done\nexec "$@"\n',
+      { mode: 0o755 },
+    );
+    try {
+      return spawnSync('sh', [probe, compose === 'stand-in' ? standIn : compose], {
+        env: { ...process.env, EGRESS_TARGET: target },
+        encoding: 'utf8',
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  };
+
+  it('answers yes when the request is answered', () => {
+    expect(withStandIn('data:,reachable').status).toBe(0);
+  });
+
+  it('answers no — exit 3, with the cause — when it is not', () => {
+    const refused = withStandIn('http://127.0.0.1:59999/');
+    expect(refused.status).toBe(3);
+    expect(refused.stderr).toMatch(/ECONNREFUSED/);
+  });
+
+  it('does not call a missing container a missing network', () => {
+    // `false` stands in for a compose command that cannot exec: not an answer.
+    const status = withStandIn('data:,x', 'false').status;
+    expect(status).not.toBe(0);
+    expect(status).not.toBe(3);
+  });
+
+  it('is asked in step 1, before the backup, the merge and the build, and stops on a no', () => {
+    const script = read('scripts/upgrade-server.sh');
+    const asked = script.indexOf('scripts/container-egress.sh');
+    expect(asked).toBeGreaterThan(-1);
+    expect(asked).toBeLessThan(script.indexOf('say "2/9'));
+    expect(asked).toBeLessThan(script.indexOf('say "3/9'));
+    const handling = script.slice(asked, script.indexOf('say "2/9'));
+    expect(handling).toMatch(/egress_status" -eq 3[\s\S]*die "/);
+    // The message names the check and the remedy, not just the symptom.
+    expect(handling).toMatch(/MASQUERADE/);
+    expect(handling).toMatch(/systemctl restart docker/);
+  });
+});

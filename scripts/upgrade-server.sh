@@ -100,6 +100,32 @@ else
   git --no-pager log --oneline "$BEFORE..$AFTER" | sed 's/^/      /'
 fi
 
+# Can the build reach its packages? Asked from inside the running API
+# container, the same network a build step uses. See container-egress.sh.
+set -a
+# shellcheck disable=SC1090
+. <(grep -E '^ALPINE_MIRROR=' "$ENV_FILE" || true)
+set +a
+EGRESS_TARGET=${ALPINE_MIRROR:-https://dl-cdn.alpinelinux.org/alpine}/
+egress_status=0
+egress_said=$(EGRESS_TARGET=$EGRESS_TARGET sh scripts/container-egress.sh "${COMPOSE[@]}" 2>&1) || egress_status=$?
+if [ "$egress_status" -eq 3 ]; then
+  die "A container on this host cannot reach $EGRESS_TARGET (${egress_said:-no answer}).
+Nothing has been changed; the running version keeps serving.
+
+The usual cause is a firewall restart that removed Docker's iptables rules — an
+automatic CSF upgrade did exactly this on 24 September. Check:
+    iptables -t nat -S POSTROUTING | grep MASQUERADE     (empty = the rules are gone)
+Then, deliberately:
+    systemctl restart docker        (restores them; every container restarts)
+and, so it does not recur, CSF's Docker support (DOCKER = \"1\" in csf.conf,
+with DOCKER_NETWORK4 covering the compose address pools). See docs/deployment.md."
+elif [ "$egress_status" -ne 0 ]; then
+  warn "Could not ask whether a container can reach $EGRESS_TARGET (exit $egress_status); carrying on."
+else
+  echo "    a container can reach $EGRESS_TARGET"
+fi
+
 # ---------------------------------------------------------------------------
 say "2/9  Environment variables this build requires"
 # ---------------------------------------------------------------------------

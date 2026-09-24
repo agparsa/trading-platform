@@ -181,6 +181,33 @@ subject.
 - **Do not cache `/.well-known/acme-challenge/`** if cPanel's AutoSSL is issuing
   the certificate.
 
+## The firewall, which removes Docker's rules when it restarts
+
+A cPanel host runs CSF, and CSF owns iptables. When CSF restarts it writes its
+own rules and removes Docker's — the NAT that lets a container reach anything
+outside the host. Inbound traffic still works (it reaches the containers
+through the host's proxy), so the site keeps serving and nothing looks wrong.
+What breaks is everything that leaves: builds, webhooks, push, mail.
+
+On 24 September 2026 at 02:40 an **automatic** CSF upgrade (v16.31 → v16.32)
+did exactly this. Every upgrade after it stopped at step 5, reporting
+`apk … DNS: transient error` and "no such package". `upgrade-server.sh` now
+asks first, from inside the running API container, and stops before changing
+anything with the cause and the check:
+
+```
+iptables -t nat -S POSTROUTING | grep MASQUERADE   # nothing printed: Docker's rules are gone
+systemctl restart docker                           # puts them back; every container restarts
+```
+
+A Docker restart is the immediate fix, not the lasting one: the next CSF
+restart or upgrade removes them again. The lasting one is CSF's own Docker
+support — `DOCKER = "1"` in `/etc/csf/csf.conf`, with `DOCKER_NETWORK4`
+covering the address pools in `/etc/docker/daemon.json` (on this host
+`172.17.0.0/12` and `192.168.0.0/16`; CSF's default is `172.17.0.0/16`, which
+misses the compose networks) — then `csf -r` and a Docker restart. Both are
+changes to the host's firewall and belong to whoever administers it.
+
 ## Before anyone signs in
 
 ```bash
