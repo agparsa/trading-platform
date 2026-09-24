@@ -102,6 +102,11 @@ request id, IP, user agent. Every sensitive operation writes one — login, orde
 create/modify/cancel, position close, SL/TP change, account update, admin action.
 Before/after payloads are redacted of anything sensitive before being written.
 
+It is read in the console at `/admin/audit` — a filterable log over
+`GET /admin/audit` and its action index, both requiring `audit.read`. There is
+no route that edits or deletes a row, for anyone. A section at the end of this
+page called that surface "not yet implemented" for as long as it had existed.
+
 ### Append-only means the database refuses, not just the application
 
 Nothing in the API offers a way to edit or delete an audit row. That is a
@@ -303,11 +308,6 @@ probes noticed. Two did not, and both gaps are now closed. See
 [penetration-checklist.md](./penetration-checklist.md) — including what it
 deliberately does not cover, and why a green run does not mean there is nothing
 to find.
-
-## Not yet implemented
-
-The admin audit surface is outstanding. It is listed here as the contract later
-phases must meet, not as work already done.
 
 ## The WebSocket surface
 

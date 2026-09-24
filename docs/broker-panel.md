@@ -173,17 +173,21 @@ that really are absent keep their entry and their reason.
   and the trader's history stay — they are the right tool for the page on
   screen, and are now the only thing claiming to be that.
 
-- **Alerts.** `Alert` (price alerts) is Phase 8, with the notification
-  channels. Admin alert _rules_ — thresholds that raise something when a figure
-  moves — do not exist and are not designed.
+- **Alerts.** Price alerts for traders are built — see `price-alerts.md`.
+  Admin alert _rules_ — thresholds that raise something in this panel when a
+  figure moves — do not exist and are not designed. The operational alerts in
+  `docker/observability/alerts.yml` are for whoever runs the deployment, not
+  for the broker, and nothing routes them yet (`operations.md`).
 - **~~Security: devices and IP rules.~~ Both built.** Tenant IP rules are a
   control (§46), enforced by a guard and audited. Staff can see a person's
   devices and revoke one from their record — and a staff revocation survives
   the handset re-registering, which the person's own revocation deliberately
-  does not. What is still missing here is narrower: revoking a device ends no
-  **session**, because sessions are not bound to devices in this platform.
-  `sign-out` is the control that ends sessions, and the two are meant to be
-  used together; binding them would be a schema change and a phase of its own.
+  does not. Revoking a device also ends the sessions signed in from that
+  installation — this entry said it did not, after sessions had been bound to
+  the installation they were created on. What is still narrower: a browser
+  session names no installation, so it is not ended by revoking a device;
+  `sign-out` ends everything, and is the control for an account that is
+  compromised rather than one lost handset.
 - **Branding / white label.** Nothing exists. The `Tenant` model carries no
   visual field. Phase 14 lists white label behind a feature flag; the feature
   it would flag has not been written.

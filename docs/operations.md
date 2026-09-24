@@ -125,15 +125,18 @@ at 3am. Both uses are audited.
 The first is the one worth having. Almost every test in that file exists to hold
 one sentence in place: closing is always allowed.
 
-## Not yet built
+## What this page used to list as not built
 
-- **Per-order latency percentiles** (§50). The metrics registry counts orders and
-  measures execution latency; splitting that into network, validation and
-  execution needs a client timestamp the API does not yet receive.
-- **Operational alerts** (§70). The conditions are all detected and logged —
-  ledger drift, reconciliation mismatch, integrity signals, a stale feed — but
-  nothing routes them anywhere. They are read from the logs and the summary.
+Both have been built since, and this section kept saying otherwise:
 
-Both are listed here rather than approximated, because a latency figure that
-measures the wrong span and an alert that goes nowhere are worse than their
-absence: they look like coverage.
+- **Per-order latency percentiles** (§50): `tp_order_stage_seconds` splits an
+  order into received, validated, priced and executed, and
+  `tp_client_clock_skew_seconds` records the client's own send time without ever
+  trusting it. See [observability.md](observability.md), _The order timeline_.
+- **Operational alerts** (§70): `docker/observability/alerts.yml` has a rule for
+  every row of the table in [observability.md](observability.md), and that
+  correspondence is checked by a test. What is still not here is **routing** —
+  sending a firing alert to a pager or a phone is Alertmanager configuration
+  for whoever runs the deployment, and this repository does not presume to
+  write it. Until someone does, a firing alert is visible on Prometheus's alerts
+  page and wakes nobody.
