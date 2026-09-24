@@ -65,7 +65,6 @@ export class ApnsPushProvider extends PushProvider {
       eventId: envelope.eventId,
       accountId: envelope.accountId,
       playSound: envelope.playSound,
-      androidChannelId: '',
     };
 
     const payload = fitApnsPayload(buildApnsPayload(request));

@@ -35,7 +35,8 @@
             "./assets/sounds/order_cancelled.wav",
             "./assets/sounds/stop_loss.wav",
             "./assets/sounds/take_profit.wav",
-            "./assets/sounds/risk_warning.wav"
+            "./assets/sounds/risk_warning.wav",
+            "./assets/sounds/price_alert.wav"
           ]
         }
       ],

@@ -52,10 +52,7 @@ import { PushService } from './push.service';
         const fcm =
           serviceAccount === undefined
             ? null
-            : new FcmPushProvider(
-                parseServiceAccount(serviceAccount),
-                config.get('PUSH_ANDROID_CHANNEL_ID', { infer: true }),
-              );
+            : new FcmPushProvider(parseServiceAccount(serviceAccount));
 
         return new PlatformPushProvider({
           ios: apns === undefined ? null : new ApnsPushProvider(parseApnsCredentials(apns)),

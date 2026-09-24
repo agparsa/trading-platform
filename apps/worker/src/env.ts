@@ -119,15 +119,6 @@ export const workerEnvSchema = z.object({
   APNS_CREDENTIALS_JSON: z.string().optional(),
 
   /**
-   * The Android notification channel trading notices are posted to.
-   *
-   * Channels are declared by the app, and a message naming a channel the app
-   * has not created is delivered silently on Android 8 and later — which is the
-   * quietest possible failure for a margin call.
-   */
-  PUSH_ANDROID_CHANNEL_ID: z.string().default('trading'),
-
-  /**
    * The keys used to open sealed push tokens.
    *
    * The same list the API seals them with. Without it the worker can read the

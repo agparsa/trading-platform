@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
-import { DevicePlatform, NOTIFICATION_CATEGORIES, TradingSound } from '@tp/shared-types';
+import { DevicePlatform, NOTIFICATION_CATEGORIES, androidChannels } from '@tp/shared-types';
 import { SOUND_ASSETS } from './sound-decision';
 
 /**
@@ -16,19 +16,17 @@ import { SOUND_ASSETS } from './sound-decision';
  * sound to a channel, not to a message, and a channel's sound cannot be changed
  * after it is created.
  */
-export const TRADING_CHANNEL_ID = 'trading';
-
-/** One channel per sound, because Android will not let a message choose one. */
-const CHANNELS: ReadonlyArray<{ id: string; name: string; sound: TradingSound | null }> = [
-  { id: TRADING_CHANNEL_ID, name: 'Trading', sound: TradingSound.TRADE_OPENED },
-  { id: 'trading-closed', name: 'Closed trades', sound: TradingSound.TRADE_CLOSED },
-  { id: 'trading-modified', name: 'Changed trades', sound: TradingSound.TRADE_MODIFIED },
-  { id: 'trading-stop-loss', name: 'Stop loss', sound: TradingSound.STOP_LOSS },
-  { id: 'trading-take-profit', name: 'Take profit', sound: TradingSound.TAKE_PROFIT },
-  { id: 'risk', name: 'Risk alerts', sound: TradingSound.RISK_WARNING },
-  { id: 'security', name: 'Security alerts', sound: TradingSound.RISK_WARNING },
-  { id: 'system', name: 'System', sound: null },
-];
+/**
+ * One channel per category, plus a soundless one for a category whose sound
+ * the trader turned off — the table is `ANDROID_CHANNEL_FOR_CATEGORY`, which
+ * the worker reads to name the channel on every push.
+ *
+ * This list was written out here, one channel per sound, and nothing sent to
+ * any of them but `trading`: every background notice on a current phone
+ * sounded like an opened trade. It had no channel for filled or cancelled
+ * orders or for price alerts at all.
+ */
+const CHANNELS = androidChannels();
 
 export async function configureChannels(): Promise<void> {
   if (Platform.OS !== 'android') return;

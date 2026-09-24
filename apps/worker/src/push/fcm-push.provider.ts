@@ -35,7 +35,6 @@ export class FcmPushProvider extends PushProvider {
 
   constructor(
     account: ServiceAccount,
-    private readonly androidChannelId: string,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {
     super();
@@ -73,7 +72,6 @@ export class FcmPushProvider extends PushProvider {
         eventId: envelope.eventId,
         accountId: envelope.accountId,
         playSound: envelope.playSound,
-        androidChannelId: this.androidChannelId,
       }),
     );
 

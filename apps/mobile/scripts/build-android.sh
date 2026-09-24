@@ -113,7 +113,10 @@ esac
 # require() resolves. A channel naming a resource that is not there is delivered
 # **silently** on Android 8 and later, which is the quietest possible failure
 # for a margin call.
-for name in trade_opened trade_closed trade_modified order_filled order_cancelled stop_loss take_profit risk_warning; do
+# The list is every TradingSound; `src/lib/bundled-sounds.test.ts` fails when
+# it is not. `price_alert` was missing from it and from app.json for as long as
+# price alerts existed, so the check passed on a build that could not play one.
+for name in trade_opened trade_closed trade_modified order_filled order_cancelled stop_loss take_profit risk_warning price_alert; do
   case "$RESOURCES" in
     *"raw/${name}"$'\n'*) ;;
     *) echo "Notification sound ${name} is missing from res/raw." >&2; exit 1 ;;

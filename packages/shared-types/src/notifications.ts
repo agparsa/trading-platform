@@ -101,6 +101,97 @@ export const SOUND_FOR_CATEGORY: Readonly<Record<NotificationCategory, TradingSo
 };
 
 /**
+ * The Android notification channel each category is posted to, by id.
+ *
+ * ## Why the server names the channel per notice
+ *
+ * From Android 8 a notification's sound is its **channel's** sound. The
+ * `sound` field of an FCM message, and `default_sound: false`, are read only by
+ * Android 7 and older. So when every push named one channel — `trading`, whose
+ * sound is `trade_opened` — every background notice on a current phone sounded
+ * like an opening: a stop loss, a take profit, a margin call. §18 asks that a
+ * modification sound different from an opening, and on Android none did. A
+ * trader who had turned a category's sound off heard it anyway, because the
+ * channel still had one.
+ *
+ * The phone created a channel per sound all along; nothing sent to them. The
+ * ids live here now so that the app that creates them and the worker that
+ * names them read one table.
+ *
+ * A channel's sound cannot be changed once the app has created it, so an id
+ * here is permanent: giving a category a different sound means a new id.
+ */
+export const ANDROID_CHANNEL_FOR_CATEGORY: Readonly<Record<NotificationCategory, string>> = {
+  TRADE_OPENED: 'trading',
+  TRADE_CLOSED: 'trading-closed',
+  TRADE_MODIFIED: 'trading-modified',
+  ORDER_FILLED: 'trading-filled',
+  ORDER_CANCELLED: 'trading-cancelled',
+  STOP_LOSS: 'trading-stop-loss',
+  TAKE_PROFIT: 'trading-take-profit',
+  RISK_ALERT: 'risk',
+  SECURITY_ALERT: 'security',
+  PRICE_ALERT: 'price-alerts',
+  SYSTEM: 'system',
+};
+
+/**
+ * The soundless channel a notice goes to when its sound is off.
+ *
+ * On Android 8 and later this is the only way to send a notice without a
+ * sound: the message cannot say so, the channel has to.
+ */
+export const ANDROID_QUIET_CHANNEL = 'quiet';
+
+/** What the phone calls each channel in the system settings. */
+export const ANDROID_CHANNEL_NAMES: Readonly<Record<string, string>> = {
+  trading: 'Opened trades',
+  'trading-closed': 'Closed trades',
+  'trading-modified': 'Changed trades',
+  'trading-filled': 'Filled orders',
+  'trading-cancelled': 'Cancelled orders',
+  'trading-stop-loss': 'Stop loss',
+  'trading-take-profit': 'Take profit',
+  risk: 'Risk alerts',
+  security: 'Security alerts',
+  'price-alerts': 'Price alerts',
+  system: 'System',
+  quiet: 'Muted notices',
+};
+
+export interface AndroidChannel {
+  readonly id: string;
+  readonly name: string;
+  /** `null` for a channel that makes no sound. */
+  readonly sound: TradingSound | null;
+}
+
+/** Every channel the app must create, with the sound each one carries. */
+export function androidChannels(): AndroidChannel[] {
+  const channels: AndroidChannel[] = NOTIFICATION_CATEGORIES.map((category) => {
+    const id = ANDROID_CHANNEL_FOR_CATEGORY[category];
+    return { id, name: ANDROID_CHANNEL_NAMES[id] ?? id, sound: SOUND_FOR_CATEGORY[category] };
+  });
+  channels.push({
+    id: ANDROID_QUIET_CHANNEL,
+    name: ANDROID_CHANNEL_NAMES[ANDROID_QUIET_CHANNEL] ?? ANDROID_QUIET_CHANNEL,
+    sound: null,
+  });
+  return channels;
+}
+
+/**
+ * The channel one notice is posted to: its category's, or the quiet one when
+ * the person has turned that category's sound off. A category that never
+ * sounds has a soundless channel of its own and keeps it.
+ */
+export function androidChannelFor(category: NotificationCategory, playSound: boolean): string {
+  return playSound || SOUND_FOR_CATEGORY[category] === null
+    ? ANDROID_CHANNEL_FOR_CATEGORY[category]
+    : ANDROID_QUIET_CHANNEL;
+}
+
+/**
  * Which category a notification `kind` belongs to.
  *
  * An unknown kind maps to `SYSTEM` rather than being dropped. Dropping it would

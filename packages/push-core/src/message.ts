@@ -3,6 +3,7 @@ import {
   type NotificationCategory,
   SOUND_FOR_CATEGORY,
   type TradingSound,
+  androidChannelFor,
 } from '@tp/shared-types';
 
 /**
@@ -61,16 +62,16 @@ export interface PushRequest {
   /**
    * The occurrence, not the notification.
    *
-   * §26: the client processes each `eventId` once. A push that arrives after
-   * the socket frame for the same event must update the same item rather than
-   * appearing twice and playing the sound twice — so both carry this.
+   * §26: the client processes each `eventId` once. A push received in the
+   * foreground and the same push tapped later are one event, and must not
+   * play the sound twice — so both carry this. The socket frame for the same
+   * occurrence carries it too, and the phone keeps that one in a separate
+   * memory on purpose: see `apps/mobile/src/lib/live.tsx`.
    */
   readonly eventId: string;
   readonly accountId: string | null;
   /** False when the user has this category's sound off. */
   readonly playSound: boolean;
-  /** Android notification channel. Configured, because channels are per-app. */
-  readonly androidChannelId: string;
 }
 
 /** FCM rejects a message whose payload exceeds this. */
@@ -112,7 +113,13 @@ export function buildFcmMessage(request: PushRequest): FcmMessage {
             // by nature, so HIGH is the floor rather than the exception.
             priority: 'HIGH' as const,
             notification: {
-              channel_id: request.androidChannelId,
+              /**
+               * The channel decides the sound from Android 8 on, and the two
+               * fields beside it only before. Both are set, so a phone on
+               * either side of that line hears the same thing — see
+               * `ANDROID_CHANNEL_FOR_CATEGORY`.
+               */
+              channel_id: androidChannelFor(request.category, request.playSound),
               ...(sound === null ? { default_sound: false } : { sound: androidSound(sound) }),
               notification_priority: critical
                 ? ('PRIORITY_HIGH' as const)

@@ -18,7 +18,6 @@ const base: PushRequest = {
   eventId: '22222222-2222-4222-8222-222222222222',
   accountId: '33333333-3333-4333-8333-333333333333',
   playSound: true,
-  androidChannelId: 'trading',
 };
 
 describe('building an FCM message', () => {
@@ -59,6 +58,22 @@ describe('building an FCM message', () => {
     expect(message.data['sound']).toBeUndefined();
     expect(message.android?.notification.sound).toBeUndefined();
     expect(message.android?.notification.default_sound).toBe(false);
+    // And on Android 8+, where the two fields above are not read: the channel.
+    expect(message.android?.notification.channel_id).toBe('quiet');
+  });
+
+  it("posts each notice to its category's channel, which is its sound on Android 8+", () => {
+    // Every push named `trading`, whose sound is an opening. A stop loss
+    // sounded like a new trade on every current Android phone.
+    expect(buildFcmMessage(base).android?.notification.channel_id).toBe('trading');
+    expect(
+      buildFcmMessage({ ...base, category: NotificationCategory.STOP_LOSS }).android?.notification
+        .channel_id,
+    ).toBe('trading-stop-loss');
+    expect(
+      buildFcmMessage({ ...base, category: NotificationCategory.RISK_ALERT }).android?.notification
+        .channel_id,
+    ).toBe('risk');
   });
 
   it('asks to break through Focus only for a critical notice', () => {

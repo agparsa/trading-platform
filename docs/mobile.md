@@ -32,7 +32,7 @@ A build shipped six of its eight sounds; `take_profit` and `risk_warning` were
 gone. A channel naming a resource that is not there is delivered **silently** on
 Android 8 and later, so the failure would have been a take-profit that fired
 without a sound and nobody able to say why. Shrinking is now off, and the build
-script fails if any of the sixteen sound resources is missing.
+script fails if either resource of any sound is missing.
 
 Code minification stays on: 48 MB of dex becomes 17 MB, and it carries no such
 risk because the RN and Expo consumer proguard rules exist for exactly it.
@@ -109,7 +109,7 @@ debug it.
 src/lib/         everything that can be decided without a device
 src/components/  the handful of pieces every screen needs
 src/app/         expo-router file routes
-assets/sounds/   the eight notification sounds
+assets/sounds/   the notification sounds, one per `TradingSound`
 ```
 
 The split is deliberate. `src/lib` holds no React and imports `react-native`
@@ -155,12 +155,15 @@ Three things enforce it, in three places, and all three are needed:
 
 ## Android channels
 
-Created at startup, before any token is registered, one per sound. From Android
-8 a notification naming a channel the app has not created is delivered
+Created at startup, before any token is registered: one per notification
+category, each carrying that category's sound, and a soundless `quiet` one. From
+Android 8 a notification naming a channel the app has not created is delivered
 **silently** — no sound, no heads-up, no complaint — which is the quietest
-possible failure for a margin call. A channel's sound cannot be changed after
-creation, which is why there is a channel per sound rather than a sound per
-message.
+possible failure for a margin call. And a channel's sound is the notification's
+sound: the message cannot choose one. So the worker names the category's
+channel on every push, or `quiet` when that category's sound is off; the table
+both read is `ANDROID_CHANNEL_FOR_CATEGORY`, and [sounds.md](sounds.md) has what
+went wrong before it existed.
 
 ## The push token
 

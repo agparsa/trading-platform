@@ -21,7 +21,6 @@ const base: PushRequest = {
   eventId: '22222222-2222-4222-8222-222222222222',
   accountId: '33333333-3333-4333-8333-333333333333',
   playSound: true,
-  androidChannelId: 'trading',
 };
 
 describe('the APNs payload', () => {
