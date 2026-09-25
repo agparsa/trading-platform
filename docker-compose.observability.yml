@@ -1,4 +1,4 @@
-# Observability (§63): Prometheus and Grafana, as a third compose file.
+# Observability (§63): Prometheus, Alertmanager and Grafana, as a third compose file.
 #
 # A separate file rather than a profile in docker-compose.prod.yml, for one
 # reason found the hard way: compose interpolates the whole file it is given,
@@ -30,6 +30,27 @@ services:
       - prometheus-data:/prometheus
     depends_on:
       api: { condition: service_healthy }
+      alertmanager: { condition: service_started }
+
+  # Where a firing alert goes. Until 25 September there was nothing here:
+  # Prometheus evaluated the rules in alerts.yml and nobody was told. Email,
+  # because that is what the owner chose; the addresses are the deployment's
+  # (.env.production), and the SMTP password is a file, never a variable —
+  # see docs/observability.md, "Where an alert goes".
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    entrypoint: ['/bin/sh', '/etc/alertmanager/entrypoint.sh']
+    environment:
+      ALERT_SMTP_HOST: ${ALERT_SMTP_HOST:?set ALERT_SMTP_HOST (host:port)}
+      ALERT_SMTP_USER: ${ALERT_SMTP_USER:?set ALERT_SMTP_USER}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:?set ALERT_EMAIL_FROM}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:?set ALERT_EMAIL_TO}
+    volumes:
+      - ./docker/observability/alertmanager/alertmanager.yml.template:/etc/alertmanager/alertmanager.yml.template:ro
+      - ./docker/observability/alertmanager/entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
+      - ${ALERT_SMTP_PASSWORD_FILE:?set ALERT_SMTP_PASSWORD_FILE to a file holding the SMTP password}:/run/secrets/alert_smtp_password:ro
+      - alertmanager-data:/alertmanager
 
   grafana:
     image: grafana/grafana:11.3.1
@@ -53,3 +74,4 @@ services:
 volumes:
   prometheus-data:
   grafana-data:
+  alertmanager-data:

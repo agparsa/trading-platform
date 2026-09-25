@@ -21,3 +21,10 @@ scrape_configs:
 
 rule_files:
   - /etc/prometheus/alerts.yml
+
+# Every rule above goes to Alertmanager, which sends it by email. See
+# docker/observability/alertmanager and docs/observability.md.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']

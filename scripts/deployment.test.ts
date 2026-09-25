@@ -1702,7 +1702,10 @@ describe('file-backed secrets', () => {
     const secretsInExample = [...example.matchAll(/^([A-Z_]+)=/gm)]
       .map((m) => m[1]!)
       .filter((key) => /SECRET|PASSWORD|_URL$|ENCRYPTION_KEYS|SERVICE_ACCOUNT/.test(key))
-      .filter((key) => !/^PUBLIC_|^APP_PUBLIC|^CORS/.test(key));
+      .filter((key) => !/^PUBLIC_|^APP_PUBLIC|^CORS/.test(key))
+      // A name ending in _FILE is already the path a secret is read from
+      // (ALERT_SMTP_PASSWORD_FILE), not a secret that needs a _FILE form.
+      .filter((key) => !key.endsWith('_FILE'));
     const listed = read('packages/crypto-core/src/file-secrets.ts');
     const unlisted = secretsInExample.filter((key) => !listed.includes(`'${key}'`));
     expect(unlisted).toEqual([]);
@@ -2315,5 +2318,93 @@ describe('the Docker chains check', () => {
     const handling = script.slice(asked, script.indexOf('say "2/9'));
     expect(handling).toMatch(/chains_status" -eq 3[\s\S]*die "/);
     expect(handling).toMatch(/systemctl restart docker/);
+  });
+});
+
+/**
+ * Where an alert goes.
+ *
+ * Until 25 September the answer was nowhere: alerts.yml had sixteen rules,
+ * Prometheus evaluated them when it ran, and no receiver existed. Alertmanager
+ * now emails them. Its configuration is a template the entrypoint fills from
+ * the environment, so the template is run here exactly as the container runs
+ * it — the renderer is `sh` and `sed`, and a mistake in either is invisible
+ * until the first alert that is not delivered.
+ */
+describe('alert delivery', () => {
+  const template = read('docker/observability/alertmanager/alertmanager.yml.template');
+
+  /** Runs the entrypoint against a scratch root, with `alertmanager` stood in by `cat`. */
+  const render = (env: Record<string, string>, password: string | null = 'pw') => {
+    const root = mkdtempSync(resolve(tmpdir(), 'alertmanager-'));
+    const script = read('docker/observability/alertmanager/entrypoint.sh')
+      .replaceAll('/etc/alertmanager/', `${root}/`)
+      .replaceAll('/run/secrets/', `${root}/`)
+      .replaceAll('/tmp/alertmanager.yml', `${root}/out.yml`)
+      .replace(/^exec \/bin\/alertmanager .*$/m, `cat "$OUT"`);
+    writeFileSync(resolve(root, 'alertmanager.yml.template'), template);
+    if (password !== null) writeFileSync(resolve(root, 'alert_smtp_password'), password);
+    writeFileSync(resolve(root, 'entrypoint.sh'), script);
+    return spawnSync('sh', [resolve(root, 'entrypoint.sh')], {
+      env: { PATH: process.env['PATH'] ?? '/usr/bin:/bin', NODE_ENV: 'test', ...env },
+      encoding: 'utf8',
+    });
+  };
+  const full = {
+    ALERT_SMTP_HOST: 'smtp.example.com:587',
+    ALERT_SMTP_USER: 'alerts@example.com',
+    ALERT_EMAIL_FROM: 'alerts@example.com',
+    ALERT_EMAIL_TO: 'ops@example.com',
+  };
+
+  it('renders a configuration that emails every alert to the address given', () => {
+    const run = render(full);
+    expect(run.status, run.stderr).toBe(0);
+    const out = run.stdout;
+    expect(out).toMatch(/^ {2}smtp_smarthost: 'smtp\.example\.com:587'$/m);
+    expect(out).toMatch(/^ {2}smtp_from: 'alerts@example\.com'$/m);
+    expect(out).toMatch(/^ {2}smtp_auth_password_file: \/run\/secrets\/alert_smtp_password$/m);
+    expect(out).toMatch(/^ {2}smtp_require_tls: true$/m);
+    expect(out).toMatch(/^ {6}- to: 'ops@example\.com'\n {8}send_resolved: true$/m);
+    // One receiver, and every route names it: no severity is routed nowhere.
+    const receivers = [...out.matchAll(/^ {2}- name: ([a-z-]+)$/gm)].map((m) => m[1]);
+    const routed = [...out.matchAll(/receiver: ([a-z-]+)$/gm)].map((m) => m[1]);
+    expect(receivers).toEqual(['email']);
+    expect(new Set(routed)).toEqual(new Set(['email']));
+    expect(out).not.toContain('@@');
+  });
+
+  it('never carries the password itself', () => {
+    const run = render(full, 'a-password-that-must-not-appear');
+    expect(run.stdout).not.toContain('a-password-that-must-not-appear');
+  });
+
+  it('refuses to start with any address missing, or without the password file', () => {
+    for (const name of Object.keys(full)) {
+      const run = render({ ...full, [name]: '' });
+      expect(run.status, name).not.toBe(0);
+      expect(run.stderr).toContain(name);
+    }
+    expect(render(full, null).status).not.toBe(0);
+    expect(render(full, '').status).not.toBe(0);
+  });
+
+  it('refuses a value that would break out of its quotes or the substitution', () => {
+    for (const bad of ["o'brien@example.com", 'a|b@example.com', 'a&b@example.com']) {
+      expect(render({ ...full, ALERT_EMAIL_TO: bad }).status, bad).not.toBe(0);
+    }
+  });
+
+  it('is where Prometheus sends its alerts, and every rule reaches it', () => {
+    expect(read('docker/observability/prometheus.yml')).toMatch(
+      /^alerting:\n {2}alertmanagers:\n {4}- static_configs:\n {8}- targets: \['alertmanager:9093'\]$/m,
+    );
+    expect(read('docker-compose.observability.yml')).toMatch(/^ {2}alertmanager:$/m);
+    // The only route matcher is on severity="warn", and it goes to the same
+    // receiver; every severity the rules use is one of the two it knows.
+    const severities = new Set(
+      [...read('docker/observability/alerts.yml').matchAll(/severity: ([a-z]+)/g)].map((m) => m[1]),
+    );
+    expect([...severities].sort()).toEqual(['page', 'warn']);
   });
 });

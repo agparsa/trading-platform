@@ -43,6 +43,12 @@ const COMPOSE_ONLY = new Set([
   'GRAFANA_ADMIN_PASSWORD',
   'GRAFANA_PORT',
   'PROMETHEUS_RETENTION',
+  // Read by the alertmanager service in docker-compose.observability.yml.
+  'ALERT_SMTP_HOST',
+  'ALERT_SMTP_USER',
+  'ALERT_SMTP_PASSWORD_FILE',
+  'ALERT_EMAIL_FROM',
+  'ALERT_EMAIL_TO',
   'POSTGRES_USER',
   'POSTGRES_PASSWORD',
   'POSTGRES_DB',

@@ -1,0 +1,34 @@
+# Alertmanager for the trading platform: every alert in alerts.yml, by email.
+#
+# A template, not a config: Alertmanager does not expand environment variables,
+# and the addresses belong to the deployment rather than to this repository.
+# `entrypoint.sh` fills the ALERT_* placeholders from the environment at start and
+# refuses to start with any of them empty. The SMTP password is never here and
+# never in the environment: it is read from the file mounted at
+# /run/secrets/alert_smtp_password (`smtp_auth_password_file`).
+global:
+  smtp_smarthost: '@@ALERT_SMTP_HOST@@'
+  smtp_from: '@@ALERT_EMAIL_FROM@@'
+  smtp_auth_username: '@@ALERT_SMTP_USER@@'
+  smtp_auth_password_file: /run/secrets/alert_smtp_password
+  smtp_require_tls: true
+
+route:
+  receiver: email
+  group_by: [alertname]
+  # A page is sent at once; a warning waits to see whether it clears.
+  group_wait: 30s
+  group_interval: 5m
+  # Still firing: say so again every four hours rather than every five minutes.
+  # An alarm that repeats until it is filtered is an alarm nobody reads.
+  repeat_interval: 4h
+  routes:
+    - matchers: ['severity="warn"']
+      receiver: email
+      group_wait: 5m
+
+receivers:
+  - name: email
+    email_configs:
+      - to: '@@ALERT_EMAIL_TO@@'
+        send_resolved: true

@@ -238,13 +238,22 @@ egress check passed, the upgrade reached step 8, recreating nginx failed with
 for several minutes** until `systemctl restart docker` recreated the chains.
 Containers that were already running were unaffected; only starting one is.
 
+**Since the same evening, it restores them too.** The owner chose a nightly
+restart over a manual one: `csfpost.sh` ends by checking for the `DOCKER`
+chain and, when a CSF load has removed it, restarts Docker ten seconds later in
+the background, logging to `/var/log/csfpost-docker.log`. That is about a
+minute of downtime after each CSF load — the nightly one is around 02:45 UTC —
+in exchange for deploys that always work. It was tested with `csf -r` on 25
+September: the chain was back, every container healthy and
+`verify:production` 21/21 within a minute.
+
 So `upgrade-server.sh` now asks both questions in step 1 — can a container
 reach the internet (`container-egress.sh`, three attempts, because the Alpine
 mirror here drops about one request in three even from the host), and are
 Docker's chains there (`docker-chains.sh`) — and stops before changing
-anything if either answer is no. After a night's CSF reload the site keeps
-serving and the workers keep their egress; the next deploy will stop and ask
-for a deliberate `systemctl restart docker` first.
+anything if either answer is no. With the restart above, the chains check
+should not say no; it stays as the guard for the day the hook does not do its
+job — someone removing `csfpost.sh`, or Docker failing to come back.
 
 ## Before anyone signs in
 

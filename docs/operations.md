@@ -135,8 +135,7 @@ Both have been built since, and this section kept saying otherwise:
   trusting it. See [observability.md](observability.md), _The order timeline_.
 - **Operational alerts** (§70): `docker/observability/alerts.yml` has a rule for
   every row of the table in [observability.md](observability.md), and that
-  correspondence is checked by a test. What is still not here is **routing** —
-  sending a firing alert to a pager or a phone is Alertmanager configuration
-  for whoever runs the deployment, and this repository does not presume to
-  write it. Until someone does, a firing alert is visible on Prometheus's alerts
-  page and wakes nobody.
+  correspondence is checked by a test. Routing was missing too, and is now
+  built: Alertmanager emails every alert (observability.md, _Where an alert
+  goes_). On devopss.ir the observability stack is not running yet; it waits on
+  the SMTP settings, which are the operator's.

@@ -91,9 +91,40 @@ so a panel can never be a flat line for a metric nobody emits.
 The alert rules in `docker/observability/alerts.yml` implement the table under
 _What to alert on_ below, one rule per row, and that correspondence is checked
 rather than asserted. Thresholds are starting points for a two-core deployment;
-the reasoning beside each is the part to keep when they are tuned. Routing them
-to a pager is Alertmanager configuration this repository does not presume to
-write.
+the reasoning beside each is the part to keep when they are tuned.
+
+### Where an alert goes
+
+By email, through Alertmanager, in the same compose file. Until 25 September
+there was no receiver: this page said routing was configuration the repository
+did not presume to write, so every rule above could fire and tell nobody. The
+owner chose email.
+
+| Setting                    | What                                                             |
+| -------------------------- | ---------------------------------------------------------------- |
+| `ALERT_SMTP_HOST`          | `host:port` of the SMTP server; TLS is required                  |
+| `ALERT_SMTP_USER`          | the SMTP login                                                   |
+| `ALERT_SMTP_PASSWORD_FILE` | a file holding only the password, `chmod 600` — never a variable |
+| `ALERT_EMAIL_FROM`         | the sender                                                       |
+| `ALERT_EMAIL_TO`           | who is told                                                      |
+
+`docker/observability/alertmanager/entrypoint.sh` renders the configuration
+from those at start and refuses to start with any of them empty or the password
+file missing — an alerting system that accepts every alert and tells nobody is
+the failure it replaces. A page is sent after 30 seconds, a warning after five
+minutes (it may clear), resolutions are sent too, and a firing alert is
+repeated every four hours rather than every five minutes. The rendered
+configuration and `prometheus.yml` were checked with the real `amtool` and
+`promtool`; `deployment.test.ts` runs the entrypoint as the container does.
+
+**On devopss.ir the observability stack is not running yet.** Starting it needs
+the five settings above and `GRAFANA_ADMIN_PASSWORD`, which are the operator's
+to set, then the third compose file:
+
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.cpanel.yml \
+  -f docker-compose.observability.yml --env-file .env.production up -d
+```
 
 ## Health
 
