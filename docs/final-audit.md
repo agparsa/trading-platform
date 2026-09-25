@@ -149,6 +149,12 @@ quietly edited:
   nothing. They are one transaction now, and a test breaks the outbox write to
   prove the finding does not survive alone.
 
+- **§17–24 named an Alerts tab as missing that exists.** Price alerts have had
+  their own tab in the terminal's activity panel, next to pending orders, since
+  they were built; the row still listed "Finance/Alerts/Logs tabs" among what
+  is not. Finance and Logs remain unbuilt and undesigned. `uiux.md`, which said
+  the same, is now checked against the tabs `terminal.tsx` renders.
+
 ### Decisions owed by the product owner
 
 Named here because the code cannot make them: `TRUSTED_PROXY_HOPS=2` and
