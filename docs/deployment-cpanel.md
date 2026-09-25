@@ -251,7 +251,7 @@ for a deliberate `systemctl restart docker` first.
 ```bash
 pnpm smoke        # the API answers and refuses what it should
 pnpm smoke:ws     # the realtime path survived all three hops
-pnpm pentest      # 25 attacks, all expected to fail
+pnpm pentest      # every attack in penetration-checklist.md, all expected to fail
 ```
 
 `pnpm smoke:ws` against the public hostname is the one that matters here. It is

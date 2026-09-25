@@ -297,7 +297,8 @@ people screen's changes disabled.
 
 ## The penetration checklist
 
-`pnpm pentest` boots the compiled API and attempts 22 attacks against it —
+`pnpm pentest` boots the compiled API and attempts every attack in
+[penetration-checklist.md](./penetration-checklist.md) against it —
 forged tokens, cross-account reads and writes, role escalation, SQL injection,
 prototype pollution, credential leakage in responses and errors, absurd order
 volumes, idempotency-key reuse, password guessing. An attack that succeeds fails
