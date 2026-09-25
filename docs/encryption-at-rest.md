@@ -10,7 +10,7 @@ the one row a database dump would hand an attacker something usable. With the
 shared secrets, they can generate valid second factors for every enrolled user,
 indefinitely.
 
-`apps/api/src/common/crypto/secret-box.ts` moves that target from the database to
+`packages/crypto-core/src/secret-box.ts` moves that target from the database to
 the key.
 
 ## The stored form

@@ -611,7 +611,7 @@ enabled for exactly one service, and that nothing but Nginx publishes a port. It
 runs as part of `pnpm test`, and it exists because each of those was wrong at
 least once.
 
-`apps/api/src/config/production-env.test.ts` does the same for
+`scripts/production-env.test.ts` does the same for
 `.env.production.example`: every variable the API or the worker cannot start
 without is declared in it, nothing is declared that nothing reads, and no secret
 ships with a value. That one caught a sealing key named `ENCRYPTION_KEYS` where
