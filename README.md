@@ -318,7 +318,7 @@ The ones worth knowing:
 | Variable                                   | Why it matters                                                       |
 | ------------------------------------------ | -------------------------------------------------------------------- |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Minimum 32 characters, or the API will not start                     |
-| `CREDENTIALS_ENCRYPTION_KEY`               | Seals 2FA secrets and stored credentials at rest                     |
+| `SECRET_ENCRYPTION_KEYS`                   | Seals 2FA secrets and stored credentials at rest; newest key first   |
 | `MARKET_SIMULATOR_SEED`                    | Fixes the market. Same seed ⇒ same ticks ⇒ same fills ⇒ same P&L     |
 | `MARKET_INGEST_ENABLED`                    | True on exactly one instance. Everywhere else, prices arrive relayed |
 | `TRIGGER_ENGINE_ENABLED`                   | True on exactly one instance, or positions close more than once      |
