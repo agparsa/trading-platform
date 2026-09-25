@@ -2233,7 +2233,10 @@ describe('the Docker chains check', () => {
     return spawnSync('/bin/sh', [check], {
       // Only the stand-in and the shell's own basics: a real iptables on this
       // machine must not answer for the host being described.
-      env: { PATH: `${directory}:/nonexistent` },
+      // `ProcessEnv` is declared with `NODE_ENV` required; the value is
+      // irrelevant here, and leaving the rest of this process's environment
+      // out is the point.
+      env: { NODE_ENV: 'test', PATH: `${directory}:/nonexistent` },
       encoding: 'utf8',
     }).status;
   };
