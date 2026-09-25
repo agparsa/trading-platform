@@ -38,6 +38,16 @@ and is deliberately not done by the container, which has no credentials for
 anywhere else and should not. The operator's copy job reads `latest.dump` and
 the dated files; it must not delete them.
 
+On devopss.ir the copy job is `scripts/pull-backup.sh`, run every six hours by
+the owner's health check from their Mac into `~/Documents/tp-backups` — the
+owner's choice on 25 September; until then every dump lived only on the
+server's own disk. It reads `status`, refuses a `FAILED` one, copies the dump
+it names, compares SHA-256 with the server's, and exits 4 when the newest
+backup is over twelve hours old, so a copy of an old file cannot hide a backup
+job that stopped. It deletes nothing: fourteen days are kept as 56 slots
+written over in turn. The dumps hold every trader's data, so the Mac's disk
+should be encrypted.
+
 ### Recovery point objective
 
 The interval **is** the RPO: with the default, up to six hours of trades exist

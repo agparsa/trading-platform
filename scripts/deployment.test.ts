@@ -2408,3 +2408,91 @@ describe('alert delivery', () => {
     expect([...severities].sort()).toEqual(['page', 'warn']);
   });
 });
+
+/**
+ * The off-server copy of the database dumps.
+ *
+ * The backup container writes a verified dump every six hours to the server's
+ * own disk, which is a copy rather than a backup. `pull-backup.sh` fetches the
+ * newest one to the owner's machine. Here the server is a directory and `ssh`
+ * is a stand-in that runs the remote command locally.
+ */
+describe('pulling a backup off the server', () => {
+  const script = resolve(ROOT, 'scripts/pull-backup.sh');
+  const setUp = (status: string, dump = 'a dump') => {
+    const root = mkdtempSync(resolve(tmpdir(), 'pull-'));
+    const remote = resolve(root, 'remote');
+    const local = resolve(root, 'local');
+    mkdirSync(remote);
+    writeFileSync(resolve(remote, 'status'), `${status}\n`);
+    writeFileSync(resolve(remote, 'trading_platform-20260925T192544Z.dump'), dump);
+    const ssh = resolve(root, 'ssh');
+    writeFileSync(ssh, '#!/bin/sh\n# stand-in: $1 is the host, $2 the command\nexec sh -c "$2"\n', {
+      mode: 0o755,
+    });
+    const run = () =>
+      spawnSync('sh', [script, 'tp-server', remote, local], {
+        env: { ...process.env, PULL_BACKUP_SSH: ssh },
+        encoding: 'utf8',
+      });
+    return { remote, local, run };
+  };
+  const fresh = () => {
+    const now = new Date();
+    const stamp = now
+      .toISOString()
+      .replace(/[-:]/g, '')
+      .replace(/\.\d+Z$/, 'Z');
+    return stamp;
+  };
+
+  it('copies the newest dump into a slot, with its checksum beside it', () => {
+    const { local, run } = setUp(
+      `${fresh()} OK trading_platform-20260925T192544Z.dump 6`,
+      'dump-1',
+    );
+    const result = run();
+    expect(result.status, result.stderr).toBe(0);
+    const slots = readdirSync(local).sort();
+    expect(slots).toHaveLength(2);
+    expect(readFileSync(resolve(local, slots[0]!), 'utf8')).toBe('dump-1');
+    expect(readFileSync(resolve(local, slots[1]!), 'utf8')).toMatch(
+      /^trading_platform-20260925T192544Z\.dump [0-9a-f]{64}\n$/,
+    );
+  });
+
+  it('does not copy again what the slot already holds', () => {
+    const { run } = setUp(`${fresh()} OK trading_platform-20260925T192544Z.dump 6`);
+    run();
+    expect(run().stdout).toMatch(/already holds/);
+  });
+
+  it('refuses a backup that failed, and copies nothing', () => {
+    // As backup.sh writes it, and with a dump name where the reason goes: the
+    // word FAILED is what refuses, not the shape of the rest of the line.
+    for (const status of [
+      '20260925T192544Z FAILED pg_dump',
+      '20260925T192544Z FAILED trading_platform-20260925T192544Z.dump 6',
+    ]) {
+      const { local, run } = setUp(status);
+      const result = run();
+      expect(result.status, status).toBe(3);
+      expect(result.stderr).toMatch(/FAILED/);
+      expect(existsSync(local) ? readdirSync(local) : []).toEqual([]);
+    }
+  });
+
+  it('copies an old backup but says the backup job has stopped', () => {
+    const result = setUp('20260101T000000Z OK trading_platform-20260925T192544Z.dump 6').run();
+    expect(result.status).toBe(4);
+    expect(result.stderr).toMatch(/backup job has stopped/);
+  });
+
+  it('never deletes: retention is slots written over in turn', () => {
+    const body = read('scripts/pull-backup.sh')
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('#'))
+      .join('\n');
+    expect(body).not.toMatch(/\brm\b|\bunlink\b|\bmv\b/);
+  });
+});
