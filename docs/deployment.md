@@ -165,7 +165,10 @@ NAT rules and every check here passed for thirteen hours while nothing could
 leave the host — see
 [deployment-cpanel.md](./deployment-cpanel.md#the-firewall-which-removes-dockers-rules-when-it-restarts).
 The upgrade script seeds `EGRESS_PROBE_URL` with the Alpine mirror the build
-reached.
+reached and the public Alpine CDN, and a worker asks them in turn, twice round,
+before it says no. It asked the mirror alone until 25 September, when the
+mirror stopped answering — from the host as well — and this check reported the
+workers cut off while they reached everything else.
 
 The script itself is tested: `verify-production.test.ts` runs it as a process
 against a fake deployment that answers every path as a healthy one does, then

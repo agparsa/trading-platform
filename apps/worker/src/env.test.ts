@@ -35,4 +35,17 @@ describe('worker env', () => {
       '0 3 * * *',
     );
   });
+
+  it('takes the reachability probe as a list of addresses, each one checked', () => {
+    expect(
+      validateEnv({
+        ...base,
+        EGRESS_PROBE_URL: ' https://mirror.example.org/alpine/ , https://cdn.example.com/ ',
+      }).EGRESS_PROBE_URL,
+    ).toBe('https://mirror.example.org/alpine/,https://cdn.example.com/');
+    expect(() =>
+      validateEnv({ ...base, EGRESS_PROBE_URL: 'https://mirror.example.org/,not a url' }),
+    ).toThrow(/EGRESS_PROBE_URL/);
+    expect(validateEnv({ ...base, EGRESS_PROBE_URL: 'off' }).EGRESS_PROBE_URL).toBe('off');
+  });
 });

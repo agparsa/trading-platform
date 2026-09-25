@@ -175,10 +175,20 @@ add_if_missing TENANT_DEFAULT_SLUG default \
 add_if_missing TENANT_HOST_STRICT false \
   "Turn on the moment a second tenant exists; see docs/multi-tenancy.md."
 # The worker's own reachability probe asks the host the build just proved it can
-# reach — the mirror when there is one — rather than the public CDN, which the
-# Alpine mirror script records as unreliable from inside containers here.
-add_if_missing EGRESS_PROBE_URL "$EGRESS_TARGET" \
-  "Where each worker asks whether it can reach the internet; see EgressProbe. 'off' to stop."
+# reach — the mirror when there is one — and then the public CDN. Either one
+# answering is a yes: on 25 September the mirror alone stopped answering, from
+# the host as well, and the check reported the workers cut off.
+PUBLIC_CDN=https://dl-cdn.alpinelinux.org/alpine/
+if [ "$EGRESS_TARGET" = "$PUBLIC_CDN" ]; then EGRESS_PROBES=$PUBLIC_CDN
+else EGRESS_PROBES="$EGRESS_TARGET,$PUBLIC_CDN"; fi
+add_if_missing EGRESS_PROBE_URL "$EGRESS_PROBES" \
+  "Where each worker asks whether it can reach the internet, in order; see EgressProbe. 'off' to stop."
+# The value this script itself wrote before the list existed — the mirror
+# alone — is widened. Anything an operator chose is left exactly as it is.
+if grep -qxF "EGRESS_PROBE_URL=$EGRESS_TARGET" "$ENV_FILE" && [ "$EGRESS_PROBES" != "$EGRESS_TARGET" ]; then
+  sed -i "s|^EGRESS_PROBE_URL=$EGRESS_TARGET\$|EGRESS_PROBE_URL=$EGRESS_PROBES|" "$ENV_FILE"
+  warn "EGRESS_PROBE_URL widened to '$EGRESS_PROBES'"
+fi
 
 # ---------------------------------------------------------------------------
 say "3/9  Database backup"

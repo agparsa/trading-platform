@@ -140,9 +140,27 @@ export const workerEnvSchema = z.object({
    * `off` stops the asking. The default is the Alpine CDN the images are built
    * from: public, neutral, and a host the deployment already depends on.
    * See `EgressProbe` in `@tp/shared-types` for why this exists.
+   *
+   * A comma-separated list, asked in order until one answers. One host was
+   * one host's health: on 25 September the Alpine mirror production asked
+   * stopped answering — from the host itself too — while every container
+   * reached the rest of the internet, and `verify:production` reported the
+   * workers cut off. Reachability is "something outside answers".
    */
   EGRESS_PROBE_URL: z
-    .union([z.literal('off'), z.string().url()])
+    .union([
+      z.literal('off'),
+      z
+        .string()
+        .transform((value) =>
+          value
+            .split(',')
+            .map((url) => url.trim())
+            .filter(Boolean),
+        )
+        .pipe(z.array(z.string().url()).min(1))
+        .transform((urls) => urls.join(',')),
+    ])
     .default('https://dl-cdn.alpinelinux.org/alpine/'),
   /** Comma-separated queue names a processor takes. Unset means every queue. */
   WORKER_QUEUES: z.string().optional(),

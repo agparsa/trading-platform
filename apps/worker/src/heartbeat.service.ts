@@ -38,6 +38,9 @@ export type EgressAsker = (url: string) => Promise<string | null>;
 
 export const EGRESS_ASKER = Symbol('EGRESS_ASKER');
 
+/** How many times round the list before the answer is no. */
+export const EGRESS_ROUNDS = 2;
+
 /**
  * A HEAD request with a deadline. Any status is an answer — a 404 from the
  * CDN still proves the way out is open. What fails is the network: the cause's
@@ -80,7 +83,8 @@ export class HeartbeatService implements OnApplicationBootstrap, OnModuleDestroy
   private egressTimer: NodeJS.Timeout | null = null;
   private stopped = false;
   private egress: EgressProbe | null = null;
-  private readonly egressUrl: string | null;
+  /** Asked in order until one answers; empty when the asking is off. */
+  private readonly egressUrls: readonly string[];
   private readonly ask: EgressAsker;
 
   constructor(
@@ -89,7 +93,13 @@ export class HeartbeatService implements OnApplicationBootstrap, OnModuleDestroy
     @Optional() @Inject(EGRESS_ASKER) ask?: EgressAsker,
   ) {
     const probe = config.get('EGRESS_PROBE_URL', { infer: true });
-    this.egressUrl = probe === undefined || probe === 'off' ? null : probe;
+    this.egressUrls =
+      probe === undefined || probe === 'off'
+        ? []
+        : probe
+            .split(',')
+            .map((url) => url.trim())
+            .filter(Boolean);
     this.ask = ask ?? askOverHttp;
     const assignment = workerAssignment(
       config.getOrThrow('WORKER_ROLE', { infer: true }),
@@ -157,7 +167,7 @@ export class HeartbeatService implements OnApplicationBootstrap, OnModuleDestroy
   }
 
   private scheduleEgress(): void {
-    if (this.stopped || this.egressUrl === null) return;
+    if (this.stopped || this.egressUrls.length === 0) return;
     this.egressTimer = setTimeout(() => {
       void this.askEgress().finally(() => {
         this.egressTimer = null;
@@ -173,14 +183,31 @@ export class HeartbeatService implements OnApplicationBootstrap, OnModuleDestroy
    * minutes: the heartbeat carries the state; the log carries the moment.
    */
   async askEgress(at: Date = new Date()): Promise<EgressProbe | null> {
-    if (this.egressUrl === null) return null;
-    const error = await this.ask(this.egressUrl);
+    if (this.egressUrls.length === 0) return null;
+    /**
+     * Each host in turn, twice round, stopping at the first answer. A no
+     * means every host failed every time: one timeout from one mirror is that
+     * mirror's afternoon, not a severed network.
+     */
+    const failures: string[] = [];
+    let answered: string | null = null;
+    for (let round = 0; round < EGRESS_ROUNDS && answered === null; round += 1) {
+      for (const url of this.egressUrls) {
+        const error = await this.ask(url);
+        if (error === null) {
+          answered = url;
+          break;
+        }
+        failures.push(`${new URL(url).host}: ${error}`);
+      }
+    }
     const next: EgressProbe = {
-      target: new URL(this.egressUrl).host,
-      ok: error === null,
+      target: new URL(answered ?? this.egressUrls[0]!).host,
+      ok: answered !== null,
       checkedAt: at.toISOString(),
-      error,
+      error: answered === null ? [...new Set(failures)].join('; ') : null,
     };
+    const error = next.error;
     if (this.egress?.ok !== next.ok) {
       if (next.ok) this.logger.log(`The worker can reach ${next.target}`);
       else this.logger.error(`The worker cannot reach ${next.target}: ${String(error)}`);

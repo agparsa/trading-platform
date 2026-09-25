@@ -129,12 +129,15 @@ describe('HeartbeatService', () => {
  */
 describe('HeartbeatService egress', () => {
   const at = new Date('2026-09-24T16:00:00Z');
-  const make = (env: Record<string, string | undefined>, answer: string | null) => {
+  const make = (
+    env: Record<string, string | undefined>,
+    answer: string | null | ((url: string, attempt: number) => string | null),
+  ) => {
     const store = fakeStore();
     const asked: string[] = [];
     const service = new HeartbeatService(config({ WORKER_ROLE: 'all', ...env }), store, (url) => {
       asked.push(url);
-      return Promise.resolve(answer);
+      return Promise.resolve(typeof answer === 'function' ? answer(url, asked.length) : answer);
     });
     const written = () => parseWorkerHeartbeat([...store.entries.values()][0]!.value);
     return { service, asked, written };
@@ -164,7 +167,52 @@ describe('HeartbeatService egress', () => {
     );
     await service.askEgress(at);
     await service.beat(at);
-    expect(written()?.egress).toMatchObject({ ok: false, error: 'ETIMEDOUT' });
+    expect(written()?.egress).toMatchObject({
+      ok: false,
+      error: 'mirror.example.org: ETIMEDOUT',
+    });
+  });
+
+  /**
+   * On 25 September the Alpine mirror production asked stopped answering —
+   * from the host too — while every container reached the rest of the
+   * internet, and `verify:production` said the workers were cut off.
+   */
+  it('asks the next host when one does not answer, and names the one that did', async () => {
+    const { service, asked, written } = make(
+      { EGRESS_PROBE_URL: 'https://mirror.example.org/, https://cdn.example.com/' },
+      (url) => (url.includes('mirror') ? 'ETIMEDOUT' : null),
+    );
+    await service.askEgress(at);
+    await service.beat(at);
+    expect(asked).toEqual(['https://mirror.example.org/', 'https://cdn.example.com/']);
+    expect(written()?.egress).toMatchObject({ ok: true, target: 'cdn.example.com', error: null });
+  });
+
+  it('goes round again before answering no: one timeout is not a severed network', async () => {
+    const { service, asked, written } = make(
+      { EGRESS_PROBE_URL: 'https://mirror.example.org/' },
+      (_url, attempt) => (attempt === 1 ? 'ETIMEDOUT' : null),
+    );
+    await service.askEgress(at);
+    await service.beat(at);
+    expect(asked).toHaveLength(2);
+    expect(written()?.egress).toMatchObject({ ok: true });
+  });
+
+  it('says no only when every host failed every time, naming each', async () => {
+    const { service, asked, written } = make(
+      { EGRESS_PROBE_URL: 'https://mirror.example.org/,https://cdn.example.com/' },
+      'ETIMEDOUT',
+    );
+    await service.askEgress(at);
+    await service.beat(at);
+    expect(asked).toHaveLength(4);
+    expect(written()?.egress).toMatchObject({
+      ok: false,
+      target: 'mirror.example.org',
+      error: 'mirror.example.org: ETIMEDOUT; cdn.example.com: ETIMEDOUT',
+    });
   });
 
   it('does not ask, and says it did not, when turned off', async () => {

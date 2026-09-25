@@ -2214,6 +2214,55 @@ describe('the container egress probe', () => {
 });
 
 /**
+ * The worker's reachability probe is seeded as a list — the build's mirror,
+ * then the public CDN — and the mirror-only value this script wrote before
+ * the list existed is widened. An operator's own value is never touched.
+ * Run as the script runs it, on sample env files.
+ */
+describe('seeding the reachability probe', () => {
+  const script = read('scripts/upgrade-server.sh');
+  const block = script.slice(
+    script.indexOf('PUBLIC_CDN='),
+    script.indexOf('fi\n', script.indexOf('widened to')) + 2,
+  );
+  const MIRROR = 'https://mirror.arvancloud.ir/alpine/';
+  const LIST = `${MIRROR},https://dl-cdn.alpinelinux.org/alpine/`;
+  const seed = (env: string, target = MIRROR): string => {
+    const file = resolve(mkdtempSync(resolve(tmpdir(), 'probe-')), 'env');
+    writeFileSync(file, env);
+    const run = spawnSync(
+      'bash',
+      [
+        '-c',
+        `warn(){ :; }; add_if_missing(){ grep -qE "^$1=" "$ENV_FILE" || printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"; }\n${block}`,
+      ],
+      { env: { ...process.env, ENV_FILE: file, EGRESS_TARGET: target }, encoding: 'utf8' },
+    );
+    expect(run.status, run.stderr).toBe(0);
+    return readFileSync(file, 'utf8');
+  };
+
+  it('seeds the mirror and the CDN when the setting is absent', () => {
+    expect(seed('A=1\n')).toContain(`EGRESS_PROBE_URL=${LIST}\n`);
+  });
+
+  it('widens the mirror-only value this script used to write', () => {
+    expect(seed(`EGRESS_PROBE_URL=${MIRROR}\n`)).toBe(`EGRESS_PROBE_URL=${LIST}\n`);
+  });
+
+  it("leaves an operator's own value exactly as it is", () => {
+    expect(seed('EGRESS_PROBE_URL=https://mine.example/\n')).toBe(
+      'EGRESS_PROBE_URL=https://mine.example/\n',
+    );
+  });
+
+  it('does not list the CDN twice when it is the build target', () => {
+    const cdn = 'https://dl-cdn.alpinelinux.org/alpine/';
+    expect(seed('A=1\n', cdn)).toContain(`EGRESS_PROBE_URL=${cdn}\n`);
+  });
+});
+
+/**
  * Before an upgrade touches anything, it asks whether Docker's own iptables
  * chains survived the last firewall reload.
  *
