@@ -221,8 +221,11 @@ exfiltration of every event from then on. Every route is `@SessionOnly()`.
 
 ## Not here, and why
 
-- **A developer portal.** The OpenAPI document the API already serves is the
-  reference; a page that renders it is Phase 12's remaining half.
+- **A separate developer portal.** The terminal's `/developer` page is the
+  reference — every route and the conventions, webhook verification among
+  them, fetched from the running API (see `developer-reference.md`). This
+  entry said a page rendering the OpenAPI document was still to be built, for
+  as long as that page existed.
 - **Per-endpoint rate limiting.** A receiver that cannot keep up answers
   slowly or with 429, which is a failure and is retried on the schedule.
 
