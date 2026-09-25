@@ -16,15 +16,32 @@
 # directly, before anything is backed up, merged or built, and names the cause.
 #
 # EGRESS_TARGET is where to ask: the Alpine mirror the build will use.
+#
+# Asked up to three times, and "no" only if all three fail. On 25 September,
+# with egress restored, one eight-second attempt timed out against the Iranian
+# Alpine mirror — which the host itself, outside Docker, also failed to reach
+# about one time in three — and the upgrade stopped on a network that worked.
+# A single timeout is not a severed network.
 set -u
 
 TARGET=${EGRESS_TARGET:-https://dl-cdn.alpinelinux.org/alpine/}
 
 "$@" exec -T api node -e '
-  fetch(process.argv[1], { method: "HEAD", signal: AbortSignal.timeout(8000) })
-    .then(() => process.exit(0))
-    .catch((error) => {
-      console.error(String((error.cause && (error.cause.code || error.cause.message)) || error.message));
-      process.exit(3);
-    });
+  const ask = () =>
+    fetch(process.argv[1], { method: "HEAD", signal: AbortSignal.timeout(8000) });
+  const why = (error) =>
+    String((error.cause && (error.cause.code || error.cause.message)) || error.message);
+  (async () => {
+    let last = "no answer";
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        await ask();
+        process.exit(0);
+      } catch (error) {
+        last = why(error);
+      }
+    }
+    console.error(last + " (3 attempts)");
+    process.exit(3);
+  })();
 ' "$TARGET"

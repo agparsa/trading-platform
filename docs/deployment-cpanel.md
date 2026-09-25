@@ -221,7 +221,30 @@ every load. It has to restore, for the address pools in
 `/etc/docker/daemon.json` (`172.17.0.0/12`, which is `172.16.0.0/12`, and
 `192.168.0.0/16`), the NAT that lets containers out and the `FORWARD` accepts
 that let their traffic through. That is a change to the host's firewall; it
-belongs to whoever administers the host, and it has not been made.
+belongs to whoever administers the host.
+
+**On this host it was made on 25 September 2026**, with the owner's approval:
+`/etc/csf/csfpost.sh` adds, for `172.16.0.0/12` and `192.168.0.0/16`, a
+`MASQUERADE` for traffic leaving the range and `FORWARD` accepts for traffic
+from it and for replies to it. Backups of the rules and of `csf.conf` from
+before are in `/root`. After `csf -r` the rules were there and containers
+reached the internet without a Docker restart.
+
+**What it does not restore: Docker's own chains.** A CSF reload also removes
+the `DOCKER` chain in the `nat` table, which Docker adds a rule to whenever it
+starts a container with a published port. That surfaced the same day: the
+egress check passed, the upgrade reached step 8, recreating nginx failed with
+"iptables: No chain/target/match by that name", and the site answered **503
+for several minutes** until `systemctl restart docker` recreated the chains.
+Containers that were already running were unaffected; only starting one is.
+
+So `upgrade-server.sh` now asks both questions in step 1 — can a container
+reach the internet (`container-egress.sh`, three attempts, because the Alpine
+mirror here drops about one request in three even from the host), and are
+Docker's chains there (`docker-chains.sh`) — and stops before changing
+anything if either answer is no. After a night's CSF reload the site keeps
+serving and the workers keep their egress; the next deploy will stop and ask
+for a deliberate `systemctl restart docker` first.
 
 ## Before anyone signs in
 

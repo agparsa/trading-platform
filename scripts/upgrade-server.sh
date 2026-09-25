@@ -127,6 +127,26 @@ else
   echo "    a container can reach $EGRESS_TARGET"
 fi
 
+# Are Docker's own chains there? A different question from egress: see
+# docker-chains.sh, and the 503 of 25 September it was written after.
+chains_status=0
+sh scripts/docker-chains.sh || chains_status=$?
+if [ "$chains_status" -eq 3 ]; then
+  die "Docker's iptables chains are missing (the nat table has no DOCKER chain).
+Nothing has been changed; the running version keeps serving.
+
+A CSF reload removes them, and restoring egress does not bring them back. With
+them missing, starting a container with a published port fails — step 8 would
+recreate nginx and the site would answer 503 until Docker was restarted, which
+is what happened on 25 September. Deliberately:
+    systemctl restart docker        (recreates them; every container restarts)
+then run this again. See docs/deployment-cpanel.md."
+elif [ "$chains_status" -ne 0 ]; then
+  warn "Could not read iptables to check Docker's chains (exit $chains_status); carrying on."
+else
+  echo "    Docker's iptables chains are in place"
+fi
+
 # ---------------------------------------------------------------------------
 say "2/9  Environment variables this build requires"
 # ---------------------------------------------------------------------------

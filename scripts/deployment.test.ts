@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -2124,6 +2124,53 @@ describe('the container egress probe', () => {
     expect(refused.stderr).toMatch(/ECONNREFUSED/);
   });
 
+  /**
+   * One eight-second timeout against a flaky mirror is not a severed network.
+   * On 25 September the upgrade stopped on exactly that, with egress working.
+   * A server that drops the first two requests and answers the third stands
+   * in for the mirror; a server that drops every one, for a cut-off host.
+   */
+  const flakyServer = async (answerOn: number) => {
+    const server = spawn(
+      process.execPath,
+      [
+        '-e',
+        `let n = 0;
+         const s = require('node:http').createServer((q, r) => {
+           n += 1;
+           if (n < ${answerOn}) { q.socket.destroy(); return; }
+           r.end('ok');
+         });
+         s.listen(0, '127.0.0.1', () => console.log(s.address().port));`,
+      ],
+      { stdio: ['ignore', 'pipe', 'inherit'] },
+    );
+    const port = await new Promise<string>((done) =>
+      server.stdout.once('data', (chunk: Buffer) => done(chunk.toString().trim())),
+    );
+    return { url: `http://127.0.0.1:${port}/`, stop: () => server.kill() };
+  };
+
+  it('asks again before answering no: a mirror that answers on the third try is reachable', async () => {
+    const mirror = await flakyServer(3);
+    try {
+      expect(withStandIn(mirror.url).status).toBe(0);
+    } finally {
+      mirror.stop();
+    }
+  });
+
+  it('answers no after three failures, and says it tried three times', async () => {
+    const mirror = await flakyServer(99);
+    try {
+      const refused = withStandIn(mirror.url);
+      expect(refused.status).toBe(3);
+      expect(refused.stderr).toMatch(/3 attempts/);
+    } finally {
+      mirror.stop();
+    }
+  });
+
   it('does not call a missing container a missing network', () => {
     // `false` stands in for a compose command that cannot exec: not an answer.
     const status = withStandIn('data:,x', 'false').status;
@@ -2163,5 +2210,58 @@ describe('the container egress probe', () => {
     expect(text).toMatch(/csfpost\.sh/);
     expect(text).toMatch(/FORWARD/);
     expect(handling).not.toMatch(/so it does not recur, CSF's Docker support/);
+  });
+});
+
+/**
+ * Before an upgrade touches anything, it asks whether Docker's own iptables
+ * chains survived the last firewall reload.
+ *
+ * On 25 September egress had been restored after a CSF reload and the egress
+ * check passed; step 8 then recreated nginx, Docker could not add the DNAT
+ * rule for its published port to a DOCKER chain CSF had removed, and the site
+ * answered 503 until Docker was restarted. A stand-in `iptables` on PATH plays
+ * each state of the host.
+ */
+describe('the Docker chains check', () => {
+  const check = resolve(ROOT, 'scripts/docker-chains.sh');
+  const withIptables = (body: string | null) => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'chains-'));
+    if (body !== null) {
+      writeFileSync(resolve(directory, 'iptables'), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    }
+    return spawnSync('/bin/sh', [check], {
+      // Only the stand-in and the shell's own basics: a real iptables on this
+      // machine must not answer for the host being described.
+      env: { PATH: `${directory}:/nonexistent` },
+      encoding: 'utf8',
+    }).status;
+  };
+
+  it('answers yes when the nat table has a DOCKER chain', () => {
+    expect(withIptables('exit 0')).toBe(0);
+  });
+
+  it('answers no — exit 3 — when the table reads and the chain is gone', () => {
+    expect(withIptables('[ "$3" = "-S" ] && [ "$#" -eq 3 ] && exit 0; exit 1')).toBe(3);
+  });
+
+  it('does not call an unreadable table a missing chain', () => {
+    // Not root, or no iptables at all: not an answer.
+    for (const state of ['exit 4', null]) {
+      const status = withIptables(state);
+      expect(status).not.toBe(0);
+      expect(status).not.toBe(3);
+    }
+  });
+
+  it('is asked in step 1, after egress and before anything changes, and stops on a no', () => {
+    const script = read('scripts/upgrade-server.sh');
+    const asked = script.indexOf('scripts/docker-chains.sh');
+    expect(asked).toBeGreaterThan(script.indexOf('scripts/container-egress.sh'));
+    expect(asked).toBeLessThan(script.indexOf('say "2/9'));
+    const handling = script.slice(asked, script.indexOf('say "2/9'));
+    expect(handling).toMatch(/chains_status" -eq 3[\s\S]*die "/);
+    expect(handling).toMatch(/systemctl restart docker/);
   });
 });
