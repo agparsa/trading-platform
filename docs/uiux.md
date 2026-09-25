@@ -16,7 +16,9 @@ order ticket — collapsing to one scrolling column below `lg`. The account stri
 sits under the header; toasts and the shortcut card float.
 
 The activity panel's tabs today are **Positions (n) · Pending (n) · Trades ·
-Closed · Orders**.
+Closed · Orders · Alerts**. `scripts/uiux-doc.test.ts` reads this line against
+the tabs `terminal.tsx` renders; it had stopped at Orders for as long as the
+Alerts tab had existed.
 
 ---
 
@@ -121,13 +123,14 @@ Stated rather than stubbed. None of this is built:
   `PendingOrderType` is `LIMIT | STOP` — adding stop-limit is an engine change
   (a second trigger price, and a resting order that becomes a limit rather than
   filling), not a control on a form.
-- **Trailing stop and expiry on the ticket.** Trailing exists on an open
-  position; neither is offered at entry.
+- **Trailing stop on the ticket.** Trailing exists on an open position and is
+  not offered at entry. (Expiry is: a resting order is GTC or Day. This entry
+  used to list expiry as missing too.)
 - **Estimated swap in the ticket.** Swap depends on how many nights a position
   is held, which nobody knows at entry. Showing "per night" would be honest and
   is not built; showing a total would not be.
-- **Finance, Alerts and Logs tabs.** Alerts are Phase 8. Finance and Logs have
-  no design.
+- **Finance and Logs tabs.** Neither has a design. (Alerts is built — price
+  alerts have their own tab, next to pending orders; see `price-alerts.md`.)
 - **Multi-select with "Close (n)"** in the positions panel, and filter/export
   there. Close-all now exists as a command; selecting a subset does not.
 - **The edit-position dialog with the calculator's other modes.** The editor is
