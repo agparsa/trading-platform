@@ -2143,4 +2143,25 @@ describe('the container egress probe', () => {
     expect(handling).toMatch(/MASQUERADE/);
     expect(handling).toMatch(/systemctl restart docker/);
   });
+
+  /**
+   * The message and the page used to send an operator to CSF's `DOCKER = "1"`
+   * as the lasting fix. On the host it was written for that cannot work: the
+   * option's rules name one bridge (`docker0`), the compose networks are
+   * `br-…` bridges, and the FORWARD policy is DROP. The refusal now points at
+   * the page that says so, and the page must keep saying it.
+   */
+  it('points at a page that explains the lasting fix, and not at CSF DOCKER mode as one', () => {
+    const script = read('scripts/upgrade-server.sh');
+    const handling = script.slice(
+      script.indexOf('scripts/container-egress.sh'),
+      script.indexOf('say "2/9'),
+    );
+    const page = /docs\/[a-z-]+\.md/.exec(handling)?.[0];
+    expect(page).toBe('docs/deployment-cpanel.md');
+    const text = read(page!);
+    expect(text).toMatch(/csfpost\.sh/);
+    expect(text).toMatch(/FORWARD/);
+    expect(handling).not.toMatch(/so it does not recur, CSF's Docker support/);
+  });
 });

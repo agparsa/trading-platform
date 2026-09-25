@@ -113,13 +113,14 @@ if [ "$egress_status" -eq 3 ]; then
   die "A container on this host cannot reach $EGRESS_TARGET (${egress_said:-no answer}).
 Nothing has been changed; the running version keeps serving.
 
-The usual cause is a firewall restart that removed Docker's iptables rules — an
-automatic CSF upgrade did exactly this on 24 September. Check:
+The usual cause is a firewall restart that removed Docker's iptables rules —
+the nightly cPanel update restarts CSF, which did this on 24 and 25 September.
+Check:
     iptables -t nat -S POSTROUTING | grep MASQUERADE     (empty = the rules are gone)
 Then, deliberately:
     systemctl restart docker        (restores them; every container restarts)
-and, so it does not recur, CSF's Docker support (DOCKER = \"1\" in csf.conf,
-with DOCKER_NETWORK4 covering the compose address pools). See docs/deployment.md."
+It recurs at the next CSF restart. CSF's DOCKER = \"1\" does not cover compose
+bridges on this host; see docs/deployment-cpanel.md for what does."
 elif [ "$egress_status" -ne 0 ]; then
   warn "Could not ask whether a container can reach $EGRESS_TARGET (exit $egress_status); carrying on."
 else

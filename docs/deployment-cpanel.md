@@ -190,10 +190,14 @@ through the host's proxy), so the site keeps serving and nothing looks wrong.
 What breaks is everything that leaves: builds, webhooks, push, mail.
 
 On 24 September 2026 at 02:40 an **automatic** CSF upgrade (v16.31 → v16.32)
-did exactly this. Every upgrade after it stopped at step 5, reporting
+did exactly this, and on 25 September at 02:45 it happened again: lfd logged
+"cPanel upgrade detected, restarting ConfigServer services". That is the
+nightly cPanel update, so on this host **it recurs every night** unless the
+host is changed. Every upgrade after it stopped at step 5, reporting
 `apk … DNS: transient error` and "no such package". `upgrade-server.sh` now
 asks first, from inside the running API container, and stops before changing
-anything with the cause and the check:
+anything with the cause and the check; `verify:production` fails its
+"workers can reach the internet" check for the same reason.
 
 ```
 iptables -t nat -S POSTROUTING | grep MASQUERADE   # nothing printed: Docker's rules are gone
@@ -201,12 +205,23 @@ systemctl restart docker                           # puts them back; every conta
 ```
 
 A Docker restart is the immediate fix, not the lasting one: the next CSF
-restart or upgrade removes them again. The lasting one is CSF's own Docker
-support — `DOCKER = "1"` in `/etc/csf/csf.conf`, with `DOCKER_NETWORK4`
-covering the address pools in `/etc/docker/daemon.json` (on this host
-`172.17.0.0/12` and `192.168.0.0/16`; CSF's default is `172.17.0.0/16`, which
-misses the compose networks) — then `csf -r` and a Docker restart. Both are
-changes to the host's firewall and belong to whoever administers it.
+restart removes the rules again.
+
+**CSF's own Docker support is not enough on this host.** This page used to
+recommend it (`DOCKER = "1"` with `DOCKER_NETWORK4`). Looked at on the host, it
+cannot work here: the rules CSF generates for it are written for one bridge,
+`DOCKER_DEVICE` (`docker0`), while this platform's containers sit on compose
+bridges (`br-…`, `172.16.1.0/24`, and another application's on
+`172.16.2.0/24`), and the host's `FORWARD` policy is `DROP`. Traffic from
+those bridges would still be dropped with the option on.
+
+What the host needs is what CSF's configuration file itself says to use when
+its generated rules do not fit: `/etc/csf/csfpost.sh`, which CSF runs after
+every load. It has to restore, for the address pools in
+`/etc/docker/daemon.json` (`172.17.0.0/12`, which is `172.16.0.0/12`, and
+`192.168.0.0/16`), the NAT that lets containers out and the `FORWARD` accepts
+that let their traffic through. That is a change to the host's firewall; it
+belongs to whoever administers the host, and it has not been made.
 
 ## Before anyone signs in
 
