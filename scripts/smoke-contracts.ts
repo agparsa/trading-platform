@@ -220,6 +220,28 @@ async function signIn(email: string, extra: Record<string, unknown> = {}): Promi
   return answer.accessToken;
 }
 
+/**
+ * Two instruments that trade now, and the decimal places a price for the first
+ * takes. FX on a weekday; crypto, which never closes, at the weekend. The run
+ * used to fail every Saturday waiting for a EURUSD price the engine is right
+ * not to publish while the market is shut.
+ */
+async function openPair(token: string): Promise<[string, string, number]> {
+  const symbols = (await request(token, 'GET', '/symbols')) as Array<{
+    code: string;
+    tickSize: string;
+    market?: { tradeable: boolean };
+  }>;
+  const open = (code: string) => symbols.find((s) => s.code === code)?.market?.tradeable === true;
+  const pair = [
+    ['EURUSD', 'GBPUSD'],
+    ['BTCUSD', 'ETHUSD'],
+  ].find(([a, b]) => open(a!) && open(b!));
+  if (pair === undefined) throw new Error('setup: neither the FX nor the crypto pair is open');
+  const tick = symbols.find((s) => s.code === pair[0])!.tickSize;
+  return [pair[0]!, pair[1]!, tick.split('.')[1]?.length ?? 0];
+}
+
 async function freshQuote(token: string, symbol: string) {
   // The API answers /health before the simulator's first tick; wait for a fresh price.
   for (const deadline = Date.now() + 20_000; Date.now() < deadline; await sleep(500)) {
@@ -241,7 +263,8 @@ const SUBSCRIPTIONS: ReadonlyArray<Record<string, unknown>> = [
   { channel: 'positions' },
   { channel: 'account' },
   { channel: 'pnl' },
-  { channel: 'candles', symbols: ['EURUSD'], resolutions: ['1'] },
+  // Both halves of `openPair`: a candle only forms while its market trades.
+  { channel: 'candles', symbols: ['EURUSD', 'BTCUSD'], resolutions: ['1'] },
 ];
 
 async function openSocket(token: string, frames: Map<string, unknown[]>): Promise<Socket> {
@@ -332,33 +355,34 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
   answers.socket = await openSocket(traderToken, answers.frames);
 
   // --- Trading: an open position, a closed trade, a resting order.
-  const eurusd = await freshQuote(traderToken, 'EURUSD');
-  await freshQuote(traderToken, 'GBPUSD');
-  const order = { accountId, symbol: 'EURUSD', side: 'BUY', volume: '0.10' };
+  const [MAIN, OTHER, places] = await openPair(traderToken);
+  const quote = await freshQuote(traderToken, MAIN);
+  await freshQuote(traderToken, OTHER);
+  const order = { accountId, symbol: MAIN, side: 'BUY', volume: '0.10' };
   answers.record('POST /orders/preview', await as.trader('POST', '/orders/preview', order));
   const ack = answers.record('POST /orders', await as.trader('POST', '/orders', order)) as {
     orderId: string;
   };
   ids['order'] = ack.orderId;
-  await as.trader('POST', '/orders', { accountId, symbol: 'GBPUSD', side: 'SELL', volume: '0.10' });
+  await as.trader('POST', '/orders', { accountId, symbol: OTHER, side: 'SELL', volume: '0.10' });
   const open = (await request(traderToken, 'GET', '/positions', {
     query: { accountId },
   })) as Array<{
     id: string;
     symbol: string;
   }>;
-  const gbp = open.find((position) => position.symbol === 'GBPUSD');
-  if (gbp === undefined) throw new Error('setup: the GBPUSD position did not open');
+  const gbp = open.find((position) => position.symbol === OTHER);
+  if (gbp === undefined) throw new Error(`setup: the ${OTHER} position did not open`);
   await as.trader('POST', `/positions/${gbp.id}/close`, {});
   answers.record(
     'POST /orders/pending',
     await as.trader('POST', '/orders/pending', {
       accountId,
-      symbol: 'EURUSD',
+      symbol: MAIN,
       side: 'BUY',
       type: 'LIMIT',
       volume: '0.10',
-      price: (Number(eurusd.bid) * 0.9).toFixed(5),
+      price: (Number(quote.bid) * 0.9).toFixed(places),
     }),
   );
   // close-all, on somebody else's book so the trader's stays open to be read.
@@ -371,19 +395,19 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
   // A resting order withdrawn, for `order.cancelled`.
   const withdrawn = (await as.trader('POST', '/orders/pending', {
     accountId,
-    symbol: 'EURUSD',
+    symbol: MAIN,
     side: 'BUY',
     type: 'LIMIT',
     volume: '0.10',
-    price: (Number(eurusd.bid) * 0.8).toFixed(5),
+    price: (Number(quote.bid) * 0.8).toFixed(places),
   })) as { orderId: string };
   await as.trader('DELETE', `/orders/${withdrawn.orderId}`);
 
   // --- The trader's other things.
   const alertBody = {
-    symbol: 'EURUSD',
+    symbol: MAIN,
     condition: 'ABOVE',
-    price: (Number(eurusd.bid) * 1.2).toFixed(5),
+    price: (Number(quote.bid) * 1.2).toFixed(places),
   };
   answers.record('POST /alerts', await as.trader('POST', '/alerts', alertBody));
   const doomed = (await as.trader('POST', '/alerts', alertBody)) as { id: string };
@@ -1010,6 +1034,8 @@ function isEmptyList(data: unknown): boolean {
 if (process.argv[1]?.endsWith('smoke-contracts.ts')) {
   main().catch((error: unknown) => {
     console.error(error);
-    process.exitCode = 1;
+    // Exit, not just set the code: a setup failure leaves the trader's socket
+    // open, and the run then sat on it indefinitely instead of failing.
+    process.exit(1);
   });
 }
