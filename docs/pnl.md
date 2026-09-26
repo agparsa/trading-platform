@@ -16,7 +16,18 @@ short is the mirror image.
 Valuing an open position at the mid price would overstate every account's equity
 by half the spread per position. That is a systematic error across the whole
 book, not a rounding detail — so `sides.ts` is the single place this decision
-is made, and nothing else in the codebase picks a price side.
+is made, and nothing else in the codebase picks a price side. Code that needs a
+Decimal calls `entryPriceFor` / `exitPriceFor`; code that needs the quote's own
+string (a price shown as the feed printed it) reads `quote[entrySideOf(side)]` or
+`quote[exitSideOf(side)]`.
+
+This was a description rather than a rule until `scripts/price-sides.test.ts`:
+five other files — the server's valuation of every open position among them —
+each chose with their own `side === 'BUY' ? … : …`. All were right; none was
+checked. The test now finds every conditional in `apps/` and `packages/` whose
+branches are a bid and an ask, and fails on any outside `sides.ts`. The one
+exemption is the mock venue in `broker-sdk`, which stands in for the exchange
+rather than the platform.
 
 ## Gross P&L
 
@@ -134,5 +145,7 @@ marks longs at the bid.
 ## Break-even
 
 `breakEvenPrice()` returns the price at which gross P&L exactly offsets a given
-cost (commission plus accrued swap). It is used for the break-even marker on the
-chart and to sanity-check protective levels.
+cost (commission plus accrued swap). It is tested and exported, and **nothing
+calls it yet**: this page used to say it drew the break-even marker on the chart
+and sanity-checked protective levels, and the chart has no such marker and no
+check uses it.

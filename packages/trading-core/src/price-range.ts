@@ -1,3 +1,4 @@
+import { exitSideOf } from '@tp/financial-core';
 import type { CloseReason, OrderSide } from '@tp/shared-types';
 import { evaluateProtectiveTrigger, type ProtectiveLevels, type Quote } from './protective-orders';
 import { shouldTriggerPending, waitsForFall, type PendingOrderType } from './pending-orders';
@@ -88,5 +89,7 @@ export function shouldTriggerPendingOverRange(
  * asked for.
  */
 export function bestExitInRange(side: OrderSide, range: PriceRange): string {
-  return side === 'BUY' ? range.maxBid : range.minAsk;
+  // The best of each side: the highest bid for a long, the lowest ask for a short.
+  const best = { bid: range.maxBid, ask: range.minAsk };
+  return best[exitSideOf(side)];
 }

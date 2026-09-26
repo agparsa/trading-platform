@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState } from 'react';
 import { cn } from '@tp/ui';
+import { entrySideOf } from '@tp/financial-core';
 import { DomainError } from '@tp/shared-types';
 import { price as formatPrice, utcTime, volume as formatVolume } from '@/lib/format';
 import { distanceInPoints, triggerSide } from '@/lib/points';
@@ -133,7 +134,7 @@ export function PendingPanel({
                       title={
                         reference === null
                           ? 'No live quote for this instrument yet'
-                          : `Against the ${order.side === 'BUY' ? 'ask' : 'bid'} of ${reference}`
+                          : `Against the ${entrySideOf(order.side)} of ${reference}`
                       }
                     >
                       {distance === null ? '—' : `${distance} pt`}

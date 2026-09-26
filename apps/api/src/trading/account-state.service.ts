@@ -8,6 +8,7 @@ import {
   toDecimal,
   type AccountState,
   type Decimal,
+  exitSideOf,
 } from '@tp/financial-core';
 import type { SymbolExposure } from '@tp/risk-core';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
@@ -122,7 +123,7 @@ export class AccountStateService {
       let stale = true;
 
       if (tick !== null) {
-        const exit = position.side === 'BUY' ? tick.bid : tick.ask;
+        const exit = tick[exitSideOf(position.side)];
         currentPrice = exit;
         stale = false;
         pnl = grossPnl({

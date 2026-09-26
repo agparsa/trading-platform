@@ -11,6 +11,7 @@
  * never stored, and nothing is decided from it — the server decides when an
  * order fires, using decimal arithmetic, against its own quote.
  */
+import { entrySideOf } from '@tp/financial-core';
 
 /**
  * How far `orderPrice` is from `reference`, in whole points, or `null` when
@@ -48,5 +49,5 @@ export function triggerSide(
   quote: { bid: string; ask: string } | undefined,
 ): string | null {
   if (quote === undefined) return null;
-  return side === 'BUY' ? quote.ask : quote.bid;
+  return quote[entrySideOf(side)];
 }

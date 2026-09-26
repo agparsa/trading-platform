@@ -17,11 +17,26 @@ export interface Quote {
  * error, not a rounding detail.
  */
 export function entryPriceFor(side: Side, quote: Quote): Decimal {
-  return side === 'BUY' ? toDecimal(quote.ask) : toDecimal(quote.bid);
+  return toDecimal(quote[entrySideOf(side)]);
 }
 
 export function exitPriceFor(side: Side, quote: Quote): Decimal {
-  return side === 'BUY' ? toDecimal(quote.bid) : toDecimal(quote.ask);
+  return toDecimal(quote[exitSideOf(side)]);
+}
+
+/**
+ * The side of the book an order in this direction deals on: a buy lifts the
+ * ask, a sell hits the bid. For callers that need the quote's own string — a
+ * price shown as the feed printed it, or compared as text — rather than a
+ * Decimal. `scripts/price-sides.test.ts` holds every other file to these.
+ */
+export function entrySideOf(side: Side): 'ask' | 'bid' {
+  return side === 'BUY' ? 'ask' : 'bid';
+}
+
+/** The side a position in this direction is valued and closed on. */
+export function exitSideOf(side: Side): 'ask' | 'bid' {
+  return side === 'BUY' ? 'bid' : 'ask';
 }
 
 /** Price direction multiplier: +1 for a long, -1 for a short. */

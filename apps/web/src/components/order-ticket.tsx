@@ -1,5 +1,6 @@
 'use client';
 
+import { entrySideOf } from '@tp/financial-core';
 import { marketNotice } from '../lib/market-state';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@tp/ui';
@@ -102,7 +103,7 @@ export function OrderTicket({
     setTakeProfit(preferences.defaultTakeProfit);
   }, [preferences.defaultTakeProfit]);
 
-  const executable = quote === undefined ? null : side === 'BUY' ? quote.ask : quote.bid;
+  const executable = quote === undefined ? null : quote[entrySideOf(side)];
   const resting = orderType === 'MARKET' ? null : restingPrice.trim();
 
   // Protective levels on a resting order are measured against the price the

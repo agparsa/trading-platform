@@ -1,4 +1,10 @@
-import { grossPnl, normalizePrice, toDecimal, type SymbolSpec } from '@tp/financial-core';
+import {
+  entrySideOf,
+  grossPnl,
+  normalizePrice,
+  toDecimal,
+  type SymbolSpec,
+} from '@tp/financial-core';
 import { DomainError } from '@tp/shared-types';
 import { validatePendingPrice, validateProtectiveLevels } from '@tp/trading-core';
 import { distanceInPoints } from './points';
@@ -245,7 +251,7 @@ export function pendingLevelsFor(
   for (const order of orders) {
     if (order.symbol !== symbolCode) continue;
 
-    const reference = quote === undefined ? null : order.side === 'BUY' ? quote.ask : quote.bid;
+    const reference = quote === undefined ? null : quote[entrySideOf(order.side)];
     const away = distanceInPoints(order.price, reference, spec?.pricePrecision ?? 2);
     const suffix = away === null ? '' : `  ${away} pt`;
 
