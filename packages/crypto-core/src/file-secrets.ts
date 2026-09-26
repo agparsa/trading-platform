@@ -54,6 +54,8 @@ export const FILE_BACKED_SECRETS: readonly string[] = [
   'APNS_CREDENTIALS_JSON',
   'POSTGRES_PASSWORD',
   'GRAFANA_ADMIN_PASSWORD',
+  /** The SMTP login the API sends verification and reset mail through. */
+  'EMAIL_SMTP_PASSWORD',
 ];
 
 export interface FileSecretsOptions {

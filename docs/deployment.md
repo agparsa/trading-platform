@@ -484,6 +484,40 @@ holds no financial truth — losing it costs a cache warm-up and a round of clie
 re-snapshots. What to do when the database is gone, and how long it takes, is
 [disaster-recovery.md](./disaster-recovery.md).
 
+## Email
+
+The API sends three kinds of mail: the address check at registration, the
+password-reset link, and a notice when an account is signed into from a new
+device. Until `EMAIL_PROVIDER=smtp` existed, production could send none of
+them — `log` is refused in production and `none` discards — so a trader who
+forgot a password asked for a reset, was told a link had been sent, and none
+ever came.
+
+```
+EMAIL_PROVIDER=smtp
+EMAIL_SMTP_HOST=smtp.example.com:587     # 465 = TLS from the start
+EMAIL_SMTP_USER=mailer@example.com
+EMAIL_SMTP_PASSWORD=…                    # or EMAIL_SMTP_PASSWORD_FILE
+EMAIL_FROM=no-reply@trade.example.com    # an address that login may send as
+```
+
+The API refuses to start with `smtp` and any of these missing, or with the
+placeholder `EMAIL_FROM`. It never speaks to the server in the clear: port 465
+is TLS throughout, and on any other port a server that does not offer STARTTLS
+is hung up on before the login is sent (`smtp-email.adapter.test.ts` runs that
+against a real socket).
+
+A message is handed over and the request carries on without waiting for the
+server — so a reset takes as long for an unknown address as a known one, and a
+mail server that is down does not turn a sign-in or a registration into an
+error. A failure is logged as `An email could not be sent`, with the
+recipient's domain and the server's error code and never the address or the
+body; watch for it after setting this up. It is not a queue: a message in
+flight when the API stops is lost, and the person asks again.
+
+The mailbox Alertmanager uses (`ALERT_SMTP_*` in
+[observability.md](./observability.md)) will do for this too.
+
 ## Taking money
 
 The only payment provider in this build is the manual bank transfer, confirmed by

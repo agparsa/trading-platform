@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../config/env.schema';
 import { EmailPort } from './email.port';
 import { LoggingEmailAdapter, NoopEmailAdapter } from './logging-email.adapter';
+import { SmtpEmailAdapter } from './smtp-email.adapter';
 
 @Global()
 @Module({
@@ -20,6 +21,14 @@ import { LoggingEmailAdapter, NoopEmailAdapter } from './logging-email.adapter';
           );
         }
         const from = config.get('EMAIL_FROM', { infer: true });
+        if (provider === 'smtp') {
+          // The schema has already refused `smtp` without these three.
+          return new SmtpEmailAdapter(from, {
+            host: config.getOrThrow('EMAIL_SMTP_HOST', { infer: true }),
+            user: config.getOrThrow('EMAIL_SMTP_USER', { infer: true }),
+            password: config.getOrThrow('EMAIL_SMTP_PASSWORD', { infer: true }),
+          });
+        }
         return provider === 'log' ? new LoggingEmailAdapter(from) : new NoopEmailAdapter(from);
       },
     },

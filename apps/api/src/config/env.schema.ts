@@ -203,8 +203,17 @@ export const envSchema = z
     APP_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
     // 'log' prints verification and reset links to the server log. It is a
     // development stand-in and refuses to run under NODE_ENV=production.
-    EMAIL_PROVIDER: z.enum(['log', 'none']).default('log'),
+    // 'smtp' sends through EMAIL_SMTP_HOST; 'none' discards, on purpose.
+    EMAIL_PROVIDER: z.enum(['log', 'none', 'smtp']).default('log'),
     EMAIL_FROM: z.string().default('no-reply@trading-platform.local'),
+    /** `host:port` of the SMTP server. 465 is TLS from the start; any other port must offer STARTTLS. */
+    EMAIL_SMTP_HOST: z
+      .string()
+      .regex(/^[^\s:]+:\d{1,5}$/, { message: 'must be host:port, e.g. smtp.example.com:587' })
+      .optional(),
+    EMAIL_SMTP_USER: z.string().optional(),
+    /** A secret: give it as EMAIL_SMTP_PASSWORD_FILE where the platform can mount one. */
+    EMAIL_SMTP_PASSWORD: z.string().optional(),
     /**
      * Argon2id cost, tuned to the hardware this runs on.
      *
@@ -650,6 +659,26 @@ export const envSchema = z
    * every one of them is a configuration that boots happily and is wrong.
    */
   .superRefine((env, ctx) => {
+    if (env.EMAIL_PROVIDER === 'smtp') {
+      for (const name of ['EMAIL_SMTP_HOST', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'] as const) {
+        if (env[name] === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message: `EMAIL_PROVIDER=smtp needs ${name}.`,
+          });
+        }
+      }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(env.EMAIL_FROM) || env.EMAIL_FROM.endsWith('.local')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['EMAIL_FROM'],
+          message:
+            'EMAIL_PROVIDER=smtp needs EMAIL_FROM to be a real address the SMTP account may send ' +
+            `as; "${env.EMAIL_FROM}" is not one, and most servers refuse or spam-folder it.`,
+        });
+      }
+    }
     if (
       env.NODE_ENV === 'production' &&
       env.REGISTRATION_MODE === 'open' &&

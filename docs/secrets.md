@@ -36,6 +36,7 @@ resolves only the variables on its list, and only those:
 | `SECRET_ENCRYPTION_KEYS`                      | API, worker                                      |
 | `FCM_SERVICE_ACCOUNT_JSON`                    | worker                                           |
 | `APNS_CREDENTIALS_JSON`                       | worker                                           |
+| `EMAIL_SMTP_PASSWORD`                         | API                                              |
 | `POSTGRES_PASSWORD`, `GRAFANA_ADMIN_PASSWORD` | compose (their images honour `_FILE` themselves) |
 
 A generic "any `_FILE` suffix" rule was rejected on purpose: `TRUSTED_PROXIES_FILE`

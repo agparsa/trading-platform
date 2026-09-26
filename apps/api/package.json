@@ -34,6 +34,7 @@
     "@tp/reconciliation-core": "workspace:*",
     "@tp/reports-core": "workspace:*",
     "@tp/risk-core": "workspace:*",
+    "@tp/scheduling-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
     "@tp/tenancy": "workspace:*",
     "@tp/trading-core": "workspace:*",
@@ -46,14 +47,14 @@
     "ioredis": "catalog:",
     "nestjs-pino": "catalog:",
     "nestjs-zod": "catalog:",
+    "nodemailer": "catalog:",
     "pino": "catalog:",
     "pino-http": "catalog:",
     "prom-client": "catalog:",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:",
     "socket.io": "catalog:",
-    "zod": "catalog:",
-    "@tp/scheduling-core": "workspace:*"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@nestjs/testing": "catalog:",
