@@ -10,7 +10,12 @@ import {
   notionalValue,
   toDecimal,
 } from '@tp/financial-core';
-import { transitionOrder, validatePendingPrice, validateProtectiveLevels } from '@tp/trading-core';
+import {
+  orderTrail,
+  transitionOrder,
+  validatePendingPrice,
+  validateProtectiveLevels,
+} from '@tp/trading-core';
 import { DEFAULT_RISK_RULES, RiskEngine, type ProposedOrder } from '@tp/risk-core';
 import {
   DomainError,
@@ -1638,12 +1643,15 @@ export class OrdersService {
   async orderEvents(userId: string, orderId: string) {
     // Resolved for its authorisation throw; the events are read by id below.
     await this.loadOwnedOrder(userId, orderId, Permission.ORDERS_READ);
-    // By `seq`, not `createdAt`: every row one transaction writes shares its
-    // `createdAt`, and a market order's whole trail is one transaction.
-    const events = await this.prisma.orderEvent.findMany({
-      where: { orderId },
-      orderBy: { seq: 'asc' },
-    });
+    // Not by `createdAt` alone: every row one transaction writes shares it,
+    // and a market order's whole trail is one transaction. `orderTrail` says
+    // why `seq` alone is not enough either, for rows older than it.
+    const events = orderTrail(
+      await this.prisma.orderEvent.findMany({
+        where: { orderId },
+        orderBy: { seq: 'asc' },
+      }),
+    );
     return events.map((event) => ({
       type: event.type,
       fromStatus: event.fromStatus,

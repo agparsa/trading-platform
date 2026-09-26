@@ -1,3 +1,4 @@
+import { orderTrail } from '@tp/trading-core';
 import { Injectable } from '@nestjs/common';
 import { DomainError, TradingErrorCode } from '@tp/shared-types';
 import { PrismaService } from '../prisma/prisma.service';
@@ -292,12 +293,15 @@ export class BlotterService {
     if (order === null) {
       throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'No such order', { orderId });
     }
-    // By `seq`, not `createdAt`: every row one transaction writes shares its
-    // `createdAt`, and a market order's whole trail is one transaction.
-    const events = await this.prisma.orderEvent.findMany({
-      where: { orderId },
-      orderBy: { seq: 'asc' },
-    });
+    // Not by `createdAt` alone: every row one transaction writes shares it,
+    // and a market order's whole trail is one transaction. `orderTrail` says
+    // why `seq` alone is not enough either, for rows older than it.
+    const events = orderTrail(
+      await this.prisma.orderEvent.findMany({
+        where: { orderId },
+        orderBy: { seq: 'asc' },
+      }),
+    );
 
     return {
       order: {

@@ -103,6 +103,16 @@ CANCELLED. Ordered by time alone, 316 of 495 trails on the development database
 did not begin with CREATED. `seq` is assigned at the insert, in the order the
 inserts happen.
 
+Rows older than `seq` were numbered in the table's physical order when the
+column was added, and the migration that did it said that was insertion order.
+It was not: earlier migrations had rewritten every row, and a rewritten row
+moves. Production had four trails that read FILLED, CREATED, ACCEPTED by `seq`.
+They are not renumbered — the table is append-only and stays so — but put in
+order where they are read: `orderTrail` in `@tp/trading-core` follows the
+from → to chain within the rows of one transaction and keeps `seq` order for
+any group that is not exactly one chain. Both readers of the trail, the
+trader's `GET /orders/:id/events` and the blotter, go through it.
+
 A move and its row commit together. A claim that commits on its own is the
 exception, and each one is named below with what recovers it.
 

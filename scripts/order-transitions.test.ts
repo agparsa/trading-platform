@@ -442,3 +442,58 @@ describe('docs/order-lifecycle.md', () => {
     expect(documented).toEqual(machine);
   });
 });
+
+describe('reading a trail', () => {
+  /**
+   * `seq` alone misorders trails written before it existed (see
+   * `orderTrail`). A read of one order's whole trail goes through it.
+   */
+  const reads = DIRS.flatMap((dir) =>
+    sources(resolve(ROOT, dir)).flatMap((file) => {
+      const source = ts.createSourceFile(
+        file,
+        readFileSync(file, 'utf8'),
+        ts.ScriptTarget.Latest,
+        true,
+      );
+      const found: Array<{ at: string; wrapped: boolean }> = [];
+      const visit = (node: ts.Node): void => {
+        if (
+          ts.isCallExpression(node) &&
+          node.expression.getText(source).endsWith('.orderEvent.findMany')
+        ) {
+          const where = ts.isObjectLiteralExpression(node.arguments[0] ?? node)
+            ? (node.arguments[0] as ts.ObjectLiteralExpression).properties.find(
+                (p) => p.name?.getText(source) === 'where',
+              )
+            : undefined;
+          const whole =
+            where !== undefined &&
+            ts.isPropertyAssignment(where) &&
+            ts.isObjectLiteralExpression(where.initializer) &&
+            where.initializer.properties.length === 1 &&
+            where.initializer.properties[0]!.name?.getText(source) === 'orderId';
+          if (whole) {
+            let at: ts.Node = node.parent;
+            while (ts.isAwaitExpression(at) || ts.isParenthesizedExpression(at)) at = at.parent;
+            found.push({
+              at: `${relative(ROOT, file)}:${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1}`,
+              wrapped: ts.isCallExpression(at) && at.expression.getText(source) === 'orderTrail',
+            });
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+      return found;
+    }),
+  );
+
+  it('finds the readers (the probe that cannot fail is the one that never looked)', () => {
+    expect(reads.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('puts every whole trail through orderTrail', () => {
+    expect(reads.filter((read) => !read.wrapped).map((read) => read.at)).toEqual([]);
+  });
+});
