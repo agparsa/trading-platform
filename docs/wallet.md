@@ -8,10 +8,19 @@ The plan said it in one line: **two ledgers that both believe they are
 authoritative is the classic way to lose money in an accounting system.** These
 two are not authoritative for the same thing.
 
-| Table                 | Authoritative for                           | Cached head        | Only writer     |
-| --------------------- | ------------------------------------------- | ------------------ | --------------- |
-| `balance_ledger`      | what is inside a trading account            | `accounts.balance` | `LedgerService` |
-| `wallet_transactions` | what is held for a person and in no account | `wallets.balance`  | `WalletService` |
+| Table                 | Authoritative for                           | Cached head        | Writers                                                                       |
+| --------------------- | ------------------------------------------- | ------------------ | ----------------------------------------------------------------------------- |
+| `balance_ledger`      | what is inside a trading account            | `accounts.balance` | `LedgerService` (`ledger.service.ts`); the worker's `swap-accrual.service.ts` |
+| `wallet_transactions` | what is held for a person and in no account | `wallets.balance`  | `WalletService` (`wallet.service.ts`)                                         |
+
+This table said `LedgerService` was the _only_ writer of the account ledger.
+The worker's nightly swap accrual is a second — it runs in another process and
+cannot reach the API's service — and it carried its own copy of the posting,
+including the double rounding `LedgerService` had been fixed for (see
+Precision, below): 0.15 lots at −12.50 a night recorded −1.88 and moved the
+balance −1.87. It rounds once now, `jobs.test.ts` holds it to that, and
+`scripts/ledger-writers.test.ts` fails if a write to either ledger, or to either
+cached balance, appears anywhere this table does not name.
 
 A transfer writes one row on each side, in one transaction, with equal and
 opposite amounts. There is no path through `WalletService.transfer` that writes
@@ -65,7 +74,8 @@ different pot, and money invented in a wallet reaches a position through one
 transfer the holder is entitled to make on their own wallet. See
 [permissions.md](./permissions.md).
 
-Automated deposits are phase 5; withdrawals are phase 7.
+Deposits arrive through a payment provider ([payments.md](./payments.md)) and leave
+through a reviewed withdrawal ([withdrawals.md](./withdrawals.md)).
 
 ## Freezing
 

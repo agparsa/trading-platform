@@ -295,6 +295,29 @@ suite('Worker jobs (integration)', () => {
       expect(await prisma.balanceLedger.count({ where: { accountId, type: 'SWAP' } })).toBe(0);
     });
 
+    /**
+     * 0.15 lots at −12.50 is −1.875: not a whole cent. The accrual stored the
+     * row rounded (−1.88) and separately rounded the new balance
+     * (100,000 − 1.875 → 99,998.13), so the balance moved by 1.87 while the
+     * ledger said 1.88 — the double rounding `LedgerService` was fixed for,
+     * copied into the one ledger writer that lives outside it.
+     */
+    it('moves the balance by exactly the amount it records, when that is not a whole cent', async () => {
+      const { accountId } = await openPosition('BUY', '0.15');
+      await service().accrue(new Date('2026-08-24T00:00:00Z'));
+
+      const entry = await prisma.balanceLedger.findFirstOrThrow({
+        where: { accountId, type: 'SWAP' },
+      });
+      expect(entry.amount.toString()).toBe('-1.88');
+      const account = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
+      expect(Money.of(account.balance.toString(), 'USD').toString()).toBe('99998.12');
+      expect(Money.of(entry.balanceAfter.toString(), 'USD').toString()).toBe('99998.12');
+
+      const summary = await new ReconciliationService(prismaService).check();
+      expect(summary.reports.filter((report) => report.accountId === accountId)).toHaveLength(0);
+    });
+
     it('leaves the ledger reconciled against the cached balance', async () => {
       const { accountId } = await openPosition('BUY', '1.00');
       await service().accrue(new Date('2026-08-24T00:00:00Z'));

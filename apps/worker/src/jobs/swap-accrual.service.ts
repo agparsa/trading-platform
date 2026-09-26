@@ -174,14 +174,21 @@ export class SwapAccrualService {
       const account = locked[0];
       if (account === undefined) throw new Error(`Account ${accountId} disappeared mid-accrual`);
 
-      const after = Money.of(account.balance, account.currency).plus(amount).round();
+      /**
+       * Round once, then apply what was rounded — `LedgerService.post`'s rule.
+       * This used to store `amount.round()` and separately round
+       * `balance + amount`, which disagree whenever the accrual is not a whole
+       * cent: 0.15 lots at −12.50 recorded −1.88 and moved the balance −1.87.
+       */
+      const charged = amount.round();
+      const after = Money.of(account.balance, account.currency).plus(charged);
 
       await tx.balanceLedger.create({
         data: {
           tenantId,
           accountId,
           type: 'SWAP',
-          amount: amount.round().toString(),
+          amount: charged.toString(),
           balanceAfter: after.toString(),
           currency: account.currency,
           referenceType: 'Position',
@@ -198,7 +205,7 @@ export class SwapAccrualService {
       // partial close can release the right proportion of it.
       await tx.position.update({
         where: { id: positionId },
-        data: { swap: { increment: amount.round().toString() } },
+        data: { swap: { increment: charged.toString() } },
       });
     });
   }
