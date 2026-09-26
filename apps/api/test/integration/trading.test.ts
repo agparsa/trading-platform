@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 import { Money } from '@tp/financial-core';
 import { LedgerService } from '../../src/accounts/ledger.service';
@@ -929,6 +929,84 @@ suite('Trading core (integration)', () => {
       // And it can still be closed once prices return.
       await stack.publishQuote('XAUUSD', '4600.00', '4600.14');
       await expect(stack.positions.close(userId, opened.positionId!, null)).resolves.toBeDefined();
+    });
+
+    /** A close whose process died after the claim: nothing puts it back but the sweep. */
+    const strand = async (positionId: string, minutesAgo: number) =>
+      prisma.$executeRaw`UPDATE positions SET status = 'CLOSING', version = version + 1,
+        updated_at = now() - make_interval(mins => ${minutesAgo}::int) WHERE id = ${positionId}::uuid`;
+
+    it('reopens a position a dead close left CLOSING, records why, and lets it be closed', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+      await strand(opened.positionId!, 5);
+      await expect(stack.positions.close(userId, opened.positionId!, null)).rejects.toMatchObject({
+        code: 'POSITION_ALREADY_CLOSING',
+      });
+
+      expect(await stack.triggers.sweepAbandonedCloses()).toBe(1);
+
+      const position = await prisma.position.findUniqueOrThrow({
+        where: { id: opened.positionId! },
+      });
+      expect(position.status).toBe('OPEN');
+      const event = await prisma.positionEvent.findFirstOrThrow({
+        where: { positionId: opened.positionId!, type: 'CLOSE_ABANDONED' },
+      });
+      expect(event).toMatchObject({ fromStatus: 'CLOSING', toStatus: 'OPEN' });
+      expect(await prisma.trade.count({ where: { accountId } })).toBe(0);
+      await expect(stack.positions.close(userId, opened.positionId!, null)).resolves.toBeDefined();
+    });
+
+    it('leaves a close inside the window alone: a slow close is not a dead one', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+      await strand(opened.positionId!, 1);
+      expect(await stack.triggers.sweepAbandonedCloses()).toBe(0);
+      const position = await prisma.position.findUniqueOrThrow({
+        where: { id: opened.positionId! },
+      });
+      expect(position.status).toBe('CLOSING');
+      expect(await prisma.trade.count({ where: { accountId } })).toBe(0);
+    });
+
+    it('makes a close still running when the sweep lands settle nothing', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+      // The sweep reopens the position after this close has claimed it and
+      // before it settles; a second close then takes and settles it.
+      const rate = stack.conversion.rate.bind(stack.conversion);
+      const spy = vi.spyOn(stack.conversion, 'rate').mockImplementationOnce(async (...args) => {
+        const claimed = await prisma.position.findUniqueOrThrow({
+          where: { id: opened.positionId! },
+        });
+        expect(
+          await stack.positions.releaseAbandonedClose(opened.positionId!, claimed.version),
+        ).toBe(true);
+        await stack.positions.close(userId, opened.positionId!, null);
+        return rate(...args);
+      });
+      try {
+        await expect(stack.positions.close(userId, opened.positionId!, null)).rejects.toMatchObject(
+          {
+            code: 'CONCURRENT_MODIFICATION',
+          },
+        );
+      } finally {
+        spy.mockRestore();
+      }
+
+      // One close, one trade, one set of postings: the late one booked nothing.
+      expect(await prisma.trade.count({ where: { accountId } })).toBe(1);
+      const position = await prisma.position.findUniqueOrThrow({
+        where: { id: opened.positionId! },
+      });
+      expect(position.status).toBe('CLOSED');
+      expect(
+        await prisma.balanceLedger.count({
+          where: { accountId, type: { in: ['TRADE_PROFIT', 'TRADE_LOSS'] } },
+        }),
+      ).toBe(1);
     });
   });
 

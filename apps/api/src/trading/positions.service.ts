@@ -42,6 +42,32 @@ import type {
 } from './trading.types';
 import { requireTenantId } from '@tp/tenancy';
 
+/**
+ * How long a position may stay `CLOSING` before it is taken to be the leftover
+ * of a close that died.
+ *
+ * A close claims the position (`OPEN -> CLOSING`) in one write and settles it
+ * in a later transaction, and puts it back if anything in between throws. A
+ * process killed in between put nothing back: the position stayed `CLOSING`,
+ * where no stop-loss, take-profit or stop-out reads it and every close is
+ * refused as already in progress — a position its owner could not close and
+ * the platform would not protect. Nothing was booked: the transaction that
+ * writes the trade and the ledger also moves the status off `CLOSING`.
+ */
+export const ABANDONED_CLOSE_AFTER_MS = 2 * 60_000;
+
+/**
+ * The claim this close made was released by the abandoned-close sweep and
+ * perhaps taken by another close. Thrown inside the settling transaction, so
+ * the trade and ledger postings it was about to make roll back with it.
+ */
+class CloseClaimLost extends Error {
+  constructor(readonly positionId: string) {
+    super('The close lost its claim on the position');
+    this.name = 'CloseClaimLost';
+  }
+}
+
 interface LoadedPosition {
   id: string;
   accountId: string;
@@ -221,6 +247,42 @@ export class PositionsService {
   ): Promise<CloseResult> {
     const position = await this.load(positionId);
     return this.performClose(position, requestedVolume, reason, null);
+  }
+
+  /**
+   * Put back a position a close claimed and never finished.
+   *
+   * Called by the trigger engine's sweep for positions `CLOSING` for longer
+   * than `ABANDONED_CLOSE_AFTER_MS`. Conditional on the claim it saw, so a
+   * close that finishes, or is released by its own error path, meanwhile
+   * wins; and a close still running when this lands loses its claim and
+   * settles nothing (`CloseClaimLost`). Recorded in the position's trail,
+   * because a position that was briefly unclosable is something its owner may
+   * ask about.
+   */
+  async releaseAbandonedClose(positionId: string, seenVersion: number): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const released = await tx.position.updateMany({
+        where: { id: positionId, status: 'CLOSING', version: seenVersion },
+        data: { status: 'OPEN', version: { increment: 1 } },
+      });
+      if (released.count === 0) return false;
+      await tx.positionEvent.create({
+        data: {
+          tenantId: requireTenantId(),
+          positionId,
+          type: 'CLOSE_ABANDONED',
+          fromStatus: 'CLOSING',
+          toStatus: 'OPEN',
+          payload: { afterMs: ABANDONED_CLOSE_AFTER_MS },
+        },
+      });
+      this.logger.warn(
+        { positionId },
+        'A close that never finished was abandoned; position reopened',
+      );
+      return true;
+    });
   }
 
   private async performClose(
@@ -480,8 +542,11 @@ export class PositionsService {
         const remainingMargin = Money.of(position.margin, position.accountCurrency).minus(
           marginReleased,
         );
-        await tx.position.update({
-          where: { id: position.id },
+        // Conditional on this close's own claim: the status it set and the
+        // version that setting produced. A claim the sweep released — and
+        // another close may since have taken — settles nothing.
+        const settled = await tx.position.updateMany({
+          where: { id: position.id, status: 'CLOSING', version: position.version + 1 },
           data: fullyClosed
             ? {
                 status: 'CLOSED',
@@ -507,6 +572,7 @@ export class PositionsService {
                 version: { increment: 1 },
               },
         });
+        if (settled.count === 0) throw new CloseClaimLost(position.id);
 
         await tx.positionEvent.create({
           data: {
@@ -576,10 +642,18 @@ export class PositionsService {
         fullyClosed,
       };
     } catch (error) {
-      // Put the position back so it stays tradeable and visible to risk.
+      if (error instanceof CloseClaimLost) {
+        throw new DomainError(
+          TradingErrorCode.CONCURRENT_MODIFICATION,
+          'This close took too long and was abandoned; nothing was closed. Try again.',
+          { positionId },
+        );
+      }
+      // Put the position back so it stays tradeable and visible to risk — but
+      // only from this close's own claim, never from another close's.
       await this.prisma.position
         .updateMany({
-          where: { id: positionId, status: 'CLOSING' },
+          where: { id: positionId, status: 'CLOSING', version: position.version + 1 },
           data: { status: 'OPEN', version: { increment: 1 } },
         })
         .catch((releaseError: unknown) => {

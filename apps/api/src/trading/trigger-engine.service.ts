@@ -26,7 +26,7 @@ import { MetricsService } from '../metrics/metrics.service';
 import { TenantResolver } from '../tenancy/tenant-resolver.service';
 import { LeadershipService, LeaderLoop } from '../leadership/leadership.service';
 import { AccountStateService } from './account-state.service';
-import { PositionsService } from './positions.service';
+import { ABANDONED_CLOSE_AFTER_MS, PositionsService } from './positions.service';
 import { INTERRUPTED_FILL_AFTER_MS, OrdersService } from './orders.service';
 import type { Env } from '../config/env.schema';
 import { requireTenantId, withTenant, withoutTenantScope, type TenantContext } from '@tp/tenancy';
@@ -93,6 +93,8 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
   private stopped = false;
   /** When this instance last looked for fills that never finished. */
   private lastInterruptedFillSweep = Number.NEGATIVE_INFINITY;
+  /** When this instance last looked for closes that never finished. */
+  private lastAbandonedCloseSweep = Number.NEGATIVE_INFINITY;
 
   constructor(
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
@@ -359,6 +361,44 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
   }
 
   /**
+   * Reopen the positions a close claimed and never finished.
+   *
+   * The position-side twin of `sweepInterruptedFills`: a close that died
+   * between its claim (OPEN → CLOSING) and its settlement left the position
+   * where no stop-loss, take-profit or stop-out reads it and every close is
+   * refused. Once a minute the leader reopens claims older than
+   * `ABANDONED_CLOSE_AFTER_MS`, which puts it back under all three.
+   *
+   * Exposed so tests can drive it.
+   */
+  async sweepAbandonedCloses(nowMs: number = Date.now()): Promise<number> {
+    if (!this.mayAct()) return 0;
+    if (nowMs - this.lastAbandonedCloseSweep < 60_000) return 0;
+    this.lastAbandonedCloseSweep = nowMs;
+
+    const stuck = await this.findAcrossTenants('closes that never finished', () =>
+      this.prisma.position.findMany({
+        where: {
+          status: 'CLOSING',
+          updatedAt: { lte: new Date(nowMs - ABANDONED_CLOSE_AFTER_MS) },
+        },
+        select: { id: true, version: true, tenantId: true },
+        orderBy: { updatedAt: 'asc' },
+        take: 100,
+      }),
+    );
+    let reopened = 0;
+    for (const { row, tenant } of stuck) {
+      if (
+        await withTenant(tenant, () => this.positions.releaseAbandonedClose(row.id, row.version))
+      ) {
+        reopened += 1;
+      }
+    }
+    return reopened;
+  }
+
+  /**
    * A self-rescheduling timeout, not an interval: a sweep that overruns its
    * cadence delays the next one rather than queueing a burst behind it.
    */
@@ -374,6 +414,10 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
         .then(() => this.sweepInterruptedFills())
         .catch((error: unknown) => {
           this.logger.error({ err: error }, 'Interrupted-fill sweep failed');
+        })
+        .then(() => this.sweepAbandonedCloses())
+        .catch((error: unknown) => {
+          this.logger.error({ err: error }, 'Abandoned-close sweep failed');
         })
         .finally(() => {
           this.sweepTimer = null;

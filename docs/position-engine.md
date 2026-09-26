@@ -19,6 +19,23 @@ gets `POSITION_ALREADY_CLOSING`.
 available, provider timeout — and the position must survive rather than being
 stranded.
 
+The close that fails puts it back itself. A close that **dies** — the process
+killed between the claim and the transaction that settles it — put nothing
+back, and the position stayed `CLOSING`: no stop-loss, take-profit or stop-out
+reads that status, and every close is refused as already in progress. The
+trigger engine's leader now looks once a minute for positions `CLOSING` for
+more than two minutes (`ABANDONED_CLOSE_AFTER_MS`) and reopens them, with a
+`CLOSE_ABANDONED` row in the position's trail. Nothing was booked: the
+transaction that writes the trade and the ledger is the one that moves the
+status off `CLOSING`.
+
+Both the settlement and a close's own release are conditional on **that
+close's** claim — the status and the version its claim produced. A close still
+running when the sweep reopens its position, and perhaps after another close
+has taken and settled it, writes nothing and tells its caller
+`CONCURRENT_MODIFICATION`: one close, one trade, one set of postings.
+`trading.test.ts`, "failure recovery", drives all three.
+
 ## Concurrency
 
 Every position row carries a `version` column. Updates are conditional on the
