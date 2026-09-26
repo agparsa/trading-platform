@@ -327,10 +327,13 @@ export class ExternalExecutionService {
       return this.recordUnconfirmed(orderId, request, result.reason ?? 'no answer from the venue');
     }
     if (result.outcome === 'REJECTED') {
-      await this.prisma.order.updateMany({
-        where: { id: orderId },
+      // Conditional on the order still being where this answer applies: the
+      // recovery sweep and a person at the console can both be asking.
+      const rejected = await this.prisma.order.updateMany({
+        where: { id: orderId, status: from },
         data: { status: OrderStatus.REJECTED, rejectionCode: 'VENUE_REJECTED' },
       });
+      if (rejected.count === 0) throw resolvedElsewhere(orderId, from);
       await this.recordEvent(orderId, 'REJECTED', from, OrderStatus.REJECTED, {
         reason: result.reason,
       });
@@ -377,14 +380,17 @@ export class ExternalExecutionService {
     const status = result.outcome === 'FILLED' ? OrderStatus.FILLED : OrderStatus.PARTIALLY_FILLED;
 
     const recorded = await this.prisma.$transaction(async (tx) => {
-      await tx.order.updateMany({
-        where: { id: orderId },
+      // As above — and inside the transaction, so a second answer to the same
+      // order rolls back with the position it would have opened.
+      const moved = await tx.order.updateMany({
+        where: { id: orderId, status: from },
         data: {
           status,
           filledVolume,
           externalOrderId: result.externalOrderId,
         },
       });
+      if (moved.count === 0) throw resolvedElsewhere(orderId, from);
       for (const fill of result.fills) {
         /**
          * Keyed by the venue's own execution id, which is unique in the
@@ -527,9 +533,15 @@ export class ExternalExecutionService {
         where: { id: orderId, status: OrderStatus.ACCEPTED },
         data: { status: OrderStatus.UNCONFIRMED },
       });
-      await this.recordEvent(orderId, 'REJECTED', OrderStatus.ACCEPTED, OrderStatus.UNCONFIRMED, {
-        reason,
-      });
+      await this.recordEvent(
+        orderId,
+        'UNCONFIRMED',
+        OrderStatus.ACCEPTED,
+        OrderStatus.UNCONFIRMED,
+        {
+          reason,
+        },
+      );
     }
     await this.audit.record({
       actorId: request.userId,
@@ -629,4 +641,13 @@ export function weightedAverage(
   const fraction = text.slice(-Number(scale)).replace(/0+$/, '');
   void factor;
   return fraction.length === 0 ? whole : `${whole}.${fraction}`;
+}
+
+/** A venue's answer for an order that another pass has already resolved. */
+function resolvedElsewhere(orderId: string, expected: OrderStatus): DomainError {
+  return new DomainError(
+    TradingErrorCode.CONCURRENT_MODIFICATION,
+    `This order is no longer ${expected}; another pass recorded the venue's answer first`,
+    { orderId },
+  );
 }

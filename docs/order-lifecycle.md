@@ -1,9 +1,16 @@
 # Order lifecycle
 
 The state machine lives in `packages/trading-core/src/state/order-state-machine.ts`
-as a lookup table. Nothing in the platform assigns `order.status` directly;
-every change goes through `transitionOrder(from, to)`, which throws
-`INVALID_STATE_TRANSITION` on an illegal move.
+as a lookup table, and `transitionOrder(from, to)` throws
+`INVALID_STATE_TRANSITION` on a move the table does not allow.
+
+Not every write calls it: a conditional claim (`updateMany … where status =
+PENDING`) names its prior status in the condition instead. What holds every
+write to the table is `scripts/order-transitions.test.ts`, which reads each
+`order.create / update / updateMany` that sets a status and each `order_events`
+row from the source, and fails on a move the table does not allow, a move that
+is not written to the trail by the code that makes it, or a status it cannot
+read.
 
 ## States
 
@@ -14,13 +21,13 @@ every change goes through `transitionOrder(from, to)`, which throws
       ┌──────────┼──────────┐
       v          v          v
  ┌─────────┐ ┌────────┐ ┌──────────┐
- │ PENDING │ │ACCEPTED│ │ REJECTED │  ← terminal
+ │ PENDING │→│ACCEPTED│ │ REJECTED │  ← terminal
  └────┬────┘ └───┬────┘ └──────────┘
-      │          │
-      v          │
-┌───────────┐    │
-│ TRIGGERED │────┤
-└───────────┘    │
+      │          ├──────────────┐
+      v          │              v
+┌───────────┐    │       ┌─────────────┐
+│ TRIGGERED │────┤       │ UNCONFIRMED │  venue path only
+└───────────┘    │       └─────────────┘
                  v
      ┌───────────────────┐
      │ PARTIALLY_FILLED  │──┐
@@ -30,13 +37,31 @@ every change goes through `transitionOrder(from, to)`, which throws
           │ FILLED │  ← terminal
           └────────┘
 
- MODIFY_REQUESTED  → back to PENDING / ACCEPTED / PARTIALLY_FILLED, or REJECTED
+ MODIFY_REQUESTED  → back to PENDING / ACCEPTED / PARTIALLY_FILLED, or REJECTED / CANCEL_REQUESTED
  CANCEL_REQUESTED  → CANCELLED, or FILLED / PARTIALLY_FILLED if a fill wins the race
  EXPIRED           ← terminal
 ```
 
+The diagram is the shape; this table is the rule, and the test above holds it
+to the state machine in both directions.
+
+| From               | To                                                                                                         |
+| ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `NEW`              | `PENDING`, `ACCEPTED`, `REJECTED`                                                                          |
+| `PENDING`          | `ACCEPTED`, `TRIGGERED`, `MODIFY_REQUESTED`, `CANCEL_REQUESTED`, `REJECTED`, `EXPIRED`                     |
+| `ACCEPTED`         | `PARTIALLY_FILLED`, `FILLED`, `MODIFY_REQUESTED`, `CANCEL_REQUESTED`, `REJECTED`, `EXPIRED`, `UNCONFIRMED` |
+| `UNCONFIRMED`      | `PARTIALLY_FILLED`, `FILLED`, `REJECTED`, `CANCELLED`, `EXPIRED`                                           |
+| `TRIGGERED`        | `PARTIALLY_FILLED`, `FILLED`, `REJECTED`, `CANCEL_REQUESTED`                                               |
+| `PARTIALLY_FILLED` | `PARTIALLY_FILLED`, `FILLED`, `CANCEL_REQUESTED`, `EXPIRED`                                                |
+| `MODIFY_REQUESTED` | `PENDING`, `ACCEPTED`, `PARTIALLY_FILLED`, `REJECTED`, `CANCEL_REQUESTED`                                  |
+| `CANCEL_REQUESTED` | `CANCELLED`, `FILLED`, `PARTIALLY_FILLED`                                                                  |
+
 Terminal states — `FILLED`, `CANCELLED`, `REJECTED`, `EXPIRED` — have no outgoing
 transitions at all. A cancelled order can never be revived.
+
+`UNCONFIRMED` is reached only on the venue path: an order sent to an external
+venue whose answer was lost (see `docs/external-execution.md`). The internal
+engine always knows its own answer.
 
 ## Two transitions that look wrong and are not
 
@@ -67,8 +92,19 @@ NEW → PENDING → TRIGGERED → FILLED → (position created)
 
 Every transition appends a row to `order_events` with `fromStatus`, `toStatus`,
 a typed event kind, and a JSON payload holding the prices and volumes involved.
-The table is append-only. Reconstructing exactly what happened to an order is a
-single indexed query, not an archaeology exercise across mutated rows.
+The table is append-only — the database refuses an UPDATE, DELETE or TRUNCATE.
+Reconstructing exactly what happened to an order is a single indexed query,
+not an archaeology exercise across mutated rows.
+
+**The trail is read by `seq`, not by `createdAt`.** `createdAt` is the
+transaction's start time, so every row one transaction writes shares it — a
+market order's CREATED, ACCEPTED and FILLED, a cancel's CANCEL_REQUESTED and
+CANCELLED. Ordered by time alone, 316 of 495 trails on the development database
+did not begin with CREATED. `seq` is assigned at the insert, in the order the
+inserts happen.
+
+A move and its row commit together. A claim that commits on its own is the
+exception, and each one is named below with what recovers it.
 
 ## Idempotency
 
@@ -178,27 +214,20 @@ disputing a fill can see exactly what happened rather than being told a number.
 | ----- | --------------------------------------------------------- |
 | `GTC` | Rests until filled or cancelled                           |
 | `DAY` | Expires at the next midnight in `TRADING_SERVER_TIMEZONE` |
+| `GTD` | Expires at a supplied timestamp                           |
 
-`DAY` is resolved to a timestamp once, when the order is placed, so nothing
-downstream has to decide what a day means and a server that changes timezone
-cannot reinterpret an order already resting.
+`DAY` is resolved to a timestamp **once, at placement**, so nothing downstream
+has to decide what a "day" means and a server that changes timezone cannot
+reinterpret an order already resting.
 
 **That midnight is a wall-clock midnight, which is 23 or 25 hours away twice a
 year.** `endOfTradingDay` used to add the remaining minutes as if a day were
 always 1440 of them, so an order placed between midnight and a clock change
 expired an hour late — able to fill after the trader was told it would be gone —
-or an hour early, cancelled with nothing said. The comment above the function
-described the correction; the code did not do it. It does now, and
-`session.test.ts` sweeps every minute of six transition days in three zones,
-one of which (`Australia/Lord_Howe`) shifts by thirty minutes rather than an
-hour.
-| `GTD` | Expires at a supplied timestamp |
-
-`DAY` is resolved to a timestamp **once, at placement**, so nothing downstream
-has to decide what a "day" means and a server that changes timezone cannot
-reinterpret an order already resting. `endOfTradingDay` is built on
-`zonedDayAndMinute` rather than date arithmetic, because on the day a zone shifts
-midnight is 23 or 25 hours away, not 24.
+or an hour early, cancelled with nothing said. It is built on
+`zonedDayAndMinute` now, and `session.test.ts` sweeps every minute of six
+transition days in three zones, one of which (`Australia/Lord_Howe`) shifts by
+thirty minutes rather than an hour.
 
 Orders are expired **before** they are fired on each tick, so an order that
 lapsed at midnight cannot open a position on the first tick after it.
@@ -209,6 +238,21 @@ A resting order is _claimed_ before it is priced: one conditional update from
 `PENDING` to `TRIGGERED`. Two ticks arriving close together would otherwise both
 see a resting order and both open a position from it. A claim that changes no
 rows means another pass won, and this one stops.
+
+That claim commits on its own, so that pricing holds no lock — and a process
+that dies after it and before the fill leaves the order `TRIGGERED`, where no
+pass reads it, the pending list does not show it and a cancel refuses it. The
+trigger engine's leader looks once a minute for claims older than two minutes
+(`INTERRUPTED_FILL_AFTER_MS`) and rejects them, which tells the trader. Nothing
+was opened: the fill moves the order to `FILLED` in the transaction that opens
+the position. Rejected, not re-armed — the price that reached it has gone. The
+fill's own write is conditional on the claim still standing, so a fill that
+was slow rather than dead loses to the sweep and opens nothing.
+
+A cancel's claim (`PENDING → CANCEL_REQUESTED`) and a modify's (`PENDING →
+MODIFY_REQUESTED`) commit in the same transaction as the move that finishes
+them. They used to commit first, and a failure between the two left the order
+in the requested state for good.
 
 A cancel racing a fill loses rather than undoing a position that already exists.
 

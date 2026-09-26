@@ -1,0 +1,11 @@
+-- An event for the move to UNCONFIRMED.
+--
+-- `@tp/shared-types` has always listed UNCONFIRMED as an order event, and the
+-- order status exists; the database enum never had the event. So the one place
+-- that records the move — an order sent to a venue whose answer was lost —
+-- wrote it as REJECTED: a trail that said the venue refused an order the venue
+-- may well have filled, on the order whose trail staff read to find out which.
+--
+-- Its own migration because `ALTER TYPE … ADD VALUE` cannot share a
+-- transaction with a use of the new value.
+ALTER TYPE "OrderEventType" ADD VALUE IF NOT EXISTS 'UNCONFIRMED';

@@ -27,7 +27,7 @@ import { TenantResolver } from '../tenancy/tenant-resolver.service';
 import { LeadershipService, LeaderLoop } from '../leadership/leadership.service';
 import { AccountStateService } from './account-state.service';
 import { PositionsService } from './positions.service';
-import { OrdersService } from './orders.service';
+import { INTERRUPTED_FILL_AFTER_MS, OrdersService } from './orders.service';
 import type { Env } from '../config/env.schema';
 import { requireTenantId, withTenant, withoutTenantScope, type TenantContext } from '@tp/tenancy';
 
@@ -91,6 +91,8 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
   private readonly pendingStopOutChecks = new Set<string>();
   private sweepTimer: NodeJS.Timeout | null = null;
   private stopped = false;
+  /** When this instance last looked for fills that never finished. */
+  private lastInterruptedFillSweep = Number.NEGATIVE_INFINITY;
 
   constructor(
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
@@ -321,6 +323,42 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
   }
 
   /**
+   * Reject the resting orders a fill claimed and never finished.
+   *
+   * `fillPending` claims an order (PENDING → TRIGGERED) in one write and fills
+   * it in a later transaction. A process that dies between the two leaves the
+   * order `TRIGGERED` with nothing to move it: no pass reads that status, the
+   * pending list does not show it, and a cancel refuses it. Once a minute the
+   * leader looks for claims older than `INTERRUPTED_FILL_AFTER_MS` and rejects
+   * them, which tells the trader. A fill still running when the sweep reaches
+   * its order loses (`ClaimLost`) and opens nothing.
+   *
+   * Exposed so tests can drive it.
+   */
+  async sweepInterruptedFills(nowMs: number = Date.now()): Promise<number> {
+    if (!this.mayAct()) return 0;
+    if (nowMs - this.lastInterruptedFillSweep < 60_000) return 0;
+    this.lastInterruptedFillSweep = nowMs;
+
+    const stuck = await this.findAcrossTenants('fills that never finished', () =>
+      this.prisma.order.findMany({
+        where: {
+          status: OrderStatus.TRIGGERED,
+          updatedAt: { lte: new Date(nowMs - INTERRUPTED_FILL_AFTER_MS) },
+        },
+        select: { id: true, tenantId: true },
+        orderBy: { updatedAt: 'asc' },
+        take: 100,
+      }),
+    );
+    let rejected = 0;
+    for (const { row, tenant } of stuck) {
+      if (await withTenant(tenant, () => this.orders.rejectInterruptedFill(row.id))) rejected += 1;
+    }
+    return rejected;
+  }
+
+  /**
    * A self-rescheduling timeout, not an interval: a sweep that overruns its
    * cadence delays the next one rather than queueing a burst behind it.
    */
@@ -332,6 +370,10 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
       void this.sweepStopOuts()
         .catch((error: unknown) => {
           this.logger.error({ err: error }, 'Stop-out sweep failed');
+        })
+        .then(() => this.sweepInterruptedFills())
+        .catch((error: unknown) => {
+          this.logger.error({ err: error }, 'Interrupted-fill sweep failed');
         })
         .finally(() => {
           this.sweepTimer = null;

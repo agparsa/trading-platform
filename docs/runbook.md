@@ -233,9 +233,11 @@ stood before `ORDERS` existed, pointed at a database holding one report with
 and the reports screen does not degrade, it throws. And PostgreSQL has no
 `ALTER TYPE … DROP VALUE`, so the database half cannot be undone at all.
 
-**The newest of these is `20260914160000_orders_and_positions_report_kinds`
-(`ReportKind: ORDERS, POSITIONS`).** Twelve migrations since 26 August add enum
-values; `ADDS_ENUM_VALUES` in `scripts/migrations.test.ts` lists every one with
+**The newest of these is `20260926090100_order_event_unconfirmed`
+(`OrderEventType: UNCONFIRMED`).** An order sent to an external venue whose
+answer is lost writes one, so the floor bites only once a venue-executed order
+has lost an answer; a platform on the internal engine alone never writes it.
+Thirteen migrations since 26 August add enum values; `ADDS_ENUM_VALUES` in `scripts/migrations.test.ts` lists every one with
 what it introduces, checked both ways, and the build fails if this paragraph
 stops naming the newest.
 

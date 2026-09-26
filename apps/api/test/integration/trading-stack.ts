@@ -83,6 +83,8 @@ export interface TradingStack {
   /** The registry these services record into, for tests about what they record. */
   metrics: MetricsService;
   triggers: TriggerEngineService;
+  /** Where the services publish domain events, for tests about what a trader is told. */
+  events: EventsService;
   /**
    * Turn this instance's leadership of the trigger engine off, as a lapsed
    * lease would. Lets a test assert that the engine stops *deciding* rather
@@ -309,6 +311,7 @@ export async function buildTradingStack(
     ledger,
     metrics,
     triggers,
+    events,
     setLeading: (leading: boolean) => {
       leadershipState.leading = leading;
     },

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { zonedDayAndMinute } from '../../src/market/session';
 import type { PrismaClient } from '@prisma/client';
 import { Money } from '@tp/financial-core';
@@ -97,7 +97,7 @@ suite('Resting orders (integration)', () => {
       const order = await placeBuyLimit(userId, accountId);
       const events = await prisma.orderEvent.findMany({
         where: { orderId: order.orderId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { seq: 'asc' },
       });
       expect(events.map((e) => e.type)).toEqual(['CREATED', 'ACCEPTED']);
       expect(events[1]?.toStatus).toBe('PENDING');
@@ -586,6 +586,198 @@ suite('Resting orders (integration)', () => {
 
       const finalState = await prisma.order.findUniqueOrThrow({ where: { id: order.orderId } });
       expect(['FILLED', 'CANCELLED']).toContain(finalState.status);
+    });
+  });
+
+  /**
+   * The trail is the record a dispute is settled from, so each path is read
+   * back in full, in order, and checked as a chain: every row starts where the
+   * one before it ended.
+   */
+  describe('the trail', () => {
+    const trail = async (orderId: string) => {
+      const events = await prisma.orderEvent.findMany({
+        where: { orderId },
+        orderBy: { seq: 'asc' },
+      });
+      for (let i = 1; i < events.length; i += 1) {
+        expect(events[i]?.fromStatus, `row ${i} starts where row ${i - 1} ended`).toBe(
+          events[i - 1]?.toStatus,
+        );
+      }
+      return events;
+    };
+
+    it('reads a fill in the order it happened, though its rows share a timestamp', async () => {
+      const { userId, accountId } = await openAccount();
+      const order = await placeBuyLimit(userId, accountId, '4550.00');
+      await moveTo('4549.86', '4550.00');
+
+      const events = await trail(order.orderId);
+      expect(events.map((e) => e.toStatus)).toEqual(['NEW', 'PENDING', 'TRIGGERED', 'FILLED']);
+      // Written in one transaction, so one `createdAt`: the reason the trail
+      // is read by `seq`.
+      expect(events[2]?.createdAt.getTime()).toBe(events[3]?.createdAt.getTime());
+      // And the trader's own view of it reads it the same way.
+      const shown = await stack.orders.orderEvents(userId, order.orderId);
+      expect(shown.map((e) => e.toStatus)).toEqual(['NEW', 'PENDING', 'TRIGGERED', 'FILLED']);
+    });
+
+    it('records the claim a modify makes, not only its end', async () => {
+      const { userId, accountId } = await openAccount();
+      const order = await placeBuyLimit(userId, accountId, '4550.00');
+      await stack.orders.modifyPending(userId, { orderId: order.orderId, price: '4500.00' });
+
+      const events = await trail(order.orderId);
+      expect(events.map((e) => e.type)).toEqual([
+        'CREATED',
+        'ACCEPTED',
+        'MODIFY_REQUESTED',
+        'MODIFIED',
+      ]);
+      expect(events.at(-1)?.toStatus).toBe('PENDING');
+    });
+
+    it('records a cancel as its request and its end', async () => {
+      const { userId, accountId } = await openAccount();
+      const order = await placeBuyLimit(userId, accountId);
+      await stack.orders.cancelPending(userId, order.orderId);
+
+      const events = await trail(order.orderId);
+      expect(events.map((e) => e.toStatus)).toEqual([
+        'NEW',
+        'PENDING',
+        'CANCEL_REQUESTED',
+        'CANCELLED',
+      ]);
+    });
+
+    it('records the trigger of an order refused at its fill', async () => {
+      const { userId, accountId } = await openAccount();
+      // Unaffordable: 40 lots at 1% margin is 182,000 against 100,000.
+      const order = await stack.orders.placePending(userId, {
+        accountId,
+        symbol: 'XAUUSD',
+        side: 'BUY',
+        type: 'LIMIT',
+        volume: '40.00',
+        price: '4550.00',
+      });
+      await moveTo('4549.86', '4550.00');
+
+      const events = await trail(order.orderId);
+      expect(events.map((e) => e.toStatus)).toEqual(['NEW', 'PENDING', 'TRIGGERED', 'REJECTED']);
+      expect(events[2]?.payload).toMatchObject({ bid: '4549.86', ask: '4550.00' });
+    });
+
+    it('leaves an order a failed modify claimed where it was', async () => {
+      const { userId, accountId } = await openAccount();
+      const order = await placeBuyLimit(userId, accountId, '4550.00');
+      // The change fails inside the transaction that holds the claim: the
+      // database refuses the MODIFIED row, as a lost connection would.
+      await prisma.$executeRawUnsafe(`
+        CREATE FUNCTION test_refuse_modified() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF NEW.type = 'MODIFIED' THEN RAISE EXCEPTION 'the database went away'; END IF;
+          RETURN NEW;
+        END $$`);
+      await prisma.$executeRawUnsafe(
+        'CREATE TRIGGER test_refuse_modified BEFORE INSERT ON order_events ' +
+          'FOR EACH ROW EXECUTE FUNCTION test_refuse_modified()',
+      );
+      try {
+        await expect(
+          stack.orders.modifyPending(userId, { orderId: order.orderId, price: '4500.00' }),
+        ).rejects.toThrow();
+      } finally {
+        await prisma.$executeRawUnsafe('DROP TRIGGER test_refuse_modified ON order_events');
+        await prisma.$executeRawUnsafe('DROP FUNCTION test_refuse_modified()');
+      }
+
+      const after = await prisma.order.findUniqueOrThrow({ where: { id: order.orderId } });
+      expect(after.status).toBe('PENDING');
+      expect(after.price?.toString()).toBe('4550');
+      // Still cancellable, which a stranded MODIFY_REQUESTED was not.
+      await expect(stack.orders.cancelPending(userId, order.orderId)).resolves.toMatchObject({
+        status: 'CANCELLED',
+      });
+    });
+  });
+
+  /**
+   * A fill claims the order, then fills it in a later transaction. A process
+   * that dies in between must not leave the order stranded as TRIGGERED —
+   * gone from the pending list, skipped by every pass, not cancellable.
+   */
+  describe('interrupted fills', () => {
+    const strand = async (orderId: string, minutesAgo: number) =>
+      prisma.$executeRaw`UPDATE orders SET status = 'TRIGGERED',
+        updated_at = now() - make_interval(mins => ${minutesAgo}::int) WHERE id = ${orderId}::uuid`;
+
+    it('rejects a claim older than the window, tells the trader, and opens nothing', async () => {
+      const { userId, accountId } = await openAccount();
+      const order = await placeBuyLimit(userId, accountId);
+      await strand(order.orderId, 5);
+      const published = vi.spyOn(stack.events, 'publish');
+
+      expect(await stack.triggers.sweepInterruptedFills()).toBe(1);
+
+      const after = await prisma.order.findUniqueOrThrow({ where: { id: order.orderId } });
+      expect(after.status).toBe('REJECTED');
+      expect(after.rejectionCode).toBe('INTERNAL_ERROR');
+      expect(await prisma.position.count({ where: { accountId } })).toBe(0);
+      expect(published).toHaveBeenCalledWith(
+        'order.rejected',
+        accountId,
+        expect.objectContaining({ orderId: order.orderId }),
+      );
+      const events = await prisma.orderEvent.findMany({
+        where: { orderId: order.orderId },
+        orderBy: { seq: 'asc' },
+      });
+      expect(events.map((e) => e.toStatus)).toEqual(['NEW', 'PENDING', 'TRIGGERED', 'REJECTED']);
+      published.mockRestore();
+    });
+
+    it('leaves a claim inside the window alone: a slow fill is not a dead one', async () => {
+      const { userId, accountId } = await openAccount();
+      const order = await placeBuyLimit(userId, accountId);
+      await strand(order.orderId, 1);
+
+      expect(await stack.triggers.sweepInterruptedFills()).toBe(0);
+      const after = await prisma.order.findUniqueOrThrow({ where: { id: order.orderId } });
+      expect(after.status).toBe('TRIGGERED');
+    });
+
+    it('makes a fill that was still running lose, and open nothing', async () => {
+      const { userId, accountId } = await openAccount();
+      const order = await placeBuyLimit(userId, accountId, '4550.00');
+      await stack.publishQuote('XAUUSD', '4549.86', '4550.00');
+
+      // The sweep reaches the order after the fill has claimed it and before
+      // the fill writes: exactly the window the conditional write closes.
+      const rate = stack.conversion.rate.bind(stack.conversion);
+      const spy = vi.spyOn(stack.conversion, 'rate').mockImplementationOnce(async (...args) => {
+        expect(await stack.orders.rejectInterruptedFill(order.orderId)).toBe(true);
+        return rate(...args);
+      });
+      try {
+        const outcome = await stack.orders.fillPending(order.orderId, {
+          symbol: 'XAUUSD',
+          bid: '4549.86',
+          ask: '4550.00',
+          timestamp: Date.now(),
+          volume: '1',
+        });
+        expect(outcome).toBe('lost');
+      } finally {
+        spy.mockRestore();
+      }
+
+      const after = await prisma.order.findUniqueOrThrow({ where: { id: order.orderId } });
+      expect(after.status).toBe('REJECTED');
+      expect(await prisma.position.count({ where: { accountId } })).toBe(0);
+      expect(await prisma.execution.count({ where: { orderId: order.orderId } })).toBe(0);
     });
   });
 

@@ -83,7 +83,7 @@ suite('Trading core (integration)', () => {
 
       const events = await prisma.orderEvent.findMany({
         where: { orderId: result.orderId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { seq: 'asc' },
       });
       expect(events.map((e) => e.type)).toEqual(['CREATED', 'ACCEPTED', 'FILLED']);
     });

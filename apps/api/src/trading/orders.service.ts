@@ -79,6 +79,35 @@ class RiskRejection extends Error {
 }
 
 /**
+ * A claimed order that something else resolved first.
+ *
+ * Thrown inside a fill's transaction when the order is no longer `TRIGGERED`
+ * by the time the fill writes — the interrupted-fill sweep rejected it — so
+ * the position the fill was about to open rolls back with it. An order is
+ * filled or rejected, never both.
+ */
+class ClaimLost extends Error {
+  constructor(readonly orderId: string) {
+    super('The order was resolved by another pass');
+    this.name = 'ClaimLost';
+  }
+}
+
+/**
+ * How long a claimed order may stay `TRIGGERED` before it is taken to be the
+ * leftover of a fill that died.
+ *
+ * A fill claims the order, prices it and commits in well under a second; the
+ * claim and the fill are separate writes so that pricing holds no lock. A
+ * process killed between them left the order `TRIGGERED` for good — out of
+ * the pending list, out of every later pass, not cancellable, and the trader
+ * never told. Minutes, not seconds: a fill waiting on the account's lock is
+ * slow, not dead, and it still loses cleanly if the sweep reaches the order
+ * first (`ClaimLost`).
+ */
+export const INTERRUPTED_FILL_AFTER_MS = 2 * 60_000;
+
+/**
  * Market-order submission.
  *
  * The ordering below is not arbitrary, and it changed once for a reason worth
@@ -1002,14 +1031,17 @@ export class OrdersService {
           const decision = this.risk.evaluate(proposed, context);
           if (!decision.allowed) throw new RiskRejection(decision.violations, valuation);
 
-          await tx.order.update({
-            where: { id: order.id },
+          // Conditional on the claim still standing: the interrupted-fill sweep
+          // may have rejected the order while this pass was pricing it.
+          const filled = await tx.order.updateMany({
+            where: { id: order.id, status: OrderStatus.TRIGGERED },
             data: {
               status: transitionOrder(OrderStatus.TRIGGERED, OrderStatus.FILLED),
               filledVolume: volume.toString(),
               version: { increment: 1 },
             },
           });
+          if (filled.count === 0) throw new ClaimLost(order.id);
           await tx.orderEvent.createMany({
             data: [
               {
@@ -1067,13 +1099,24 @@ export class OrdersService {
           return position;
         });
       } catch (error) {
+        if (error instanceof ClaimLost) {
+          this.logger.warn({ orderId: order.id }, 'A fill lost its claim; nothing was opened');
+          return 'lost';
+        }
         if (!(error instanceof RiskRejection)) throw error;
 
         // After the rollback, never inside it. Both of these are writes, and a
         // write in a transaction that rolled back is a write that never
         // happened — the order would stay TRIGGERED and the rejection would
         // leave no trace.
-        await this.rejectTriggered(order.id, order.accountId, symbolCode, error.violations);
+        const rejected = await this.rejectTriggered(
+          order.id,
+          order.accountId,
+          symbolCode,
+          error.violations,
+          { restingPrice, bid: tick.bid, ask: tick.ask },
+        );
+        if (!rejected) return 'lost';
         await this.recordRiskEvent(order.accountId, error.violations, error.valuation);
         this.metrics.ordersSubmitted.inc({
           symbol: symbolCode,
@@ -1120,46 +1163,107 @@ export class OrdersService {
       // The order is claimed as TRIGGERED and must not be left there: a stuck
       // order is invisible to the trader and to every later pass.
       this.logger.error({ err: error, orderId: order.id }, 'Triggered order failed to fill');
-      await this.rejectTriggered(order.id, order.accountId, symbolCode, [
-        {
-          rule: 'fill',
-          code: error instanceof DomainError ? error.code : TradingErrorCode.INTERNAL_ERROR,
-          message: error instanceof Error ? error.message : 'Fill failed',
-        },
-      ]);
-      return 'rejected';
+      const rejected = await this.rejectTriggered(
+        order.id,
+        order.accountId,
+        symbolCode,
+        [
+          {
+            rule: 'fill',
+            code: error instanceof DomainError ? error.code : TradingErrorCode.INTERNAL_ERROR,
+            message: error instanceof Error ? error.message : 'Fill failed',
+          },
+        ],
+        { restingPrice, bid: tick.bid, ask: tick.ask },
+      );
+      return rejected ? 'rejected' : 'lost';
     }
   }
 
-  /** Move a claimed order to REJECTED, recording why. */
+  /**
+   * Reject an order a fill claimed and never finished.
+   *
+   * Called by the trigger engine's sweep for orders `TRIGGERED` for longer
+   * than `INTERRUPTED_FILL_AFTER_MS`. Nothing was opened: the fill moves the
+   * order to `FILLED` in the same transaction that opens the position, so an
+   * order still `TRIGGERED` has no position. Rejected rather than re-armed —
+   * the price that reached it has gone, and a trader told their order ended
+   * can place it again; one silently re-armed fills at a price they never
+   * chose.
+   */
+  async rejectInterruptedFill(orderId: string): Promise<boolean> {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, status: OrderStatus.TRIGGERED },
+      select: { accountId: true, price: true, symbol: { select: { code: true } } },
+    });
+    if (order === null) return false;
+    const rejected = await this.rejectTriggered(
+      orderId,
+      order.accountId,
+      order.symbol.code,
+      [
+        {
+          rule: 'fill',
+          code: TradingErrorCode.INTERNAL_ERROR,
+          message: 'The fill was interrupted before it completed; the order was not filled',
+        },
+      ],
+      { restingPrice: order.price?.toString() ?? null, bid: null, ask: null },
+    );
+    if (rejected) this.logger.warn({ orderId }, 'An interrupted fill was rejected');
+    return rejected;
+  }
+
+  /**
+   * Move a claimed order to REJECTED, recording why — and recording the
+   * claim too, so the trail reads PENDING → TRIGGERED → REJECTED rather than
+   * jumping from a status it never showed arriving at.
+   *
+   * Conditional on the claim still standing; `false` means the order was
+   * resolved by another pass and nothing was written or announced.
+   */
   private async rejectTriggered(
     orderId: string,
     accountId: string,
     symbolCode: string,
     violations: readonly { rule: string; code: string; message: string }[],
-  ): Promise<void> {
+    trigger: { restingPrice: string | null; bid: string | null; ask: string | null },
+  ): Promise<boolean> {
     const first = violations[0];
     const reason = violations.map((v) => v.message).join('; ');
-    await this.prisma.$transaction(async (tx) => {
-      await tx.order.update({
-        where: { id: orderId },
+    const done = await this.prisma.$transaction(async (tx) => {
+      const rejected = await tx.order.updateMany({
+        where: { id: orderId, status: OrderStatus.TRIGGERED },
         data: {
           status: transitionOrder(OrderStatus.TRIGGERED, OrderStatus.REJECTED),
           rejectionCode: first?.code ?? TradingErrorCode.VALIDATION_FAILED,
           version: { increment: 1 },
         },
       });
-      await tx.orderEvent.create({
-        data: {
-          tenantId: requireTenantId(),
-          orderId,
-          type: 'REJECTED',
-          fromStatus: OrderStatus.TRIGGERED,
-          toStatus: OrderStatus.REJECTED,
-          payload: { reason, symbol: symbolCode },
-        },
+      if (rejected.count === 0) return false;
+      await tx.orderEvent.createMany({
+        data: [
+          {
+            tenantId: requireTenantId(),
+            orderId,
+            type: 'TRIGGERED',
+            fromStatus: OrderStatus.PENDING,
+            toStatus: OrderStatus.TRIGGERED,
+            payload: trigger,
+          },
+          {
+            tenantId: requireTenantId(),
+            orderId,
+            type: 'REJECTED',
+            fromStatus: OrderStatus.TRIGGERED,
+            toStatus: OrderStatus.REJECTED,
+            payload: { reason, symbol: symbolCode },
+          },
+        ],
       });
+      return true;
     });
+    if (!done) return false;
 
     // The trader has to be told: a resting order that quietly vanished is worse
     // than one that failed loudly.
@@ -1169,36 +1273,48 @@ export class OrdersService {
       reason,
       code: first?.code ?? TradingErrorCode.VALIDATION_FAILED,
     } satisfies OrderEndedPayload);
+    return true;
   }
 
-  /** Let a resting order lapse. Called by the trigger engine and by maintenance. */
+  /**
+   * Let a resting order lapse. Called by the trigger engine and by maintenance.
+   *
+   * The status and its event commit together. They were two writes, and a
+   * process that died between them left an order `EXPIRED` with nothing in
+   * its trail saying when or why.
+   */
   async expirePending(orderId: string): Promise<boolean> {
-    const claimed = await this.prisma.order.updateMany({
-      where: { id: orderId, status: OrderStatus.PENDING },
-      data: {
-        status: transitionOrder(OrderStatus.PENDING, OrderStatus.EXPIRED),
-        version: { increment: 1 },
-      },
-    });
-    if (claimed.count === 0) return false;
-
-    const order = await this.prisma.order.findUniqueOrThrow({
-      where: { id: orderId },
-      include: { symbol: true },
-    });
-    await this.prisma.orderEvent.create({
-      data: {
-        tenantId: requireTenantId(),
-        orderId,
-        type: 'EXPIRED',
-        fromStatus: OrderStatus.PENDING,
-        toStatus: OrderStatus.EXPIRED,
-        payload: {
-          timeInForce: order.timeInForce,
-          expiresAt: order.expiresAt?.toISOString() ?? null,
+    const order = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.order.updateMany({
+        where: { id: orderId, status: OrderStatus.PENDING },
+        data: {
+          status: transitionOrder(OrderStatus.PENDING, OrderStatus.EXPIRED),
+          version: { increment: 1 },
         },
-      },
+      });
+      if (claimed.count === 0) return null;
+
+      const expired = await tx.order.findUniqueOrThrow({
+        where: { id: orderId },
+        include: { symbol: true },
+      });
+      await tx.orderEvent.create({
+        data: {
+          tenantId: requireTenantId(),
+          orderId,
+          type: 'EXPIRED',
+          fromStatus: OrderStatus.PENDING,
+          toStatus: OrderStatus.EXPIRED,
+          payload: {
+            timeInForce: expired.timeInForce,
+            expiresAt: expired.expiresAt?.toISOString() ?? null,
+          },
+        },
+      });
+      return expired;
     });
+    if (order === null) return false;
+
     await this.events.publish(DomainEvent.ORDER_CANCELLED, order.accountId, {
       orderId,
       symbol: order.symbol.code,
@@ -1217,21 +1333,28 @@ export class OrdersService {
       );
     }
 
-    // Conditional on the status, so a cancel racing a fill loses rather than
-    // undoing a position that already exists.
-    const claimed = await this.prisma.order.updateMany({
-      where: { id: orderId, status: OrderStatus.PENDING },
-      data: { status: OrderStatus.CANCEL_REQUESTED, version: { increment: 1 } },
-    });
-    if (claimed.count === 0) {
-      throw new DomainError(
-        TradingErrorCode.ORDER_NOT_MODIFIABLE,
-        'This order changed state before the cancel was applied; it may have filled',
-        { orderId },
-      );
-    }
-
+    /**
+     * Conditional on the status, so a cancel racing a fill loses rather than
+     * undoing a position that already exists — and inside the transaction
+     * that finishes it. The claim used to commit on its own, and a failure
+     * before the second write left the order `CANCEL_REQUESTED` for good:
+     * gone from the pending list, not cancellable again, never announced.
+     */
     await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.order.updateMany({
+        where: { id: orderId, status: OrderStatus.PENDING },
+        data: {
+          status: transitionOrder(OrderStatus.PENDING, OrderStatus.CANCEL_REQUESTED),
+          version: { increment: 1 },
+        },
+      });
+      if (claimed.count === 0) {
+        throw new DomainError(
+          TradingErrorCode.ORDER_NOT_MODIFIABLE,
+          'This order changed state before the cancel was applied; it may have filled',
+          { orderId },
+        );
+      }
       await tx.order.update({
         where: { id: orderId },
         data: {
@@ -1339,19 +1462,28 @@ export class OrdersService {
         : request.takeProfit;
     validateProtectiveLevels(spec, order.side, price, { stopLoss, takeProfit });
 
-    const claimed = await this.prisma.order.updateMany({
-      where: { id: request.orderId, status: OrderStatus.PENDING, version: order.version },
-      data: { status: OrderStatus.MODIFY_REQUESTED, version: { increment: 1 } },
-    });
-    if (claimed.count === 0) {
-      throw new DomainError(
-        TradingErrorCode.CONCURRENT_MODIFICATION,
-        'This order changed while the modification was being prepared',
-        { orderId: request.orderId },
-      );
-    }
-
+    /**
+     * The claim and the change commit together. The claim used to commit on
+     * its own, and a failure before the change left the order
+     * `MODIFY_REQUESTED` for good: out of the pending list, skipped by every
+     * trigger pass, not cancellable — a resting order that had stopped
+     * resting without a word to the trader.
+     */
     await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.order.updateMany({
+        where: { id: request.orderId, status: OrderStatus.PENDING, version: order.version },
+        data: {
+          status: transitionOrder(OrderStatus.PENDING, OrderStatus.MODIFY_REQUESTED),
+          version: { increment: 1 },
+        },
+      });
+      if (claimed.count === 0) {
+        throw new DomainError(
+          TradingErrorCode.CONCURRENT_MODIFICATION,
+          'This order changed while the modification was being prepared',
+          { orderId: request.orderId },
+        );
+      }
       await tx.order.update({
         where: { id: request.orderId },
         data: {
@@ -1362,6 +1494,15 @@ export class OrdersService {
           stopLoss,
           takeProfit,
           version: { increment: 1 },
+        },
+      });
+      await tx.orderEvent.create({
+        data: {
+          tenantId: requireTenantId(),
+          orderId: request.orderId,
+          type: 'MODIFY_REQUESTED',
+          fromStatus: OrderStatus.PENDING,
+          toStatus: OrderStatus.MODIFY_REQUESTED,
         },
       });
       await tx.orderEvent.create({
@@ -1497,9 +1638,11 @@ export class OrdersService {
   async orderEvents(userId: string, orderId: string) {
     // Resolved for its authorisation throw; the events are read by id below.
     await this.loadOwnedOrder(userId, orderId, Permission.ORDERS_READ);
+    // By `seq`, not `createdAt`: every row one transaction writes shares its
+    // `createdAt`, and a market order's whole trail is one transaction.
     const events = await this.prisma.orderEvent.findMany({
       where: { orderId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { seq: 'asc' },
     });
     return events.map((event) => ({
       type: event.type,

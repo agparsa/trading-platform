@@ -292,9 +292,11 @@ export class BlotterService {
     if (order === null) {
       throw new DomainError(TradingErrorCode.RESOURCE_NOT_FOUND, 'No such order', { orderId });
     }
+    // By `seq`, not `createdAt`: every row one transaction writes shares its
+    // `createdAt`, and a market order's whole trail is one transaction.
     const events = await this.prisma.orderEvent.findMany({
       where: { orderId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { seq: 'asc' },
     });
 
     return {

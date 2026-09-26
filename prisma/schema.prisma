@@ -689,6 +689,7 @@ enum OrderEventType {
   CREATED
   VALIDATED
   ACCEPTED
+  UNCONFIRMED
   REJECTED
   TRIGGERED
   PARTIALLY_FILLED
@@ -796,12 +797,17 @@ model OrderEvent {
   /// Structured, non-sensitive context: prices, volumes, reject codes.
   payload    Json           @default("{}")
   createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// The order the rows were written in. `createdAt` is the transaction's
+  /// start, so every row one transaction writes shares it; this is what puts
+  /// CREATED before FILLED. Read the trail by it, never by `createdAt`.
+  seq        BigInt         @default(autoincrement())
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([orderId, createdAt])
+  @@index([orderId, seq])
   @@index([tenantId])
   @@map("order_events")
 }

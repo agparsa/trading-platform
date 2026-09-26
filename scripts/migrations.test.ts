@@ -112,6 +112,7 @@ const ADDS_ENUM_VALUES: Readonly<Record<string, string>> = {
     'DEVICE_REVOKED_BY_STAFF, DEVICE_RESTORED_BY_STAFF',
   '20260914100000_audit_report_kind': 'ReportKind: AUDIT',
   '20260914160000_orders_and_positions_report_kinds': 'ReportKind: ORDERS, POSITIONS',
+  '20260926090100_order_event_unconfirmed': 'OrderEventType: UNCONFIRMED',
 };
 
 const ADDS_ENUM_VALUE = /\bALTER\s+TYPE\b[\s\S]*?\bADD\s+VALUE\b/i;
