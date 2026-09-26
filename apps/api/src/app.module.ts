@@ -1,4 +1,4 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { DevicesModule } from './devices/devices.module';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -76,6 +76,10 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
           // serialiser is added; `logging.test.ts` measures both.
           redact: redactionOptions(),
         },
+        // nestjs-pino's default is the bare `*`, which Express 5 no longer
+        // parses; Nest rewrote it to this at every boot with a warning per
+        // middleware. Same routes, stated in the form the router accepts.
+        forRoutes: [{ path: '/{*path}', method: RequestMethod.ALL }],
       }),
     }),
     ThrottlerModule.forRootAsync({
@@ -162,11 +166,16 @@ export class AppModule implements NestModule {
    * set the scope and return, which leaves it to `AsyncLocalStorage.enterWith`
    * and to hoping the store does not outlive the request.
    *
-   * `*` includes the unversioned health and metrics routes. They need no tenant
-   * and reading one costs a cached lookup; excluding them would mean a list of
-   * exceptions that the next unversioned route would be missing from.
+   * `/{*path}` is Express 5's spelling of the wildcard, and like the bare `*`
+   * it replaces it covers every route under the global prefix and the
+   * unversioned health and metrics routes excluded from it. They need no
+   * tenant and reading one costs a cached lookup; excluding them would mean a
+   * list of exceptions that the next unversioned route would be missing from.
+   * The bare `*` is a form path-to-regexp no longer accepts: Nest converted it
+   * at every boot with a warning — three per HTTP process with the logger's
+   * two — in the logs somebody reads to find what is actually wrong.
    */
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(TenantMiddleware).forRoutes('*');
+    consumer.apply(TenantMiddleware).forRoutes('/{*path}');
   }
 }
