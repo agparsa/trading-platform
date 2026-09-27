@@ -62,6 +62,24 @@ export function PositionsPanel({
   const [prompt, setPrompt] = useState<ClosePrompt | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const handledAt = useRef<number>(0);
+  /**
+   * Ticked rows, for "Close (n)". Kept as ids and re-read against the rows
+   * on every render, so a position that closed — by its stop, by the engine,
+   * from the phone — drops out of the selection the moment it leaves the
+   * list, and the count on the button is always of positions still open.
+   */
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(() => new Set());
+  const selected = useMemo(
+    () => positions.filter((position) => ticked.has(position.id)).map((position) => position.id),
+    [positions, ticked],
+  );
+  const toggle = (id: string) =>
+    setTicked((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   /**
    * Which position `close` means.
@@ -164,7 +182,12 @@ export function PositionsPanel({
      */
     if (accountId === null) return;
     try {
-      const result = await closeAll.mutateAsync({ accountId });
+      const result = await closeAll.mutateAsync(
+        prompt.kind === 'SOME' ? { accountId, positionIds: prompt.positionIds } : { accountId },
+      );
+      // Whatever closed is gone from the list; whatever was refused stays
+      // ticked, so the trader can read the notice and press the button again.
+      setTicked(new Set(result.refused.map((one) => one.positionId)));
       if (result.refused.length > 0) {
         const [first] = result.refused;
         setNotice(
@@ -213,10 +236,46 @@ export function PositionsPanel({
           onCancel={() => setPrompt(null)}
         />
       )}
+      {selected.length === 0 ? null : (
+        <div
+          className="flex items-center gap-3 border-b border-terminal-border bg-terminal-raised/40 px-3 py-1.5"
+          data-testid="selection-bar"
+        >
+          <span className="text-[11px] text-terminal-muted">
+            {selected.length} of {positions.length} selected
+          </span>
+          <Button
+            variant="danger"
+            className="px-2 py-0.5"
+            disabled={closeAll.isPending}
+            onClick={() => {
+              setNotice(null);
+              setPrompt({ kind: 'SOME', positionIds: selected });
+            }}
+          >
+            Close ({selected.length})
+          </Button>
+          <Button variant="ghost" className="px-2 py-0.5" onClick={() => setTicked(new Set())}>
+            Clear
+          </Button>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[52rem] border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-terminal-surface">
             <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+              <th className="px-2 py-1.5 font-medium">
+                <input
+                  type="checkbox"
+                  aria-label="Select every position"
+                  checked={selected.length === positions.length}
+                  onChange={(event) =>
+                    setTicked(
+                      event.target.checked ? new Set(positions.map((p) => p.id)) : new Set(),
+                    )
+                  }
+                />
+              </th>
               <th className="px-3 py-1.5 font-medium" title="Position reference">
                 Ref
               </th>
@@ -263,6 +322,14 @@ export function PositionsPanel({
               return (
                 <Fragment key={position.id}>
                   <tr className="border-t border-terminal-border/60 hover:bg-terminal-raised/40">
+                    <td className="px-2 py-1.5">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${refs.get(position.id) ?? position.id} ${position.symbol}`}
+                        checked={ticked.has(position.id)}
+                        onChange={() => toggle(position.id)}
+                      />
+                    </td>
                     <td className="numeric px-3 py-1.5 text-terminal-muted">
                       <CopyRef full={position.id} label={refs.get(position.id) ?? position.id} />
                     </td>
@@ -341,7 +408,7 @@ export function PositionsPanel({
                   </tr>
                   {editing === position.id ? (
                     <tr className="border-t border-terminal-border/60">
-                      <td colSpan={15} className="bg-terminal-bg px-3 py-3">
+                      <td colSpan={16} className="bg-terminal-bg px-3 py-3">
                         <PositionEditor
                           position={position}
                           spec={spec}
@@ -410,7 +477,10 @@ function CopyRef({ full, label }: { full: string; label: string }) {
   );
 }
 
-type ClosePrompt = { kind: 'ONE'; position: PositionRow } | { kind: 'ALL'; count: number };
+type ClosePrompt =
+  | { kind: 'ONE'; position: PositionRow }
+  | { kind: 'ALL'; count: number }
+  | { kind: 'SOME'; positionIds: readonly string[] };
 
 function Notice({ text, onDismiss }: { text: string; onDismiss: () => void }) {
   return (
@@ -445,7 +515,9 @@ function ConfirmClose({
       <span className="text-[11px] text-terminal-text">
         {prompt.kind === 'ALL'
           ? `Close all ${prompt.count} position${prompt.count === 1 ? '' : 's'} at market?`
-          : `Close ${formatVolume(prompt.position.volume)} ${prompt.position.symbol} at market?`}
+          : prompt.kind === 'SOME'
+            ? `Close the ${prompt.positionIds.length} selected position${prompt.positionIds.length === 1 ? '' : 's'} at market?`
+            : `Close ${formatVolume(prompt.position.volume)} ${prompt.position.symbol} at market?`}
       </span>
       <Button variant="danger" onClick={onConfirm} className="px-2 py-0.5">
         Close

@@ -300,14 +300,17 @@ export class TradingController {
   @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
   @RequirePermissions(Permission.POSITIONS_CLOSE)
   @Post('positions/close-all')
-  @ApiOperation({ summary: 'Close every open position on an account. Reports each one.' })
+  @ApiOperation({
+    summary:
+      'Close every open position on an account, or the ones named in positionIds. Reports each one.',
+  })
   async closeAll(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: CloseAllDto,
     @IdempotencyKey() key: string,
   ): Promise<CloseAllResult> {
     return idempotent(this.idempotency, `close-all:${user.id}`, key, body, () =>
-      this.positions.closeAll(user.id, body.accountId),
+      this.positions.closeAll(user.id, body.accountId, undefined, body.positionIds),
     );
   }
 

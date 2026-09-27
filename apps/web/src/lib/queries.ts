@@ -489,14 +489,19 @@ export function useCloseAllPositions(accountId: string | null) {
   const { api } = useSession();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: mutate<CommandInput & { accountId: string }, CloseAllOutcome>(
-      api,
-      (client_, input, key) =>
-        client_.post<CloseAllOutcome>(
-          '/positions/close-all',
-          { accountId: input.accountId },
-          { idempotencyKey: key },
-        ),
+    mutationFn: mutate<
+      CommandInput & { accountId: string; positionIds?: readonly string[] },
+      CloseAllOutcome
+    >(api, (client_, input, key) =>
+      client_.post<CloseAllOutcome>(
+        '/positions/close-all',
+        // Named, the same command closes only those — the trader's selection —
+        // and answers for every name; omitted, it closes everything open.
+        input.positionIds === undefined
+          ? { accountId: input.accountId }
+          : { accountId: input.accountId, positionIds: [...input.positionIds] },
+        { idempotencyKey: key },
+      ),
     ),
     onSuccess: () => {
       if (accountId !== null) invalidateTradingState(client, accountId);

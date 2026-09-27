@@ -88,6 +88,19 @@ each position still open and why.
 margin soonest is what makes the rest closeable rather than liquidated halfway
 through by the engine.
 
+**A selection is the same command.** The positions table has a checkbox per row
+and one in the header; ticking any shows "n of m selected" with **Close (n)**,
+which asks first and then sends `POST /positions/close-all` with `positionIds`
+— the ticked ids, as one command, not a loop of single closes, for the same
+three reasons. The server answers for every name it was given: an id that is
+not an open position on that account (closed meanwhile, or another account's,
+even the same trader's) is in `refused` as `POSITION_NOT_FOUND`, never dropped,
+because a selection that silently shrank is the partial failure the command
+exists to end. The selection is kept as ids and re-read against the rows, so a
+position that closes by its stop leaves the selection with the list; after the
+command, what closed is forgotten and what was refused stays ticked beside the
+notice that says why.
+
 ---
 
 ## 4. What changed on the screens
@@ -154,8 +167,8 @@ Stated rather than stubbed. None of this is built:
   used to list expiry as missing too.)
 - **Finance and Logs tabs.** Neither has a design. (Alerts is built — price
   alerts have their own tab, next to pending orders; see `price-alerts.md`.)
-- **Multi-select with "Close (n)"** in the positions panel, and filter/export
-  there. Close-all now exists as a command; selecting a subset does not.
+- **Filter and export** in the positions panel. (Multi-select with "Close (n)"
+  is built — §3.)
 - **Design tokens beyond colour.** There is no spacing scale and no typography
   scale; sizes are arbitrary utilities repeated inline. There is no light
   theme.

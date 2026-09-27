@@ -77,7 +77,22 @@ export const listQuerySchema = z
   .strict();
 
 /** Close-all names only the account: closing "everything" takes no options. */
-const closeAllSchema = z.object({ accountId: z.string().uuid() }).strict();
+const closeAllSchema = z
+  .object({
+    accountId: z.string().uuid(),
+    /**
+     * Named, the command closes only these — the trader's selection — and
+     * reports a name that is not an open position on this account as refused
+     * rather than ignoring it. Omitted, it closes every open position.
+     */
+    positionIds: z
+      .array(z.string().uuid())
+      .min(1)
+      .max(200)
+      .refine((ids) => new Set(ids).size === ids.length, 'positionIds must be distinct')
+      .optional(),
+  })
+  .strict();
 
 export class OpenPositionDto extends createZodDto(openPositionSchema) {}
 export class CloseAllDto extends createZodDto(closeAllSchema) {}

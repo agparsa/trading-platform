@@ -1387,6 +1387,34 @@ async function main(): Promise<void> {
     await auditAccessibility(page, 'the position editor');
 
     /**
+     * And closed from the same screen as a selection: the row ticked, "Close
+     * (1)", the question answered. One command naming the position, and the
+     * row in the database says CLOSED with a close reason of MANUAL — the
+     * same fact the firm's book read earlier, from the other end.
+     */
+    await page
+      .getByRole('checkbox', { name: /^Select .* XAUUSD$/ })
+      .first()
+      .check();
+    await page.getByRole('button', { name: /^Close \(1\)$/ }).click();
+    await page.getByRole('button', { name: /^Close$/ }).click();
+    let closedRow: { status: string; closeReason: string | null } | null = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      closedRow = await prisma.position.findFirst({
+        where: { account: { user: { email: people.trader.email } } },
+        orderBy: { openedAt: 'desc' },
+        select: { status: true, closeReason: true },
+      });
+      if (closedRow?.status === 'CLOSED') break;
+      await page.waitForTimeout(500);
+    }
+    ok(
+      closedRow?.status === 'CLOSED' && closedRow.closeReason === 'MANUAL',
+      'a position ticked and closed as a selection is closed in the database',
+      `${closedRow?.status ?? 'no row'} / ${closedRow?.closeReason ?? '—'}`,
+    );
+
+    /**
      * The trading week: the model has existed since the beginning and nothing
      * could edit it. Saved whole, and the reason is mandatory.
      */

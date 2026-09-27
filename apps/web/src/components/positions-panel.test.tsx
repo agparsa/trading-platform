@@ -13,10 +13,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
  * text would pass every unit test and set a stop of "200" on gold.
  */
 const modify = vi.fn();
+const closeAll = vi.fn();
 
 vi.mock('@/lib/queries', () => ({
   useClosePosition: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useCloseAllPositions: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCloseAllPositions: () => ({ mutateAsync: closeAll, isPending: false }),
   useModifyPosition: () => ({ mutateAsync: modify, isPending: false }),
   useReversePosition: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
@@ -83,10 +84,10 @@ const SNAPSHOT = {
   grossExposure: '120000.00',
 } as never;
 
-function renderPanel() {
+function renderPanel(positions: unknown[] = [POSITION]) {
   render(
     <PositionsPanel
-      positions={[POSITION]}
+      positions={positions as never}
       symbols={[XAUUSD]}
       accountId="acc-1"
       currency="USD"
@@ -96,18 +97,93 @@ function renderPanel() {
       onShortcutHandled={() => undefined}
     />,
   );
+}
+
+function openEditor() {
   fireEvent.click(screen.getByRole('button', { name: /^Manage$/ }));
 }
 
 afterEach(() => {
   cleanup();
   modify.mockReset();
+  closeAll.mockReset();
+});
+
+/**
+ * "Close (n)": ticked rows go to the server as one command naming them, not
+ * as a loop of single closes. What is pinned is the wire: the ids of the
+ * ticked rows and no other, after the confirmation, and a selection that
+ * forgets what closed and keeps what was refused.
+ */
+describe('closing a selection, rendered', () => {
+  const second = { ...POSITION, id: 'pos-2', symbol: 'XAUUSD' };
+  const third = { ...POSITION, id: 'pos-3', symbol: 'XAUUSD' };
+
+  it('sends exactly the ticked positions as one command, after asking', async () => {
+    closeAll.mockResolvedValue({
+      asked: 2,
+      closed: [{ positionId: 'pos-1' }, { positionId: 'pos-3' }],
+      refused: [],
+    });
+    renderPanel([POSITION, second, third]);
+    expect(screen.queryByTestId('selection-bar')).toBeNull();
+
+    const boxes = screen.getAllByRole('checkbox', { name: /^Select .* XAUUSD$/ });
+    expect(boxes).toHaveLength(3);
+    fireEvent.click(boxes[0]!);
+    fireEvent.click(boxes[2]!);
+    expect(screen.getByTestId('selection-bar').textContent).toMatch(/2 of 3 selected/);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Close \(2\)$/ }));
+    // Asked first — a close is not undone at the same price.
+    expect(closeAll).not.toHaveBeenCalled();
+    expect(screen.getByText(/Close the 2 selected positions at market\?/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Close$/ }));
+
+    await waitFor(() => {
+      expect(closeAll).toHaveBeenCalledTimes(1);
+    });
+    expect(closeAll.mock.calls[0]?.[0]).toEqual({
+      accountId: 'acc-1',
+      positionIds: ['pos-1', 'pos-3'],
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('selection-bar')).toBeNull();
+    });
+  });
+
+  it('keeps what the server refused ticked, and says so', async () => {
+    closeAll.mockResolvedValue({
+      asked: 2,
+      closed: [{ positionId: 'pos-1' }],
+      refused: [{ positionId: 'pos-2', code: 'STALE_QUOTE', message: 'No fresh quote.' }],
+    });
+    renderPanel([POSITION, second]);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select every position' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Close \(2\)$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Close$/ }));
+    await waitFor(() => {
+      expect(closeAll).toHaveBeenCalledTimes(1);
+    });
+    expect(closeAll.mock.calls[0]?.[0]).toEqual({
+      accountId: 'acc-1',
+      positionIds: ['pos-1', 'pos-2'],
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/1 closed\. One is still open: No fresh quote\./)).toBeTruthy();
+    });
+    const boxes = screen.getAllByRole('checkbox', {
+      name: /^Select .* XAUUSD$/,
+    }) as HTMLInputElement[];
+    expect(boxes.map((box) => box.checked)).toEqual([false, true]);
+  });
 });
 
 describe('the position editor, rendered', () => {
   it('turns money into the stop price it sends, and shows that price first', async () => {
     modify.mockResolvedValue({});
     renderPanel();
+    openEditor();
 
     fireEvent.change(screen.getByLabelText('Stop loss unit'), { target: { value: 'money' } });
     fireEvent.change(screen.getByLabelText('Stop loss'), { target: { value: '250' } });
@@ -132,6 +208,7 @@ describe('the position editor, rendered', () => {
 
   it('will not send while a level is typed but has not resolved', () => {
     renderPanel();
+    openEditor();
     fireEvent.change(screen.getByLabelText('Take profit unit'), { target: { value: 'points' } });
     fireEvent.change(screen.getByLabelText('Take profit'), { target: { value: '12.5' } });
 
@@ -146,6 +223,7 @@ describe('the position editor, rendered', () => {
 
   it('clears the text when the unit changes, rather than re-reading the digits', () => {
     renderPanel();
+    openEditor();
     fireEvent.change(screen.getByLabelText('Stop loss'), { target: { value: '3988' } });
     fireEvent.change(screen.getByLabelText('Stop loss unit'), { target: { value: 'percent' } });
     expect((screen.getByLabelText('Stop loss') as HTMLInputElement).value).toBe('');
@@ -154,6 +232,7 @@ describe('the position editor, rendered', () => {
   it('sends a price as typed, and an empty field as a cleared level', async () => {
     modify.mockResolvedValue({});
     renderPanel();
+    openEditor();
     fireEvent.change(screen.getByLabelText('Take profit'), { target: { value: '4012' } });
     fireEvent.click(screen.getByRole('button', { name: /Apply levels/ }));
     await waitFor(() => {

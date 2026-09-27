@@ -43,7 +43,11 @@ export interface OrderResult {
  * position is the honest alternative to a boolean that would have to lie.
  */
 export interface CloseAllResult {
-  /** How many were open when the command was accepted. */
+  /**
+   * How many the command set out to close: every open position, or the number
+   * named — including names that turned out not to be open, which appear in
+   * `refused`.
+   */
   asked: number;
   closed: CloseResult[];
   /** The ones still open, each with the reason it could not be closed. */

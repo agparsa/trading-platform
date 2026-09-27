@@ -217,4 +217,72 @@ suite('Close all (integration)', () => {
     const result = await stack.positions.closeAll(userId, accountId);
     expect(result.closed[0]?.positionId).toBe(heavy.positionId);
   });
+
+  /**
+   * "Close (n)": the same command narrowed to what the trader ticked. What is
+   * pinned is that it closes exactly the names — not one more — and that it
+   * answers for every name it was given.
+   */
+  describe('a selection', () => {
+    it('closes the positions named and no other', async () => {
+      const { userId, accountId } = await createAccount(prisma, { balance: '1000000' });
+      const first = await buy(userId, accountId);
+      const second = await buy(userId, accountId);
+      const third = await buy(userId, accountId);
+
+      const result = await stack.positions.closeAll(userId, accountId, undefined, [
+        first.positionId,
+        third.positionId,
+      ]);
+      expect(result.asked).toBe(2);
+      expect(result.closed.map((one) => one.positionId).sort()).toEqual(
+        [first.positionId, third.positionId].sort(),
+      );
+      expect(result.refused).toEqual([]);
+      const still = await prisma.position.findMany({
+        where: { accountId, status: 'OPEN' },
+        select: { id: true },
+      });
+      expect(still).toEqual([{ id: second.positionId }]);
+    });
+
+    /**
+     * A name that is not an open position here is answered, not dropped: a
+     * selection that silently shrank is the partial failure the command exists
+     * to end. And "here" is the account — another account's position, even
+     * this trader's own, is not closed and is not distinguished from an id
+     * that never existed.
+     */
+    it('refuses a name that is not an open position on this account, and closes the rest', async () => {
+      const { userId, accountId } = await createAccount(prisma, { balance: '1000000' });
+      const mine = await buy(userId, accountId);
+      const other = await createAccount(prisma, { balance: '1000000' });
+      const theirs = await buy(other.userId, other.accountId);
+      const closedAlready = await buy(userId, accountId);
+      await stack.positions.close(userId, closedAlready.positionId, null);
+
+      const result = await stack.positions.closeAll(userId, accountId, undefined, [
+        mine.positionId,
+        theirs.positionId,
+        closedAlready.positionId,
+        '00000000-0000-0000-0000-000000000000',
+      ]);
+      expect(result.asked).toBe(4);
+      expect(result.closed.map((one) => one.positionId)).toEqual([mine.positionId]);
+      expect(result.refused.map((one) => [one.positionId, one.code])).toEqual([
+        [theirs.positionId, TradingErrorCode.POSITION_NOT_FOUND],
+        [closedAlready.positionId, TradingErrorCode.POSITION_NOT_FOUND],
+        ['00000000-0000-0000-0000-000000000000', TradingErrorCode.POSITION_NOT_FOUND],
+      ]);
+      expect(
+        await prisma.position.count({ where: { id: theirs.positionId, status: 'OPEN' } }),
+      ).toBe(1);
+
+      const trail = await prisma.auditLog.findFirstOrThrow({
+        where: { action: 'POSITION_CLOSE_ALL' },
+      });
+      expect(trail.after).toMatchObject({ asked: 4, closed: 1 });
+      expect((trail.after as { selected: string[] }).selected).toHaveLength(4);
+    });
+  });
 });

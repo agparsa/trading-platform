@@ -149,24 +149,51 @@ export class PositionsService {
    * heaviest position first releases the most margin soonest, which makes it
    * more likely the rest can be closed at all rather than being liquidated
    * mid-way through by the engine.
+   *
+   * ## A selection is the same command
+   *
+   * `positionIds` narrows it to the positions the trader ticked. It is the
+   * same command and not a loop of single closes for the same three reasons
+   * — one stated intent, one report, one audit row — and it answers for every
+   * name it was given: a name that is not an open position on this account
+   * is refused with `POSITION_NOT_FOUND`, not dropped, because a selection
+   * that silently shrank is the partial failure this exists to end.
    */
   async closeAll(
     userId: string,
     accountId: string,
     reason: CloseReason = CloseReason.MANUAL,
+    positionIds?: readonly string[],
   ): Promise<CloseAllResult> {
     // The same access check every single close makes, made once up front so a
     // caller with no right to the account is refused before anything moves.
     await this.access.resolve(userId, accountId, Permission.POSITIONS_CLOSE);
 
     const open = await this.prisma.position.findMany({
-      where: { accountId, status: 'OPEN' },
+      where: {
+        accountId,
+        status: 'OPEN',
+        ...(positionIds === undefined ? {} : { id: { in: [...positionIds] } }),
+      },
       orderBy: [{ margin: 'desc' }, { openedAt: 'asc' }],
       select: { id: true },
     });
 
     const closed: CloseResult[] = [];
     const refused: { positionId: string; code: string; message: string }[] = [];
+
+    // Names that are not open positions on *this* account. The query above is
+    // scoped to the account, so another account's position — the caller's own
+    // or anyone else's — lands here and tells nothing but "not open here".
+    for (const named of positionIds ?? []) {
+      if (!open.some((position) => position.id === named)) {
+        refused.push({
+          positionId: named,
+          code: TradingErrorCode.POSITION_NOT_FOUND,
+          message: 'Not an open position on this account.',
+        });
+      }
+    }
 
     for (const position of open) {
       try {
@@ -192,6 +219,7 @@ export class PositionsService {
         'A close-all left positions open',
       );
     }
+    const asked = positionIds === undefined ? open.length : positionIds.length;
     await this.audit.record({
       actorId: userId,
       actorType: 'USER',
@@ -199,13 +227,14 @@ export class PositionsService {
       resourceType: 'Account',
       resourceId: accountId,
       after: {
-        asked: open.length,
+        asked,
+        selected: positionIds === undefined ? null : [...positionIds],
         closed: closed.length,
         refused: refused.map((one) => `${one.positionId}: ${one.code}`),
       },
     });
 
-    return { asked: open.length, closed, refused };
+    return { asked, closed, refused };
   }
 
   /**

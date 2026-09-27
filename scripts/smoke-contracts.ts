@@ -364,6 +364,10 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
     orderId: string;
   };
   ids['order'] = ack.orderId;
+  // The GET queries ask about the instrument that is open now — candles for a
+  // market that shut on Friday are an empty list on Saturday, which reads as a
+  // broken contract and is only a closed market.
+  ids['symbol'] = MAIN;
   await as.trader('POST', '/orders', { accountId, symbol: OTHER, side: 'SELL', volume: '0.10' });
   const open = (await request(traderToken, 'GET', '/positions', {
     query: { accountId },
@@ -825,7 +829,7 @@ function queryValue(name: string, world: World, key: string): string {
   const now = Date.now();
   const values: Record<string, string> = {
     accountId: world.accountId,
-    symbol: 'EURUSD',
+    symbol: world.ids['symbol'] ?? 'EURUSD',
     resolution: '1',
     // Milliseconds, as both chart clients send them.
     from: String(now - 86_400_000),
@@ -844,7 +848,7 @@ function pathValues(key: string, world: World): string[] | undefined {
   const table: Record<string, string[]> = {
     'GET /accounts/*/state': [world.accountId],
     'GET /accounts/*/settings': [world.accountId],
-    'GET /symbols/*': ['EURUSD'],
+    'GET /symbols/*': [world.ids['symbol'] ?? 'EURUSD'],
     'GET /admin/users/*': [world.traderId],
     'GET /admin/users/*/devices': [world.traderId],
     'GET /admin/accounts/*': [world.accountId],
