@@ -6,17 +6,7 @@ import { useSession } from '@/lib/session';
 import { Button } from '@/components/primitives';
 import { NotificationBell } from '@/components/notification-bell';
 import { Nav } from './nav';
-
-const SECTIONS = [
-  { href: '/terminal', label: 'Terminal' },
-  { href: '/account', label: 'Account' },
-  { href: '/wallet', label: 'Wallet' },
-  { href: '/verification', label: 'Verification' },
-  { href: '/history', label: 'History' },
-  { href: '/security', label: 'Security' },
-  { href: '/developer', label: 'Developer' },
-  { href: '/settings', label: 'Settings' },
-] as const;
+import { TRADER_SECTIONS } from './sections';
 
 /**
  * The frame around everything that is not the terminal.
@@ -24,12 +14,9 @@ const SECTIONS = [
  * The terminal keeps its own full-height chrome and is deliberately not wrapped
  * in this: it is a single dense screen where every pixel of vertical space is a
  * row of the order book, and putting a second header above it would cost that
- * space on the one screen that cannot spare it. The link back to it is here
- * instead.
- *
- * The wallet link arrived with the wallet. It was deliberately absent until
- * there was one — §50 says not to build UI for functionality that does not
- * exist, and a page reading "Balance: —" is a promise the platform cannot keep.
+ * space on the one screen that cannot spare it. It does carry the same row of
+ * section links as this header, from `TRADER_SECTIONS`, so nothing is reachable
+ * from here that is not reachable from there.
  */
 export function AppShell({
   title,
@@ -52,7 +39,7 @@ export function AppShell({
           >
             Trading Platform
           </Link>
-          <Nav items={SECTIONS} />
+          <Nav items={TRADER_SECTIONS} />
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <NotificationBell />

@@ -15,7 +15,7 @@
  *
  *   pnpm smoke:web
  */
-import { cpSync, existsSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -57,6 +57,50 @@ const AXE_PATH = resolve(
 
 let failures = 0;
 const problems: string[] = [];
+
+/**
+ * Where to keep a full-page screenshot of every screen the walk visits, when
+ * asked (`SMOKE_WEB_SCREENSHOTS=<dir>`). Off by default: the walk is a check,
+ * not a gallery. On, it is how a person who cannot open the app — a reviewer
+ * in a shell, a session without a browser — sees what the trader sees, on the
+ * real build with real data.
+ */
+const SCREENSHOTS = process.env['SMOKE_WEB_SCREENSHOTS'];
+let shot = 0;
+async function screenshot(page: Page, label: string): Promise<void> {
+  if (SCREENSHOTS === undefined) return;
+  mkdirSync(SCREENSHOTS, { recursive: true });
+  shot += 1;
+  const name = `${String(shot).padStart(2, '0')}-${label
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase()}.png`;
+  await page.screenshot({ path: resolve(SCREENSHOTS, name), fullPage: true });
+}
+
+/**
+ * The sections a trader's header must link, read from the list the app renders
+ * them from rather than typed here twice. What is checked is that the header
+ * on a given screen shows *every* one of them: a section reachable from the
+ * account page but not from the terminal — where a trader spends the session —
+ * was, in effect, hidden, and that was the bug this check was written after.
+ */
+const TRADER_SECTION_HREFS: readonly string[] = [
+  ...readFileSync('apps/web/src/components/shell/sections.ts', 'utf8').matchAll(/href: '([^']+)'/g),
+].map((match) => match[1] as string);
+
+async function checkSectionLinks(page: Page, screen: string): Promise<void> {
+  const links = await page.getByRole('navigation', { name: 'Sections' }).getByRole('link').all();
+  const hrefs = (await Promise.all(links.map((link) => link.getAttribute('href')))).map(
+    (href) => new URL(href ?? '', WEB).pathname,
+  );
+  const missing = TRADER_SECTION_HREFS.filter((href) => !hrefs.includes(href));
+  ok(
+    TRADER_SECTION_HREFS.length >= 8 && missing.length === 0,
+    `${screen} links every trader section`,
+    missing.length > 0 ? `missing ${missing.join(', ')}` : `${hrefs.length} links`,
+  );
+}
 
 function ok(condition: boolean, label: string, detail = ''): void {
   if (condition) {
@@ -279,6 +323,7 @@ async function visit(
     const real = errors.filter((message) => !isExpectedNoise(message));
     ok(real.length === 0, `${path} renders without console errors`, real.slice(0, 2).join(' | '));
     if (real.length > 0) problems.push(`${path}: ${real[0] ?? ''}`);
+    await screenshot(page, path === '/' ? 'root' : path);
   } finally {
     page.off('console', onConsole);
     page.off('pageerror', onPageError);
@@ -887,6 +932,7 @@ async function main(): Promise<void> {
     await signIn(page, people.trader.email);
     await visit(page, '/', { url: '/terminal' });
     await visit(page, '/terminal', { url: '/terminal' });
+    await checkSectionLinks(page, 'the terminal header');
     await auditAccessibility(page, 'the terminal');
     /**
      * Price alerts, set through the browser and read back from the database.
@@ -939,9 +985,11 @@ async function main(): Promise<void> {
       'the alert the trader set is listed back to them',
       alertsPanel.replace(/\s+/g, ' ').slice(0, 200),
     );
+    await screenshot(page, 'terminal alerts tab');
     await auditAccessibility(page, 'the alerts tab');
 
     await visit(page, '/account', { url: '/account', text: /Account/i });
+    await checkSectionLinks(page, 'the account page header');
     await auditAccessibility(page, 'the account screen');
     await visit(page, '/wallet', { url: '/wallet', text: /Wallet/i });
     await auditAccessibility(page, 'the wallet screen');

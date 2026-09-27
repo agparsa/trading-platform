@@ -30,6 +30,8 @@ import { AlertsPanel } from './alerts-panel';
 import { TradingSettings } from './trading-settings';
 import { SecuritySettings } from './security-settings';
 import { NotificationBell } from './notification-bell';
+import { Nav } from './shell/nav';
+import { TRADER_SECTIONS } from './shell/sections';
 import { ShortcutHelp } from './shortcut-help';
 import { Toasts } from './toasts';
 import { Button, Panel, Tabs } from './primitives';
@@ -236,6 +238,12 @@ export function Terminal() {
             Trading Platform
           </span>
           <ConnectionBadge />
+          {/*
+            The same sections every other page's header lists, from the same
+            list. The terminal is where a trader spends the session; a screen
+            they could reach only by leaving it first was, in effect, hidden.
+          */}
+          <Nav items={TRADER_SECTIONS} />
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {/* The watchlist is a desktop panel; on a narrow screen this is how a
@@ -266,18 +274,6 @@ export function Terminal() {
             they do not recognise — and navigating away from open risk to do
             either is the wrong shape for the question.
           */}
-          <Link
-            href="/account"
-            className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
-          >
-            Account
-          </Link>
-          <Link
-            href="/history"
-            className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
-          >
-            History
-          </Link>
           {/*
             Shown to roles that have something to do there. It is a shortcut,
             not a gate — the server decides on every request, and a trader who
