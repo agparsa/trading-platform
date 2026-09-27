@@ -660,14 +660,28 @@ export const envSchema = z
    */
   .superRefine((env, ctx) => {
     if (env.EMAIL_PROVIDER === 'smtp') {
-      for (const name of ['EMAIL_SMTP_HOST', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'] as const) {
-        if (env[name] === undefined) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [name],
-            message: `EMAIL_PROVIDER=smtp needs ${name}.`,
-          });
-        }
+      if (env.EMAIL_SMTP_HOST === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['EMAIL_SMTP_HOST'],
+          message: 'EMAIL_PROVIDER=smtp needs EMAIL_SMTP_HOST.',
+        });
+      }
+      /**
+       * A login is both halves or neither. Neither means the server relays for
+       * this host by its address — a mail server on the same machine that
+       * trusts the platform's own network — and the operator has to have set
+       * that up; the adapter cannot tell, so it says so at boot rather than at
+       * the first refused RCPT.
+       */
+      if ((env.EMAIL_SMTP_USER === undefined) !== (env.EMAIL_SMTP_PASSWORD === undefined)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [env.EMAIL_SMTP_USER === undefined ? 'EMAIL_SMTP_USER' : 'EMAIL_SMTP_PASSWORD'],
+          message:
+            'EMAIL_SMTP_USER and EMAIL_SMTP_PASSWORD go together: both for an authenticated ' +
+            'login, neither for a server that relays for this host by its address.',
+        });
       }
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(env.EMAIL_FROM) || env.EMAIL_FROM.endsWith('.local')) {
         ctx.addIssue({

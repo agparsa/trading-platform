@@ -501,8 +501,28 @@ EMAIL_SMTP_PASSWORD=…                    # or EMAIL_SMTP_PASSWORD_FILE
 EMAIL_FROM=no-reply@trade.example.com    # an address that login may send as
 ```
 
-The API refuses to start with `smtp` and any of these missing, or with the
-placeholder `EMAIL_FROM`. It never speaks to the server in the clear: port 465
+The API refuses to start with `smtp` and no host, with one half of the login
+and not the other, or with the placeholder `EMAIL_FROM`.
+
+**A mail server on the same host.** A cPanel or Plesk host already runs one
+(Exim, Postfix), and it can relay for the platform's own Docker network without
+a login: on cPanel, the network's subnet (`docker network inspect …` →
+`172.16.1.0/24` here) in `/etc/trustedmailhosts`. Then `EMAIL_SMTP_HOST` is the
+host's mail name — `mail.example.com:587`, whose certificate is valid, not the
+gateway IP, whose is not — and `EMAIL_SMTP_USER` / `EMAIL_SMTP_PASSWORD` stay
+unset. No password exists anywhere. The trust is by address on a network only
+the platform's containers are on; it is still a relay decision, and it belongs
+to the operator.
+
+**The receiving side decides.** Gmail and Outlook refuse mail from a domain with
+neither SPF nor DKIM (`550-5.7.26 … the sender is unauthenticated`), whatever
+the server did right. Before the first message, the sending domain needs at
+the DNS provider that actually serves it: an SPF `TXT` naming the mail host's
+address, the DKIM `TXT` the mail server signs with (cPanel: _Email
+Deliverability_ shows both, ready to copy), and a `_dmarc` `TXT` — `v=DMARC1;
+p=none; rua=mailto:…` to start. A zone hosted at Cloudflare while cPanel
+writes its records into a local zone nobody queries is exactly how a domain
+ends up with the records "set" and the mail refused. It never speaks to the server in the clear: port 465
 is TLS throughout, and on any other port a server that does not offer STARTTLS
 is hung up on before the login is sent (`smtp-email.adapter.test.ts` runs that
 against a real socket).

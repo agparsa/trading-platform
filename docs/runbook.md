@@ -112,12 +112,29 @@ repairing it. If they disagree, the sum is the truth and the cached balance is
 the symptom. Find the transaction that produced the drift before changing
 anything.
 
+When the ledger itself holds a wrong entry — a bug posted a row twice, say —
+the answer is a **compensating** entry, never an edit (the table refuses one).
+An administrator posts it from the panel (`POST /admin/accounts/:id/adjustments`
+with `compensatesId`, behind `accounts.adjust` and a live two-factor code). From
+the host, when the panel cannot be used:
+
+```bash
+./scripts/compensate-ledger-entries.sh --entry <id> --entry <id> --reason "why"          # prints the plan
+./scripts/compensate-ledger-entries.sh --entry <id> --entry <id> --reason "why" --apply  # posts it
+```
+
+One account per run, one transaction for all of it, refused if any entry was
+already answered, and an audit row (actor SYSTEM, this host) that names every
+entry. The reconciliation finding stays `OPEN` until somebody marks it resolved
+in the panel (`POST /reconciliation/findings/:id/status`); the next hourly run
+will not raise it again.
+
 ### A position will not close
 
 Check its status. `CLOSING` means a close is in flight and holding the claim; it
-is released when that attempt finishes or fails. A position stuck in `CLOSING`
-means a process died mid-close — the trade did not happen, and the position
-returns to `OPEN` on the next attempt.
+is released when that attempt finishes or fails. A position left in `CLOSING`
+by a process that died mid-close is reopened by the trigger engine's leader
+after two minutes (`CLOSE_ABANDONED` in its trail); no trade happened.
 
 `SUSPENDED` accounts cannot trade at all, which is often the real answer.
 

@@ -11,7 +11,10 @@ import { SmtpEmailAdapter, smtpTransportOptions, type MailTransport } from './sm
  * trader who forgot a password asked for a reset, was told a link had been
  * sent, and no link was ever going to arrive.
  */
-const settings = { host: 'smtp.example.com:587', user: 'mailer', password: 'not-a-real-secret' };
+const settings = {
+  host: 'smtp.example.com:587',
+  auth: { user: 'mailer', password: 'not-a-real-secret' },
+};
 const message = {
   to: 'trader@firm.example',
   subject: 'Reset your password',
@@ -81,6 +84,12 @@ describe('the transport it opens', () => {
     expect(options).toMatchObject({ port: 587, secure: false, requireTLS: true });
     expect(options.auth).toEqual({ user: 'mailer', pass: 'not-a-real-secret' });
   });
+
+  it('sends no login to a server that relays for this host by its address, and still insists on TLS', () => {
+    const options = smtpTransportOptions({ host: 'mail.example.com:587', auth: null });
+    expect('auth' in options).toBe(false);
+    expect(options).toMatchObject({ requireTLS: true });
+  });
 });
 
 describe('against a server that offers no encryption', () => {
@@ -141,12 +150,27 @@ describe('configuring it', () => {
     expect(validateEnv({ ...base, ...smtp }).EMAIL_PROVIDER).toBe('smtp');
   });
 
-  it.each(['EMAIL_SMTP_HOST', 'EMAIL_SMTP_USER', 'EMAIL_SMTP_PASSWORD'])(
-    'refuses to start without %s rather than fail at the first reset',
-    (name) => {
-      expect(() => validateEnv({ ...base, ...smtp, [name]: undefined })).toThrow(name);
-    },
-  );
+  it('refuses to start without EMAIL_SMTP_HOST rather than fail at the first reset', () => {
+    expect(() => validateEnv({ ...base, ...smtp, EMAIL_SMTP_HOST: undefined })).toThrow(
+      'EMAIL_SMTP_HOST',
+    );
+  });
+
+  it('takes a login as both halves or neither', () => {
+    expect(() => validateEnv({ ...base, ...smtp, EMAIL_SMTP_PASSWORD: undefined })).toThrow(
+      /EMAIL_SMTP_PASSWORD/,
+    );
+    expect(() => validateEnv({ ...base, ...smtp, EMAIL_SMTP_USER: undefined })).toThrow(
+      /EMAIL_SMTP_USER/,
+    );
+    const relayed = validateEnv({
+      ...base,
+      ...smtp,
+      EMAIL_SMTP_USER: undefined,
+      EMAIL_SMTP_PASSWORD: undefined,
+    });
+    expect(relayed.EMAIL_SMTP_USER).toBeUndefined();
+  });
 
   it('refuses a host without a port', () => {
     expect(() => validateEnv({ ...base, ...smtp, EMAIL_SMTP_HOST: 'smtp.example.com' })).toThrow(

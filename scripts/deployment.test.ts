@@ -1361,6 +1361,34 @@ describe('scripts/first-administrator.sh', () => {
   });
 });
 
+describe('scripts/compensate-ledger-entries.sh', () => {
+  const script = readFileSync(resolve(ROOT, 'scripts/compensate-ledger-entries.sh'), 'utf8');
+
+  /**
+   * The correction of a ledger entry is a compensating entry, and the panel
+   * posts one behind accounts.adjust and a two-factor code. The host needs the
+   * same act for the day the panel cannot be used — production's TP-100001
+   * carried seventeen duplicate swap rows from a bug fixed on 1 September,
+   * and no administrator existed to post the corrections from a form.
+   */
+  it('runs the compiled CLI inside the migrate image', () => {
+    expect(script).toMatch(/run --rm --no-deps migrate/);
+    expect(script).toContain('node apps/api/dist/cli/compensate-ledger-entries.js "$@"');
+    expect(existsSync(resolve(ROOT, 'apps/api/src/cli/compensate-ledger-entries.ts'))).toBe(true);
+  });
+
+  it('edits and deletes nothing: it only posts through LedgerService.compensate', () => {
+    const cli = read('apps/api/src/cli/compensate-ledger-entries.ts');
+    expect(cli).toContain('ledger.compensate(');
+    expect(cli).not.toMatch(/balanceLedger\.(update|delete|updateMany|deleteMany)\(/);
+    expect(cli).not.toMatch(/account\.update/);
+  });
+
+  it('is what the runbook tells the operator to run', () => {
+    expect(read('docs/runbook.md')).toContain('./scripts/compensate-ledger-entries.sh --entry');
+  });
+});
+
 describe('the API document in production', () => {
   /**
    * Swagger's UI mounts on Express, outside Nest's guards: whoever can reach

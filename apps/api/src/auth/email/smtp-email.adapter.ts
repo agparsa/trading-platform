@@ -12,8 +12,13 @@ import { EmailPort, type EmailMessage } from './email.port';
  */
 export interface SmtpSettings {
   readonly host: string;
-  readonly user: string;
-  readonly password: string;
+  /**
+   * The login, or `null` for a server that relays for this host by its
+   * address — a mail server on the same machine that trusts the platform's
+   * network. TLS is required either way; what is not sent is a password, and
+   * a server that relays by address has none to check.
+   */
+  readonly auth: { readonly user: string; readonly password: string } | null;
 }
 
 /** The transport options for a setting, separated so the TLS rule can be tested. */
@@ -25,7 +30,9 @@ export function smtpTransportOptions(settings: SmtpSettings) {
     port,
     secure: port === 465,
     requireTLS: port !== 465,
-    auth: { user: settings.user, pass: settings.password },
+    ...(settings.auth === null
+      ? {}
+      : { auth: { user: settings.auth.user, pass: settings.auth.password } }),
     // A few messages an hour at most; two connections are plenty, and a pool
     // saves a TLS handshake per message.
     pool: true,
