@@ -385,18 +385,35 @@ export class ReconciliationService {
    * PostgreSQL — this is the one place summing money outside `Decimal` is safe,
    * because it never leaves the database's own numeric type.
    */
+  /**
+   * A compensating entry counts against what it compensates.
+   *
+   * A wrong SWAP row is answered with an ADJUSTMENT that names it
+   * (`compensates_id`) — the table is append-only, so that is the only way to
+   * take it back. Summed by its own type, that answer landed in no bucket, and
+   * the swap total kept the wrong row in full: TP-100001 had seventeen
+   * duplicate swaps reversed, the balance was right, and the reconciliation
+   * went on reporting the same 42.98 every hour. So each entry is counted
+   * under the type of the entry it compensates, and under its own otherwise.
+   */
   private async ledgerTotals(accountId: string): Promise<LedgerTotals> {
     const rows = await this.prisma.$queryRaw<
       Array<{ all: string; trade_result: string; commission: string; swap: string }>
     >`
       SELECT
-        COALESCE(SUM(amount), 0)::text AS all,
-        COALESCE(SUM(amount) FILTER (WHERE type IN ('TRADE_PROFIT', 'TRADE_LOSS')), 0)::text
-          AS trade_result,
-        COALESCE(SUM(amount) FILTER (WHERE type = 'COMMISSION'), 0)::text AS commission,
-        COALESCE(SUM(amount) FILTER (WHERE type = 'SWAP'), 0)::text AS swap
-      FROM balance_ledger
-      WHERE account_id = ${accountId}::uuid
+        COALESCE(SUM(entry.amount), 0)::text AS all,
+        COALESCE(SUM(entry.amount) FILTER (
+          WHERE COALESCE(compensated.type, entry.type) IN ('TRADE_PROFIT', 'TRADE_LOSS')
+        ), 0)::text AS trade_result,
+        COALESCE(SUM(entry.amount) FILTER (
+          WHERE COALESCE(compensated.type, entry.type) = 'COMMISSION'
+        ), 0)::text AS commission,
+        COALESCE(SUM(entry.amount) FILTER (
+          WHERE COALESCE(compensated.type, entry.type) = 'SWAP'
+        ), 0)::text AS swap
+      FROM balance_ledger entry
+      LEFT JOIN balance_ledger compensated ON compensated.id = entry.compensates_id
+      WHERE entry.account_id = ${accountId}::uuid
     `;
     const row = rows[0];
     return {

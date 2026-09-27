@@ -447,6 +447,75 @@ suite('Worker jobs (integration)', () => {
     });
 
     /**
+     * A wrong SWAP row is answered with a compensating ADJUSTMENT that names
+     * it — the table is append-only. Summed by its own type, the answer landed
+     * in no bucket and the swap total kept the wrong row in full: production's
+     * TP-100001 had seventeen duplicate swaps reversed, its balance was right,
+     * and this check went on reporting the same 42.98 every hour.
+     */
+    it('counts a compensating entry against the entry it compensates', async () => {
+      const { accountId } = await openPosition('BUY', '1.00');
+      // One night of swap, posted twice: the duplicate the 1 September bug made.
+      await new SwapAccrualService(prismaService, buildConfig({}) as never).accrue(
+        new Date('2026-08-24T00:00:00Z'),
+      );
+      const duplicate = await withTenant({ tenantId: DEFAULT_TENANT_ID, slug: 'a' }, () =>
+        prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM accounts WHERE id = ${accountId}::uuid FOR UPDATE`;
+          const account = await tx.account.findUniqueOrThrow({ where: { id: accountId } });
+          const after = Money.of(account.balance.toString(), 'USD').minus(Money.of('12.50', 'USD'));
+          const row = await tx.balanceLedger.create({
+            data: {
+              tenantId: DEFAULT_TENANT_ID,
+              accountId,
+              type: 'SWAP',
+              amount: '-12.50',
+              balanceAfter: after.toString(),
+              currency: 'USD',
+              description: 'Swap released on closing XAUUSD',
+            },
+          });
+          await tx.account.update({
+            where: { id: accountId },
+            data: { balance: after.toString() },
+          });
+          return row.id;
+        }),
+      );
+      const before = await new ReconciliationService(prismaService).check();
+      expect(
+        before.reports.find((r) => r.accountId === accountId)?.findings.map((f) => f.code),
+      ).toContain('SWAP_MISMATCH');
+
+      // The correction: what the panel or compensate-ledger-entries posts.
+      await withTenant({ tenantId: DEFAULT_TENANT_ID, slug: 'a' }, () =>
+        prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM accounts WHERE id = ${accountId}::uuid FOR UPDATE`;
+          const account = await tx.account.findUniqueOrThrow({ where: { id: accountId } });
+          const after = Money.of(account.balance.toString(), 'USD').plus(Money.of('12.50', 'USD'));
+          await tx.balanceLedger.create({
+            data: {
+              tenantId: DEFAULT_TENANT_ID,
+              accountId,
+              type: 'ADJUSTMENT',
+              amount: '12.50',
+              balanceAfter: after.toString(),
+              currency: 'USD',
+              compensatesId: duplicate,
+              description: 'duplicate swap reversed',
+            },
+          });
+          await tx.account.update({
+            where: { id: accountId },
+            data: { balance: after.toString() },
+          });
+        }),
+      );
+      const after = await new ReconciliationService(prismaService).check();
+      expect(after.reports.filter((r) => r.accountId === accountId)).toHaveLength(0);
+    });
+
+    /**
      * A run is recorded even when it finds nothing, and that is the point.
      * "The last run was clean" and "there has been no run since Tuesday" look
      * identical if only findings are stored, and only one of them is

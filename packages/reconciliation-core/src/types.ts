@@ -81,7 +81,11 @@ export interface TradeRecord {
 export interface LedgerTotals {
   /** Signed sum of every entry. */
   all: string;
-  /** Signed sum of TRADE_PROFIT and TRADE_LOSS. */
+  /**
+   * Signed sum of TRADE_PROFIT and TRADE_LOSS — and of the compensating
+   * entries that answer one, which count against what they compensate. The
+   * same holds for the two totals below.
+   */
   tradeResult: string;
   /** Signed sum of COMMISSION entries — negative, since commission is a charge. */
   commission: string;
