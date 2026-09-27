@@ -1,4 +1,10 @@
-import { checkVolume, requiredMargin, toDecimal, type SymbolSpec } from '@tp/financial-core';
+import {
+  checkVolume,
+  requiredMargin,
+  swapAccrual,
+  toDecimal,
+  type SymbolSpec,
+} from '@tp/financial-core';
 import { DomainError } from '@tp/shared-types';
 import {
   outcomeAt,
@@ -104,14 +110,34 @@ export function validateTicket(
  * hold; the server has one and will apply it. A wrong number here is worse than
  * no number.
  */
+export interface CostEstimate {
+  margin: string;
+  commission: string;
+  /**
+   * One night's financing for this side and volume, signed as the ledger will
+   * post it: negative debits, positive credits. Shown per night on purpose —
+   * the total depends on how many nights the position is held, which nobody
+   * knows at entry, and the platform's triple-swap day charges three at once.
+   * `null` when there is nothing to show; `'0'` when the rate is zero.
+   */
+  swapPerNight: string | null;
+  marginAmount: string | null;
+}
+
 export function estimateCosts(
   spec: SymbolRow | undefined,
   account: AccountSummary | undefined,
+  side: 'BUY' | 'SELL',
   volume: string,
   executable: string | null,
   volumeOk: boolean,
-): { margin: string; commission: string; marginAmount: string | null } {
-  const blank = { margin: '—', commission: '—', marginAmount: null };
+): CostEstimate {
+  const blank: CostEstimate = {
+    margin: '—',
+    commission: '—',
+    swapPerNight: null,
+    marginAmount: null,
+  };
   if (spec === undefined || account === undefined || executable === null || !volumeOk) return blank;
   if (spec.quoteCurrency !== account.currency) return blank;
 
@@ -125,9 +151,19 @@ export function estimateCosts(
       quoteToAccountRate: 1,
     });
     const commission = toDecimal(spec.commissionPerLot).mul(toDecimal(volume));
+    // The same formula, rate and rounding the worker posts with, for one night.
+    const swap = swapAccrual(
+      spec as SymbolSpec,
+      side,
+      volume,
+      1,
+      account.currency as SymbolSpec['quoteCurrency'],
+      1,
+    ).round();
     return {
       margin: money(margin.toString(), account.currency),
       commission: money(commission.toFixed(2), account.currency),
+      swapPerNight: swap.toString(),
       // The same figure unformatted, for the checks that compare it against
       // the account rather than print it.
       marginAmount: margin.toString(),

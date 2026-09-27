@@ -1346,6 +1346,47 @@ async function main(): Promise<void> {
     );
 
     /**
+     * The position that order opened, managed from the terminal in the
+     * trader's own unit. "$5 of risk" is typed; what must reach the database
+     * is the *price* that resolves to — 0.01 lots of a 100-ounce contract is
+     * one dollar of result per dollar of price, so the stop sits exactly $5
+     * below the entry. Checked against the row rather than the screen: a
+     * screen that printed the right price and sent the digits typed would set
+     * a stop of 5 on gold, and only the database would know.
+     */
+    await visit(page, '/terminal', { url: '/terminal' });
+    await page
+      .getByRole('button', { name: /^Manage$/ })
+      .first()
+      .click();
+    // Scoped to the editor: the ticket beside it has a "Stop loss" of its own.
+    const editor = page.getByTestId('position-editor');
+    await editor.getByLabel('Stop loss unit').selectOption('money');
+    await editor.getByLabel('Stop loss', { exact: true }).fill('5');
+    const stopReadout = await editor.getByTestId('stop-loss-readout').innerText();
+    await screenshot(page, 'terminal position editor');
+    await editor.getByRole('button', { name: /Apply levels/ }).click();
+    let managed: { entryPrice: unknown; stopLoss: unknown } | null = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      managed = await prisma.position.findFirst({
+        where: { account: { user: { email: people.trader.email } }, status: 'OPEN' },
+        select: { entryPrice: true, stopLoss: true },
+      });
+      if (managed?.stopLoss != null) break;
+      await page.waitForTimeout(500);
+    }
+    const expectedStop =
+      managed === null ? null : (Number(String(managed.entryPrice)) - 5).toFixed(2);
+    const storedStop =
+      managed?.stopLoss == null ? null : Number(String(managed.stopLoss)).toFixed(2);
+    ok(
+      expectedStop !== null && storedStop === expectedStop && stopReadout.includes('-$5.00'),
+      'a stop entered as money reaches the database as the price it resolves to',
+      `entry ${String(managed?.entryPrice)} → stop ${String(managed?.stopLoss)} (readout: ${stopReadout.replace(/\s+/g, ' ').slice(0, 120)})`,
+    );
+    await auditAccessibility(page, 'the position editor');
+
+    /**
      * The trading week: the model has existed since the beginning and nothing
      * could edit it. Saved whole, and the reason is mandatory.
      */

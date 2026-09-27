@@ -25,6 +25,8 @@ import {
 import { useRealtime } from '@/lib/realtime-store';
 import { ShortcutAction, needsConfirmation } from '@/lib/shortcuts';
 import type { TradingPreferences } from '@/lib/trading-preferences';
+import { LevelField, levelEntryFromPrice, type LevelEntry } from './level-field';
+import { priceFromEntry, type LevelContext } from '@/lib/level-entry';
 import { Button, EmptyState, SideBadge, inputClass } from './primitives';
 
 /**
@@ -344,6 +346,8 @@ export function PositionsPanel({
                           position={position}
                           spec={spec}
                           accountId={accountId}
+                          currency={currency}
+                          equity={snapshot?.equity ?? null}
                           onDone={() => setEditing(null)}
                         />
                       </td>
@@ -464,18 +468,53 @@ function PositionEditor({
   position,
   spec,
   accountId,
+  currency,
+  equity,
   onDone,
 }: {
   position: PositionRow;
   spec: SymbolRow | undefined;
   accountId: string | null;
+  currency: string;
+  equity: string | null;
   onDone: () => void;
 }) {
   const [partial, setPartial] = useState('');
-  const [stopLoss, setStopLoss] = useState(position.stopLoss ?? '');
-  const [takeProfit, setTakeProfit] = useState(position.takeProfit ?? '');
+  const [stopLoss, setStopLoss] = useState<LevelEntry>(() =>
+    levelEntryFromPrice(position.stopLoss),
+  );
+  const [takeProfit, setTakeProfit] = useState<LevelEntry>(() =>
+    levelEntryFromPrice(position.takeProfit),
+  );
   const [trailing, setTrailing] = useState(position.trailingStopDistance ?? '');
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * The levels in the trader's unit, resolved to the prices the API takes.
+   * A field that is typed into but does not resolve yet — "12." as a
+   * distance, money on an instrument the browser cannot convert — holds the
+   * button, rather than sending the level the position already has as if it
+   * were the one just typed.
+   */
+  const levelContext = (kind: 'STOP_LOSS' | 'TAKE_PROFIT'): LevelContext | null =>
+    spec === undefined
+      ? null
+      : {
+          spec,
+          side: position.side,
+          kind,
+          volume: position.volume,
+          entryPrice: position.entryPrice,
+          accountCurrency: currency,
+          equity,
+        };
+  const stopContext = levelContext('STOP_LOSS');
+  const targetContext = levelContext('TAKE_PROFIT');
+  const resolvedStop = resolveEntry(stopLoss, stopContext);
+  const resolvedTarget = resolveEntry(takeProfit, targetContext);
+  const levelsIncomplete =
+    (stopLoss.text.trim() !== '' && resolvedStop === null) ||
+    (takeProfit.text.trim() !== '' && resolvedTarget === null);
 
   const close = useClosePosition(accountId);
   const modify = useModifyPosition(accountId);
@@ -496,7 +535,7 @@ function PositionEditor({
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3" data-testid="position-editor">
       <div className="flex flex-wrap items-end gap-2">
         <Button
           variant="danger"
@@ -541,8 +580,18 @@ function PositionEditor({
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
-        <LabelledInput label="Stop loss" value={stopLoss} onChange={setStopLoss} />
-        <LabelledInput label="Take profit" value={takeProfit} onChange={setTakeProfit} />
+        <LevelField
+          label="Stop loss"
+          context={stopContext}
+          entry={stopLoss}
+          onChange={setStopLoss}
+        />
+        <LevelField
+          label="Take profit"
+          context={targetContext}
+          entry={takeProfit}
+          onChange={setTakeProfit}
+        />
         <LabelledInput
           label="Trailing distance"
           value={trailing}
@@ -551,7 +600,8 @@ function PositionEditor({
         />
         <Button
           variant="neutral"
-          disabled={busy}
+          disabled={busy || levelsIncomplete}
+          title={levelsIncomplete ? 'A level has not resolved to a price yet.' : undefined}
           onClick={() =>
             void run(
               () =>
@@ -559,8 +609,8 @@ function PositionEditor({
                   positionId: position.id,
                   // An empty field clears the level; the API distinguishes null
                   // from omitted, so clearing is explicit rather than implied.
-                  stopLoss: stopLoss.trim() === '' ? null : stopLoss.trim(),
-                  takeProfit: takeProfit.trim() === '' ? null : takeProfit.trim(),
+                  stopLoss: resolvedStop,
+                  takeProfit: resolvedTarget,
                   trailingStopDistance: trailing.trim() === '' ? null : trailing.trim(),
                 }),
               false,
@@ -580,6 +630,13 @@ function PositionEditor({
       {error === null ? null : <p className="text-[11px] text-terminal-short">{error}</p>}
     </div>
   );
+}
+
+/** The price an entry resolves to; `null` for an empty or unresolved one. */
+function resolveEntry(entry: LevelEntry, context: LevelContext | null): string | null {
+  if (entry.text.trim() === '') return null;
+  if (context === null) return entry.mode === 'price' ? entry.text.trim() : null;
+  return priceFromEntry(entry.mode, entry.text, context);
 }
 
 function LabelledInput({

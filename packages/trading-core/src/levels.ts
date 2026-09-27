@@ -88,6 +88,52 @@ export function priceAtDistance(
   return (down ? toDecimal(from).minus(move) : toDecimal(from).plus(move)).toString();
 }
 
+/**
+ * The price at which a position's gross result would be `amount`, on the side
+ * a level of this kind sits — the calculator run backwards, for the trader who
+ * thinks "I will risk two hundred dollars" before "I will stop at 3,988".
+ *
+ * The sign of `amount` is ignored, like the sign of a distance: a stop costs
+ * and a target pays by definition, and the kind decides the direction.
+ * Rounded to the instrument's displayed decimals — a level is an order, and
+ * an order carries a price the instrument can quote — towards the entry, so
+ * the rounded stop never risks more than was asked for, and the rounded
+ * target never promises more than the price can pay.
+ *
+ * `null` without a rate, without a positive volume, or for an amount that is
+ * not a number — each a question this cannot answer rather than guess at.
+ */
+export function priceForOutcome(input: {
+  readonly spec: SymbolSpec;
+  readonly side: 'BUY' | 'SELL';
+  readonly volume: string;
+  readonly entryPrice: string;
+  readonly amount: string;
+  readonly accountCurrency: string;
+  readonly quoteToAccountRate: string | null;
+  readonly kind: 'STOP_LOSS' | 'TAKE_PROFIT';
+}): string | null {
+  if (input.quoteToAccountRate === null) return null;
+  if (!isDecimal(input.volume) || !isDecimal(input.entryPrice) || !isDecimal(input.amount)) {
+    return null;
+  }
+  const rate = toDecimal(input.quoteToAccountRate);
+  const perUnit = toDecimal(input.spec.contractSize).mul(toDecimal(input.volume)).mul(rate);
+  if (!perUnit.greaterThan(0)) return null;
+  // Money in account currency → the move in quote-currency price units.
+  const move = toDecimal(input.amount).abs().div(perUnit);
+  const adverse = input.kind === 'STOP_LOSS';
+  const down = adverse === (input.side === 'BUY');
+  const entry = toDecimal(input.entryPrice);
+  const decimals = input.spec.pricePrecision;
+  // Towards the entry: a stop that moved down is rounded up, and so on.
+  const rounded = down
+    ? entry.minus(move).toDecimalPlaces(decimals, Decimal.ROUND_UP)
+    : entry.plus(move).toDecimalPlaces(decimals, Decimal.ROUND_DOWN);
+  if (!rounded.isFinite() || !rounded.greaterThan(0)) return null;
+  return rounded.toFixed(decimals);
+}
+
 /** The price a given number of points away, in the same direction. */
 export function priceAtPoints(
   from: string,

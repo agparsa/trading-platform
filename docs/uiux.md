@@ -112,6 +112,32 @@ through by the engine.
 
 ---
 
+**Swap per night on the ticket.** Below margin and commission the ticket shows
+one night's financing for the chosen side and volume — `swapAccrual` from
+`@tp/financial-core`, the same formula and rate the worker posts with, for one
+night, signed as the ledger will show it. It is per night on purpose: how many
+nights a position is held is not known at entry, and the triple-swap day posts
+three at once; the row's tooltip says both. A zero rate shows as zero rather
+than disappearing, so "nothing shown" only ever means "cannot be priced here"
+(no quote yet, or a quote currency the account does not hold).
+
+**Levels in the trader's own unit.** The position editor's stop and target
+fields take a price, a distance from entry, a number of points, the money the
+level would cost or make, or that money as a percent of equity — a unit
+selector beside each field (`components/level-field.tsx`, logic in
+`lib/level-entry.ts`). Every unit resolves to a price through the calculator
+in `@tp/trading-core` (`priceAtDistance`, `priceAtPoints`, and a new
+`priceForOutcome` that runs the outcome backwards, rounding towards the entry
+so a stop never risks more than was named), and the line under the field shows
+that price and its meaning in the other units before anything is sent. The API
+still takes a price and only a price; what is sent is the resolved one, and
+"Apply levels" is held while a typed level has not resolved. Changing the unit
+clears the text rather than reinterpreting it: "12" as a distance and as a
+percent are different stops. Money and percent need a rate the browser does
+not hold, so on an instrument quoted in a currency the account does not hold
+they say so and offer the other three. The ticket keeps price-only fields for
+now.
+
 ## 5. What Phase 6 does not deliver
 
 Stated rather than stubbed. None of this is built:
@@ -126,16 +152,10 @@ Stated rather than stubbed. None of this is built:
 - **Trailing stop on the ticket.** Trailing exists on an open position and is
   not offered at entry. (Expiry is: a resting order is GTC or Day. This entry
   used to list expiry as missing too.)
-- **Estimated swap in the ticket.** Swap depends on how many nights a position
-  is held, which nobody knows at entry. Showing "per night" would be honest and
-  is not built; showing a total would not be.
 - **Finance and Logs tabs.** Neither has a design. (Alerts is built — price
   alerts have their own tab, next to pending orders; see `price-alerts.md`.)
 - **Multi-select with "Close (n)"** in the positions panel, and filter/export
   there. Close-all now exists as a command; selecting a subset does not.
-- **The edit-position dialog with the calculator's other modes.** The editor is
-  an inline row taking prices only — no distance, points, money or percent
-  entry, though the calculator that would drive them now exists and is tested.
 - **Design tokens beyond colour.** There is no spacing scale and no typography
   scale; sizes are arbitrary utilities repeated inline. There is no light
   theme.

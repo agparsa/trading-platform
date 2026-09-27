@@ -121,16 +121,17 @@ describe('estimateCosts', () => {
    * 200.00 — the same figure `requiredMargin` gives the server.
    */
   it('prices margin with the same formula the engine uses', () => {
-    const estimate = estimateCosts(XAUUSD, account, '0.10', '2000.00', true);
+    const estimate = estimateCosts(XAUUSD, account, 'BUY', '0.10', '2000.00', true);
     expect(estimate.margin).toBe('$200.00');
     expect(estimate.commission).toBe('$0.50');
   });
 
   it('shows nothing rather than a guess when the currencies differ', () => {
     const eurAccount = { ...account, currency: 'EUR' };
-    expect(estimateCosts(XAUUSD, eurAccount, '0.10', '2000.00', true)).toEqual({
+    expect(estimateCosts(XAUUSD, eurAccount, 'BUY', '0.10', '2000.00', true)).toEqual({
       margin: '—',
       commission: '—',
+      swapPerNight: null,
       // And no raw figure either: the checks that compare margin against the
       // account must not be handed a number computed at an assumed rate.
       marginAmount: null,
@@ -138,17 +139,36 @@ describe('estimateCosts', () => {
   });
 
   it('shows nothing before a quote has arrived', () => {
-    expect(estimateCosts(XAUUSD, account, '0.10', null, true).margin).toBe('—');
+    expect(estimateCosts(XAUUSD, account, 'BUY', '0.10', null, true).margin).toBe('—');
   });
 
   it('shows nothing for a volume that failed validation', () => {
-    expect(estimateCosts(XAUUSD, account, '0.105', '2000.00', false).margin).toBe('—');
+    expect(estimateCosts(XAUUSD, account, 'BUY', '0.105', '2000.00', false).margin).toBe('—');
+  });
+
+  /**
+   * One night at the side's own rate, signed as the worker will post it:
+   * 0.10 lots long at −2.50 per lot debits 0.25; short at +1.20 credits 0.12.
+   * Never a total — the nights are not known at entry.
+   */
+  it('shows one night of swap for the chosen side, signed as the ledger posts it', () => {
+    expect(estimateCosts(XAUUSD, account, 'BUY', '0.10', '2000.00', true).swapPerNight).toBe(
+      '-0.25',
+    );
+    expect(estimateCosts(XAUUSD, account, 'SELL', '0.10', '2000.00', true).swapPerNight).toBe(
+      '0.12',
+    );
+  });
+
+  it('shows a zero swap as zero rather than hiding it', () => {
+    const free = { ...XAUUSD, swapLongPerLot: '0', swapShortPerLot: '0' };
+    expect(estimateCosts(free, account, 'BUY', '0.10', '2000.00', true).swapPerNight).toBe('0.00');
   });
 
   /** The instrument's own rate is a floor, so more account leverage cannot undercut it. */
   it('does not let account leverage undercut the instrument margin rate', () => {
     const leveraged = { ...account, leverage: 500 };
-    expect(estimateCosts(XAUUSD, leveraged, '0.10', '2000.00', true).margin).toBe('$200.00');
+    expect(estimateCosts(XAUUSD, leveraged, 'BUY', '0.10', '2000.00', true).margin).toBe('$200.00');
   });
 });
 

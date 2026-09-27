@@ -7,6 +7,7 @@ import {
   percentOfEquity,
   priceAtDistance,
   priceAtPoints,
+  priceForOutcome,
   rewardToRisk,
   volumeForRisk,
 } from './levels';
@@ -80,6 +81,54 @@ describe('protective-level calculator', () => {
     it('round-trips: a price to a distance and back is where it started', () => {
       const distance = distanceBetween('4000', '3988.5', 2);
       expect(priceAtDistance('4000', distance?.price as string, 'BUY', 'STOP_LOSS')).toBe('3988.5');
+    });
+  });
+
+  describe('a price from the money it would cost or make', () => {
+    /**
+     * One lot of gold is 100 ounces, so a dollar of price is $100 of result:
+     * $1,200 of risk on a long from 4000 is a stop at 3988, and the same
+     * money as a target is 4012. A short mirrors both.
+     */
+    it('runs the outcome backwards, on the side the kind dictates', () => {
+      expect(priceForOutcome({ ...base, amount: '1200', kind: 'STOP_LOSS' })).toBe('3988.00');
+      expect(priceForOutcome({ ...base, amount: '1200', kind: 'TAKE_PROFIT' })).toBe('4012.00');
+      expect(priceForOutcome({ ...base, side: 'SELL', amount: '1200', kind: 'STOP_LOSS' })).toBe(
+        '4012.00',
+      );
+      // The sign is the kind's to decide, not the amount's.
+      expect(priceForOutcome({ ...base, amount: '-1200', kind: 'STOP_LOSS' })).toBe('3988.00');
+    });
+
+    it('agrees with the outcome the price then projects', () => {
+      const price = priceForOutcome({ ...base, volume: '0.3', amount: '250', kind: 'STOP_LOSS' });
+      expect(price).not.toBeNull();
+      const back = outcomeAt({ ...base, volume: '0.3', exitPrice: price as string });
+      // 250 / (100 × 0.3) = 8.333…, so the stop rounds to 3991.67 and risks
+      // 249.90 — never more than the trader named.
+      expect(price).toBe('3991.67');
+      expect(back).toBe('-249.90');
+    });
+
+    it('rounds towards the entry so a stop never risks more, nor a target promise more', () => {
+      // 0.3 lots: $250 is 8.333… of price. Stop 3991.67 (up), target 4008.33 (down).
+      expect(priceForOutcome({ ...base, volume: '0.3', amount: '250', kind: 'TAKE_PROFIT' })).toBe(
+        '4008.33',
+      );
+      const target = outcomeAt({ ...base, volume: '0.3', exitPrice: '4008.33' });
+      expect(Number(target)).toBeLessThanOrEqual(250);
+    });
+
+    it('answers nothing without a rate, a volume, or a number', () => {
+      expect(
+        priceForOutcome({ ...base, amount: '100', kind: 'STOP_LOSS', quoteToAccountRate: null }),
+      ).toBeNull();
+      expect(
+        priceForOutcome({ ...base, volume: '0', amount: '100', kind: 'STOP_LOSS' }),
+      ).toBeNull();
+      expect(priceForOutcome({ ...base, amount: 'lots', kind: 'STOP_LOSS' })).toBeNull();
+      // More money than the price can lose: a stop below zero is not a price.
+      expect(priceForOutcome({ ...base, amount: '999999999', kind: 'STOP_LOSS' })).toBeNull();
     });
   });
 

@@ -124,8 +124,8 @@ export function OrderTicket({
   );
 
   const estimate = useMemo(
-    () => estimateCosts(symbol, account, volume, executable, validation.volumeOk),
-    [symbol, account, volume, executable, validation.volumeOk],
+    () => estimateCosts(symbol, account, side, volume, executable, validation.volumeOk),
+    [symbol, account, side, volume, executable, validation.volumeOk],
   );
 
   /**
@@ -586,6 +586,19 @@ export function OrderTicket({
       <dl className="space-y-1 rounded border border-terminal-border bg-terminal-bg px-2.5 py-2 text-[11px]">
         <EstimateRow label="Est. margin" value={estimate.margin} />
         <EstimateRow label="Est. commission" value={estimate.commission} />
+        {/*
+          Per night, never a total: how many nights a position is held is not
+          known at entry. The rate is the instrument's for this side, as the
+          worker posts it, and the triple-swap day posts three nights at once.
+        */}
+        {estimate.swapPerNight === null ? null : (
+          <EstimateRow
+            label="Swap / night"
+            value={signedMoney(estimate.swapPerNight, account?.currency ?? 'USD')}
+            tone={toneClass[toneOf(estimate.swapPerNight)]}
+            title="One night's financing for this side and volume, at the instrument's rate. Held over the triple-swap day, three nights are charged at once."
+          />
+        )}
         <EstimateRow
           label={orderType === 'MARKET' ? 'Executable' : 'Market now'}
           value={executable === null ? '—' : formatPrice(executable, symbol.pricePrecision)}
