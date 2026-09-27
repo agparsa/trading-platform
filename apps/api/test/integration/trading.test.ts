@@ -931,6 +931,36 @@ suite('Trading core (integration)', () => {
       await expect(stack.positions.close(userId, opened.positionId!, null)).resolves.toBeDefined();
     });
 
+    it('records the claim and its end in the position trail, and a failed close as such', async () => {
+      const { userId, accountId } = await openAccount();
+      const opened = await buyOneLot(userId, accountId);
+
+      await stack.publishQuote('XAUUSD', BID, ASK, Date.now() - 60_000);
+      await expect(stack.positions.close(userId, opened.positionId!, null)).rejects.toMatchObject({
+        code: 'STALE_QUOTE',
+      });
+      await stack.publishQuote('XAUUSD', '4600.00', '4600.14');
+      await stack.positions.close(userId, opened.positionId!, null);
+
+      const trail = await prisma.positionEvent.findMany({
+        where: { positionId: opened.positionId! },
+        orderBy: { createdAt: 'asc' },
+      });
+      // Each row starts where the one before it ended, from the opening.
+      expect(trail[0]).toMatchObject({ type: 'OPENED', fromStatus: null, toStatus: 'OPEN' });
+      for (let i = 1; i < trail.length; i += 1) {
+        expect(trail[i]?.fromStatus, `row ${i}`).toBe(trail[i - 1]?.toStatus);
+      }
+      const types = trail.map((row) => row.type).slice(1);
+      // Two claims: one that failed, one that closed. `createdAt` ties within
+      // a transaction, so only the multiset is asserted here.
+      expect([...types].sort()).toEqual(
+        ['CLOSE_FAILED', 'CLOSE_REQUESTED', 'CLOSE_REQUESTED', 'CLOSED'].sort(),
+      );
+      const failed = trail.find((row) => row.type === 'CLOSE_FAILED');
+      expect(failed?.payload).toMatchObject({ code: 'STALE_QUOTE' });
+    });
+
     /** A close whose process died after the claim: nothing puts it back but the sweep. */
     const strand = async (positionId: string, minutesAgo: number) =>
       prisma.$executeRaw`UPDATE positions SET status = 'CLOSING', version = version + 1,

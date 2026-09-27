@@ -10,7 +10,7 @@ import {
   toDecimal,
   type Decimal,
 } from '@tp/financial-core';
-import { validateProtectiveLevels } from '@tp/trading-core';
+import { transitionPosition, validateProtectiveLevels } from '@tp/trading-core';
 import {
   CloseReason,
   DomainError,
@@ -264,7 +264,7 @@ export class PositionsService {
     return this.prisma.$transaction(async (tx) => {
       const released = await tx.position.updateMany({
         where: { id: positionId, status: 'CLOSING', version: seenVersion },
-        data: { status: 'OPEN', version: { increment: 1 } },
+        data: { status: transitionPosition('CLOSING', 'OPEN'), version: { increment: 1 } },
       });
       if (released.count === 0) return false;
       await tx.positionEvent.create({
@@ -338,7 +338,7 @@ export class PositionsService {
 
     const claimed = await this.prisma.position.updateMany({
       where: { id: positionId, status: 'OPEN', version: position.version },
-      data: { status: 'CLOSING', version: { increment: 1 } },
+      data: { status: transitionPosition('OPEN', 'CLOSING'), version: { increment: 1 } },
     });
     if (claimed.count === 0) {
       throw new DomainError(
@@ -549,7 +549,7 @@ export class PositionsService {
           where: { id: position.id, status: 'CLOSING', version: position.version + 1 },
           data: fullyClosed
             ? {
-                status: 'CLOSED',
+                status: transitionPosition('CLOSING', 'CLOSED'),
                 volume: '0',
                 margin: '0',
                 currentPrice: exitPrice.toString(),
@@ -561,7 +561,7 @@ export class PositionsService {
                 version: { increment: 1 },
               }
             : {
-                status: 'OPEN',
+                status: transitionPosition('CLOSING', 'OPEN'),
                 volume: effectiveRemaining.toString(),
                 margin: remainingMargin.toString(),
                 swap: Money.of(position.swap, position.accountCurrency).minus(swap).toString(),
@@ -574,21 +574,33 @@ export class PositionsService {
         });
         if (settled.count === 0) throw new CloseClaimLost(position.id);
 
-        await tx.positionEvent.create({
-          data: {
-            tenantId: requireTenantId(),
-            positionId: position.id,
-            type: fullyClosed ? 'CLOSED' : 'PARTIALLY_CLOSED',
-            fromStatus: 'CLOSING',
-            toStatus: fullyClosed ? 'CLOSED' : 'OPEN',
-            payload: {
-              exitPrice: exitPrice.toString(),
-              volume: effectiveCloseVolume.toString(),
-              grossPnl: gross.round().toString(),
-              netPnl: net.round().toString(),
-              reason,
+        // The claim is recorded here, with what it led to, so the trail reads
+        // OPEN → CLOSING → CLOSED rather than arriving at CLOSING unexplained.
+        await tx.positionEvent.createMany({
+          data: [
+            {
+              tenantId: requireTenantId(),
+              positionId: position.id,
+              type: 'CLOSE_REQUESTED',
+              fromStatus: 'OPEN',
+              toStatus: 'CLOSING',
+              payload: { volume: effectiveCloseVolume.toString(), reason },
             },
-          },
+            {
+              tenantId: requireTenantId(),
+              positionId: position.id,
+              type: fullyClosed ? 'CLOSED' : 'PARTIALLY_CLOSED',
+              fromStatus: 'CLOSING',
+              toStatus: fullyClosed ? 'CLOSED' : 'OPEN',
+              payload: {
+                exitPrice: exitPrice.toString(),
+                volume: effectiveCloseVolume.toString(),
+                grossPnl: gross.round().toString(),
+                netPnl: net.round().toString(),
+                reason,
+              },
+            },
+          ],
         });
 
         const account = await tx.account.findUniqueOrThrow({ where: { id: position.accountId } });
@@ -650,11 +662,38 @@ export class PositionsService {
         );
       }
       // Put the position back so it stays tradeable and visible to risk — but
-      // only from this close's own claim, never from another close's.
-      await this.prisma.position
-        .updateMany({
-          where: { id: positionId, status: 'CLOSING', version: position.version + 1 },
-          data: { status: 'OPEN', version: { increment: 1 } },
+      // only from this close's own claim, never from another close's — and say
+      // in the trail that a close was tried and why it did not happen.
+      await this.prisma
+        .$transaction(async (tx) => {
+          const released = await tx.position.updateMany({
+            where: { id: positionId, status: 'CLOSING', version: position.version + 1 },
+            data: { status: transitionPosition('CLOSING', 'OPEN'), version: { increment: 1 } },
+          });
+          if (released.count === 0) return;
+          await tx.positionEvent.createMany({
+            data: [
+              {
+                tenantId: requireTenantId(),
+                positionId,
+                type: 'CLOSE_REQUESTED',
+                fromStatus: 'OPEN',
+                toStatus: 'CLOSING',
+                payload: { volume: effectiveCloseVolume.toString(), reason },
+              },
+              {
+                tenantId: requireTenantId(),
+                positionId,
+                type: 'CLOSE_FAILED',
+                fromStatus: 'CLOSING',
+                toStatus: 'OPEN',
+                payload: {
+                  code: error instanceof DomainError ? error.code : TradingErrorCode.INTERNAL_ERROR,
+                  reason,
+                },
+              },
+            ],
+          });
         })
         .catch((releaseError: unknown) => {
           this.logger.error(

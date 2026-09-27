@@ -10,6 +10,25 @@
      └───── close failed ──────────┘
 ```
 
+| From      | To               |
+| --------- | ---------------- |
+| `OPEN`    | `CLOSING`        |
+| `CLOSING` | `CLOSED`, `OPEN` |
+
+There is no `OPEN → CLOSED`. The table in `position-state-machine.ts` allowed
+it for as long as it existed and nothing ever took it — every close claims
+first, because the claim is what a second close, a stop-loss and a liquidation
+contend for. Every write of `position.status` now goes through
+`transitionPosition`, and `scripts/order-transitions.test.ts` (which reads
+positions as it reads orders) fails a write the table does not allow, a move
+missing from the position's trail, or a row of this table that the machine
+does not have.
+
+The trail (`position_events`) records the claim with what it led to:
+`CLOSE_REQUESTED` (OPEN → CLOSING) and then `CLOSED` or `PARTIALLY_CLOSED`, or
+`CLOSE_FAILED` with the error code when the close was tried and did not happen
+(no fresh quote, say), or `CLOSE_ABANDONED` when the sweep below reopened it.
+
 `CLOSING` is a real state, not a UI flourish. It is what stops a manual close, a
 stop-loss trigger and a liquidation from all closing the same position three
 times. Whoever transitions `OPEN → CLOSING` first owns the close; everyone else

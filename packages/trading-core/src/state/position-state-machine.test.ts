@@ -14,6 +14,10 @@ describe('position state machine', () => {
     expect(status).toBe(PositionStatus.CLOSED);
   });
 
+  it('closes only through the guard: there is no OPEN → CLOSED', () => {
+    expect(canTransitionPosition(PositionStatus.OPEN, PositionStatus.CLOSED)).toBe(false);
+  });
+
   it('reopens when a close attempt fails', () => {
     expect(canTransitionPosition(PositionStatus.CLOSING, PositionStatus.OPEN)).toBe(true);
   });

@@ -8,8 +8,17 @@ import { DomainError, PositionStatus, TradingErrorCode } from '@tp/shared-types'
  * position three times. Whoever transitions OPEN -> CLOSING first owns the close.
  */
 const POSITION_TRANSITIONS: Readonly<Record<PositionStatus, readonly PositionStatus[]>> = {
-  [PositionStatus.OPEN]: [PositionStatus.CLOSING, PositionStatus.CLOSED],
-  // Back to OPEN when a close attempt fails (e.g. no quote) and the position survives.
+  /**
+   * Only through CLOSING. The table allowed OPEN → CLOSED directly for as long
+   * as it existed, and nothing ever took it: every close claims first, so the
+   * claim is what a second close, a stop-loss and a liquidation contend for.
+   * A direct move would be a close nothing could contend with — and no writer
+   * of `position.status` asked this table anyway until `position-transitions`
+   * in `order-transitions.test.ts` held them to it.
+   */
+  [PositionStatus.OPEN]: [PositionStatus.CLOSING],
+  // Back to OPEN when a close attempt fails (e.g. no quote) and the position
+  // survives, or when a partial close leaves volume open.
   [PositionStatus.CLOSING]: [PositionStatus.CLOSED, PositionStatus.OPEN],
   [PositionStatus.CLOSED]: [],
 };

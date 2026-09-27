@@ -3,11 +3,15 @@ import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
-import { OrderStatus } from '@tp/shared-types';
+import { OrderStatus, PositionStatus } from '@tp/shared-types';
 import {
   allowedOrderTransitions,
   canTransitionOrder,
 } from '../packages/trading-core/src/state/order-state-machine';
+import {
+  allowedPositionTransitions,
+  canTransitionPosition,
+} from '../packages/trading-core/src/state/position-state-machine';
 
 /**
  * Every order status the code writes is a move the state machine allows, and
@@ -30,12 +34,59 @@ import {
  * status. A status taken from the enclosing function's parameters is followed
  * to each call of that function in the file, and belongs to the caller: a
  * helper that records an event records it for whoever called it.
+ *
+ * Positions have the same shape and had the same gap, one worse: their state
+ * machine was exported and called by nothing, and allowed an OPEN → CLOSED
+ * that nothing took. Both machines are read the same way; each is named below
+ * with what the code writes it through.
  */
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DIRS = ['apps/api/src', 'apps/worker/src'];
-const STATUSES = new Set<string>(Object.values(OrderStatus));
-/** No prior status: the row an order is created with. */
+/** No prior status: the row a record is created with. */
 const NONE = '∅';
+
+interface Machine {
+  readonly name: string;
+  /** The Prisma model whose `status` is written, and the model of its trail. */
+  readonly model: string;
+  readonly eventModel: string;
+  /** The enum in `@tp/shared-types` and the transition function callers may name. */
+  readonly enumName: string;
+  readonly transitionFn: string;
+  readonly statuses: ReadonlySet<string>;
+  readonly initial: string;
+  readonly can: (from: string, to: string) => boolean;
+  readonly allowed: (from: string) => readonly string[];
+  /** The page whose `| From | To |` table states the machine. */
+  readonly doc: string;
+}
+
+const MACHINES: readonly Machine[] = [
+  {
+    name: 'order',
+    model: 'order',
+    eventModel: 'orderEvent',
+    enumName: 'OrderStatus',
+    transitionFn: 'transitionOrder',
+    statuses: new Set(Object.values(OrderStatus)),
+    initial: OrderStatus.NEW,
+    can: (from, to) => canTransitionOrder(from as OrderStatus, to as OrderStatus),
+    allowed: (from) => allowedOrderTransitions(from as OrderStatus),
+    doc: 'docs/order-lifecycle.md',
+  },
+  {
+    name: 'position',
+    model: 'position',
+    eventModel: 'positionEvent',
+    enumName: 'PositionStatus',
+    transitionFn: 'transitionPosition',
+    statuses: new Set(Object.values(PositionStatus)),
+    initial: PositionStatus.OPEN,
+    can: (from, to) => canTransitionPosition(from as PositionStatus, to as PositionStatus),
+    allowed: (from) => allowedPositionTransitions(from as PositionStatus),
+    doc: 'docs/position-engine.md',
+  },
+];
 
 const sources = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -69,8 +120,8 @@ interface Unread extends Site {
 interface Found {
   readonly writes: Move[];
   readonly events: Move[];
-  /** Rows written together by one `createMany`, in order. */
-  readonly batches: Move[][];
+  /** Rows written together by one `createMany`, in order; a row is every move it can record. */
+  readonly batches: Move[][][];
   readonly unread: Unread[];
 }
 
@@ -93,7 +144,8 @@ const prop = (object: ts.ObjectLiteralExpression, name: string): ts.Expression |
   return undefined;
 };
 
-export function scan(): Found {
+export function scan(machine: Machine): Found {
+  const { model, eventModel, enumName, transitionFn, statuses: STATUSES } = machine;
   const found: Found = { writes: [], events: [], batches: [], unread: [] };
 
   for (const dir of DIRS) {
@@ -144,14 +196,14 @@ export function scan(): Found {
         if (
           ts.isPropertyAccessExpression(expr) &&
           ts.isIdentifier(expr.expression) &&
-          expr.expression.text === 'OrderStatus'
+          expr.expression.text === enumName
         ) {
           return STATUSES.has(expr.name.text) ? new Set([expr.name.text]) : null;
         }
         if (
           ts.isCallExpression(expr) &&
           ts.isIdentifier(expr.expression) &&
-          expr.expression.text === 'transitionOrder'
+          expr.expression.text === transitionFn
         ) {
           return values(expr.arguments[1], fn, env, depth);
         }
@@ -240,7 +292,6 @@ export function scan(): Found {
           ts.isPropertyAccessExpression(node.expression) &&
           ts.isPropertyAccessExpression(node.expression.expression)
         ) {
-          const model = node.expression.expression.name.text;
           const method = node.expression.name.text;
           const argument = node.arguments[0];
           const data =
@@ -248,7 +299,10 @@ export function scan(): Found {
               ? prop(argument, 'data')
               : undefined;
 
-          if (model === 'order' && ['create', 'update', 'updateMany', 'upsert'].includes(method)) {
+          if (
+            node.expression.expression.name.text === model &&
+            ['create', 'update', 'updateMany', 'upsert'].includes(method)
+          ) {
             const status =
               data !== undefined && ts.isObjectLiteralExpression(data)
                 ? prop(data, 'status')
@@ -262,7 +316,7 @@ export function scan(): Found {
               const named =
                 ts.isCallExpression(status) &&
                 ts.isIdentifier(status.expression) &&
-                status.expression.text === 'transitionOrder'
+                status.expression.text === transitionFn
                   ? status.arguments[0]
                   : undefined;
               for (const reading of readings(node, [status, condition, named])) {
@@ -276,7 +330,7 @@ export function scan(): Found {
                   found.unread.push({
                     owner: reading.owner,
                     at: line(node),
-                    what: `order.${method} status=${status.getText(source)} where.status=${condition?.getText(source) ?? '(none)'}`,
+                    what: `${model}.${method} status=${status.getText(source)} where.status=${condition?.getText(source) ?? '(none)'}`,
                   });
                   continue;
                 }
@@ -290,7 +344,7 @@ export function scan(): Found {
                   found.unread.push({
                     owner: reading.owner,
                     at: line(node),
-                    what: `order.${method} is conditional on ${[...from].join('|')} and names ${[...stated].join('|')}`,
+                    what: `${model}.${method} is conditional on ${[...from].join('|')} and names ${[...stated].join('|')}`,
                   });
                   continue;
                 }
@@ -301,7 +355,10 @@ export function scan(): Found {
             }
           }
 
-          if (model === 'orderEvent' && (method === 'create' || method === 'createMany')) {
+          if (
+            node.expression.expression.name.text === eventModel &&
+            (method === 'create' || method === 'createMany')
+          ) {
             const rows =
               data === undefined
                 ? []
@@ -312,12 +369,12 @@ export function scan(): Found {
               found.unread.push({
                 owner: `${path}`,
                 at: line(node),
-                what: `orderEvent.${method} with rows this reader cannot see`,
+                what: `${eventModel}.${method} with rows this reader cannot see`,
               });
             } else {
               const exprs = rows.flatMap((row) => [prop(row, 'fromStatus'), prop(row, 'toStatus')]);
               for (const reading of readings(node, exprs)) {
-                const batch: Move[] = [];
+                const batch: Move[][] = [];
                 for (const row of rows) {
                   const fromExpr = prop(row, 'fromStatus');
                   const from =
@@ -333,11 +390,13 @@ export function scan(): Found {
                     });
                     continue;
                   }
-                  for (const move of product(from, to)) {
-                    const recorded = { ...move, owner: reading.owner, at: line(row) };
-                    found.events.push(recorded);
-                    batch.push(recorded);
-                  }
+                  const recorded = product(from, to).map((move) => ({
+                    ...move,
+                    owner: reading.owner,
+                    at: line(row),
+                  }));
+                  found.events.push(...recorded);
+                  batch.push(recorded);
                 }
                 if (rows.length > 1) found.batches.push(batch);
               }
@@ -352,23 +411,28 @@ export function scan(): Found {
   return found;
 }
 
-const found = scan();
-const legal = (move: Move) =>
-  move.from === NONE
-    ? move.to === OrderStatus.NEW
-    : canTransitionOrder(move.from as OrderStatus, move.to as OrderStatus);
 const show = (move: Move) =>
   `${move.at} (${move.owner.split(':').pop()}) ${move.from} → ${move.to}`;
 
-describe('order status writes', () => {
+describe.each(MACHINES)('$name status writes', (machine) => {
+  const found = scan(machine);
+  const legal = (move: Move) =>
+    move.from === NONE ? move.to === machine.initial : machine.can(move.from, move.to);
+  /** A row whose statuses are the same records something about the record, not a move. */
+  const isMove = (move: Move) => move.from !== move.to;
+
   it('are found (the probe that cannot fail is the one that never looked)', () => {
     const owners = new Set(found.writes.map((w) => w.owner.split(':').pop()));
-    for (const expected of ['fillPending', 'cancelPending', 'modifyPending', 'expirePending']) {
-      expect(owners.has(expected), expected).toBe(true);
+    const expected =
+      machine.name === 'order'
+        ? ['fillPending', 'cancelPending', 'modifyPending', 'expirePending']
+        : ['performClose', 'releaseAbandonedClose'];
+    for (const owner of expected) expect(owners.has(owner), owner).toBe(true);
+    if (machine.name === 'order') {
+      // The venue path's statuses come through a parameter and a helper.
+      expect(found.writes.some((w) => w.from === 'UNCONFIRMED' && w.to === 'FILLED')).toBe(true);
+      expect(found.events.some((e) => e.from === 'ACCEPTED' && e.to === 'UNCONFIRMED')).toBe(true);
     }
-    // The venue path's statuses come through a parameter and a helper.
-    expect(found.writes.some((w) => w.from === 'UNCONFIRMED' && w.to === 'FILLED')).toBe(true);
-    expect(found.events.some((e) => e.from === 'ACCEPTED' && e.to === 'UNCONFIRMED')).toBe(true);
   });
 
   it('name every status they write and the status they write it over', () => {
@@ -392,39 +456,54 @@ describe('order status writes', () => {
     expect(missing).toEqual([]);
   });
 
-  it('create an order only with the trail that leads to the status it is created in', () => {
+  it(`create a ${machine.name} only with the trail that leads to the status it is created in`, () => {
     const missing = found.writes
       .filter((w) => w.from === NONE)
       .filter((w) => {
+        // Created straight into the initial status: one row, no chain needed.
+        if (w.to === machine.initial) {
+          return !found.events.some(
+            (e) => e.owner === w.owner && e.from === NONE && e.to === machine.initial,
+          );
+        }
         const chain = found.batches.find(
           (batch) =>
-            batch[0]?.owner === w.owner && batch[0]?.from === NONE && batch.at(-1)?.to === w.to,
+            batch[0]?.[0]?.owner === w.owner &&
+            batch[0]?.every((move) => move.from === NONE) &&
+            batch.at(-1)?.some((move) => move.to === w.to),
         );
         return chain === undefined;
       })
       .map(show);
     expect(missing).toEqual([]);
   });
-});
 
-describe('the order trail', () => {
-  it('holds only moves the state machine allows, starting from NEW', () => {
-    expect(found.events.filter((e) => !legal(e)).map(show)).toEqual([]);
+  it('leave a trail of only moves the state machine allows, from the initial status', () => {
+    expect(
+      found.events
+        .filter(isMove)
+        .filter((e) => !legal(e))
+        .map(show),
+    ).toEqual([]);
   });
 
-  it('writes each batch as an unbroken chain', () => {
+  it('write each batch as an unbroken chain', () => {
+    // Each row starts where the row before it could have ended.
     const broken = found.batches
-      .filter((batch) => batch.some((move, i) => i > 0 && batch[i - 1]!.to !== move.from))
-      .map((batch) => batch.map(show).join(' | '));
+      .filter((batch) =>
+        batch.some(
+          (row, i) =>
+            i > 0 && row.some((move) => !batch[i - 1]!.some((prev) => prev.to === move.from)),
+        ),
+      )
+      .map((batch) => batch.flat().map(show).join(' | '));
     expect(broken).toEqual([]);
   });
-});
 
-describe('docs/order-lifecycle.md', () => {
-  const doc = readFileSync(resolve(ROOT, 'docs/order-lifecycle.md'), 'utf8');
-
-  it('lists every transition the state machine allows, and no other', () => {
+  it(`are stated in ${machine.doc}: every transition the machine allows, and no other`, () => {
+    const doc = readFileSync(resolve(ROOT, machine.doc), 'utf8');
     const start = doc.indexOf('| From');
+    expect(start, `${machine.doc} has no "| From | To |" table`).toBeGreaterThan(-1);
     const rows = doc.slice(start, doc.indexOf('\n\n', start)).split('\n').slice(2);
     const documented = rows
       .flatMap((row) => {
@@ -436,10 +515,10 @@ describe('docs/order-lifecycle.md', () => {
         return [...to.matchAll(/`([A-Z_]+)`/g)].map((m) => `${source}>${m[1]}`);
       })
       .sort();
-    const machine = Object.values(OrderStatus)
-      .flatMap((from) => allowedOrderTransitions(from).map((to) => `${from}>${to}`))
+    const inMachine = [...machine.statuses]
+      .flatMap((from) => machine.allowed(from).map((to) => `${from}>${to}`))
       .sort();
-    expect(documented).toEqual(machine);
+    expect(documented).toEqual(inMachine);
   });
 });
 
