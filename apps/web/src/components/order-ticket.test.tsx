@@ -195,4 +195,46 @@ describe('the order ticket, rendered', () => {
       'The order could not be submitted. It was not placed.',
     ]);
   });
+
+  /**
+   * A trail asked for at entry goes on the wire as `trailingStopDistance`,
+   * and only when one was typed: the server consults the firm's flag only
+   * when the key is present, so an empty field must send no key at all.
+   */
+  it('sends a trailing distance with the order only when one was typed', async () => {
+    mutateAsync.mockResolvedValue({ orderId: 'o-1', status: 'FILLED', positionId: 'p-1' });
+    quote();
+    render(
+      <OrderTicket
+        symbol={SYMBOL}
+        account={ACCOUNT}
+        accountId="acc-1"
+        preferences={PREFERENCES}
+        shortcut={null}
+        onShortcutHandled={() => undefined}
+      />,
+    );
+    const send = () =>
+      fireEvent.click(
+        screen.getAllByRole('button').find((n) => /BUY XAUUSD/.test(n.textContent ?? ''))!,
+      );
+    send();
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledTimes(1);
+    });
+    expect(mutateAsync.mock.calls[0]?.[0]).not.toHaveProperty('trailingStopDistance');
+
+    fireEvent.change(screen.getByLabelText('Trailing distance'), { target: { value: '5.00' } });
+    send();
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledTimes(2);
+    });
+    expect(mutateAsync.mock.calls[1]?.[0]).toMatchObject({
+      symbol: 'XAUUSD',
+      side: 'BUY',
+      trailingStopDistance: '5.00',
+    });
+    // Cleared with the levels once the order is away.
+    expect((screen.getByLabelText('Trailing distance') as HTMLInputElement).value).toBe('');
+  });
 });

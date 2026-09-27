@@ -57,6 +57,7 @@ export function validateTicket(
   stopLoss: string,
   takeProfit: string,
   executable: string | null,
+  trailingDistance = '',
 ): TicketValidation {
   if (spec === undefined) return { error: null, volumeOk: false };
   if (!isDecimalString(volume)) {
@@ -97,6 +98,13 @@ export function validateTicket(
         volumeOk: true,
       };
     }
+  }
+
+  // A trail is a distance, not a level: positive, and nothing to measure
+  // against the market. Whether the firm allows it is the server's answer.
+  const trail = trailingDistance.trim();
+  if (trail !== '' && (!isDecimalString(trail) || !toDecimal(trail).gt(0))) {
+    return { error: 'Trailing distance must be a positive price distance.', volumeOk: true };
   }
 
   return { error: null, volumeOk: true };

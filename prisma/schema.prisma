@@ -731,10 +731,14 @@ model Order {
   volume       Decimal @db.Decimal(18, 8)
   filledVolume Decimal @default(0) @map("filled_volume") @db.Decimal(18, 8)
 
-  price      Decimal? @db.Decimal(28, 10)
-  stopPrice  Decimal? @map("stop_price") @db.Decimal(28, 10)
-  stopLoss   Decimal? @map("stop_loss") @db.Decimal(28, 10)
-  takeProfit Decimal? @map("take_profit") @db.Decimal(28, 10)
+  price                Decimal? @db.Decimal(28, 10)
+  stopPrice            Decimal? @map("stop_price") @db.Decimal(28, 10)
+  stopLoss             Decimal? @map("stop_loss") @db.Decimal(28, 10)
+  takeProfit           Decimal? @map("take_profit") @db.Decimal(28, 10)
+  /// A trail asked for at entry, in price units. Carried on the order so a
+  /// resting order that fills with no caller present still opens the position
+  /// with the trail the trader asked for; copied to the position at the fill.
+  trailingStopDistance Decimal? @map("trailing_stop_distance") @db.Decimal(28, 10)
 
   /// Set once an opening order fills, or on creation for a closing order.
   positionId String? @map("position_id") @db.Uuid

@@ -36,6 +36,8 @@ export const openPositionSchema = z
     volume: positiveDecimal,
     stopLoss: positiveDecimal.nullish(),
     takeProfit: positiveDecimal.nullish(),
+    // A trail from the fill onward, in price units, behind the firm's flag.
+    trailingStopDistance: positiveDecimal.nullish(),
   })
   .strict();
 
@@ -110,6 +112,8 @@ export const placePendingSchema = z
     price: positiveDecimal,
     stopLoss: positiveDecimal.nullish(),
     takeProfit: positiveDecimal.nullish(),
+    // Kept on the order and applied at the fill, whenever that is.
+    trailingStopDistance: positiveDecimal.nullish(),
     timeInForce: z.enum(['GTC', 'DAY', 'GTD']).default('GTC'),
     // Epoch milliseconds. Required for GTD; the service rejects a missing or
     // past value rather than silently turning the order into a GTC.

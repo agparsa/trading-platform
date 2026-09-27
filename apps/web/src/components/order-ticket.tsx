@@ -73,6 +73,7 @@ export function OrderTicket({
   const [restingPrice, setRestingPrice] = useState('');
   const [timeInForce, setTimeInForce] = useState<'GTC' | 'DAY'>('GTC');
   const [stopLoss, setStopLoss] = useState('');
+  const [trailing, setTrailing] = useState('');
   const [takeProfit, setTakeProfit] = useState('');
   const [submitError, setSubmitError] = useState<readonly string[]>([]);
   /** A one-click order awaiting the confirmation the trader asked to keep. */
@@ -111,8 +112,8 @@ export function OrderTicket({
   const protectiveReference = resting === null || resting === '' ? executable : resting;
 
   const validation = useMemo(
-    () => validateTicket(symbol, side, volume, stopLoss, takeProfit, protectiveReference),
-    [symbol, side, volume, stopLoss, takeProfit, protectiveReference],
+    () => validateTicket(symbol, side, volume, stopLoss, takeProfit, protectiveReference, trailing),
+    [symbol, side, volume, stopLoss, takeProfit, protectiveReference, trailing],
   );
 
   const priceError = useMemo(
@@ -231,6 +232,9 @@ export function OrderTicket({
       const levels = {
         stopLoss: stopLoss.trim() === '' ? null : stopLoss.trim(),
         takeProfit: takeProfit.trim() === '' ? null : takeProfit.trim(),
+        // Sent only when asked for: an absent key is "no trail", and the
+        // firm's flag is consulted by the server only when one is present.
+        ...(trailing.trim() === '' ? {} : { trailingStopDistance: trailing.trim() }),
       };
 
       /**
@@ -284,6 +288,7 @@ export function OrderTicket({
         if (orderType !== 'MARKET') setRestingPrice('');
         setStopLoss('');
         setTakeProfit('');
+        setTrailing('');
       } catch (error) {
         // Every violation, not the first: see `rejectionLines`.
         const lines = rejectionLines(error);
@@ -303,6 +308,7 @@ export function OrderTicket({
       blockedReason,
       stopLoss,
       takeProfit,
+      trailing,
       orderType,
       open,
       place,
@@ -582,6 +588,29 @@ export function OrderTicket({
           />
         </Field>
       </div>
+      {/*
+        A trail from the fill onward. The stop it produces follows the best
+        exit price seen, at this distance, and never moves back; it anchors on
+        the exit price at the fill — for a resting order, whenever that is.
+        Whether the firm allows a trail is the server's decision on the order.
+      */}
+      <Field
+        label="Trailing distance"
+        hint={
+          <span title="Distance in price units the stop follows behind the best price seen since the fill. Never moves against you.">
+            ?
+          </span>
+        }
+      >
+        <input
+          className={inputClass}
+          value={trailing}
+          placeholder="—"
+          inputMode="decimal"
+          aria-label="Trailing distance"
+          onChange={(event) => setTrailing(event.target.value)}
+        />
+      </Field>
 
       <dl className="space-y-1 rounded border border-terminal-border bg-terminal-bg px-2.5 py-2 text-[11px]">
         <EstimateRow label="Est. margin" value={estimate.margin} />

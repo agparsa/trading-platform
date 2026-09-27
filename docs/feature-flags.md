@@ -33,15 +33,15 @@ can trade from the web.
 
 ## The flags
 
-| Key                  | Authority | Enforced | Default | Where                                                                                                                   |
-| -------------------- | --------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `external_execution` | PLATFORM  | server   | off     | `OrdersService`: an order on a venue-routed account is refused — never quietly filled internally                        |
-| `webhooks`           | PLATFORM  | server   | on      | `WebhooksService.create`                                                                                                |
-| `trailing_stop`      | FIRM      | server   | on      | `PositionsService.modify`: setting or changing a trail; clearing one is always allowed, existing trails keep ratcheting |
-| `quick_trading`      | FIRM      | client   | on      | the terminal disarms one-click and says why; the trader's own setting is kept for when it returns                       |
-| `mobile_trading`     | FIRM      | client   | on      | `useMobileTrading` in the app: the ticket refuses to open and says why. **Closing and modifying are never gated**       |
-| `new_chart`          | PLATFORM  | client   | off     | the terminal's chart choice — meaningless until the licence exists                                                      |
-| `white_label`        | PLATFORM  | client   | off     | branding, when it is built; the flag exists so nothing has to be redesigned to gate it                                  |
+| Key                  | Authority | Enforced | Default | Where                                                                                                                                                                                                                                                             |
+| -------------------- | --------- | -------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `external_execution` | PLATFORM  | server   | off     | `OrdersService`: an order on a venue-routed account is refused — never quietly filled internally                                                                                                                                                                  |
+| `webhooks`           | PLATFORM  | server   | on      | `WebhooksService.create`                                                                                                                                                                                                                                          |
+| `trailing_stop`      | FIRM      | server   | on      | `PositionsService.modify`: setting or changing a trail; `OrdersService.submit` / `placePending`: a trail asked for with the order. Clearing one is always allowed, existing trails keep ratcheting, and a resting order accepted with a trail still opens with it |
+| `quick_trading`      | FIRM      | client   | on      | the terminal disarms one-click and says why; the trader's own setting is kept for when it returns                                                                                                                                                                 |
+| `mobile_trading`     | FIRM      | client   | on      | `useMobileTrading` in the app: the ticket refuses to open and says why. **Closing and modifying are never gated**                                                                                                                                                 |
+| `new_chart`          | PLATFORM  | client   | off     | the terminal's chart choice — meaningless until the licence exists                                                                                                                                                                                                |
+| `white_label`        | PLATFORM  | client   | off     | branding, when it is built; the flag exists so nothing has to be redesigned to gate it                                                                                                                                                                            |
 
 ### One of these was a switch that moved and did nothing
 

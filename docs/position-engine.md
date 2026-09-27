@@ -99,6 +99,17 @@ picking whichever branch is better for the house or the trader.
 `nextTrailingStop()` returns a new level only when it improves on the current
 one. A trailing stop never moves against the trader.
 
+A trail can be asked for with the order (`trailingStopDistance` on
+`POST /orders` and `POST /orders/pending`) as well as set on an open position.
+The order row carries the distance, so a resting order that fills with nobody
+present still opens the position with it; at the fill the position's
+`highWaterPrice` is anchored on the executable exit price — the same anchor
+`modify` takes from the price when a trail is set later — and the ratchet
+places the first stop on the next favourable tick. Behind the firm's
+`trailing_stop` flag at placement, not at the fill. Not offered on a
+venue-executed account: the ratchet moves a stop in this database, and a
+position that lives at a venue would be told nothing.
+
 ## Partial close
 
 A partial close reduces `volume` while leaving `initialVolume` untouched, writes

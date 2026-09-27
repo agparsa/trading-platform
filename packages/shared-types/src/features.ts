@@ -83,7 +83,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     key: Feature.TRAILING_STOP,
     name: 'Trailing stops',
     description:
-      'Traders may set a trailing stop distance on a position. Off, a request that sets one is refused; existing trails keep ratcheting.',
+      'Traders may set a trailing stop distance on a position, or ask for one with an order. Off, a request that sets one is refused; existing trails keep ratcheting, and a resting order accepted with one still opens with it.',
     authority: 'FIRM',
     enforcement: 'SERVER',
     default: true,

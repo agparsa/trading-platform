@@ -3,6 +3,7 @@ import {
   checkVolume,
   commissionForLeg,
   entryPriceFor,
+  exitPriceFor,
   Money,
   normalizePrice,
   normalizeVolume,
@@ -422,6 +423,16 @@ export class OrdersService {
     }
 
     /**
+     * A trail from the fill onward is behind the firm's flag (§95), like a
+     * trail set on an open position. Checked before the two paths part so a
+     * firm with trailing off refuses it the same way whichever way the order
+     * would have gone.
+     */
+    if (request.trailingStopDistance != null) {
+      await this.features.assertEnabled(Feature.TRAILING_STOP);
+    }
+
+    /**
      * The one place the two execution paths part.
      *
      * Everything above is true of both: the account may trade, the market is
@@ -442,6 +453,20 @@ export class OrdersService {
        * price this platform made up for an account that was promised a venue.
        */
       await this.features.assertEnabled(Feature.EXTERNAL_EXECUTION);
+      /**
+       * Not on a venue-executed account. The trailing ratchet moves a stop in
+       * this platform's database on this platform's ticks; a position that
+       * lives at a venue would be told nothing, and a trail that exists only
+       * here is a stop the trader believes in and the venue has never heard
+       * of. Refused at entry rather than accepted and not honoured.
+       */
+      if (request.trailingStopDistance != null) {
+        throw new DomainError(
+          TradingErrorCode.VALIDATION_FAILED,
+          'A trailing stop is not available at entry on a venue-executed account.',
+          { accountId: account.id },
+        );
+      }
       const outcome = await this.external.place({
         account,
         symbolId: this.symbols.requireId(symbolCode),
@@ -555,6 +580,7 @@ export class OrdersService {
           filledVolume: volume.toString(),
           stopLoss: request.stopLoss ?? null,
           takeProfit: request.takeProfit ?? null,
+          trailingStopDistance: request.trailingStopDistance ?? null,
           placedByMasterAccountId: masterAccountId,
         },
       });
@@ -612,6 +638,10 @@ export class OrdersService {
         entryPrice: entryPrice.toString(),
         stopLoss: request.stopLoss ?? null,
         takeProfit: request.takeProfit ?? null,
+        trailingStopDistance: request.trailingStopDistance ?? null,
+        // The ratchet's anchor: the price the position could exit at now, as
+        // a trail set on an open position anchors on the price when it is set.
+        exitPriceNow: normalizePrice(spec, exitPriceFor(request.side, tick)).toString(),
         margin,
         commission,
       });
@@ -714,6 +744,10 @@ export class OrdersService {
       entryPrice: string;
       stopLoss: string | null;
       takeProfit: string | null;
+      /** A trail asked for at entry; the position opens already trailing. */
+      trailingStopDistance: string | null;
+      /** The executable exit price at the fill — the trail's first anchor. */
+      exitPriceNow: string;
       margin: Money;
       commission: Money;
     },
@@ -731,6 +765,10 @@ export class OrdersService {
         currentPrice: params.entryPrice,
         stopLoss: params.stopLoss,
         takeProfit: params.takeProfit,
+        trailingStopDistance: params.trailingStopDistance,
+        // Anchored at the fill, not left for the first tick: the trail is
+        // measured from a price the position was actually opened against.
+        highWaterPrice: params.trailingStopDistance === null ? null : params.exitPriceNow,
         margin: params.margin.toString(),
         commission: params.commission.toString(),
       },
@@ -747,6 +785,9 @@ export class OrdersService {
           entryPrice: params.entryPrice,
           volume: params.volume,
           margin: params.margin.toString(),
+          ...(params.trailingStopDistance === null
+            ? {}
+            : { trailingStopDistance: params.trailingStopDistance }),
         },
       },
     });
@@ -834,6 +875,12 @@ export class OrdersService {
       stopLoss: request.stopLoss ?? null,
       takeProfit: request.takeProfit ?? null,
     });
+    // Behind the firm's flag at placement. Not re-checked at the fill: an
+    // order accepted with a trail opens with it, as an existing trail keeps
+    // ratcheting after the flag is switched off (see `modify`).
+    if (request.trailingStopDistance != null) {
+      await this.features.assertEnabled(Feature.TRAILING_STOP);
+    }
 
     const timeInForce = request.timeInForce ?? 'GTC';
     const expiresAt = this.resolveExpiry(timeInForce, request.expiresAt ?? null, now);
@@ -854,6 +901,7 @@ export class OrdersService {
           stopPrice: request.type === 'STOP' ? request.price : null,
           stopLoss: request.stopLoss ?? null,
           takeProfit: request.takeProfit ?? null,
+          trailingStopDistance: request.trailingStopDistance ?? null,
           expiresAt: expiresAt === null ? null : new Date(expiresAt),
           // Carried on the row so the fill, which happens with no caller, is
           // still bound by the desk ceiling that governed the placement.
@@ -1098,6 +1146,8 @@ export class OrdersService {
             entryPrice: fillPrice.toString(),
             stopLoss: order.stopLoss?.toString() ?? null,
             takeProfit: order.takeProfit?.toString() ?? null,
+            trailingStopDistance: order.trailingStopDistance?.toString() ?? null,
+            exitPriceNow: normalizePrice(spec, exitPriceFor(side, tick)).toString(),
             margin,
             commission,
           });
@@ -1597,6 +1647,7 @@ export class OrdersService {
       price: { toString(): string } | null;
       stopLoss: { toString(): string } | null;
       takeProfit: { toString(): string } | null;
+      trailingStopDistance: { toString(): string } | null;
       timeInForce: string;
       expiresAt: Date | null;
       createdAt: Date;
@@ -1613,6 +1664,7 @@ export class OrdersService {
       price: order.price?.toString() ?? '',
       stopLoss: order.stopLoss?.toString() ?? null,
       takeProfit: order.takeProfit?.toString() ?? null,
+      trailingStopDistance: order.trailingStopDistance?.toString() ?? null,
       timeInForce: order.timeInForce,
       expiresAt: order.expiresAt?.toISOString() ?? null,
       createdAt: order.createdAt.toISOString(),

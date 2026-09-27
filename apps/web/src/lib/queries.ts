@@ -179,6 +179,7 @@ export interface PendingOrderRow {
   price: string;
   stopLoss: string | null;
   takeProfit: string | null;
+  trailingStopDistance: string | null;
   timeInForce: string;
   expiresAt: string | null;
   createdAt: string;
@@ -384,6 +385,8 @@ export interface OpenPositionInput extends CommandInput {
   volume: string;
   stopLoss: string | null;
   takeProfit: string | null;
+  /** A trail from the fill onward, in price units; omitted when none was asked for. */
+  trailingStopDistance?: string;
 }
 
 /**
@@ -630,6 +633,8 @@ export interface PlacePendingInput extends CommandInput {
   price: string;
   stopLoss: string | null;
   takeProfit: string | null;
+  /** Carried on the order; the position opens with it when the order fills. */
+  trailingStopDistance?: string;
   timeInForce: 'GTC' | 'DAY' | 'GTD';
 }
 

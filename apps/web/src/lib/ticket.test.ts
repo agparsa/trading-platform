@@ -60,6 +60,15 @@ describe('validateTicket', () => {
 
   it('rejects a volume below the instrument minimum', () => {
     expect(validateTicket(XAUUSD, 'BUY', '0.001', '', '', '2000.00').error).toContain('Minimum');
+    // A trail is a positive distance; zero, negative and text are refused
+    // before the server is asked, and an empty one is no trail.
+    expect(validateTicket(XAUUSD, 'BUY', '0.10', '', '', '2000.00', '5.00').error).toBeNull();
+    expect(validateTicket(XAUUSD, 'BUY', '0.10', '', '', '2000.00', '0').error).toContain(
+      'Trailing',
+    );
+    expect(validateTicket(XAUUSD, 'BUY', '0.10', '', '', '2000.00', 'five').error).toContain(
+      'Trailing',
+    );
   });
 
   it('rejects a volume off the lot step', () => {

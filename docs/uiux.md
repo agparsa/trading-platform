@@ -151,6 +151,15 @@ not hold, so on an instrument quoted in a currency the account does not hold
 they say so and offer the other three. The ticket keeps price-only fields for
 now.
 
+**Trailing stop on the ticket.** A "Trailing distance" field below the levels,
+for market and resting orders alike. It is sent only when typed, as
+`trailingStopDistance`, and the position opens already trailing — anchored on
+the exit price at the fill, for a resting order whenever that is — so there is
+no longer a window between the fill and the first stop. The firm's
+`trailing_stop` flag is the server's to apply; the ticket shows the field and
+the server refuses the order, as the position editor's trail field already
+worked. (Expiry is on the ticket too: a resting order is GTC or Day.)
+
 ## 5. What Phase 6 does not deliver
 
 Stated rather than stubbed. None of this is built:
@@ -162,9 +171,6 @@ Stated rather than stubbed. None of this is built:
   `PendingOrderType` is `LIMIT | STOP` — adding stop-limit is an engine change
   (a second trigger price, and a resting order that becomes a limit rather than
   filling), not a control on a form.
-- **Trailing stop on the ticket.** Trailing exists on an open position and is
-  not offered at entry. (Expiry is: a resting order is GTC or Day. This entry
-  used to list expiry as missing too.)
 - **Finance and Logs tabs.** Neither has a design. (Alerts is built — price
   alerts have their own tab, next to pending orders; see `price-alerts.md`.)
 - **Filter and export** in the positions panel. (Multi-select with "Close (n)"

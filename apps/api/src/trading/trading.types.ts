@@ -8,6 +8,12 @@ export interface OpenPositionRequest {
   readonly volume: string;
   readonly stopLoss?: string | null;
   readonly takeProfit?: string | null;
+  /**
+   * A trailing stop from the fill onward, in price units. The ratchet anchors
+   * on the executable exit price at the fill, exactly as a trail set on an
+   * open position anchors on the price when it is set.
+   */
+  readonly trailingStopDistance?: string | null;
 }
 
 export interface ClosePositionRequest {
@@ -85,6 +91,8 @@ export interface PlacePendingRequest {
   readonly price: string;
   readonly stopLoss?: string | null;
   readonly takeProfit?: string | null;
+  /** Carried on the order; the position opens with it when the order fills. */
+  readonly trailingStopDistance?: string | null;
   /** GTC rests indefinitely, DAY until the next trading-server midnight, GTD until `expiresAt`. */
   readonly timeInForce?: 'GTC' | 'DAY' | 'GTD';
   /** Required for GTD, ignored otherwise. Epoch milliseconds. */
@@ -110,6 +118,8 @@ export interface PendingOrderResult {
   price: string;
   stopLoss: string | null;
   takeProfit: string | null;
+  /** The trail the position will open with when this fills, if one was asked for. */
+  trailingStopDistance: string | null;
   timeInForce: string;
   expiresAt: string | null;
   createdAt: string;
