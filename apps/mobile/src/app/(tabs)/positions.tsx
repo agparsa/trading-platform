@@ -14,7 +14,7 @@ import { useAccounts } from '../../lib/accounts';
 import { useLiveBook } from '../../lib/live';
 import { applyPnl } from '../../lib/live-book';
 import { Button, Empty, ErrorNote, Screen } from '../../components/ui';
-import { describePatch, protectivePatch } from '../../lib/protective-levels';
+import { describePatch, protectionLine, protectivePatch } from '../../lib/protective-levels';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
 import { formatSigned, signColor, theme } from '../../lib/theme';
 
@@ -27,6 +27,7 @@ interface Position {
   currentPrice: string | null;
   stopLoss: string | null;
   takeProfit: string | null;
+  trailingStopDistance: string | null;
   /** Marked by the server. Null when no fresh price exists — never '0'. */
   floatingPnl: string | null;
   netFloatingPnl: string | null;
@@ -196,11 +197,8 @@ export default function Positions(): React.ReactElement {
             {item.stale === true ? (
               <Text style={styles.staleNote}>No fresh price — this mark may be out of date.</Text>
             ) : null}
-            {item.stopLoss === null && item.takeProfit === null ? null : (
-              <Text style={styles.protection}>
-                {item.stopLoss === null ? 'no SL' : `SL ${item.stopLoss}`} ·{' '}
-                {item.takeProfit === null ? 'no TP' : `TP ${item.takeProfit}`}
-              </Text>
+            {protectionLine(item) === null ? null : (
+              <Text style={styles.protection}>{protectionLine(item)}</Text>
             )}
 
             {closing === item.id ? (

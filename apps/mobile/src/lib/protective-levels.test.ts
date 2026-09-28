@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { describePatch, pendingOrderPatch, protectivePatch, sameLevel } from './protective-levels';
+import {
+  describePatch,
+  pendingOrderPatch,
+  protectionLine,
+  protectivePatch,
+  sameLevel,
+} from './protective-levels';
 
 const original = { stopLoss: '4500.00', takeProfit: '4700.00' };
 
@@ -170,5 +176,30 @@ describe('building a resting-order patch', () => {
 
   it('ignores a reformatted but identical price', () => {
     expect(pendingOrderPatch({ ...unchanged, price: '4500.0000' }, original)).toBeNull();
+  });
+});
+
+describe('the protection line under a position', () => {
+  it('says nothing for a position with no protection at all', () => {
+    expect(
+      protectionLine({ stopLoss: null, takeProfit: null, trailingStopDistance: null }),
+    ).toBeNull();
+    expect(protectionLine({ stopLoss: null, takeProfit: null })).toBeNull();
+  });
+
+  it('names stop and target as before', () => {
+    expect(protectionLine({ stopLoss: '3988', takeProfit: null })).toBe('SL 3988 · no TP');
+  });
+
+  it('names a trail that has not placed its first stop yet, rather than showing nothing', () => {
+    expect(protectionLine({ stopLoss: null, takeProfit: null, trailingStopDistance: '5' })).toBe(
+      'no SL · no TP · trailing 5 — first stop on the next move in your favour',
+    );
+  });
+
+  it('names a trail that is already carrying a stop', () => {
+    expect(
+      protectionLine({ stopLoss: '3995', takeProfit: '4050', trailingStopDistance: '5' }),
+    ).toBe('SL 3995 · TP 4050 · trailing 5');
   });
 });

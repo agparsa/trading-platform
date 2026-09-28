@@ -162,3 +162,33 @@ export function pendingOrderPatch(
   // validation error for a button pressed having changed nothing.
   return Object.keys(patch).length === 0 ? null : patch;
 }
+
+/**
+ * The one line under a position that says how it is protected, or `null`
+ * when it is not protected at all.
+ *
+ * A position opened with a trail has no stop until the market first moves
+ * its way — the ratchet places the first one. Reading only stop and target,
+ * the row said nothing, which on a phone reads as "unprotected". The trail
+ * is its own protection and is named as such.
+ */
+export function protectionLine(levels: {
+  readonly stopLoss: string | null;
+  readonly takeProfit: string | null;
+  readonly trailingStopDistance?: string | null;
+}): string | null {
+  const trail = levels.trailingStopDistance ?? null;
+  if (levels.stopLoss === null && levels.takeProfit === null && trail === null) return null;
+  const parts = [
+    levels.stopLoss === null ? 'no SL' : `SL ${levels.stopLoss}`,
+    levels.takeProfit === null ? 'no TP' : `TP ${levels.takeProfit}`,
+  ];
+  if (trail !== null) {
+    parts.push(
+      levels.stopLoss === null
+        ? `trailing ${trail} — first stop on the next move in your favour`
+        : `trailing ${trail}`,
+    );
+  }
+  return parts.join(' · ');
+}

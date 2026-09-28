@@ -261,6 +261,21 @@ dangerous thing in the app. The confirmation shows the **snapped** volume and
 the crossed price, because those are what will actually happen and they are not
 always what was typed.
 
+A trailing distance can be asked for with the order, as on the terminal: the
+position opens already trailing, anchored on the exit price at the fill. The
+field is hidden when the firm has switched `trailing_stop` off, and shown when
+the flags are unknown — the server refuses a trail the firm does not allow,
+whatever the phone shows. The request body is built by `lib/order-request.ts`,
+out of the screen so it can be tested: a field the trader filled in that never
+reaches the wire is the defect the API's own order routes had with this very
+field. The positions list names the trail, including the stretch before the
+ratchet has placed its first stop, when the row would otherwise read as
+unprotected.
+
+What the phone does not have that the terminal does: levels entered as a
+distance, points, money or percent (it takes prices), and multi-select
+"Close (n)" and the filter/export on positions.
+
 ## Guessing an API shape is how a screen lies
 
 Half the screens were written against field names I assumed. Checking them

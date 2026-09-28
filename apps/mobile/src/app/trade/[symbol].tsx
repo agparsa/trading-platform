@@ -5,7 +5,8 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { DomainError, type OrderSide } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
-import { useMobileTrading } from '../../lib/features';
+import { useFeatures, useMobileTrading } from '../../lib/features';
+import { offersTrailing, orderRequest } from '../../lib/order-request';
 import { Button, Card, ErrorNote, Figure, Screen } from '../../components/ui';
 import { theme } from '../../lib/theme';
 
@@ -66,6 +67,8 @@ export default function OrderTicket(): React.ReactElement {
   const [volume, setVolume] = useState('0.10');
   const [stopLoss, setStopLoss] = useState('');
   const [takeProfit, setTakeProfit] = useState('');
+  const [trailing, setTrailing] = useState('');
+  const trailingOffered = offersTrailing(useFeatures());
   const [preview, setPreview] = useState<OrderPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,15 +78,18 @@ export default function OrderTicket(): React.ReactElement {
     () =>
       account === null
         ? null
-        : {
+        : orderRequest({
             accountId: account.id,
             symbol: String(symbol),
             side,
             volume,
-            stopLoss: stopLoss.length === 0 ? null : stopLoss,
-            takeProfit: takeProfit.length === 0 ? null : takeProfit,
-          },
-    [account, symbol, side, volume, stopLoss, takeProfit],
+            stopLoss,
+            takeProfit,
+            // A trail the firm has switched off is not sent even if one was
+            // typed before the flags arrived; the field is gone from view.
+            trailingDistance: trailingOffered ? trailing : '',
+          }),
+    [account, symbol, side, volume, stopLoss, takeProfit, trailing, trailingOffered],
   );
 
   const refreshPreview = useCallback(async () => {
@@ -184,6 +190,21 @@ export default function OrderTicket(): React.ReactElement {
             keyboard="decimal-pad"
             placeholder="optional"
           />
+          {/*
+            A trail from the fill onward, in price units: the stop follows the
+            best exit price seen at this distance and never moves back. The
+            position opens already trailing. Hidden when the firm switched
+            trailing off; the server refuses one either way.
+          */}
+          {trailingOffered ? (
+            <Field
+              label="Trailing distance"
+              value={trailing}
+              onChange={setTrailing}
+              keyboard="decimal-pad"
+              placeholder="optional"
+            />
+          ) : null}
         </Card>
 
         {preview === null ? null : (
