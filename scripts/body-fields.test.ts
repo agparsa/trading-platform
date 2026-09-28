@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { dropped, scan } from './body-fields';
 
 /**
- * Every field a route's request schema accepts reaches the code behind it.
+ * Every field a route's request schema accepts reaches the code behind it —
+ * body and query string alike.
  *
  * `trailingStopDistance` was added to the order schemas, honoured by the
  * service, tested at the service, shipped to the ticket — and dropped by the
@@ -12,7 +13,9 @@ import { dropped, scan } from './body-fields';
  * typed a trail got a position with none and no error to say so.
  *
  * The same shape can happen to any route whose handler copies fields across,
- * so the check is over all of them. What it reads, per route with a `@Body()`:
+ * and to a query string too — a filter accepted and ignored returns rows the
+ * caller asked not to see. So the check is over every route with a `@Body()`
+ * or `@Query()`. What it reads, per route:
  *
  *  - the keys the zod schema behind the DTO accepts, resolved through the
  *    type checker (a name-keyed lookup compared a route against another
@@ -34,12 +37,22 @@ const NOT_READ: Readonly<Record<string, Readonly<Record<string, string>>>> = {
     // ticket sends one order shape to both routes, so the schema is shared.
     trailingStopDistance: 'a trail does not change what the preview prices',
   },
+  // ListQueryDto is shared with GET /positions, where includeClosed selects
+  // closed rows too. It has nothing to select on these two routes: a trade is
+  // a closed round trip by definition, and the order list has no open/closed
+  // split. A narrower schema would 400 a client that sends the shared shape.
+  'trading.controller.ts list': {
+    includeClosed: 'the order list has no open/closed split',
+  },
+  'trading.controller.ts trades': {
+    includeClosed: 'every trade is a closed round trip',
+  },
 };
 
 const routes = scan();
 const keyOf = (at: string, method: string) => `${at.split('/').pop()!.split(':')[0]} ${method}`;
 
-describe('request-body fields reach the handler', () => {
+describe('request fields reach the handler', () => {
   it('reads every schema it can find', () => {
     // A route whose schema cannot be read is a route this check silently
     // does not cover. None today; a new one has to be modelled or listed.

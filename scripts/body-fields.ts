@@ -3,7 +3,8 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 /**
- * Which request-body fields each API route accepts, and which it reads.
+ * Which request fields — body and query string — each API route accepts, and
+ * which it reads.
  *
  * Used by `body-fields.test.ts`, and runnable alone while a finding is looked
  * into:
@@ -169,7 +170,7 @@ export function scan(): Route[] {
         for (const parameter of node.parameters) {
           const isBody = ts
             .getDecorators(parameter)
-            ?.some((d) => /^Body\(\s*\)$/.test(d.expression.getText(source)));
+            ?.some((d) => /^(Body|Query)\(\s*\)$/.test(d.expression.getText(source)));
           if (!isBody || !ts.isIdentifier(parameter.name) || parameter.type === undefined) continue;
           const name = parameter.name.text;
           const schema = schemaOfDto(checker, parameter.type);
