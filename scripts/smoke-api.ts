@@ -464,7 +464,16 @@ const checks: Check[] = [
       const open = await fetch(`${BASE}/api/v1/orders`, {
         method: 'POST',
         headers: { ...auth, 'Idempotency-Key': `smoke-open-${Date.now()}` },
-        body: JSON.stringify({ accountId, symbol, side: 'BUY', volume: '0.01' }),
+        // With a trail, over HTTP: the service honoured one from the start,
+        // and the controller dropped it on the way — every test called the
+        // service. This is the layer that lost it.
+        body: JSON.stringify({
+          accountId,
+          symbol,
+          side: 'BUY',
+          volume: '0.01',
+          trailingStopDistance: '1',
+        }),
       });
       const opened = (await open.json()) as {
         ok: boolean;
@@ -472,6 +481,28 @@ const checks: Check[] = [
         error?: { code: string; message: string };
       };
       assert(opened.ok, `order rejected: ${opened.error?.code} ${opened.error?.message}`);
+
+      const positionsResponse = await fetch(`${BASE}/api/v1/positions?accountId=${accountId}`, {
+        headers: auth,
+      });
+      const positions = (
+        (await positionsResponse.json()) as {
+          data: Array<{
+            id: string;
+            trailingStopDistance: string | null;
+            highWaterPrice: string | null;
+          }>;
+        }
+      ).data;
+      const trailed = positions.find((position) => position.id === opened.data.positionId);
+      assert(
+        trailed !== undefined && Number(trailed.trailingStopDistance) === 1,
+        `a trail sent with the order did not reach the position (got ${trailed === undefined ? 'no position' : String(trailed.trailingStopDistance)})`,
+      );
+      assert(
+        trailed.highWaterPrice !== null,
+        'the position opened trailing but with no anchor to trail from',
+      );
 
       const stateResponse = await fetch(`${BASE}/api/v1/accounts/${accountId}/state`, {
         headers: auth,
@@ -568,6 +599,7 @@ const checks: Check[] = [
             type,
             volume: spec.minVolume,
             price,
+            trailingStopDistance: '1',
           }),
         });
 
@@ -586,10 +618,14 @@ const checks: Check[] = [
       const listed = await fetch(`${BASE}/api/v1/orders/pending?accountId=${accountId}`, {
         headers: auth,
       });
-      const listedBody = (await listed.json()) as { data: Array<{ orderId: string }> };
+      const listedBody = (await listed.json()) as {
+        data: Array<{ orderId: string; trailingStopDistance: string | null }>;
+      };
+      const rested = listedBody.data.find((order) => order.orderId === placedBody.data.orderId);
+      assert(rested !== undefined, 'the resting order was not listed');
       assert(
-        listedBody.data.some((order) => order.orderId === placedBody.data.orderId),
-        'the resting order was not listed',
+        Number(rested.trailingStopDistance) === 1,
+        `a trail sent with a resting order was not kept on it (got ${rested.trailingStopDistance})`,
       );
 
       // A buy limit above the market would fire on the next tick — that is a

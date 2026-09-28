@@ -147,6 +147,7 @@ export class TradingController {
           volume: body.volume,
           stopLoss: body.stopLoss ?? null,
           takeProfit: body.takeProfit ?? null,
+          trailingStopDistance: body.trailingStopDistance ?? null,
         }),
       ),
     );
@@ -201,6 +202,7 @@ export class TradingController {
         price: body.price,
         stopLoss: body.stopLoss ?? null,
         takeProfit: body.takeProfit ?? null,
+        trailingStopDistance: body.trailingStopDistance ?? null,
         timeInForce: body.timeInForce,
         expiresAt: body.expiresAt ?? null,
       }),
