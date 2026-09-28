@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { PositionRow } from '@/lib/queries';
 
 /**
  * The position editor, rendered.
@@ -26,6 +27,12 @@ vi.mock('@/lib/session', () => ({
   useSession: () => ({ api: {}, accessToken: 'test' }),
 }));
 
+const downloadCsv = vi.fn();
+vi.mock('@/lib/csv', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  downloadCsv: (...args: unknown[]) => downloadCsv(...args),
+}));
+
 const { PositionsPanel } = await import('./positions-panel');
 const { DEFAULT_PREFERENCES } = await import('@/lib/trading-preferences');
 
@@ -49,7 +56,7 @@ const XAUUSD = {
 } as never;
 
 /** 0.3 lots of gold, long from 4000, no levels yet. */
-const POSITION = {
+const POSITION: PositionRow = {
   id: 'pos-1',
   symbol: 'XAUUSD',
   side: 'BUY',
@@ -69,7 +76,7 @@ const POSITION = {
   closeReason: null,
   openedAt: '2026-09-27T10:00:00.000Z',
   closedAt: null,
-} as never;
+};
 
 const SNAPSHOT = {
   accountId: 'acc-1',
@@ -107,6 +114,64 @@ afterEach(() => {
   cleanup();
   modify.mockReset();
   closeAll.mockReset();
+  downloadCsv.mockReset();
+});
+
+/**
+ * The filter and the file read the same rows. What is pinned: typing narrows
+ * the table; the count says so; the export writes the narrowed rows and no
+ * other, with the server's own decimals; Escape clears it; and a ticked row
+ * that the filter hides is still ticked when it comes back.
+ */
+describe('filtering and exporting the open positions, rendered', () => {
+  const euro = { ...POSITION, id: 'pos-eur', symbol: 'EURUSD', entryPrice: '1.10000' };
+
+  it('narrows the table, counts what is shown, and exports exactly that', () => {
+    renderPanel([POSITION, euro]);
+    expect(screen.getAllByRole('checkbox', { name: /^Select .* (XAUUSD|EURUSD)$/ })).toHaveLength(
+      2,
+    );
+
+    fireEvent.change(screen.getByLabelText('Filter positions'), { target: { value: 'eur' } });
+    expect(screen.getAllByRole('checkbox', { name: /^Select .* (XAUUSD|EURUSD)$/ })).toHaveLength(
+      1,
+    );
+    expect(screen.getByText(/1 of 2 shown/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Export CSV/ }));
+    expect(downloadCsv).toHaveBeenCalledTimes(1);
+    const [csv, filename] = downloadCsv.mock.calls[0] as [string, string];
+    expect(filename).toMatch(/^open-positions-\d{4}-\d{2}-\d{2}\.csv$/);
+    const lines = csv.split('\r\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('"positionId"');
+    expect(lines[1]).toContain('"pos-eur"');
+    expect(lines[1]).toContain('"1.10000"');
+    expect(csv).not.toContain('pos-1');
+
+    fireEvent.change(screen.getByLabelText('Filter positions'), { target: { value: 'nothing' } });
+    expect(screen.getByText(/Nothing matches/)).toBeTruthy();
+    fireEvent.keyDown(screen.getByLabelText('Filter positions'), { key: 'Escape' });
+    expect(screen.getAllByRole('checkbox', { name: /^Select .* (XAUUSD|EURUSD)$/ })).toHaveLength(
+      2,
+    );
+  });
+
+  it('keeps a hidden row ticked, and "select every" ticks what is shown', () => {
+    renderPanel([POSITION, euro]);
+    const gold = screen.getByRole('checkbox', { name: /^Select .* XAUUSD$/ });
+    fireEvent.click(gold);
+    fireEvent.change(screen.getByLabelText('Filter positions'), { target: { value: 'eur' } });
+    // Gold is hidden; still one selected.
+    expect(screen.getByTestId('selection-bar').textContent).toMatch(/1 of 2 selected/);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select every position' }));
+    expect(screen.getByTestId('selection-bar').textContent).toMatch(/2 of 2 selected/);
+    fireEvent.change(screen.getByLabelText('Filter positions'), { target: { value: '' } });
+    const boxes = screen.getAllByRole('checkbox', {
+      name: /^Select .* (XAUUSD|EURUSD)$/,
+    }) as HTMLInputElement[];
+    expect(boxes.map((box) => box.checked)).toEqual([true, true]);
+  });
 });
 
 /**

@@ -241,6 +241,7 @@ function pending(overrides: Partial<PendingOrderRow> = {}): PendingOrderRow {
     price: '4570.00',
     stopLoss: null,
     takeProfit: null,
+    trailingStopDistance: null,
     timeInForce: 'GTC',
     expiresAt: null,
     createdAt: '2026-08-28T09:00:00.000Z',

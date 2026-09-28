@@ -23,8 +23,10 @@ import {
   type SymbolRow,
 } from '@/lib/queries';
 import { useRealtime } from '@/lib/realtime-store';
+import { OPEN_POSITION_COLUMNS, filterPositions, openPositionRow } from '@/lib/positions-view';
 import { ShortcutAction, needsConfirmation } from '@/lib/shortcuts';
 import type { TradingPreferences } from '@/lib/trading-preferences';
+import { ExportBar } from './export-bar';
 import { LevelField, levelEntryFromPrice, type LevelEntry } from './level-field';
 import { priceFromEntry, type LevelContext } from '@/lib/level-entry';
 import { Button, EmptyState, SideBadge, inputClass } from './primitives';
@@ -217,6 +219,29 @@ export function PositionsPanel({
    */
   const refs = useMemo(() => shortRefs(positions.map((position) => position.id)), [positions]);
 
+  /**
+   * The rows on screen: every open position, narrowed by what is typed in
+   * the filter. The header checkbox, the count, and the export all read
+   * `shown`, so what is selected, counted and written is what is looked at;
+   * the selection itself is kept in ids, so a row filtered out of view stays
+   * ticked and comes back ticked.
+   */
+  const [filter, setFilter] = useState('');
+  const shown = useMemo(() => filterPositions(positions, filter, refs), [positions, filter, refs]);
+  const exportRows = useMemo(
+    () =>
+      shown.map((position) => {
+        const live = livePnl[position.id];
+        const fallback = snapshotPnl[position.id];
+        return openPositionRow(position, {
+          currentPrice: live?.currentPrice ?? fallback?.currentPrice ?? null,
+          floatingPnl: live?.floatingPnl ?? fallback?.floatingPnl ?? null,
+          netPnl: live?.netPnl ?? fallback?.netPnl ?? null,
+        });
+      }),
+    [shown, livePnl, snapshotPnl],
+  );
+
   if (positions.length === 0) {
     return (
       <>
@@ -236,6 +261,27 @@ export function PositionsPanel({
           onCancel={() => setPrompt(null)}
         />
       )}
+      <ExportBar
+        label={
+          filter.trim() === ''
+            ? `${positions.length} open position${positions.length === 1 ? '' : 's'}`
+            : `${shown.length} of ${positions.length} shown`
+        }
+        filename="open-positions"
+        columns={OPEN_POSITION_COLUMNS}
+        rows={exportRows}
+      >
+        <input
+          className={cn(inputClass, 'w-40 py-0.5 text-[11px]')}
+          placeholder="Filter: symbol, side, ref"
+          aria-label="Filter positions"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setFilter('');
+          }}
+        />
+      </ExportBar>
       {selected.length === 0 ? null : (
         <div
           className="flex items-center gap-3 border-b border-terminal-border bg-terminal-raised/40 px-3 py-1.5"
@@ -268,11 +314,16 @@ export function PositionsPanel({
                 <input
                   type="checkbox"
                   aria-label="Select every position"
-                  checked={selected.length === positions.length}
+                  checked={shown.length > 0 && shown.every((p) => ticked.has(p.id))}
                   onChange={(event) =>
-                    setTicked(
-                      event.target.checked ? new Set(positions.map((p) => p.id)) : new Set(),
-                    )
+                    setTicked((current) => {
+                      const next = new Set(current);
+                      for (const p of shown) {
+                        if (event.target.checked) next.add(p.id);
+                        else next.delete(p.id);
+                      }
+                      return next;
+                    })
                   }
                 />
               </th>
@@ -306,7 +357,14 @@ export function PositionsPanel({
             </tr>
           </thead>
           <tbody>
-            {positions.map((position) => {
+            {shown.length === 0 ? (
+              <tr>
+                <td colSpan={16} className="px-3 py-3 text-[11px] text-terminal-muted">
+                  Nothing matches “{filter.trim()}”. Esc clears the filter.
+                </td>
+              </tr>
+            ) : null}
+            {shown.map((position) => {
               const spec = specs[position.symbol];
               const precision = spec?.pricePrecision ?? 2;
               const live = livePnl[position.id];

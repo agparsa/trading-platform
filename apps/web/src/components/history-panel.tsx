@@ -10,7 +10,6 @@ import {
   utcTime,
   volume as formatVolume,
 } from '@/lib/format';
-import { downloadCsv, toCsv } from '@/lib/csv';
 import {
   useOrders,
   usePositions,
@@ -20,7 +19,8 @@ import {
   type SymbolRow,
   type TradeRow,
 } from '@/lib/queries';
-import { Button, EmptyState, SideBadge } from './primitives';
+import { ExportBar } from './export-bar';
+import { EmptyState, SideBadge } from './primitives';
 
 export type HistoryTab = 'trades' | 'closed' | 'orders';
 
@@ -191,49 +191,6 @@ export function HistoryPanel({
         ))}
       </Table>
     </>
-  );
-}
-
-/**
- * A download of exactly what is on screen.
- *
- * Built from the rows already rendered rather than from a fresh request: a
- * second query could return something else — history grows while you read it —
- * and an export that silently disagrees with the screen it came from is worse
- * than no export.
- *
- * Every value is the server's own decimal string, unformatted. The table rounds
- * for display; a file somebody will reconcile against their own records must
- * not.
- */
-function ExportBar({
-  label,
-  filename,
-  columns,
-  rows,
-}: {
-  label: string;
-  filename: string;
-  columns: readonly string[];
-  rows: ReadonlyArray<readonly string[]>;
-}) {
-  return (
-    <div className="flex items-center justify-between border-b border-terminal-border px-3 py-1.5">
-      <span className="text-[10px] text-terminal-muted">{label}</span>
-      <Button
-        variant="ghost"
-        className="px-2 py-0.5"
-        disabled={rows.length === 0}
-        onClick={() =>
-          downloadCsv(
-            toCsv(columns, rows),
-            `${filename}-${new Date().toISOString().slice(0, 10)}.csv`,
-          )
-        }
-      >
-        Export CSV
-      </Button>
-    </div>
   );
 }
 

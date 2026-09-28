@@ -160,6 +160,16 @@ no longer a window between the fill and the first stop. The firm's
 the server refuses the order, as the position editor's trail field already
 worked. (Expiry is on the ticket too: a resting order is GTC or Day.)
 
+**Filter and export in the positions panel.** A filter box above the table
+(`lib/positions-view.ts`): each word must match the symbol, the side as a whole
+word, or the start of the reference or id — words, not a pattern — and Escape
+clears it. The count says "n of m shown", the header checkbox ticks what is
+shown, and a ticked row the filter hides stays ticked. "Export CSV" writes the
+shown rows through the same `ExportBar` the history screen uses (now
+`components/export-bar.tsx`): the server's own decimals, every level and the
+trail, and the P&L as marked at export — named `floatingPnlAtExport` so the
+file does not pretend to be a settlement.
+
 ## 5. What Phase 6 does not deliver
 
 Stated rather than stubbed. None of this is built:
@@ -173,8 +183,6 @@ Stated rather than stubbed. None of this is built:
   filling), not a control on a form.
 - **Finance and Logs tabs.** Neither has a design. (Alerts is built — price
   alerts have their own tab, next to pending orders; see `price-alerts.md`.)
-- **Filter and export** in the positions panel. (Multi-select with "Close (n)"
-  is built — §3.)
 - **Design tokens beyond colour.** There is no spacing scale and no typography
   scale; sizes are arbitrary utilities repeated inline. There is no light
   theme.
