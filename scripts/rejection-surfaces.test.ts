@@ -82,9 +82,12 @@ describe('every client shows every violation', () => {
      * history, not a payload a ticket renders. A whole-file negative matched
      * that and reported a defect that was not one.
      */
-    const constructions = [...service.matchAll(/throw new DomainError\([\s\S]*?\n {6}\);/g)].map(
-      (match) => match[0],
-    );
+    // Each throw closed at its *own* indentation. Closing at a fixed six
+    // spaces let a throw nested deeper run on into the next one, and the
+    // violations were then counted in two constructions.
+    const constructions = [
+      ...service.matchAll(/^( *)throw new DomainError\([\s\S]*?\n\1\);/gm),
+    ].map((match) => match[0]);
     expect(constructions.length, 'no DomainError constructions parsed').toBeGreaterThan(3);
     const risk = constructions.filter((block) => block.includes('violations'));
     expect(risk.length, 'no DomainError carries the violations any more').toBe(1);

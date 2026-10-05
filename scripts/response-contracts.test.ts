@@ -140,6 +140,7 @@ describe('the comparer', () => {
     currentPrice: '1.2',
     stopLoss: null,
     takeProfit: null,
+    trailingStopDistance: null,
     floatingPnl: '1.00',
     netFloatingPnl: '0.65',
     stale: false,

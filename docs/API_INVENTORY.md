@@ -417,23 +417,23 @@ handler is responsible for scoping the result to that user — which for
 
 ### `trading/trading.controller.ts` — base `/`
 
-| Verb     | Path                     | Handler         | Requires                                                            |
-| -------- | ------------------------ | --------------- | ------------------------------------------------------------------- |
-| `POST`   | `/orders`                | `open`          | throttled, ORDERS_CREATE                                            |
-| `POST`   | `/orders/preview`        | `preview`       | throttled, ORDERS_READ                                              |
-| `POST`   | `/orders/pending`        | `placePending`  | throttled, ORDERS_CREATE                                            |
-| `GET`    | `/orders/pending`        | `listPending`   | ORDERS_READ                                                         |
-| `PATCH`  | `/orders/:id`            | `modifyPending` | throttled, ORDERS_MODIFY                                            |
-| `DELETE` | `/orders/:id`            | `cancelPending` | throttled, ORDERS_CANCEL                                            |
-| `GET`    | `/orders`                | `list`          | ORDERS_READ                                                         |
-| `GET`    | `/orders/:id/events`     | `events`        | ORDERS_READ                                                         |
-| `GET`    | `/positions`             | `positionsFor`  | POSITIONS_READ                                                      |
-| `POST`   | `/positions/:id/close`   | `close`         | throttled, POSITIONS_CLOSE                                          |
-| `POST`   | `/positions/close-all`   | `closeAll`      | throttled, POSITIONS_CLOSE; `positionIds` narrows it to a selection |
-| `PATCH`  | `/positions/:id`         | `modify`        | throttled, POSITIONS_MODIFY                                         |
-| `POST`   | `/positions/:id/reverse` | `reverse`       | throttled, POSITIONS_CLOSE, ORDERS_CREATE                           |
-| `GET`    | `/trades`                | `trades`        | POSITIONS_READ                                                      |
-| `GET`    | `/accounts/:id/state`    | `state`         | ACCOUNTS_READ                                                       |
+| Verb     | Path                     | Handler         | Requires                                  |
+| -------- | ------------------------ | --------------- | ----------------------------------------- |
+| `POST`   | `/orders`                | `open`          | throttled, ORDERS_CREATE                  |
+| `POST`   | `/orders/preview`        | `preview`       | throttled, ORDERS_READ                    |
+| `POST`   | `/orders/pending`        | `placePending`  | throttled, ORDERS_CREATE                  |
+| `GET`    | `/orders/pending`        | `listPending`   | ORDERS_READ                               |
+| `PATCH`  | `/orders/:id`            | `modifyPending` | throttled, ORDERS_MODIFY                  |
+| `DELETE` | `/orders/:id`            | `cancelPending` | throttled, ORDERS_CANCEL                  |
+| `GET`    | `/orders`                | `list`          | ORDERS_READ                               |
+| `GET`    | `/orders/:id/events`     | `events`        | ORDERS_READ                               |
+| `GET`    | `/positions`             | `positionsFor`  | POSITIONS_READ                            |
+| `POST`   | `/positions/:id/close`   | `close`         | throttled, POSITIONS_CLOSE                |
+| `POST`   | `/positions/close-all`   | `closeAll`      | throttled, POSITIONS_CLOSE                |
+| `PATCH`  | `/positions/:id`         | `modify`        | throttled, POSITIONS_MODIFY               |
+| `POST`   | `/positions/:id/reverse` | `reverse`       | throttled, POSITIONS_CLOSE, ORDERS_CREATE |
+| `GET`    | `/trades`                | `trades`        | POSITIONS_READ                            |
+| `GET`    | `/accounts/:id/state`    | `state`         | ACCOUNTS_READ                             |
 
 ### `trading/venue-recovery.controller.ts` — base `/admin/venue-recovery`
 

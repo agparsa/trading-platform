@@ -224,26 +224,28 @@ suite('Close all (integration)', () => {
    * answers for every name it was given.
    */
   describe('a selection', () => {
+    /** The id of the position a market buy opened; an internal fill always opens one. */
+    const opened = async (userId: string, accountId: string): Promise<string> => {
+      const { positionId } = await buy(userId, accountId);
+      if (positionId === null) throw new Error('a market buy opened no position');
+      return positionId;
+    };
+
     it('closes the positions named and no other', async () => {
       const { userId, accountId } = await createAccount(prisma, { balance: '1000000' });
-      const first = await buy(userId, accountId);
-      const second = await buy(userId, accountId);
-      const third = await buy(userId, accountId);
+      const first = await opened(userId, accountId);
+      const second = await opened(userId, accountId);
+      const third = await opened(userId, accountId);
 
-      const result = await stack.positions.closeAll(userId, accountId, undefined, [
-        first.positionId,
-        third.positionId,
-      ]);
+      const result = await stack.positions.closeAll(userId, accountId, undefined, [first, third]);
       expect(result.asked).toBe(2);
-      expect(result.closed.map((one) => one.positionId).sort()).toEqual(
-        [first.positionId, third.positionId].sort(),
-      );
+      expect(result.closed.map((one) => one.positionId).sort()).toEqual([first, third].sort());
       expect(result.refused).toEqual([]);
       const still = await prisma.position.findMany({
         where: { accountId, status: 'OPEN' },
         select: { id: true },
       });
-      expect(still).toEqual([{ id: second.positionId }]);
+      expect(still).toEqual([{ id: second }]);
     });
 
     /**
@@ -255,28 +257,26 @@ suite('Close all (integration)', () => {
      */
     it('refuses a name that is not an open position on this account, and closes the rest', async () => {
       const { userId, accountId } = await createAccount(prisma, { balance: '1000000' });
-      const mine = await buy(userId, accountId);
+      const mine = await opened(userId, accountId);
       const other = await createAccount(prisma, { balance: '1000000' });
-      const theirs = await buy(other.userId, other.accountId);
-      const closedAlready = await buy(userId, accountId);
-      await stack.positions.close(userId, closedAlready.positionId, null);
+      const theirs = await opened(other.userId, other.accountId);
+      const closedAlready = await opened(userId, accountId);
+      await stack.positions.close(userId, closedAlready, null);
 
       const result = await stack.positions.closeAll(userId, accountId, undefined, [
-        mine.positionId,
-        theirs.positionId,
-        closedAlready.positionId,
+        mine,
+        theirs,
+        closedAlready,
         '00000000-0000-0000-0000-000000000000',
       ]);
       expect(result.asked).toBe(4);
-      expect(result.closed.map((one) => one.positionId)).toEqual([mine.positionId]);
+      expect(result.closed.map((one) => one.positionId)).toEqual([mine]);
       expect(result.refused.map((one) => [one.positionId, one.code])).toEqual([
-        [theirs.positionId, TradingErrorCode.POSITION_NOT_FOUND],
-        [closedAlready.positionId, TradingErrorCode.POSITION_NOT_FOUND],
+        [theirs, TradingErrorCode.POSITION_NOT_FOUND],
+        [closedAlready, TradingErrorCode.POSITION_NOT_FOUND],
         ['00000000-0000-0000-0000-000000000000', TradingErrorCode.POSITION_NOT_FOUND],
       ]);
-      expect(
-        await prisma.position.count({ where: { id: theirs.positionId, status: 'OPEN' } }),
-      ).toBe(1);
+      expect(await prisma.position.count({ where: { id: theirs, status: 'OPEN' } })).toBe(1);
 
       const trail = await prisma.auditLog.findFirstOrThrow({
         where: { action: 'POSITION_CLOSE_ALL' },

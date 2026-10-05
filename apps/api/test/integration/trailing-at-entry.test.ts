@@ -70,7 +70,9 @@ suite('Trailing stop at entry (integration)', () => {
       volume: '1.00',
       trailingStopDistance: '5.00',
     });
-    const position = await prisma.position.findUniqueOrThrow({ where: { id: result.positionId } });
+    const position = await prisma.position.findUniqueOrThrow({
+      where: { id: result.positionId ?? 'no position opened' },
+    });
     expect(position.trailingStopDistance?.toString()).toBe('5');
     // A long exits at the bid; that is where the trail starts measuring from.
     expect(position.highWaterPrice?.toString()).toBe(BID);
@@ -95,7 +97,9 @@ suite('Trailing stop at entry (integration)', () => {
       trailingStopDistance: '5.00',
     });
     await moveTo('4590.00', '4590.14');
-    const position = await prisma.position.findUniqueOrThrow({ where: { id: result.positionId } });
+    const position = await prisma.position.findUniqueOrThrow({
+      where: { id: result.positionId ?? 'no position opened' },
+    });
     expect(position.highWaterPrice?.toString()).toBe('4590');
     expect(position.stopLoss?.toString()).toBe('4585');
   });

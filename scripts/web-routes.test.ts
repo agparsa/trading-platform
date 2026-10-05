@@ -92,7 +92,9 @@ describe('web routes', () => {
   });
 
   it("the application shell's navigation links only pages that exist", () => {
-    const nav = hrefs(read('apps/web/src/components/shell/app-shell.tsx'));
+    // The trader's sections live in one list, read by the shell and the
+    // terminal header alike.
+    const nav = hrefs(read('apps/web/src/components/shell/sections.ts'));
     expect(nav.length).toBeGreaterThan(3);
     expect(nav.filter((href) => !all.includes(href))).toEqual([]);
   });
