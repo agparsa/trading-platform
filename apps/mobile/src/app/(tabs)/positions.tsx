@@ -15,6 +15,13 @@ import { useLiveBook } from '../../lib/live';
 import { applyPnl } from '../../lib/live-book';
 import { Button, Empty, ErrorNote, Screen } from '../../components/ui';
 import { describePatch, protectionLine, protectivePatch } from '../../lib/protective-levels';
+import {
+  closeAllKey,
+  closeAllQuestion,
+  closeAllReport,
+  type CloseAllOutcome,
+  type CloseAllReport,
+} from '../../lib/close-all';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
 import { formatSigned, signColor, theme } from '../../lib/theme';
 
@@ -54,6 +61,13 @@ export default function Positions(): React.ReactElement {
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState({ stopLoss: '', takeProfit: '' });
   const [busy, setBusy] = useState(false);
+  /**
+   * The close-all question while it is on screen, with the key minted when it
+   * was asked — so a second tap or a retry is the same command, and asking
+   * again after cancelling is a new one. See `closeAllKey`.
+   */
+  const [closingAll, setClosingAll] = useState<{ key: string; count: number } | null>(null);
+  const [allReport, setAllReport] = useState<CloseAllReport | null>(null);
 
   /**
    * The open book of the selected account.
@@ -108,6 +122,37 @@ export default function Positions(): React.ReactElement {
   };
 
   /**
+   * Every open position on the account, as one server command.
+   *
+   * Not a loop of the single close above: the server states the intent once,
+   * closes largest-margin first, and reports each position — including the
+   * ones it could not close, and why — which is what the report says.
+   */
+  const closeAll = async () => {
+    if (account === null || closingAll === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const outcome = await api.post<CloseAllOutcome>(
+        '/positions/close-all',
+        { accountId: account.id },
+        { idempotencyKey: closingAll.key },
+      );
+      setAllReport(closeAllReport(outcome));
+      setClosingAll(null);
+      await load();
+    } catch (caught) {
+      setError(
+        caught instanceof DomainError
+          ? caught.message
+          : 'Close all did not reach the server. Nothing was closed; the list is unchanged.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
    * Changes a position's protective levels.
    *
    * The patch is built by `protectivePatch`, which is the only place that knows
@@ -143,6 +188,61 @@ export default function Positions(): React.ReactElement {
   return (
     <Screen>
       {error === null ? null : <ErrorNote message={error} />}
+      {allReport === null ? null : (
+        <Pressable
+          onPress={() => setAllReport(null)}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss the close-all report"
+          style={[styles.report, allReport.tone === 'partial' ? styles.reportPartial : null]}
+        >
+          <Text style={styles.confirmText}>{allReport.message}</Text>
+          {allReport.stillOpen.map((one) => {
+            const position = (positions ?? []).find((p) => p.id === one.positionId);
+            return (
+              <Text key={one.positionId} style={styles.detail}>
+                {position === undefined
+                  ? one.positionId.slice(0, 8)
+                  : `${position.symbol} ${position.side} ${position.volume}`}
+                {' — '}
+                {one.reason}
+              </Text>
+            );
+          })}
+        </Pressable>
+      )}
+      {(positions ?? []).length < 2 ? null : closingAll === null ? (
+        <View style={styles.bookBar}>
+          <Text style={styles.detail}>{(positions ?? []).length} open</Text>
+          <Pressable
+            accessibilityRole="button"
+            style={styles.closeAffordance}
+            onPress={() => {
+              setAllReport(null);
+              setClosingAll({
+                key: closeAllKey(
+                  account?.id ?? 'none',
+                  Date.now(),
+                  Math.random().toString(36).slice(2),
+                ),
+                count: (positions ?? []).length,
+              });
+            }}
+          >
+            <Text style={styles.closeLabel}>Close all ({(positions ?? []).length})</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.confirm}>
+          <Text style={styles.confirmText}>{closeAllQuestion(closingAll.count)}</Text>
+          <Button
+            label={`Close all ${closingAll.count}`}
+            variant="danger"
+            busy={busy}
+            onPress={() => void closeAll()}
+          />
+          <Button label="Keep them open" variant="quiet" onPress={() => setClosingAll(null)} />
+        </View>
+      )}
       <FlatList
         data={positions ?? []}
         keyExtractor={(item) => item.id}
@@ -342,6 +442,20 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing(1),
   },
   confirmText: { color: theme.colors.text, fontSize: 14 },
+  bookBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing(2),
+    paddingVertical: theme.spacing(1),
+  },
+  report: {
+    gap: theme.spacing(0.5),
+    padding: theme.spacing(2),
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+  },
+  reportPartial: { backgroundColor: theme.colors.surface },
   closeAffordance: {
     alignSelf: 'flex-start',
     marginTop: theme.spacing(1),
