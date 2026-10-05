@@ -58,6 +58,8 @@ export function OrderTicket({
   preferences,
   shortcut,
   onShortcutHandled,
+  staged = null,
+  onStagedHandled,
 }: {
   symbol: SymbolRow | undefined;
   account: AccountSummary | undefined;
@@ -66,6 +68,12 @@ export function OrderTicket({
   /** The last keyboard action, if any. Carries a timestamp so a repeat re-fires. */
   shortcut: { action: ShortcutAction; at: number } | null;
   onShortcutHandled: () => void;
+  /**
+   * A market order staged from the watchlist's bid or ask, waiting here for
+   * the trader's confirmation. Optional: the ticket works without a watchlist.
+   */
+  staged?: { side: 'BUY' | 'SELL'; at: number } | null;
+  onStagedHandled?: () => void;
 }) {
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [orderType, setOrderType] = useState<OrderType>('MARKET');
@@ -368,6 +376,34 @@ export function OrderTicket({
     }
     void send(requested);
   }, [shortcut, preferences.confirm, send, onShortcutHandled, pendingConfirm]);
+
+  /**
+   * A press on the watchlist's bid or ask.
+   *
+   * It goes through this ticket — the one place orders are built and checked —
+   * and it always asks, whatever the one-click setting. The same press that
+   * stages the order also changed the instrument, and this ticket's volume and
+   * order type were chosen before it did: 1.00 lot of gold is not 1.00 lot of
+   * EURUSD, and a ticket left on LIMIT would rest an order where the trader
+   * pressed a price to deal at. So the order is set to market and the
+   * confirmation names side, volume and instrument before anything is sent.
+   */
+  const stagedAt = useRef<number>(0);
+  const [stagedMarket, setStagedMarket] = useState(false);
+  // "at market" belongs to the staged question only; any answer ends it.
+  useEffect(() => {
+    if (pendingConfirm === null) setStagedMarket(false);
+  }, [pendingConfirm]);
+  useEffect(() => {
+    if (staged === null || staged.at === stagedAt.current) return;
+    stagedAt.current = staged.at;
+    onStagedHandled?.();
+    setOrderType('MARKET');
+    setSide(staged.side);
+    setSubmitError([]);
+    setStagedMarket(true);
+    setPendingConfirm(staged.side);
+  }, [staged, onStagedHandled]);
 
   /**
    * An order large enough to be worth pausing over (§86).
@@ -721,12 +757,12 @@ export function OrderTicket({
          * they meant something the dialog will not name.
          */
         <div className="rounded border border-terminal-warning/60 bg-terminal-warning/10 p-2">
-          <p className="mb-2 text-[11px] text-terminal-text">
+          <p className="mb-2 text-[11px] text-terminal-text" data-testid="ticket-confirm">
             Send{' '}
             <span className="numeric font-medium">
               {pendingConfirm} {volume} {symbol.code}
             </span>
-            ?
+            {stagedMarket ? ' at market' : ''}?
           </p>
           {largeOrder === null ? null : (
             <p className="mb-2 text-[11px] text-terminal-warning">{largeOrder}</p>

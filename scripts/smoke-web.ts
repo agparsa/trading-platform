@@ -933,6 +933,37 @@ async function main(): Promise<void> {
     await visit(page, '/', { url: '/terminal' });
     await visit(page, '/terminal', { url: '/terminal' });
     await checkSectionLinks(page, 'the terminal header');
+
+    /**
+     * The watchlist's ask stages a buy in the ticket and asks — it never sends.
+     * Pressed, read and cancelled, so nothing reaches the book: the walk's
+     * later checks rely on the one order they place.
+     */
+    const askButton = page.getByRole('button', { name: /^Buy [A-Z]+ at / }).first();
+    let staged = '';
+    if ((await askButton.count()) > 0) {
+      const label = (await askButton.getAttribute('aria-label')) ?? '';
+      const code = /^Buy ([A-Z]+) at /.exec(label)?.[1] ?? '';
+      await askButton.click();
+      staged = await page.getByTestId('ticket-confirm').innerText();
+      await page
+        .getByRole('button', { name: /^Cancel$/ })
+        .first()
+        .click();
+      const ordersAfter = await prisma.order.count({
+        where: { account: { user: { email: people.trader.email } } },
+      });
+      ok(
+        staged.includes(`BUY`) &&
+          staged.includes(code) &&
+          /at market/.test(staged) &&
+          ordersAfter === 0,
+        'a watchlist ask stages a market buy in the ticket and sends nothing until confirmed',
+        `${staged.replace(/\s+/g, ' ')} · orders after cancel: ${ordersAfter}`,
+      );
+    } else {
+      ok(false, 'the watchlist offers a price to trade at', 'no Buy … at … button on any row');
+    }
     await auditAccessibility(page, 'the terminal');
     /**
      * Price alerts, set through the browser and read back from the database.
@@ -1720,16 +1751,22 @@ async function main(): Promise<void> {
     const pushedLastDay = await prisma.pushDelivery.count({
       where: { tenantId: adminTenant, createdAt: { gte: new Date(Date.now() - 86_400_000) } },
     });
+    /**
+     * Two different questions, kept apart. The summary counts the last day;
+     * the list shows every delivery there is. Reading "none in the last day"
+     * as "the list is empty" held until the database was a week old, and then
+     * the check failed on a screen that was right.
+     */
+    const pushedEver = await prisma.pushDelivery.count({ where: { tenantId: adminTenant } });
     const attempted = /Attempted, last day\s*(\d+)/i.exec(deliveries.replace(/\n/g, ' '));
     ok(
       attempted !== null &&
-        (pushedLastDay === 0
-          ? attempted[1] === '0' && /Nothing recorded/.test(deliveries)
-          : Number(attempted[1]) > 0 && !/Nothing recorded/.test(deliveries)),
-      pushedLastDay === 0
+        (pushedLastDay === 0 ? attempted[1] === '0' : Number(attempted[1]) > 0) &&
+        (pushedEver === 0) === /Nothing recorded/.test(deliveries),
+      pushedEver === 0
         ? 'the push delivery screen answers with figures — none yet — rather than a refusal'
         : 'the push delivery screen answers with the deliveries the worker recorded',
-      deliveries.replace(/\s+/g, ' ').slice(0, 160),
+      `${deliveries.replace(/\s+/g, ' ').slice(0, 160)} · db: ${pushedLastDay} last day, ${pushedEver} ever`,
     );
 
     await visit(adminPage, '/admin/security', { url: '/admin/security', text: /SIGN_IN/ });

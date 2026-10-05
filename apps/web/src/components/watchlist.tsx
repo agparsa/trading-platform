@@ -28,10 +28,17 @@ export function Watchlist({
   symbols,
   selected,
   onSelect,
+  onTrade,
 }: {
   symbols: readonly SymbolRow[];
   selected: string | null;
   onSelect: (code: string) => void;
+  /**
+   * Stage a market order in the ticket from this row's bid (sell) or ask
+   * (buy). The watchlist never sends: the ticket asks, names the order, and
+   * applies the same checks as every other order. Absent, the prices are plain.
+   */
+  onTrade?: (code: string, side: 'BUY' | 'SELL') => void;
 }) {
   const snapshot = useQuoteSnapshot();
   const stats = useMarketStats();
@@ -139,6 +146,7 @@ export function Watchlist({
                   selected={symbol.code === selected}
                   onSelect={onSelect}
                   onStar={star}
+                  onTrade={onTrade}
                 />
               ))}
             </tbody>
@@ -193,6 +201,7 @@ function WatchlistRow({
   selected,
   onSelect,
   onStar,
+  onTrade,
 }: {
   symbol: SymbolRow;
   quote: Quote | undefined;
@@ -201,7 +210,11 @@ function WatchlistRow({
   selected: boolean;
   onSelect: (code: string) => void;
   onStar: (code: string) => void;
+  onTrade?: (code: string, side: 'BUY' | 'SELL') => void;
 }) {
+  // A closed market or a missing quote has no price to deal at; the cell stays
+  // a price, not a button that the server would only refuse.
+  const tradeable = onTrade !== undefined && symbol.sessionOpen && quote !== undefined;
   const direction = useTickDirection(quote?.bid);
   const changePercent = stats?.changePercent ?? null;
   const changeTone =
@@ -281,10 +294,32 @@ function WatchlistRow({
           direction === null && 'text-terminal-text',
         )}
       >
-        {quote === undefined ? '—' : formatPrice(quote.bid, symbol.pricePrecision)}
+        {tradeable ? (
+          <PriceButton
+            side="SELL"
+            code={symbol.code}
+            price={formatPrice(quote.bid, symbol.pricePrecision)}
+            onTrade={onTrade}
+          />
+        ) : quote === undefined ? (
+          '—'
+        ) : (
+          formatPrice(quote.bid, symbol.pricePrecision)
+        )}
       </td>
       <td className="numeric px-2 py-1.5 text-right text-terminal-text">
-        {quote === undefined ? '—' : formatPrice(quote.ask, symbol.pricePrecision)}
+        {tradeable ? (
+          <PriceButton
+            side="BUY"
+            code={symbol.code}
+            price={formatPrice(quote.ask, symbol.pricePrecision)}
+            onTrade={onTrade}
+          />
+        ) : quote === undefined ? (
+          '—'
+        ) : (
+          formatPrice(quote.ask, symbol.pricePrecision)
+        )}
       </td>
       <td
         className={cn('numeric px-2 py-1.5 text-right', changeTone)}
@@ -308,6 +343,45 @@ function WatchlistRow({
         {quote === undefined ? '—' : formatPrice(quote.spread, symbol.pricePrecision)}
       </td>
     </tr>
+  );
+}
+
+/**
+ * A price that stages an order: the bid sells, the ask buys — the price each
+ * side would actually deal at. It looks like the price it replaces until
+ * hovered or focused, so the list reads as a list, and its accessible name
+ * says what pressing it does rather than reading out a number.
+ */
+function PriceButton({
+  side,
+  code,
+  price,
+  onTrade,
+}: {
+  side: 'BUY' | 'SELL';
+  code: string;
+  price: string;
+  onTrade: (code: string, side: 'BUY' | 'SELL') => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={`${side === 'BUY' ? 'Buy' : 'Sell'} ${code} at ${price}`}
+      title={`${side === 'BUY' ? 'Buy at the ask' : 'Sell at the bid'} — the ticket asks before sending`}
+      onClick={(event) => {
+        // The row selects; the price stages an order (which selects too).
+        event.stopPropagation();
+        onTrade(code, side);
+      }}
+      className={cn(
+        'numeric rounded px-1 transition-colors',
+        side === 'BUY'
+          ? 'hover:bg-terminal-long/20 focus-visible:bg-terminal-long/20'
+          : 'hover:bg-terminal-short/20 focus-visible:bg-terminal-short/20',
+      )}
+    >
+      {price}
+    </button>
   );
 }
 

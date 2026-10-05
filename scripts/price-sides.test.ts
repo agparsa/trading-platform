@@ -60,7 +60,11 @@ const sideRead = (expr: ts.Expression): 'bid' | 'ask' | null => {
   else if (ts.isIdentifier(expr)) name = expr.text;
   else if (ts.isElementAccessExpression(expr) && ts.isStringLiteral(expr.argumentExpression)) {
     name = expr.argumentExpression.text;
-  } else if (ts.isStringLiteral(expr)) name = expr.text;
+  } else if (ts.isStringLiteral(expr) && /^[A-Za-z_$][\w$]*$/.test(expr.text)) {
+    // A key — `quote[side === 'BUY' ? 'ask' : 'bid']` — not prose. A tooltip
+    // reading "Buy at the ask" ends in the word and chooses nothing.
+    name = expr.text;
+  }
   if (name === null) return null;
   if (/bid$/i.test(name)) return 'bid';
   if (/ask$/i.test(name)) return 'ask';

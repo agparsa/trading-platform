@@ -135,6 +135,8 @@ export function Terminal() {
    * to keep in step — which is exactly how the two drift apart.
    */
   const [shortcut, setShortcut] = useState<{ action: ShortcutAction; at: number } | null>(null);
+  /** A market order staged from the watchlist, for the ticket to confirm. */
+  const [staged, setStaged] = useState<{ side: 'BUY' | 'SELL'; at: number } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
   const onShortcut = useCallback((action: ShortcutAction) => {
@@ -174,6 +176,8 @@ export function Terminal() {
     setShortcut({ action, at: Date.now() });
   }, []);
   useTradingShortcuts(preferences, onShortcut);
+  // Stable, so the ticket's effect does not re-run on every terminal render.
+  const clearStaged = useCallback(() => setStaged(null), []);
 
   const account = useMemo(
     () => (accounts.data ?? []).find((row) => row.id === accountId),
@@ -337,6 +341,10 @@ export function Terminal() {
             symbols={tradeableSymbols}
             selected={selectedSymbol}
             onSelect={setSelectedSymbol}
+            onTrade={(code, side) => {
+              setSelectedSymbol(code);
+              setStaged({ side, at: Date.now() });
+            }}
           />
         </Panel>
 
@@ -412,6 +420,8 @@ export function Terminal() {
             preferences={preferences}
             shortcut={shortcut}
             onShortcutHandled={() => setShortcut(null)}
+            staged={staged}
+            onStagedHandled={clearStaged}
           />
         </Panel>
       </main>

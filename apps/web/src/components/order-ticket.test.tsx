@@ -237,4 +237,66 @@ describe('the order ticket, rendered', () => {
     // Cleared with the levels once the order is away.
     expect((screen.getByLabelText('Trailing distance') as HTMLInputElement).value).toBe('');
   });
+
+  /**
+   * A press on the watchlist's bid or ask stages a market order here. It must
+   * ask even with one-click armed and confirmation off — these preferences —
+   * because the same press changed the instrument under a volume chosen for
+   * another, and must turn a ticket left on LIMIT into a market order rather
+   * than rest one where the trader pressed a price to deal at.
+   */
+  it('asks before sending an order staged from the watchlist, at market, whatever the settings', async () => {
+    mutateAsync.mockResolvedValue({ orderId: 'o-9', status: 'FILLED', positionId: 'p-9' });
+    quote();
+    const props = {
+      symbol: SYMBOL,
+      account: ACCOUNT,
+      accountId: 'acc-1',
+      preferences: PREFERENCES,
+      shortcut: null,
+      onShortcutHandled: () => undefined,
+    };
+    const handled = vi.fn();
+    const view = render(<OrderTicket {...props} staged={null} onStagedHandled={handled} />);
+
+    // Left on LIMIT, as a trader might have.
+    fireEvent.click(screen.getByRole('button', { name: /^LIMIT$/ }));
+
+    view.rerender(
+      <OrderTicket {...props} staged={{ side: 'SELL', at: 1 }} onStagedHandled={handled} />,
+    );
+    expect(handled).toHaveBeenCalledTimes(1);
+    const question = screen.getByTestId('ticket-confirm').textContent ?? '';
+    expect(question).toMatch(/Send SELL 0\.10 XAUUSD at market\?/);
+    expect(mutateAsync).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Send$/ }));
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledTimes(1);
+    });
+    // A market order — the open-position mutation, not the resting one —
+    // on the side pressed.
+    expect(mutateAsync.mock.calls[0]?.[0]).toMatchObject({ symbol: 'XAUUSD', side: 'SELL' });
+    expect(mutateAsync.mock.calls[0]?.[0]).not.toHaveProperty('price');
+  });
+
+  it('sends nothing when the staged order is cancelled', () => {
+    quote();
+    render(
+      <OrderTicket
+        symbol={SYMBOL}
+        account={ACCOUNT}
+        accountId="acc-1"
+        preferences={PREFERENCES}
+        shortcut={null}
+        onShortcutHandled={() => undefined}
+        staged={{ side: 'BUY', at: 1 }}
+        onStagedHandled={() => undefined}
+      />,
+    );
+    expect(screen.getByTestId('ticket-confirm').textContent).toMatch(/BUY 0\.10 XAUUSD at market/);
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
+    expect(screen.queryByTestId('ticket-confirm')).toBeNull();
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
 });

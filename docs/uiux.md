@@ -170,17 +170,38 @@ shown rows through the same `ExportBar` the history screen uses (now
 trail, and the P&L as marked at export — named `floatingPnlAtExport` so the
 file does not pretend to be a settlement.
 
+**Trading from the watchlist.** A row's bid and ask are buttons — "Sell
+XAUUSD at 4,583.58", "Buy … at …" — that stage a market order in the ticket.
+They never send. The ticket is the one place an order is built and checked,
+and the press goes through it the way a B or S keystroke does. Unlike a
+keystroke, it **always asks**, whatever the one-click setting: the same press
+that stages the order also changed the instrument, under a volume chosen for
+another one (1.00 lot of gold is not 1.00 lot of EURUSD), and a ticket left on
+LIMIT would otherwise rest an order where the trader pressed a price to deal
+at. So the ticket switches to market and asks "Send BUY 0.10 XAUUSD at
+market?". A closed market or a missing quote shows a plain price, not a button
+the server would only refuse. At rest the buttons look like the prices they
+replace; hover and focus show which side they deal.
+
 ## 5. What Phase 6 does not deliver
 
 Stated rather than stubbed. None of this is built:
 
-- **The watchlist's inline quick ticket.** Rows do not expand into SELL/BUY
-  price buttons with volume steppers and a notional. Categories and Top Movers
-  do not exist either; search and favourites do.
-- **Stop-limit orders.** The ticket offers market, limit and stop. The API's
-  `PendingOrderType` is `LIMIT | STOP` — adding stop-limit is an engine change
-  (a second trigger price, and a resting order that becomes a limit rather than
-  filling), not a control on a form.
+- **Watchlist categories and Top Movers.** Search and favourites exist, and
+  the bid and ask stage an order (§4); rows do not expand into a ticket of
+  their own with a volume stepper.
+- **Stop-limit orders.** The ticket offers market, limit and stop. `STOP_LIMIT`
+  is already in the database's `OrderType` enum, so no migration is needed for
+  the type — but the order's _second_ state is. After its stop is reached it
+  rests as a limit, possibly for hours, and nothing in the order model can say
+  "stop reached, now resting at the limit": `TRIGGERED` means a fill is in
+  progress, and the interrupted-fill sweep rejects any order left there for two
+  minutes; `PENDING → PENDING` is not an edge of the order state machine. The
+  honest options are an `activated_at` column with a new `ACTIVATED` order
+  event — an enum value an older image cannot read, so the deploy needs a
+  rollback floor — or a new edge in the state machine and its documented
+  table. Either is an engine change to make on its own, with its own tests,
+  not alongside a form.
 - **Finance and Logs tabs.** Neither has a design. (Alerts is built — price
   alerts have their own tab, next to pending orders; see `price-alerts.md`.)
 - **Design tokens beyond colour.** There is no spacing scale and no typography
