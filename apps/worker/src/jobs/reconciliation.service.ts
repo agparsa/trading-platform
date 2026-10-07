@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { toDecimal } from '@tp/financial-core';
 import { PlatformEvent } from '@tp/shared-types';
 import {
@@ -247,72 +247,90 @@ export class ReconciliationService {
   }
 
   /**
-   * One account's records, at whatever moment the queries ran.
+   * One account's records, as of one moment.
    *
-   * Deliberately **not** wrapped in a transaction. A serializable read across
-   * every table of a busy account would hold locks against live trading to
-   * answer a question that is not urgent, and reconciliation must never block
-   * order execution. The cost is that a trade committing mid-read can produce a
-   * transient finding; the answer to that is to re-run, which is why this is
-   * cheap and repeatable rather than exclusive.
+   * Read inside a `REPEATABLE READ` transaction: every query below sees the
+   * same snapshot, the cached balance included. It used to read them as
+   * separate statements, with the balance taken earlier still, from the
+   * sweep's account list — and every night at 00:00 the swap job posted its
+   * entries while this was reading, so the ledger was one entry ahead of the
+   * balance it was compared with. Three accounts raised LEDGER_DRIFT, CRITICAL,
+   * every midnight for a week, about a disagreement that never existed (the
+   * balance equalled the ledger at every rest). A check that cries wolf on a
+   * schedule teaches its reader that CRITICAL means nothing.
+   *
+   * The old comment's worry was locks against live trading. In PostgreSQL a
+   * repeatable-read transaction that only reads takes none that a writer
+   * waits on: it reads the snapshot its first statement saw, and writers
+   * carry on. What it costs is holding that snapshot for the few milliseconds
+   * one account's reads take.
    */
   private async loadRecords(account: {
     id: string;
     number: string;
-    balance: { toString(): string };
     currency: string;
   }): Promise<AccountRecords> {
-    const [orders, positions, trades, ledger, tradeReferences] = await Promise.all([
-      this.prisma.order.findMany({
-        where: { accountId: account.id },
-        select: {
-          id: true,
-          status: true,
-          volume: true,
-          filledVolume: true,
-          positionId: true,
-          _count: { select: { executions: true } },
-        },
-      }),
-      this.prisma.position.findMany({
-        where: { accountId: account.id },
-        select: {
-          id: true,
-          status: true,
-          side: true,
-          volume: true,
-          initialVolume: true,
-          commission: true,
-          swap: true,
-          realizedPnl: true,
-          orders: {
+    const { stored, orders, positions, trades, ledger, tradeReferences } =
+      await this.prisma.$transaction(
+        async (tx) => {
+          // First, so the snapshot every later read sees begins here.
+          const stored = await tx.account.findUniqueOrThrow({
+            where: { id: account.id },
+            select: { balance: true },
+          });
+          const orders = await tx.order.findMany({
+            where: { accountId: account.id },
             select: {
-              side: true,
-              executions: { select: { side: true, volume: true } },
+              id: true,
+              status: true,
+              volume: true,
+              filledVolume: true,
+              positionId: true,
+              _count: { select: { executions: true } },
             },
-          },
+          });
+          const positions = await tx.position.findMany({
+            where: { accountId: account.id },
+            select: {
+              id: true,
+              status: true,
+              side: true,
+              volume: true,
+              initialVolume: true,
+              commission: true,
+              swap: true,
+              realizedPnl: true,
+              orders: {
+                select: {
+                  side: true,
+                  executions: { select: { side: true, volume: true } },
+                },
+              },
+            },
+          });
+          const trades = await tx.trade.findMany({
+            where: { accountId: account.id },
+            select: {
+              id: true,
+              positionId: true,
+              grossPnl: true,
+              commission: true,
+              entryCommission: true,
+              exitCommission: true,
+              swap: true,
+              netPnl: true,
+            },
+          });
+          const ledger = await this.ledgerTotals(tx, account.id);
+          const tradeReferences = await tx.balanceLedger.groupBy({
+            by: ['referenceId'],
+            where: { accountId: account.id, referenceType: 'Position' },
+            _count: { _all: true },
+          });
+          return { stored, orders, positions, trades, ledger, tradeReferences };
         },
-      }),
-      this.prisma.trade.findMany({
-        where: { accountId: account.id },
-        select: {
-          id: true,
-          positionId: true,
-          grossPnl: true,
-          commission: true,
-          entryCommission: true,
-          exitCommission: true,
-          swap: true,
-          netPnl: true,
-        },
-      }),
-      this.ledgerTotals(account.id),
-      this.prisma.balanceLedger.groupBy({
-        by: ['referenceId'],
-        where: { accountId: account.id, referenceType: 'Position' },
-        _count: { _all: true },
-      }),
-    ]);
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 15_000 },
+      );
 
     const entriesByPosition = new Map(
       tradeReferences
@@ -324,7 +342,7 @@ export class ReconciliationService {
       accountId: account.id,
       number: account.number,
       currency: account.currency,
-      storedBalance: account.balance.toString(),
+      storedBalance: stored.balance.toString(),
       ledger,
       orders: orders.map((order) => ({
         id: order.id,
@@ -396,8 +414,11 @@ export class ReconciliationService {
    * went on reporting the same 42.98 every hour. So each entry is counted
    * under the type of the entry it compensates, and under its own otherwise.
    */
-  private async ledgerTotals(accountId: string): Promise<LedgerTotals> {
-    const rows = await this.prisma.$queryRaw<
+  private async ledgerTotals(
+    client: Pick<Prisma.TransactionClient, '$queryRaw'>,
+    accountId: string,
+  ): Promise<LedgerTotals> {
+    const rows = await client.$queryRaw<
       Array<{ all: string; trade_result: string; commission: string; swap: string }>
     >`
       SELECT

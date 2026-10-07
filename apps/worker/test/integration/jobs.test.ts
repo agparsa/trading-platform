@@ -447,6 +447,52 @@ suite('Worker jobs (integration)', () => {
     });
 
     /**
+     * The midnight race, made deterministic.
+     *
+     * Every night at 00:00 the swap job posts its entries while the hourly
+     * reconciliation is reading. Read as separate statements, the ledger came
+     * back one entry ahead of the balance it was compared with, and production
+     * raised LEDGER_DRIFT — CRITICAL — on three accounts every midnight for a
+     * week about a disagreement that never existed.
+     *
+     * Here a swap is posted and committed from another connection *between*
+     * the balance read and the ledger read. Read from one snapshot, the run
+     * sees neither the entry nor the balance it moved, and finds nothing; and
+     * the next run, after it, sees both, and finds nothing either.
+     */
+    it('reads balance and ledger from one snapshot, so a swap posted mid-read is not drift', async () => {
+      // A real position, charged by the real swap job — the midnight write.
+      const { accountId } = await openPosition('BUY', '1.00');
+      const reconciliation = service();
+      const internals = reconciliation as unknown as {
+        ledgerTotals: (...args: unknown[]) => Promise<unknown>;
+      };
+      const original = internals.ledgerTotals.bind(reconciliation);
+      let posted = false;
+      internals.ledgerTotals = async (...args: unknown[]) => {
+        if (!posted) {
+          posted = true;
+          // Committed on its own connections, between the balance read and
+          // the ledger read, as the 00:00 swap job's entries were.
+          await new SwapAccrualService(prismaService, buildConfig({}) as never).accrue(
+            new Date('2026-08-24T00:00:00Z'),
+          );
+        }
+        return original(...args);
+      };
+
+      const during = await reconciliation.check();
+      expect(posted).toBe(true);
+      expect(during.reports.find((r) => r.accountId === accountId)?.findings ?? []).toEqual([]);
+
+      const after = await service().check();
+      expect(after.reports.find((r) => r.accountId === accountId)?.findings ?? []).toEqual([]);
+      // And the swap really was posted: the balance moved by it.
+      const account = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
+      expect(Money.of(account.balance.toString(), 'USD').lt(Money.of('100000', 'USD'))).toBe(true);
+    });
+
+    /**
      * A wrong SWAP row is answered with a compensating ADJUSTMENT that names
      * it — the table is append-only. Summed by its own type, the answer landed
      * in no bucket and the swap total kept the wrong row in full: production's
