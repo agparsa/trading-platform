@@ -13,6 +13,7 @@ import {
 } from '@tp/financial-core';
 import {
   orderTrail,
+  shouldTriggerPending,
   transitionOrder,
   validatePendingPrice,
   validateProtectiveLevels,
@@ -1000,10 +1001,39 @@ export class OrdersService {
    * TRIGGERED — before anything is priced. Two ticks arriving close together
    * would otherwise both see a resting order and both open a position from it.
    * A claim that changes no rows means another pass won, and this one stops.
+   *
+   * **A limit fills at its price or better, or not now.** The engine detects a
+   * resting order over a window's extremes — "did the market reach it at any
+   * point" — and fills at the price available *now*, which for a stop is the
+   * right pair: a stop touched becomes a market order. For a limit it is not.
+   * Touched for an instant inside a burst and filled after the price came back,
+   * a buy limit at 4,550 filled at 4,570.14, which is the one thing a limit
+   * order promises never to do (and what `order-lifecycle.md` says it never
+   * does). Filling at the limit instead would be a price nobody can deal at
+   * now. So a limit whose price is not available on this tick is left resting,
+   * unclaimed — `'not-reached'` — and fills on the first tick that honours it.
+   * The claim is conditional on the version read here, so a modify landing in
+   * between cannot make this check answer for a price the order no longer has.
    */
-  async fillPending(orderId: string, tick: Tick): Promise<'filled' | 'rejected' | 'lost'> {
+  async fillPending(
+    orderId: string,
+    tick: Tick,
+  ): Promise<'filled' | 'rejected' | 'lost' | 'not-reached'> {
+    const resting = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { type: true, side: true, price: true, version: true, status: true },
+    });
+    if (resting === null || resting.status !== OrderStatus.PENDING) return 'lost';
+    if (
+      resting.type === 'LIMIT' &&
+      resting.price !== null &&
+      !shouldTriggerPending('LIMIT', resting.side, resting.price.toString(), tick)
+    ) {
+      return 'not-reached';
+    }
+
     const claimed = await this.prisma.order.updateMany({
-      where: { id: orderId, status: OrderStatus.PENDING },
+      where: { id: orderId, status: OrderStatus.PENDING, version: resting.version },
       data: {
         status: transitionOrder(OrderStatus.PENDING, OrderStatus.TRIGGERED),
         version: { increment: 1 },

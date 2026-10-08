@@ -231,10 +231,21 @@ suite('Trigger engine (integration)', () => {
       expect(position.closeReason).toBe('STOP_LOSS');
     });
 
-    it('fills a resting order the market traded through', async () => {
+    /**
+     * A limit fills at its price or better, or not now.
+     *
+     * The burst touches 4,540 and comes back to 4,570. A buy *stop* reached
+     * there would rightly fill at 4,570 — touched, it is a market order. A buy
+     * *limit* at 4,550 says "at 4,550 or better", and this test used to expect
+     * it filled at 4,570.14: $20 an ounce worse than its own price, $2,000 on
+     * the lot, against `order-lifecycle.md`'s "for a limit, at least as good as
+     * asked". Filling at 4,550 instead would be a price nobody can deal at now.
+     * So it rests, untouched, and fills on the first tick that honours it.
+     */
+    it('leaves a limit resting when the burst touched it but the price now is worse', async () => {
       const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
       await stack.publishQuote('XAUUSD', BID, ASK);
-      await stack.orders.placePending(userId, {
+      const order = await stack.orders.placePending(userId, {
         accountId,
         symbol: 'XAUUSD',
         side: 'BUY',
@@ -250,8 +261,67 @@ suite('Trigger engine (integration)', () => {
         ['4570.00', '4570.14'],
       ]);
 
+      expect(await prisma.position.count({ where: { accountId } })).toBe(0);
+      const still = await prisma.order.findUniqueOrThrow({ where: { id: order.orderId } });
+      expect(still.status).toBe('PENDING');
+
+      // The market comes back to the limit, and it fills — at or better than it.
+      await stack.publishQuote('XAUUSD', '4549.80', '4549.94');
+      await burst([['4549.80', '4549.94']]);
+      const position = await prisma.position.findFirstOrThrow({ where: { accountId } });
+      expect(Number(position.entryPrice.toString())).toBeLessThanOrEqual(4550);
+    });
+
+    it('fills a limit the burst traded through when the price now still honours it', async () => {
+      const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
+      await stack.publishQuote('XAUUSD', BID, ASK);
+      await stack.orders.placePending(userId, {
+        accountId,
+        symbol: 'XAUUSD',
+        side: 'BUY',
+        type: 'LIMIT',
+        volume: '1.00',
+        price: '4550.00',
+      });
+      await stack.publishQuote('XAUUSD', '4545.00', '4545.14');
+
+      await burst([
+        ['4583.58', '4583.72'],
+        ['4540.00', '4540.14'],
+        ['4545.00', '4545.14'],
+      ]);
+
       const position = await prisma.position.findFirstOrThrow({ where: { accountId } });
       expect(position.status).toBe('OPEN');
+      // At the price available now, which is better than the limit.
+      expect(position.entryPrice.toString()).toBe('4545.14');
+    });
+
+    /**
+     * A stop is the other half of the rule: touched inside the burst, it fills
+     * at the price now even when that is worse — it has become a market order.
+     */
+    it('fills a buy stop the burst traded through at the price now, even when worse', async () => {
+      const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
+      await stack.publishQuote('XAUUSD', BID, ASK);
+      await stack.orders.placePending(userId, {
+        accountId,
+        symbol: 'XAUUSD',
+        side: 'BUY',
+        type: 'STOP',
+        volume: '1.00',
+        price: '4600.00',
+      });
+      await stack.publishQuote('XAUUSD', '4590.00', '4590.14');
+
+      await burst([
+        ['4583.58', '4583.72'],
+        ['4610.00', '4610.14'],
+        ['4590.00', '4590.14'],
+      ]);
+
+      const position = await prisma.position.findFirstOrThrow({ where: { accountId } });
+      expect(position.entryPrice.toString()).toBe('4590.14');
     });
 
     /**

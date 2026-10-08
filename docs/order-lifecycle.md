@@ -215,6 +215,19 @@ A triggered order fills at the executable price _now_, not at its resting price.
 For a limit that is at least as good as asked. For a stop it may be worse, and
 that difference is real money.
 
+**When the engine is behind, a limit is still never filled worse than its
+price.** Ticks that arrive during a pass are coalesced, and a resting order is
+detected on the window's extremes — "did the market reach it at any point" —
+while the fill happens at the price available now. For a stop that pair is
+right: touched, it is a market order. For a limit it once was not: a buy limit
+at 4,550 touched for an instant inside a burst, with the ask back at 4,570.14 by
+the time the pass ran, filled at 4,570.14, and a test said that was intended.
+`fillPending` now checks a limit against the price now before claiming it; one
+whose price is not available on this tick is left resting, unclaimed, and fills
+on the first tick that honours it. Filling it at 4,550 instead would be a price
+nobody can deal at now. The claim is conditional on the version that check
+read, so a modify landing in between cannot leave it answering for an old price.
+
 Both prices and their difference go into the `FILLED` event, so a trader
 disputing a fill can see exactly what happened rather than being told a number.
 
