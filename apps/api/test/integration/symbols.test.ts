@@ -2,9 +2,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 import { SymbolsService } from '../../src/symbols/symbols.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
-import { createTestClient, hasTestDatabase, resetDatabase, seedSymbols } from './harness';
+import { withTenant } from '@tp/tenancy';
+import {
+  DEFAULT_TENANT_ID,
+  DEFAULT_TENANT_SLUG,
+  createTestClient,
+  hasTestDatabase,
+  resetDatabase,
+  seedSymbols,
+} from './harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
+const TENANT = { tenantId: DEFAULT_TENANT_ID, slug: DEFAULT_TENANT_SLUG };
 
 suite('SymbolsService (integration)', () => {
   let prisma: PrismaClient;
@@ -91,6 +100,26 @@ suite('SymbolsService (integration)', () => {
     });
     await symbols.reload();
     expect(symbols.require('XAUUSD').session.windows.map((w) => w.day)).toEqual([1, 3]);
+  });
+
+  /**
+   * The grouping a watchlist filters on. A tenant's own terms replace the
+   * spec; they must not drop the label the instrument is listed under, or a
+   * tenant that edited one margin rate would see that instrument vanish from
+   * its category.
+   */
+  it('carries the category through, including under a tenant’s own terms', async () => {
+    await seedSymbols(prisma);
+    const symbol = await prisma.symbol.findUniqueOrThrow({ where: { code: 'XAUUSD' } });
+    await prisma.tenantSymbolTerms.create({
+      data: { tenantId: DEFAULT_TENANT_ID, symbolId: symbol.id, marginRate: '0.02' },
+    });
+    await symbols.reload();
+    expect(symbols.require('XAUUSD').category).toBe('Metals');
+
+    const underTerms = await withTenant(TENANT, () => symbols.require('XAUUSD'));
+    expect(underTerms.spec.marginRate).toBe('0.02');
+    expect(underTerms.category).toBe('Metals');
   });
 
   it('reflects an administrative change only after a reload', async () => {

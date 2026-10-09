@@ -106,4 +106,17 @@ describe('SymbolsController market state', () => {
     vi.setSystemTime(Date.UTC(2026, 8, 14, 17, 10));
     expect(controller([WEEKDAYS_ONLY]).list()[0]!.market.state).toBe('POST_CLOSE');
   });
+
+  /**
+   * The grouping the watchlist filters on. Absent from the definition — an
+   * instrument loaded by an older cache — it is `null`, said plainly, rather
+   * than a key that is sometimes missing.
+   */
+  it('lists each instrument under its category, on both routes', () => {
+    vi.setSystemTime(MONDAY_MIDDAY);
+    const metals = { ...WEEKDAYS_ONLY, category: 'Metals' };
+    const listed = controller([metals, NO_SESSION]).list();
+    expect(listed.map((item) => item.category)).toEqual(['Metals', null]);
+    expect(controller([metals]).get('XAUUSD').category).toBe('Metals');
+  });
 });

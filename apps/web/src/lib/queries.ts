@@ -78,6 +78,8 @@ export interface OrderRow {
 export interface SymbolRow {
   code: string;
   description: string;
+  /** The platform's grouping, when the API is new enough to send it. */
+  category?: string | null;
   quoteCurrency: string;
   contractSize: string;
   tickSize: string;

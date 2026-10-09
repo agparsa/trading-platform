@@ -183,13 +183,38 @@ market?". A closed market or a missing quote shows a plain price, not a button
 the server would only refuse. At rest the buttons look like the prices they
 replace; hover and focus show which side they deal.
 
+**Categories and Top movers.** The groups are the platform's own — the
+`category` an administrator files an instrument under, sent on `GET /symbols`
+— offered as chips in the order the platform lists its instruments, and only
+when there are at least two (one chip filters nothing; an API older than the
+field sends none, and the row of chips simply is not there). A chip narrows the
+list the way the search box and the star do, and the three combine. A chosen
+category whose last instrument has been disabled stops filtering instead of
+leaving an empty list with no reason on it.
+
+"Movers" ranks what is shown by the size of the move since each instrument's
+reference price, either direction, at most ten. It reads the server's change
+(`GET /market/stats`), which refreshes once a minute, not the live tick: a list
+that reorders under the cursor on every tick is a list nobody can click. An
+instrument with no reference yet — an em dash, not a zero — and one exactly
+unchanged have not moved, and are not on it. Ties keep the platform's order.
+
+Building it showed the column it ranks by was not on screen: at every width
+the terminal lays out three columns, the watchlist's table was wider than its
+panel and the change column sat behind a horizontal scroll. The cells are now
+tight, a session label wraps under the code instead of widening the column,
+the instrument badge appears from `xl`, the spread from `2xl` (where the panel
+widens to 400px), and the panel is 280px rather than 250px at `lg`. The
+browser walk measures it at 1100, 1440 and 1680px, so a column added later
+that pushes the table past its panel fails a check rather than hiding.
+
 ## 5. What Phase 6 does not deliver
 
 Stated rather than stubbed. None of this is built:
 
-- **Watchlist categories and Top Movers.** Search and favourites exist, and
-  the bid and ask stage an order (§4); rows do not expand into a ticket of
-  their own with a volume stepper.
+- **A ticket inside a watchlist row.** Search, favourites, categories and
+  Top movers exist, and the bid and ask stage an order (§4); rows do not
+  expand into a ticket of their own with a volume stepper.
 - **Stop-limit orders.** The ticket offers market, limit and stop. `STOP_LIMIT`
   is already in the database's `OrderType` enum, so no migration is needed for
   the type — but the order's _second_ state is. After its stop is reached it

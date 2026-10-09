@@ -51,7 +51,12 @@ export class SymbolsController {
     const halted = this.halted;
     return this.symbols.list().map((instrument) => {
       const market = this.statusOf(instrument, now, halted);
-      return { ...instrument.spec, sessionOpen: market.tradeable, market };
+      return {
+        ...instrument.spec,
+        category: instrument.category ?? null,
+        sessionOpen: market.tradeable,
+        market,
+      };
     });
   }
 
@@ -62,6 +67,7 @@ export class SymbolsController {
     const market = this.statusOf(instrument, Date.now(), this.halted);
     return {
       ...instrument.spec,
+      category: instrument.category ?? null,
       session: instrument.session,
       sessionOpen: market.tradeable,
       market,

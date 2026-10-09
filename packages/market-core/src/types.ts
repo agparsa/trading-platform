@@ -117,4 +117,9 @@ export interface InstrumentDefinition {
   readonly session: TradingSession;
   /** Currency traders' accounts settle in for this instrument's P&L, if fixed. */
   readonly settlementCurrency?: CurrencyCode;
+  /**
+   * How the platform groups the instrument for people — "FX", "Metals". A
+   * label for lists, never an input to pricing, margin or risk.
+   */
+  readonly category?: string;
 }

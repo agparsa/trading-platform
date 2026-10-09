@@ -335,7 +335,7 @@ export function Terminal() {
         you browse, and browsing is not what you opened the terminal on a phone
         to do.
       */}
-      <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto p-2 lg:grid-cols-[250px_minmax(0,1fr)_270px] lg:overflow-hidden xl:grid-cols-[310px_minmax(0,1fr)_280px]">
+      <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto p-2 lg:grid-cols-[280px_minmax(0,1fr)_270px] lg:overflow-hidden xl:grid-cols-[310px_minmax(0,1fr)_280px] 2xl:grid-cols-[400px_minmax(0,1fr)_300px]">
         <Panel title="Watchlist" className="order-3 max-h-80 lg:order-none lg:max-h-none">
           <Watchlist
             symbols={tradeableSymbols}

@@ -964,6 +964,81 @@ async function main(): Promise<void> {
     } else {
       ok(false, 'the watchlist offers a price to trade at', 'no Buy … at … button on any row');
     }
+
+    /**
+     * A category chip narrows the list to exactly the instruments the
+     * database files under it — compared with the database, not with a count
+     * the page itself rendered, so a chip that filtered on the wrong field
+     * would show here.
+     */
+    {
+      const enabled = await prisma.symbol.findMany({
+        where: { enabled: true },
+        select: { code: true, category: true },
+      });
+      const categories = [...new Set(enabled.map((row) => row.category))];
+      const group = page.getByRole('group', { name: 'Instrument category' });
+      const listedCodes = async () => {
+        const stars = await page.getByRole('button', { name: /^(Un)?[Ss]tar [A-Z0-9._-]+$/ }).all();
+        const labels = await Promise.all(stars.map((star) => star.getAttribute('aria-label')));
+        return labels.map((label) => (label ?? '').replace(/^(Un)?[Ss]tar /, '')).sort();
+      };
+      if (categories.length < 2) {
+        ok(
+          (await group.count()) === 0,
+          'the watchlist offers no category filter when there is only one category',
+        );
+      } else {
+        const chosen = categories[categories.length - 1]!;
+        await group.getByRole('button', { name: chosen, exact: true }).click();
+        const shown = await listedCodes();
+        const expected = enabled
+          .filter((row) => row.category === chosen)
+          .map((row) => row.code)
+          .sort();
+        await group.getByRole('button', { name: 'All', exact: true }).click();
+        const all = await listedCodes();
+        ok(
+          JSON.stringify(shown) === JSON.stringify(expected) && all.length === enabled.length,
+          `a watchlist category shows exactly that category (${chosen}), and All shows everything`,
+          `shown ${shown.join(',')} · expected ${expected.join(',')} · all ${all.length}/${enabled.length}`,
+        );
+      }
+
+      const moversButton = page.getByRole('button', { name: 'Movers', exact: true });
+      await moversButton.click();
+      const ranked = await listedCodes();
+      const pressed = await moversButton.getAttribute('aria-pressed');
+      await moversButton.click();
+      ok(
+        pressed === 'true' && ranked.length <= 10,
+        'Top movers ranks at most ten instruments and can be switched off',
+        `pressed ${pressed} · ${ranked.length} ranked`,
+      );
+    }
+    /**
+     * Every watchlist column fits its panel, at each width the terminal lays
+     * out three columns. The change column is last and was the one cut off —
+     * the number "Movers" ranks by, behind a horizontal scroll nobody finds.
+     */
+    for (const width of [1100, 1440, 1680]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.waitForTimeout(150);
+      const panel = await page.getByTestId('watchlist-rows').boundingBox();
+      const table = await page.getByTestId('watchlist-rows').getByRole('table').boundingBox();
+      ok(
+        panel !== null && table !== null && table.width <= panel.width + 1,
+        `the watchlist's columns fit its panel at ${width}px`,
+        `table ${table?.width ?? '?'}px in a ${panel?.width ?? '?'}px panel; columns ${(
+          await Promise.all(
+            (await page.getByTestId('watchlist-rows').getByRole('columnheader').all()).map(
+              async (th) => Math.round((await th.boundingBox())?.width ?? 0),
+            ),
+          )
+        ).join('/')}`,
+      );
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
     await auditAccessibility(page, 'the terminal');
     /**
      * Price alerts, set through the browser and read back from the database.

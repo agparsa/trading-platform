@@ -103,7 +103,7 @@ export class SymbolsService implements OnModuleInit {
           .sort((a, b) => a.day - b.day || a.openMinute - b.openMinute),
       };
 
-      byCode.set(row.code, { spec, session });
+      byCode.set(row.code, { spec, session, category: row.category });
       idByCode.set(row.code, row.id);
     }
 
@@ -171,7 +171,9 @@ export class SymbolsService implements OnModuleInit {
       }
 
       const forTenant = resolved.get(row.tenantId) ?? new Map(base);
-      forTenant.set(code, { spec, session: platform.session });
+      // Only the terms are the tenant's; the session and the grouping stay the
+      // platform's.
+      forTenant.set(code, { ...platform, spec });
       resolved.set(row.tenantId, forTenant);
     }
 

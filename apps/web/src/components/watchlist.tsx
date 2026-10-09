@@ -7,7 +7,15 @@ import { percent, price as formatPrice } from '@/lib/format';
 import { useMarketStats, useQuoteSnapshot, type SymbolRow } from '@/lib/queries';
 import { markClasses, markFor } from '@/lib/instrument-marks';
 import { useRealtime, type Quote } from '@/lib/realtime-store';
-import { loadFavourites, saveFavourites, toggleFavourite, viewFor } from '@/lib/watchlist-prefs';
+import {
+  TOP_MOVERS,
+  categoriesOf,
+  loadFavourites,
+  saveFavourites,
+  toggleFavourite,
+  topMovers,
+  viewFor,
+} from '@/lib/watchlist-prefs';
 import { EmptyState, inputClass } from './primitives';
 
 /**
@@ -23,6 +31,11 @@ import { EmptyState, inputClass } from './primitives';
  * price it has produces a number that depends on when it connected: two traders
  * would see different changes for the same instrument at the same moment, and
  * neither could say what theirs was measured against.
+ *
+ * Categories and "Top movers" are views of the same rows, nothing more: the
+ * groups are the platform's own (`category` on `GET /symbols`), and the
+ * ranking is that same server change, so it moves once a minute rather than
+ * on every tick under the trader's cursor.
  */
 export function Watchlist({
   symbols,
@@ -47,6 +60,8 @@ export function Watchlist({
   const [search, setSearch] = useState('');
   const [favouritesOnly, setFavouritesOnly] = useState(false);
   const [favourites, setFavourites] = useState<string[]>([]);
+  const [category, setCategory] = useState<string | null>(null);
+  const [movers, setMovers] = useState(false);
 
   // Read once on mount, not during render: the server has no `window`, and a
   // value read during render would differ between the server pass and the
@@ -74,16 +89,41 @@ export function Watchlist({
     [stats.data],
   );
 
+  const categories = useMemo(() => categoriesOf(symbols), [symbols]);
+  // A category chosen earlier that the list no longer has — the last
+  // instrument in it was disabled — is no filter at all, not an empty list
+  // with no visible reason.
+  const activeCategory = category !== null && categories.includes(category) ? category : null;
+
   const view = useMemo(
-    () => viewFor(symbols, favourites, search, favouritesOnly),
-    [symbols, favourites, search, favouritesOnly],
+    () => viewFor(symbols, favourites, search, favouritesOnly, activeCategory),
+    [symbols, favourites, search, favouritesOnly, activeCategory],
   );
+
+  const rows = useMemo(() => {
+    if (!movers) return [...view.favourites, ...view.others];
+    // Ranked from the platform's order, not favourites-first, so a tie keeps
+    // the place it has in the full list.
+    const shown = new Set([...view.favourites, ...view.others].map((item) => item.code));
+    return topMovers(
+      symbols.filter((item) => shown.has(item.code)),
+      changes,
+    );
+  }, [movers, view, symbols, changes]);
 
   if (symbols.length === 0) {
     return <EmptyState>No instruments are enabled.</EmptyState>;
   }
 
-  const rows = [...view.favourites, ...view.others];
+  const emptyMessage = movers
+    ? stats.isError
+      ? 'Daily changes are unavailable right now.'
+      : stats.data === undefined
+        ? 'Daily changes have not loaded yet.'
+        : 'Nothing here has moved since its reference price.'
+    : favouritesOnly && favourites.length === 0
+      ? 'No favourites yet. Use the star beside an instrument.'
+      : 'Nothing matches that search.';
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -109,30 +149,73 @@ export function Watchlist({
         >
           ★
         </button>
+        <button
+          type="button"
+          onClick={() => setMovers((on) => !on)}
+          aria-pressed={movers}
+          title={
+            movers
+              ? `Showing the ${TOP_MOVERS} largest moves since each reference price`
+              : 'Rank by the largest move since each reference price'
+          }
+          className={cn(
+            'shrink-0 rounded border px-2 py-1 text-xs transition-colors',
+            movers
+              ? 'border-terminal-accent/60 text-terminal-accent'
+              : 'border-terminal-border text-terminal-muted hover:text-terminal-text',
+          )}
+        >
+          Movers
+        </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      {categories.length > 0 && (
+        <div
+          role="group"
+          aria-label="Instrument category"
+          className="flex shrink-0 gap-1 overflow-x-auto border-b border-terminal-border px-2 py-1"
+        >
+          {[null, ...categories].map((name) => {
+            const on = name === activeCategory;
+            return (
+              <button
+                key={name ?? 'all'}
+                type="button"
+                onClick={() => setCategory(name)}
+                aria-pressed={on}
+                className={cn(
+                  'shrink-0 rounded px-2 py-0.5 text-[11px] transition-colors',
+                  on
+                    ? 'bg-terminal-raised text-terminal-text'
+                    : 'text-terminal-muted hover:text-terminal-text',
+                )}
+              >
+                {name ?? 'All'}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="min-h-0 flex-1 overflow-auto" data-testid="watchlist-rows">
         {rows.length === 0 ? (
-          <EmptyState>
-            {favouritesOnly && favourites.length === 0
-              ? 'No favourites yet. Use the star beside an instrument.'
-              : 'Nothing matches that search.'}
-          </EmptyState>
+          <EmptyState>{emptyMessage}</EmptyState>
         ) : (
           <table className="w-full border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-terminal-surface">
               <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
-                <th className="px-2 py-1.5 font-medium">Symbol</th>
-                <th className="px-2 py-1.5 text-right font-medium">Bid</th>
-                <th className="px-2 py-1.5 text-right font-medium">Ask</th>
+                <th className="py-1.5 pl-2 pr-1 font-medium">Symbol</th>
+                <th className="px-1 py-1.5 text-right font-medium">Bid</th>
+                <th className="px-1 py-1.5 text-right font-medium">Ask</th>
                 <th
-                  className="px-2 py-1.5 text-right font-medium"
+                  className="py-1.5 pl-1 pr-2 text-right font-medium"
                   title="Change since the previous daily close, computed by the server"
                 >
                   Chg %
                 </th>
-                {/* Reference, and first to yield when the panel is narrow. */}
-                <th className="hidden px-3 py-1.5 text-right font-medium xl:table-cell">Spread</th>
+                {/* Reference, and first to yield: the ticket shows the spread too,
+                    and only the widest layout has room for a fifth column. */}
+                <th className="hidden px-3 py-1.5 text-right font-medium 2xl:table-cell">Spread</th>
               </tr>
             </thead>
             <tbody>
@@ -175,7 +258,8 @@ interface DailyStatsRow {
  * badge is what the eye lands on; the code beside it is what confirms.
  *
  * `aria-hidden`, because the code is right there in the same cell and a screen
- * reader announcing "Gold XAUUSD" would be reading the row twice.
+ * reader announcing "Gold XAUUSD" would be reading the row twice. Dropped below
+ * `xl`, where the panel is too narrow for it and the four numbers at once.
  */
 function InstrumentBadge({ code }: { code: string }) {
   const mark = markFor(code);
@@ -184,7 +268,7 @@ function InstrumentBadge({ code }: { code: string }) {
       aria-hidden
       title={mark.label}
       className={cn(
-        'inline-flex h-4 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-semibold leading-none ring-1 ring-inset',
+        'hidden h-4 w-6 shrink-0 items-center xl:inline-flex justify-center rounded-sm text-[10px] font-semibold leading-none ring-1 ring-inset',
         markClasses(mark.kind),
       )}
     >
@@ -232,8 +316,12 @@ function WatchlistRow({
         selected ? 'bg-terminal-raised' : 'hover:bg-terminal-raised/50',
       )}
     >
-      <td className="px-2 py-1.5">
-        <div className="flex items-center gap-1.5">
+      {/* Tight padding throughout, because every column must fit the panel:
+          the change column is last, and when it was cut off the number
+          "Movers" ranks by sat behind a scroll bar. A session label wraps
+          under the code rather than widening the column. */}
+      <td className="py-1.5 pl-2 pr-1">
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
           <button
             type="button"
             onClick={(event) => {
@@ -288,7 +376,7 @@ function WatchlistRow({
       </td>
       <td
         className={cn(
-          'numeric px-2 py-1.5 text-right transition-colors duration-300',
+          'numeric px-1 py-1.5 text-right transition-colors duration-300',
           direction === 'up' && 'text-terminal-long',
           direction === 'down' && 'text-terminal-short',
           direction === null && 'text-terminal-text',
@@ -307,7 +395,7 @@ function WatchlistRow({
           formatPrice(quote.bid, symbol.pricePrecision)
         )}
       </td>
-      <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+      <td className="numeric px-1 py-1.5 text-right text-terminal-text">
         {tradeable ? (
           <PriceButton
             side="BUY"
@@ -322,7 +410,7 @@ function WatchlistRow({
         )}
       </td>
       <td
-        className={cn('numeric px-2 py-1.5 text-right', changeTone)}
+        className={cn('numeric py-1.5 pl-1 pr-2 text-right', changeTone)}
         title={
           stats === undefined || stats.reference === null
             ? 'No reference price yet for this instrument'
@@ -339,7 +427,7 @@ function WatchlistRow({
           ? '—'
           : `${Number(changePercent) > 0 ? '+' : ''}${percent(changePercent, 2)}`}
       </td>
-      <td className="numeric hidden px-3 py-1.5 text-right text-terminal-muted xl:table-cell">
+      <td className="numeric hidden px-3 py-1.5 text-right text-terminal-muted 2xl:table-cell">
         {quote === undefined ? '—' : formatPrice(quote.spread, symbol.pricePrecision)}
       </td>
     </tr>
@@ -374,7 +462,7 @@ function PriceButton({
         onTrade(code, side);
       }}
       className={cn(
-        'numeric rounded px-1 transition-colors',
+        'numeric rounded px-0.5 transition-colors',
         side === 'BUY'
           ? 'hover:bg-terminal-long/20 focus-visible:bg-terminal-long/20'
           : 'hover:bg-terminal-short/20 focus-visible:bg-terminal-short/20',

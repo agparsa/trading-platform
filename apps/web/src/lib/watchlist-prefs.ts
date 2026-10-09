@@ -73,6 +73,11 @@ export function toggleFavourite(favourites: readonly string[], code: string): st
 export interface WatchlistItem {
   code: string;
   description: string;
+  /**
+   * The platform's grouping — "FX", "Metals". Optional because an API older
+   * than the field does not send it; such a list simply has no categories.
+   */
+  category?: string | null;
 }
 
 export interface WatchlistView<T extends WatchlistItem> {
@@ -89,19 +94,23 @@ export interface WatchlistView<T extends WatchlistItem> {
  * list you cannot click.
  *
  * `favouritesOnly` is a separate switch from the search term so that clearing
- * the search does not silently abandon the filter.
+ * the search does not silently abandon the filter. `category` narrows the same
+ * way and keeps an instrument only if it is listed under exactly that name;
+ * `null` is every category.
  */
 export function viewFor<T extends WatchlistItem>(
   items: readonly T[],
   favourites: readonly string[],
   search: string,
   favouritesOnly = false,
+  category: string | null = null,
 ): WatchlistView<T> {
   const needle = search.trim().toUpperCase();
   const starred = new Set(favourites);
 
   const matching = items.filter((item) => {
     if (favouritesOnly && !starred.has(item.code)) return false;
+    if (category !== null && item.category !== category) return false;
     if (needle === '') return true;
     return (
       item.code.toUpperCase().includes(needle) || item.description.toUpperCase().includes(needle)
@@ -112,4 +121,55 @@ export function viewFor<T extends WatchlistItem>(
     favourites: matching.filter((item) => starred.has(item.code)),
     others: matching.filter((item) => !starred.has(item.code)),
   };
+}
+
+/**
+ * The categories to offer as filters, in the order the platform lists its
+ * instruments — the first instrument of each group places the group. Sorting
+ * them alphabetically would put "Crypto" above "FX" on a desk that lists FX
+ * first.
+ *
+ * A list with fewer than two categories offers none: a single "Metals" chip
+ * filters nothing.
+ */
+export function categoriesOf(items: readonly WatchlistItem[]): string[] {
+  const seen: string[] = [];
+  for (const item of items) {
+    const category = item.category?.trim();
+    if (category === undefined || category === '' || seen.includes(category)) continue;
+    seen.push(category);
+  }
+  return seen.length < 2 ? [] : seen;
+}
+
+/** How many instruments "Top movers" shows. */
+export const TOP_MOVERS = 10;
+
+/**
+ * The instruments that have moved most since their reference, largest move
+ * first, either direction.
+ *
+ * Only an instrument with a change can be a mover. One with no reference yet
+ * (`null`, shown as an em dash) has not moved by zero — it has no number — and
+ * one that is exactly unchanged has not moved; neither belongs on the list.
+ *
+ * The ranking reads the server's change, which refreshes once a minute, not
+ * the live tick: a list that reorders on every tick is a list nobody can
+ * click. Ties keep the platform's order.
+ */
+export function topMovers<T extends WatchlistItem>(
+  items: readonly T[],
+  changes: Readonly<Record<string, { changePercent: string | null } | undefined>>,
+  limit = TOP_MOVERS,
+): T[] {
+  const ranked: Array<{ item: T; size: number; at: number }> = [];
+  items.forEach((item, at) => {
+    const raw = changes[item.code]?.changePercent ?? null;
+    if (raw === null) return;
+    const size = Math.abs(Number(raw));
+    if (!Number.isFinite(size) || size === 0) return;
+    ranked.push({ item, size, at });
+  });
+  ranked.sort((a, b) => b.size - a.size || a.at - b.at);
+  return ranked.slice(0, Math.max(0, limit)).map((entry) => entry.item);
 }
