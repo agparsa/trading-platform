@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Verify HTTPS homepage
         env:
-          TARGET_URL: ${{ vars.PRODUCTION_URL }}
+          TARGET_URL: ${{ vars.PRODUCTION_URL || 'https://devopss.ir/' }}
         shell: bash
         run: |
           set -euo pipefail
