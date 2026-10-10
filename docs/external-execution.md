@@ -251,3 +251,15 @@ catalogue for real — lost answers, filled-but-unanswered, disconnects,
 redelivery, out-of-order delivery. See
 [broker-integration.md](./broker-integration.md) for what adding a connector
 involves.
+
+**Resting orders are not sent to a venue.** Limit and stop orders rest on this
+platform's ticks and fill against its ledger, so on a venue-executed account
+they are refused at placement (`INVALID_ORDER_TYPE`, with a message naming
+what is available instead), and one already resting when its account moves to
+a venue is rejected at the fill rather than filled here. Until 10 October 2026
+the placement path had no such check: a resting order on a venue account would
+have filled internally, at a price this platform made up. No account in
+production had ever executed at a venue, so none did. Sending resting orders to
+the venue — and cancelling and modifying them there — is the venue's work,
+like the trailing stop at entry, which is refused on these accounts for the
+same reason.

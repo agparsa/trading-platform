@@ -291,6 +291,73 @@ suite('External execution (integration)', () => {
     expect(outbox.payload).toMatchObject({ venue: connectionId });
   });
 
+  /**
+   * A resting order rests on this platform's ticks and fills against its
+   * ledger. On an account whose money is at a venue that would be a fill at a
+   * price made up here, so it is refused at placement — and one already
+   * resting when the account moved to a venue is rejected at the fill, never
+   * filled here.
+   */
+  describe('resting orders', () => {
+    const limit = (userId: string, accountId: string) =>
+      stack.orders.placePending(userId, {
+        accountId,
+        symbol: 'XAUUSD',
+        side: 'BUY',
+        type: 'LIMIT',
+        volume: '1.00',
+        price: '4550.00',
+      });
+
+    it('refuses a limit or stop order on a venue-executed account, before anything is written', async () => {
+      scriptVenue();
+      const { userId, accountId } = await externalAccount();
+      await expect(limit(userId, accountId)).rejects.toMatchObject({
+        code: TradingErrorCode.INVALID_ORDER_TYPE,
+      });
+      await expect(
+        stack.orders.placePending(userId, {
+          accountId,
+          symbol: 'XAUUSD',
+          side: 'BUY',
+          type: 'STOP',
+          volume: '1.00',
+          price: '4600.00',
+        }),
+      ).rejects.toMatchObject({ code: TradingErrorCode.INVALID_ORDER_TYPE });
+      expect(await prisma.order.count({ where: { accountId } })).toBe(0);
+    });
+
+    it('rejects, and does not fill here, an order that was resting when the account moved to a venue', async () => {
+      const { userId, accountId } = await createAccount(prisma, { balance: '100000' });
+      const pending = await limit(userId, accountId);
+      const ledgerBefore = await prisma.balanceLedger.count({ where: { accountId } });
+      await prisma.account.update({
+        where: { id: accountId },
+        data: {
+          executionMode: 'EXTERNAL_BROKER',
+          brokerConnectionId: connectionId,
+          externalAccountId: 'MOCK-1001',
+        },
+      });
+
+      await stack.publishQuote('XAUUSD', '4549.86', '4550.00');
+      await stack.triggers.onTick({
+        symbol: 'XAUUSD',
+        bid: '4549.86',
+        ask: '4550.00',
+        timestamp: Date.now(),
+        volume: '1',
+      });
+
+      const order = await prisma.order.findUniqueOrThrow({ where: { id: pending.orderId } });
+      expect(order.status).toBe(OrderStatus.REJECTED);
+      expect(order.rejectionCode).toBe(TradingErrorCode.INVALID_ORDER_TYPE);
+      expect(await prisma.position.count({ where: { accountId } })).toBe(0);
+      expect(await prisma.balanceLedger.count({ where: { accountId } })).toBe(ledgerBefore);
+    });
+  });
+
   it('leaves an internal account entirely alone', async () => {
     scriptVenue();
     const { userId, accountId } = await createAccount(prisma, { balance: '100000' });

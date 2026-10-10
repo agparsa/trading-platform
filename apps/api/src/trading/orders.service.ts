@@ -848,6 +848,22 @@ export class OrdersService {
         { status: account.status },
       );
     }
+    /**
+     * Not on a venue-executed account. A resting order rests *here*: the
+     * trigger engine watches this platform's ticks and fills against this
+     * platform's ledger, so on an account whose money is at a venue it would
+     * become a fill at a price this platform made up — the thing the market
+     * path is built never to do. Resting orders at a venue are the venue's to
+     * hold; until they are sent there, they are refused rather than accepted
+     * and filled somewhere the trader was promised they would not be.
+     */
+    if (ExternalExecutionService.isExternal(account)) {
+      throw new DomainError(
+        TradingErrorCode.INVALID_ORDER_TYPE,
+        'Limit and stop orders are not available on a venue-executed account yet. Place a market order, or set a stop-loss or take-profit on the position.',
+        { accountId: account.id, type: request.type },
+      );
+    }
     await this.throttle.assertAllowed(account.id);
 
     const volume = normalizeVolume(spec, request.volume);
@@ -1058,6 +1074,20 @@ export class OrdersService {
     const restingPrice = order.price?.toString() ?? fillPrice.toString();
 
     try {
+      /**
+       * Placement refuses a resting order on a venue-executed account; this is
+       * the same rule at the other end, for one that rests from before the
+       * refusal existed or whose account was moved to a venue since. Rejected
+       * with a reason, never filled here: a fill on this platform's ledger for
+       * an account whose money is at a venue is a fill that did not happen.
+       */
+      if (ExternalExecutionService.isExternal(order.account)) {
+        throw new DomainError(
+          TradingErrorCode.INVALID_ORDER_TYPE,
+          'This account now executes at a venue, which this resting order was never sent to; it was not filled here.',
+          { accountId: order.accountId },
+        );
+      }
       const rate = await this.conversion.rate(spec.quoteCurrency, order.account.currency);
       const margin = requiredMargin({
         spec,
