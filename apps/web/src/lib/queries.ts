@@ -178,7 +178,12 @@ export interface PendingOrderRow {
   side: 'BUY' | 'SELL';
   type: string;
   volume: string;
+  /** The resting price; for a STOP_LIMIT, its limit. */
   price: string;
+  /** A STOP_LIMIT's stop; `null` on other types (and from an API older than the field). */
+  stopPrice?: string | null;
+  /** When a STOP_LIMIT's stop was reached and it began resting as a limit. */
+  activatedAt?: string | null;
   stopLoss: string | null;
   takeProfit: string | null;
   trailingStopDistance: string | null;
@@ -630,9 +635,12 @@ export interface PlacePendingInput extends CommandInput {
   accountId: string;
   symbol: string;
   side: 'BUY' | 'SELL';
-  type: 'LIMIT' | 'STOP';
+  type: 'LIMIT' | 'STOP' | 'STOP_LIMIT';
   volume: string;
+  /** The resting price; for a STOP_LIMIT, the limit. */
   price: string;
+  /** A STOP_LIMIT's stop; sent for that type only. */
+  stopPrice?: string;
   stopLoss: string | null;
   takeProfit: string | null;
   /** Carried on the order; the position opens with it when the order fills. */
@@ -669,6 +677,8 @@ export function useCancelPending(accountId: string | null) {
 export interface ModifyPendingInput extends CommandInput {
   orderId: string;
   price?: string;
+  /** A STOP_LIMIT's stop, while it has not been reached. */
+  stopPrice?: string;
   volume?: string;
   stopLoss?: string | null;
   takeProfit?: string | null;

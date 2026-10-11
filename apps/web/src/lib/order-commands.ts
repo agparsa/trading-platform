@@ -43,7 +43,7 @@ export const CommandState = {
 } as const;
 export type CommandState = (typeof CommandState)[keyof typeof CommandState];
 
-export type CommandOrderType = 'MARKET' | 'LIMIT' | 'STOP';
+export type CommandOrderType = 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
 
 export interface OrderCommand {
   /** The idempotency key this attempt was sent with. */

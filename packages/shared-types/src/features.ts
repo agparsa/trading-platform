@@ -28,6 +28,7 @@ export const Feature = {
   EXTERNAL_EXECUTION: 'external_execution',
   WEBHOOKS: 'webhooks',
   TRAILING_STOP: 'trailing_stop',
+  STOP_LIMIT: 'stop_limit',
   QUICK_TRADING: 'quick_trading',
   MOBILE_TRADING: 'mobile_trading',
   NEW_CHART: 'new_chart',
@@ -84,6 +85,16 @@ export const FEATURES: readonly FeatureDefinition[] = [
     name: 'Trailing stops',
     description:
       'Traders may set a trailing stop distance on a position, or ask for one with an order. Off, a request that sets one is refused; existing trails keep ratcheting, and a resting order accepted with one still opens with it.',
+    authority: 'FIRM',
+    enforcement: 'SERVER',
+    default: true,
+    honoured: true,
+  },
+  {
+    key: Feature.STOP_LIMIT,
+    name: 'Stop-limit orders',
+    description:
+      'Traders may place a stop-limit order: a stop that, once reached, rests as a limit instead of filling at market. Off, placing one is refused; one already resting keeps working until it fills, expires or is cancelled.',
     authority: 'FIRM',
     enforcement: 'SERVER',
     default: true,

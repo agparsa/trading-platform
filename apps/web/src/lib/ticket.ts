@@ -12,6 +12,7 @@ import {
   rewardToRisk as sharedRewardToRisk,
   validatePendingPrice,
   validateProtectiveLevels,
+  validateStopLimit,
 } from '@tp/trading-core';
 import { money } from './format';
 import type { AccountSummary, SymbolRow } from './queries';
@@ -194,6 +195,33 @@ export function estimateCosts(
  * Returns the message rather than throwing, because a half-typed price is the
  * normal state of an input the user is still filling in.
  */
+/**
+ * Pre-flight for a stop-limit's two prices: the same `validateStopLimit` the
+ * API runs. The stop must not have been reached yet; the limit may sit either
+ * side of it (a cap on the chase above, a pull-back below).
+ */
+export function validateStopLimitPrices(
+  spec: SymbolRow | undefined,
+  side: 'BUY' | 'SELL',
+  stopPrice: string,
+  limitPrice: string,
+  quote: { bid: string; ask: string } | undefined,
+): string | null {
+  const stop = stopPrice.trim();
+  const limit = limitPrice.trim();
+  if (spec === undefined) return null;
+  if (stop === '') return 'Enter the stop price that activates the order.';
+  if (limit === '') return 'Enter the limit price it rests at once activated.';
+  if (!isDecimalString(stop) || !isDecimalString(limit)) return 'Prices must be decimal numbers.';
+  if (quote === undefined) return null;
+  try {
+    validateStopLimit(spec as SymbolSpec, side, stop, limit, quote);
+    return null;
+  } catch (error) {
+    return error instanceof DomainError ? error.message : 'Invalid price.';
+  }
+}
+
 export function validateRestingPrice(
   spec: SymbolRow | undefined,
   type: 'LIMIT' | 'STOP',

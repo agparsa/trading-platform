@@ -14,7 +14,7 @@ import {
   stepVolume,
   validateTicket,
 } from '@/lib/ticket';
-import { validateRestingPrice } from '@/lib/ticket';
+import { validateRestingPrice, validateStopLimitPrices } from '@/lib/ticket';
 import {
   COMMAND_STATE_LABEL,
   CommandState,
@@ -79,6 +79,8 @@ export function OrderTicket({
   const [orderType, setOrderType] = useState<OrderType>('MARKET');
   const [volume, setVolume] = useState('0.10');
   const [restingPrice, setRestingPrice] = useState('');
+  /** A stop-limit's stop. `restingPrice` is then its limit — where it fills. */
+  const [stopTrigger, setStopTrigger] = useState('');
   const [timeInForce, setTimeInForce] = useState<'GTC' | 'DAY'>('GTC');
   const [stopLoss, setStopLoss] = useState('');
   const [trailing, setTrailing] = useState('');
@@ -128,8 +130,10 @@ export function OrderTicket({
     () =>
       orderType === 'MARKET'
         ? null
-        : validateRestingPrice(symbol, orderType, side, restingPrice, quote),
-    [symbol, orderType, side, restingPrice, quote],
+        : orderType === 'STOP_LIMIT'
+          ? validateStopLimitPrices(symbol, side, stopTrigger, restingPrice, quote)
+          : validateRestingPrice(symbol, orderType, side, restingPrice, quote),
+    [symbol, orderType, side, stopTrigger, restingPrice, quote],
   );
 
   const estimate = useMemo(
@@ -285,6 +289,7 @@ export function OrderTicket({
                 type: orderType,
                 volume,
                 price: restingPrice.trim(),
+                ...(orderType === 'STOP_LIMIT' ? { stopPrice: stopTrigger.trim() } : {}),
                 timeInForce,
                 ...levels,
               });
@@ -294,6 +299,7 @@ export function OrderTicket({
           .settleCommand(commandId, settlementFromResponse(orderType, response, Date.now()));
 
         if (orderType !== 'MARKET') setRestingPrice('');
+        setStopTrigger('');
         setStopLoss('');
         setTakeProfit('');
         setTrailing('');
@@ -322,6 +328,7 @@ export function OrderTicket({
       place,
       volume,
       restingPrice,
+      stopTrigger,
       timeInForce,
     ],
   );
@@ -459,14 +466,16 @@ export function OrderTicket({
             key={value}
             type="button"
             onClick={() => setOrderType(value)}
+            aria-pressed={value === orderType}
+            title={ORDER_TYPE_HINT[value]}
             className={cn(
-              'flex-1 rounded px-2 py-1 text-[11px] transition-colors',
+              'flex-1 whitespace-nowrap rounded px-1 py-1 text-[11px] transition-colors',
               value === orderType
                 ? 'bg-terminal-raised text-terminal-text'
                 : 'text-terminal-muted hover:text-terminal-text',
             )}
           >
-            {value}
+            {ORDER_TYPE_LABEL[value]}
           </button>
         ))}
       </div>
@@ -548,31 +557,59 @@ export function OrderTicket({
         </div>
       </Field>
 
+      {orderType === 'STOP_LIMIT' ? (
+        <Field
+          label="Stop price"
+          hint={
+            <span
+              className="normal-case tracking-normal"
+              title="Reaching the stop activates the order; it then rests as a limit at the limit price and never fills beyond it."
+            >
+              {side === 'BUY' ? 'above' : 'below'} · activates
+            </span>
+          }
+        >
+          <input
+            className={inputClass}
+            aria-label="Stop price"
+            value={stopTrigger}
+            placeholder={executable === null ? '—' : formatPrice(executable, symbol.pricePrecision)}
+            inputMode="decimal"
+            onChange={(event) => setStopTrigger(event.target.value)}
+          />
+        </Field>
+      ) : null}
+
       {orderType === 'MARKET' ? null : (
         <div className="grid grid-cols-2 gap-2">
           <Field
-            label={orderType === 'LIMIT' ? 'Limit price' : 'Stop price'}
+            label={orderType === 'STOP' ? 'Stop price' : 'Limit price'}
             hint={
               <span
                 className="normal-case tracking-normal"
                 title={
                   orderType === 'LIMIT'
                     ? 'A limit rests on the favourable side: buy below the market, sell above.'
-                    : 'A stop rests on the far side: buy above the market, sell below.'
+                    : orderType === 'STOP_LIMIT'
+                      ? 'Once the stop is reached the order fills at this price or better, or rests here until it can. Above the stop caps a breakout; below it waits for the pull-back.'
+                      : 'A stop rests on the far side: buy above the market, sell below.'
                 }
               >
-                {side === 'BUY'
-                  ? orderType === 'LIMIT'
-                    ? 'below'
-                    : 'above'
-                  : orderType === 'LIMIT'
-                    ? 'above'
-                    : 'below'}
+                {orderType === 'STOP_LIMIT'
+                  ? 'or better'
+                  : side === 'BUY'
+                    ? orderType === 'LIMIT'
+                      ? 'below'
+                      : 'above'
+                    : orderType === 'LIMIT'
+                      ? 'above'
+                      : 'below'}
               </span>
             }
           >
             <input
               className={inputClass}
+              aria-label={orderType === 'STOP' ? 'Stop price' : 'Limit price'}
               value={restingPrice}
               placeholder={
                 executable === null ? '—' : formatPrice(executable, symbol.pricePrecision)
@@ -745,7 +782,7 @@ export function OrderTicket({
         >
           {busy
             ? 'Submitting…'
-            : `${side} ${symbol.code}${orderType === 'MARKET' ? '' : ` ${orderType}`}`}
+            : `${side} ${symbol.code}${orderType === 'MARKET' ? '' : ` ${ORDER_TYPE_LABEL[orderType]}`}`}
         </Button>
       ) : (
         /*
@@ -804,7 +841,7 @@ export function OrderTicket({
   );
 }
 
-type OrderType = 'MARKET' | 'LIMIT' | 'STOP';
+type OrderType = 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
 /**
  * When an order is large enough to be worth a pause.
  *
@@ -814,7 +851,23 @@ type OrderType = 'MARKET' | 'LIMIT' | 'STOP';
 const LARGE_ORDER_MARGIN_SHARE = 0.5;
 const LARGE_ORDER_RISK_SHARE = 0.1;
 
-const ORDER_TYPES: readonly OrderType[] = ['MARKET', 'LIMIT', 'STOP'];
+const ORDER_TYPES: readonly OrderType[] = ['MARKET', 'LIMIT', 'STOP', 'STOP_LIMIT'];
+
+/** What each tab says. "STOP LMT" because four tabs share a 270px panel. */
+const ORDER_TYPE_LABEL: Readonly<Record<OrderType, string>> = {
+  MARKET: 'MARKET',
+  LIMIT: 'LIMIT',
+  STOP: 'STOP',
+  STOP_LIMIT: 'STOP LMT',
+};
+
+const ORDER_TYPE_HINT: Readonly<Record<OrderType, string>> = {
+  MARKET: 'Fills now at the executable price',
+  LIMIT: 'Rests until the market comes to your price; fills there or better',
+  STOP: 'Rests until the market reaches your price, then fills at market',
+  STOP_LIMIT:
+    'Stop-limit: rests until the market reaches the stop, then rests as a limit — fills at the limit or better, never at market',
+};
 
 function EstimateRow({
   label,

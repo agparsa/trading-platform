@@ -17,7 +17,7 @@ import { useRealtime } from '@/lib/realtime-store';
 import { Button, EmptyState, SideBadge, inputClass } from './primitives';
 
 /**
- * Resting LIMIT and STOP orders.
+ * Resting LIMIT, STOP and STOP_LIMIT orders.
  *
  * Kept apart from open positions because they are a different kind of thing: a
  * position is money at risk now, a resting order is an instruction that may
@@ -103,7 +103,12 @@ export function PendingPanel({
                * when the difference matters.
                */
               const reference = triggerSide(order.side, quote);
-              const distance = distanceInPoints(order.price, reference, precision);
+              const phase = stopLimitPhase(order);
+              // Measured to what the order is waiting for now: a stop-limit's
+              // stop until it is reached, its limit after.
+              const watched =
+                phase === 'waiting' && order.stopPrice != null ? order.stopPrice : order.price;
+              const distance = distanceInPoints(watched, reference, precision);
 
               return (
                 <Fragment key={order.orderId}>
@@ -120,14 +125,34 @@ export function PendingPanel({
                     </td>
                     <td className="px-2 py-1.5">
                       <span className="rounded bg-terminal-raised px-1.5 py-0.5 text-[10px] text-terminal-muted">
-                        {order.type}
+                        {order.type === 'STOP_LIMIT' ? 'STOP LMT' : order.type}
                       </span>
+                      {phase === null ? null : (
+                        <span
+                          className={cn(
+                            'ml-1 text-[10px]',
+                            phase === 'resting' ? 'text-terminal-accent' : 'text-terminal-muted',
+                          )}
+                          title={
+                            phase === 'resting'
+                              ? `Stop reached ${order.activatedAt == null ? '' : `${utcTime(order.activatedAt)} UTC`}; rests as a limit and fills at its price or better`
+                              : 'Waiting for the stop; it then rests as a limit'
+                          }
+                        >
+                          {phase === 'resting' ? 'at limit' : 'waiting'}
+                        </span>
+                      )}
                     </td>
                     <td className="numeric px-2 py-1.5 text-right text-terminal-text">
                       {formatVolume(order.volume)}
                     </td>
                     <td className="numeric px-2 py-1.5 text-right text-terminal-text">
                       {formatPrice(order.price, precision)}
+                      {order.type === 'STOP_LIMIT' && order.stopPrice != null ? (
+                        <span className="block text-[10px] text-terminal-muted">
+                          stop {formatPrice(order.stopPrice, precision)}
+                        </span>
+                      ) : null}
                     </td>
                     <td
                       className="numeric px-2 py-1.5 text-right text-terminal-muted"
@@ -219,6 +244,8 @@ function PendingEditor({
   onDone: () => void;
 }) {
   const [price, setPrice] = useState(order.price);
+  const [stopPrice, setStopPrice] = useState(order.stopPrice ?? '');
+  const phase = stopLimitPhase(order);
   const [volume, setVolume] = useState(order.volume);
   const [stopLoss, setStopLoss] = useState(order.stopLoss ?? '');
   const [takeProfit, setTakeProfit] = useState(order.takeProfit ?? '');
@@ -231,12 +258,17 @@ function PendingEditor({
     const body: {
       orderId: string;
       price?: string;
+      stopPrice?: string;
       volume?: string;
       stopLoss?: string | null;
       takeProfit?: string | null;
     } = { orderId: order.orderId };
 
     if (price.trim() !== order.price) body.price = price.trim();
+    // A stop-limit's stop moves only while it waits; once reached it is spent.
+    if (phase === 'waiting' && stopPrice.trim() !== (order.stopPrice ?? '')) {
+      body.stopPrice = stopPrice.trim();
+    }
     if (volume.trim() !== order.volume) body.volume = volume.trim();
 
     const nextStop = stopLoss.trim() === '' ? null : stopLoss.trim();
@@ -264,7 +296,20 @@ function PendingEditor({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end gap-2">
-        <Labelled label="Trigger price" value={price} onChange={setPrice} />
+        {phase === 'waiting' ? (
+          <Labelled label="Stop price" value={stopPrice} onChange={setStopPrice} />
+        ) : null}
+        <Labelled
+          label={
+            order.type === 'STOP_LIMIT'
+              ? 'Limit price'
+              : order.type === 'LIMIT'
+                ? 'Limit price'
+                : 'Trigger price'
+          }
+          value={price}
+          onChange={setPrice}
+        />
         <Labelled label="Volume" value={volume} onChange={setVolume} />
         <Labelled label="Stop loss" value={stopLoss} onChange={setStopLoss} />
         <Labelled label="Take profit" value={takeProfit} onChange={setTakeProfit} />
@@ -277,6 +322,7 @@ function PendingEditor({
       </div>
       <p className="text-[10px] text-terminal-muted">
         Only the fields you change are sent. An empty stop or target clears it.
+        {phase === 'resting' ? ' Its stop has been reached, so only the limit price can move.' : ''}
       </p>
       {error === null ? null : <p className="text-[11px] text-terminal-short">{error}</p>}
     </div>
@@ -306,4 +352,13 @@ function Labelled({
       />
     </label>
   );
+}
+
+/**
+ * Where a stop-limit is: `waiting` for its stop, or `resting` at its limit
+ * once the stop was reached. `null` for every other type.
+ */
+function stopLimitPhase(order: PendingOrderRow): 'waiting' | 'resting' | null {
+  if (order.type !== 'STOP_LIMIT') return null;
+  return order.activatedAt == null ? 'waiting' : 'resting';
 }

@@ -107,9 +107,14 @@ export const placePendingSchema = z
     accountId: z.string().uuid(),
     symbol: z.string().trim().min(1).max(20),
     side: z.enum(['BUY', 'SELL']),
-    type: z.enum(['LIMIT', 'STOP']),
+    type: z.enum(['LIMIT', 'STOP', 'STOP_LIMIT']),
     volume: positiveDecimal,
+    // The resting price; for a STOP_LIMIT, the limit it rests at once activated.
     price: positiveDecimal,
+    // A STOP_LIMIT's stop. Required for that type and refused for the others,
+    // whose one price is `price`: a stop with two prices is a question about
+    // which one is meant, and guessing would rest an order at the wrong one.
+    stopPrice: positiveDecimal.optional(),
     stopLoss: positiveDecimal.nullish(),
     takeProfit: positiveDecimal.nullish(),
     // Kept on the order and applied at the fill, whenever that is.
@@ -119,11 +124,19 @@ export const placePendingSchema = z
     // past value rather than silently turning the order into a GTC.
     expiresAt: z.number().int().positive().nullish(),
   })
-  .strict();
+  .strict()
+  .refine((value) => (value.type === 'STOP_LIMIT') === (value.stopPrice !== undefined), {
+    message: 'stopPrice is required for a STOP_LIMIT order and not accepted for any other type',
+    path: ['stopPrice'],
+  });
 
 export const modifyPendingSchema = z
   .object({
+    // The resting price; for a STOP_LIMIT, its limit.
     price: positiveDecimal.optional(),
+    // A STOP_LIMIT's stop, while it has not been reached. The service refuses
+    // it on any other order, and on a stop-limit already activated.
+    stopPrice: positiveDecimal.optional(),
     volume: positiveDecimal.optional(),
     // `null` clears a level; omitting the field leaves it unchanged.
     stopLoss: positiveDecimal.nullable().optional(),
@@ -133,10 +146,11 @@ export const modifyPendingSchema = z
   .refine(
     (value) =>
       value.price !== undefined ||
+      value.stopPrice !== undefined ||
       value.volume !== undefined ||
       value.stopLoss !== undefined ||
       value.takeProfit !== undefined,
-    { message: 'Provide price, volume, stopLoss or takeProfit' },
+    { message: 'Provide price, stopPrice, volume, stopLoss or takeProfit' },
   );
 
 export const accountQuerySchema = z.object({ accountId: z.string().uuid() }).strict();

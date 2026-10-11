@@ -186,7 +186,7 @@ export class TradingController {
   @Throttle({ default: { limit: rateLimits.orders, ttl: RATE_LIMIT_WINDOW_MS } })
   @RequirePermissions(Permission.ORDERS_CREATE)
   @Post('orders/pending')
-  @ApiOperation({ summary: 'Place a resting LIMIT or STOP order' })
+  @ApiOperation({ summary: 'Place a resting LIMIT, STOP or STOP_LIMIT order' })
   async placePending(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: PlacePendingDto,
@@ -200,6 +200,7 @@ export class TradingController {
         type: body.type,
         volume: body.volume,
         price: body.price,
+        ...(body.stopPrice === undefined ? {} : { stopPrice: body.stopPrice }),
         stopLoss: body.stopLoss ?? null,
         takeProfit: body.takeProfit ?? null,
         trailingStopDistance: body.trailingStopDistance ?? null,
@@ -230,6 +231,7 @@ export class TradingController {
       this.orders.modifyPending(user.id, {
         orderId: id,
         ...(body.price === undefined ? {} : { price: body.price }),
+        ...(body.stopPrice === undefined ? {} : { stopPrice: body.stopPrice }),
         ...(body.volume === undefined ? {} : { volume: body.volume }),
         ...(body.stopLoss === undefined ? {} : { stopLoss: body.stopLoss }),
         ...(body.takeProfit === undefined ? {} : { takeProfit: body.takeProfit }),

@@ -163,6 +163,8 @@ un-happen the fill.
 
 ## Resting orders — LIMIT and STOP
 
+(Stop-limit orders are both, one after the other: see below.)
+
 **Implemented in Phase 10.**
 
 ### Which way each one waits
@@ -281,6 +283,56 @@ A cancel racing a fill loses rather than undoing a position that already exists.
 
 Both are verified by removing the guard: without the status condition on the
 claim, two concurrent passes open two positions from one order.
+
+## Stop-limit orders
+
+**Implemented 10 October 2026.** A stop that, once reached, does not become a
+market order: it becomes a limit.
+
+| Field       | Holds                                                          |
+| ----------- | -------------------------------------------------------------- |
+| `stopPrice` | the stop — the price that activates it, measured as a stop is  |
+| `price`     | the limit — where it rests once activated, and fills or better |
+
+Until the stop is reached it waits exactly as a stop of the same side does
+(`BUY` above the market on the ask, `SELL` below on the bid), and placement
+refuses a stop the market has already passed. Once reached, it is
+**activated**: `activated_at` is set and from then on it is a limit at its
+limit price, with every rule a limit has — including that it never fills worse
+than its price, whatever the window looked like (above). On the tick that
+activates it, it is offered the fill a limit gets on that tick, so a buy whose
+limit sits above its stop fills at once if the ask is still at or under the
+limit.
+
+The limit may sit either side of the stop, and the engine needs no rule to
+tell the two apart. Above the stop (for a buy) it caps how far a breakout is
+chased; a gap through the limit activates the order and leaves it resting
+rather than filling at the gap. Below the stop it waits for the pull-back after
+the breakout — and the market falling back under the stop does not un-activate
+it: the stop is spent.
+
+**The state machine needed no new edge.** Activation is the platform modifying
+the order: `PENDING → MODIFY_REQUESTED → PENDING` in one transaction, with a
+`MODIFY_REQUESTED` event (`by: SYSTEM, reason: STOP_REACHED`) and a `MODIFIED`
+event carrying `activated: true`, both prices and the quote that did it, plus a
+SYSTEM `ORDER_ACTIVATE` audit row and an `order.activated` domain event (to
+clients as `order.updated`). Not `TRIGGERED`: that state means a fill is in
+progress, and the interrupted-fill sweep rejects anything left there for two
+minutes; an activated stop-limit may rest for days. The activation is
+conditional on the version the engine read, so a stop the trader moved in the
+meantime is decided again on the next tick rather than activated on the old
+one.
+
+A trader may move both prices while the order waits; once activated only the
+limit moves (`ORDER_NOT_MODIFIABLE` for the stop), and it is validated as a
+limit. Cancel and expiry are unchanged. The firm's `stop_limit` flag refuses new
+ones; one already resting keeps working. Venue-executed accounts refuse resting
+orders of every type (see `external-execution.md`).
+
+**Rollback.** The column is nullable and additive. An image older than this
+change never selects `STOP_LIMIT` orders to work, so after a rollback they rest
+untouched — waiting ones never activate, activated ones never fill — until the
+newer image returns or someone cancels them. They are not filled wrongly.
 
 ### Known limitation
 

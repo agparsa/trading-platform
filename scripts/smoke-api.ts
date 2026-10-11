@@ -652,6 +652,59 @@ const checks: Check[] = [
       };
       assert(cancelledBody.ok, 'cancelling the resting order failed');
       assert(cancelledBody.data.status === 'CANCELLED', 'the order did not come back CANCELLED');
+
+      /**
+       * A stop-limit over HTTP: both prices reach the order, and a stop the
+       * market has already passed is refused. Through the controller, because
+       * a field the schema accepts and the handler drops looks, from a
+       * service test, exactly like one that works.
+       */
+      const stopAt = (Math.ceil((Number(quote!.ask) * 1.1) / tick) * tick).toFixed(
+        spec.pricePrecision,
+      );
+      const limitAt = (Number(stopAt) + tick * 20).toFixed(spec.pricePrecision);
+      const stopLimit = async (stopPrice: string) =>
+        fetch(`${BASE}/api/v1/orders/pending`, {
+          method: 'POST',
+          headers: { ...auth, 'Idempotency-Key': crypto.randomUUID() },
+          body: JSON.stringify({
+            accountId,
+            symbol: quote!.symbol,
+            side: 'BUY',
+            type: 'STOP_LIMIT',
+            volume: spec.minVolume,
+            price: limitAt,
+            stopPrice,
+          }),
+        });
+      const stopLimitBody = (await (await stopLimit(stopAt)).json()) as {
+        ok: boolean;
+        data: { orderId: string; stopPrice: string | null; price: string; activatedAt: unknown };
+        error?: { message: string };
+      };
+      assert(
+        stopLimitBody.ok,
+        `placing a stop-limit failed: ${stopLimitBody.error?.message ?? 'no body'}`,
+      );
+      assert(
+        Number(stopLimitBody.data.stopPrice) === Number(stopAt) &&
+          Number(stopLimitBody.data.price) === Number(limitAt) &&
+          stopLimitBody.data.activatedAt === null,
+        `a stop-limit did not keep both prices (stop ${stopLimitBody.data.stopPrice}, limit ${stopLimitBody.data.price})`,
+      );
+      const reachedBody = (await (await stopLimit(restAt)).json()) as {
+        ok: boolean;
+        error?: { code: string };
+      };
+      assert(
+        !reachedBody.ok && reachedBody.error?.code === 'INVALID_PRICE',
+        `a stop-limit whose stop was already reached was not refused (${reachedBody.error?.code})`,
+      );
+      const cancelledStopLimit = await fetch(
+        `${BASE}/api/v1/orders/${stopLimitBody.data.orderId}`,
+        { method: 'DELETE', headers: { ...auth, 'Idempotency-Key': crypto.randomUUID() } },
+      );
+      assert(cancelledStopLimit.ok, 'cancelling the stop-limit failed');
     },
   },
   {

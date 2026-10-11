@@ -5,6 +5,7 @@ import {
   rewardToRisk,
   stepVolume,
   validateRestingPrice,
+  validateStopLimitPrices,
   validateTicket,
 } from './ticket';
 import type { AccountSummary, SymbolRow } from './queries';
@@ -178,6 +179,29 @@ describe('estimateCosts', () => {
   it('does not let account leverage undercut the instrument margin rate', () => {
     const leveraged = { ...account, leverage: 500 };
     expect(estimateCosts(XAUUSD, leveraged, 'BUY', '0.10', '2000.00', true).margin).toBe('$200.00');
+  });
+});
+
+describe('validateStopLimitPrices', () => {
+  const quote = { bid: '2000.00', ask: '2000.20' };
+
+  it('accepts a stop not yet reached, with its limit either side', () => {
+    expect(validateStopLimitPrices(XAUUSD, 'BUY', '2010.00', '2012.00', quote)).toBeNull();
+    expect(validateStopLimitPrices(XAUUSD, 'BUY', '2010.00', '2005.00', quote)).toBeNull();
+    expect(validateStopLimitPrices(XAUUSD, 'SELL', '1990.00', '1988.00', quote)).toBeNull();
+  });
+
+  it('asks for each price, then refuses a stop already reached — the server’s own words', () => {
+    expect(validateStopLimitPrices(XAUUSD, 'BUY', '', '2012.00', quote)).toContain('stop price');
+    expect(validateStopLimitPrices(XAUUSD, 'BUY', '2010.00', ' ', quote)).toContain('limit price');
+    expect(validateStopLimitPrices(XAUUSD, 'BUY', 'abc', '2012.00', quote)).toContain('decimal');
+    expect(validateStopLimitPrices(XAUUSD, 'BUY', '1995.00', '2012.00', quote)).toContain(
+      'already been reached',
+    );
+  });
+
+  it('leaves the side to the server when there is no quote yet', () => {
+    expect(validateStopLimitPrices(XAUUSD, 'BUY', '1995.00', '2012.00', undefined)).toBeNull();
   });
 });
 

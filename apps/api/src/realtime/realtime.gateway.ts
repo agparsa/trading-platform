@@ -76,6 +76,8 @@ const SOCKET_WINDOW_MS = 60_000;
 export const EVENT_ROUTING: Readonly<Record<string, { channel: WsChannel; wire: WsEvent }>> = {
   'order.created': { channel: WsChannel.ORDERS, wire: WsEvent.ORDER_CREATED },
   'order.accepted': { channel: WsChannel.ORDERS, wire: WsEvent.ORDER_UPDATED },
+  // The order is still resting, at its limit now; the client refetches it.
+  'order.activated': { channel: WsChannel.ORDERS, wire: WsEvent.ORDER_UPDATED },
   // Its own wire event, not `order.updated`. See WsEvent.ORDER_REJECTED.
   'order.rejected': { channel: WsChannel.ORDERS, wire: WsEvent.ORDER_REJECTED },
   'order.filled': { channel: WsChannel.ORDERS, wire: WsEvent.ORDER_FILLED },

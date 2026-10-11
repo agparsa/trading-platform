@@ -15,6 +15,7 @@ import { DomainError } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
 import { Button, Empty, ErrorNote, Screen } from '../../components/ui';
 import { pendingOrderPatch } from '../../lib/protective-levels';
+import { orderTypeLabel, restingPriceLine } from '../../lib/pending-order-line';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
 import { theme } from '../../lib/theme';
 
@@ -22,9 +23,13 @@ interface PendingOrder {
   orderId: string;
   symbol: string;
   side: 'BUY' | 'SELL';
-  type: 'LIMIT' | 'STOP';
+  type: 'LIMIT' | 'STOP' | 'STOP_LIMIT';
   volume: string;
+  /** The resting price; for a stop-limit, its limit. */
   price: string;
+  /** A stop-limit's stop; absent from an older API. */
+  stopPrice?: string | null;
+  activatedAt?: string | null;
   stopLoss: string | null;
   takeProfit: string | null;
   timeInForce: string;
@@ -154,11 +159,11 @@ export default function Orders(): React.ReactElement {
                   },
                 ]}
               >
-                {item.type} {item.side} {item.volume}
+                {orderTypeLabel(item.type)} {item.side} {item.volume}
               </Text>
             </View>
             <Text style={[styles.detail, { writingDirection: NUMERIC_DIRECTION }]}>
-              at {item.price} · {item.timeInForce}
+              {restingPriceLine(item)} · {item.timeInForce}
               {item.expiresAt === null
                 ? ''
                 : ` · expires ${new Date(item.expiresAt).toLocaleString()}`}
@@ -173,8 +178,8 @@ export default function Orders(): React.ReactElement {
             {cancelling === item.orderId ? (
               <View style={styles.confirm}>
                 <Text style={styles.confirmText}>
-                  Cancel this {item.type.toLowerCase()} order? It will stop waiting for {item.price}
-                  .
+                  Cancel this {orderTypeLabel(item.type).toLowerCase()} order? It will stop waiting
+                  ({restingPriceLine(item)}).
                 </Text>
                 <Button
                   label="Cancel order"
@@ -187,7 +192,7 @@ export default function Orders(): React.ReactElement {
             ) : editing === item.orderId ? (
               <View style={styles.confirm}>
                 <Field
-                  label="Price"
+                  label={item.type === 'STOP_LIMIT' ? 'Limit price' : 'Price'}
                   value={form.price}
                   onChange={(value) => setForm((c) => ({ ...c, price: value }))}
                 />

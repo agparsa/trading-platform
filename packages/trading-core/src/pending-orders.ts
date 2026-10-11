@@ -76,19 +76,7 @@ export function validatePendingPrice(
   restingPrice: string,
   quote: Quote,
 ): void {
-  const price = toDecimal(restingPrice);
-  if (price.lte(0)) {
-    throw new DomainError(TradingErrorCode.INVALID_PRICE, 'Order price must be positive', {
-      price: restingPrice,
-    });
-  }
-  if (!isOnGrid(price, spec.tickSize)) {
-    throw new DomainError(
-      TradingErrorCode.INVALID_PRICE,
-      `Price ${restingPrice} is not a multiple of the ${spec.code} tick size ${spec.tickSize}`,
-      { tickSize: spec.tickSize },
-    );
-  }
+  assertPriceShape(spec, restingPrice);
 
   if (shouldTriggerPending(type, side, restingPrice, quote)) {
     const executable = normalizePrice(spec, entryPriceFor(side, quote)).toString();
@@ -97,6 +85,106 @@ export function validatePendingPrice(
       TradingErrorCode.INVALID_PRICE,
       `A ${side} ${type} must rest ${wanted} the current executable price of ${executable}; at ${restingPrice} it would fill immediately. Submit a market order if that is what you want.`,
       { side, type, price: restingPrice, executable },
+    );
+  }
+}
+
+/** Positive and on the instrument's tick grid: what any price an order rests at must be. */
+function assertPriceShape(spec: SymbolSpec, value: string): void {
+  const price = toDecimal(value);
+  if (price.lte(0)) {
+    throw new DomainError(TradingErrorCode.INVALID_PRICE, 'Order price must be positive', {
+      price: value,
+    });
+  }
+  if (!isOnGrid(price, spec.tickSize)) {
+    throw new DomainError(
+      TradingErrorCode.INVALID_PRICE,
+      `Price ${value} is not a multiple of the ${spec.code} tick size ${spec.tickSize}`,
+      { tickSize: spec.tickSize },
+    );
+  }
+}
+
+/**
+ * Stop-limit orders.
+ *
+ * Two prices and two phases. Until the market reaches the **stop**, the order
+ * waits exactly as a stop does — on the far side of the market, measured on
+ * the executable entry price. Once the stop is reached the order is
+ * *activated* and from then on it is a limit at its **limit** price: it fills
+ * at that price or better, or it rests until it can. It never becomes a market
+ * order, which is the whole difference from a stop.
+ *
+ * The two prices are not tied to each other. A buy with its limit above its
+ * stop caps how far a breakout may be chased (it fills on activation if the
+ * ask is still at or under the limit); a buy with its limit below its stop
+ * waits for the pull-back after the breakout. Both are orders people place,
+ * and the engine needs no rule to tell them apart: after activation each is a
+ * limit like any other.
+ */
+export interface RestingLeg {
+  /** How the leg is measured: a stop waits for the far side, a limit for the near. */
+  readonly type: PendingOrderType;
+  /** The price this leg is waiting for. */
+  readonly price: string;
+}
+
+export interface RestingOrderShape {
+  readonly type: string;
+  /** The resting price; for a stop-limit, the limit. */
+  readonly price: string | null;
+  /** For a stop-limit, the stop. (A plain stop stores its one price in both.) */
+  readonly stopPrice: string | null;
+  /** For a stop-limit: whether its stop has been reached. */
+  readonly activated: boolean;
+}
+
+/**
+ * What a resting order is waiting for *now*, or `null` for something that is
+ * not a resting order the engine can work (a market order, a row missing its
+ * price). A stop-limit is a stop on its stop price until activated, and a
+ * limit on its limit price after.
+ */
+export function activeLeg(order: RestingOrderShape): RestingLeg | null {
+  if (order.type === 'LIMIT' || order.type === 'STOP') {
+    return order.price === null ? null : { type: order.type, price: order.price };
+  }
+  if (order.type === 'STOP_LIMIT') {
+    if (order.activated) {
+      return order.price === null ? null : { type: 'LIMIT', price: order.price };
+    }
+    return order.stopPrice === null ? null : { type: 'STOP', price: order.stopPrice };
+  }
+  return null;
+}
+
+/**
+ * Validate a stop-limit's two prices at placement, or while it still waits
+ * for its stop.
+ *
+ * The stop must be a stop that has not been reached — an order whose stop is
+ * already behind the market would activate on the next tick, which is a limit
+ * order the trader could have placed directly. The limit must be a price an
+ * order can rest at; where it sits relative to the stop is the trader's
+ * choice (see above).
+ */
+export function validateStopLimit(
+  spec: SymbolSpec,
+  side: OrderSide,
+  stopPrice: string,
+  limitPrice: string,
+  quote: Quote,
+): void {
+  assertPriceShape(spec, stopPrice);
+  assertPriceShape(spec, limitPrice);
+  if (shouldTriggerPending('STOP', side, stopPrice, quote)) {
+    const executable = normalizePrice(spec, entryPriceFor(side, quote)).toString();
+    const wanted = waitsForFall('STOP', side) ? 'below' : 'above';
+    throw new DomainError(
+      TradingErrorCode.INVALID_PRICE,
+      `The stop of a ${side} STOP_LIMIT must be ${wanted} the current executable price of ${executable}; at ${stopPrice} it has already been reached. Place a ${side} LIMIT at ${limitPrice} if that is what you want.`,
+      { side, type: 'STOP_LIMIT', stopPrice, limitPrice, executable },
     );
   }
 }

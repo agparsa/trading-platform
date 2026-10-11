@@ -12,11 +12,13 @@ import {
   toDecimal,
 } from '@tp/financial-core';
 import {
+  activeLeg,
   orderTrail,
   shouldTriggerPending,
   transitionOrder,
   validatePendingPrice,
   validateProtectiveLevels,
+  validateStopLimit,
 } from '@tp/trading-core';
 import { DEFAULT_RISK_RULES, RiskEngine, type ProposedOrder } from '@tp/risk-core';
 import {
@@ -881,13 +883,36 @@ export class OrdersService {
       );
     }
 
+    /**
+     * A stop-limit's stop is a second price, and only a stop-limit has one.
+     * The request schema says the same; it is said again here because this
+     * method is also called from places that never passed through it.
+     */
+    if ((request.type === 'STOP_LIMIT') !== (request.stopPrice !== undefined)) {
+      throw new DomainError(
+        TradingErrorCode.VALIDATION_FAILED,
+        request.type === 'STOP_LIMIT'
+          ? 'A STOP_LIMIT order needs a stop price as well as its limit price'
+          : `A ${request.type} order has one price; a stop price is only for a STOP_LIMIT`,
+        { type: request.type },
+      );
+    }
+    if (request.type === 'STOP_LIMIT') {
+      await this.features.assertEnabled(Feature.STOP_LIMIT);
+    }
+
     const tick = await this.quotes.requireFresh(symbolCode, now);
-    validatePendingPrice(spec, request.type, request.side, request.price, tick);
+    if (request.type === 'STOP_LIMIT') {
+      validateStopLimit(spec, request.side, request.stopPrice ?? '', request.price, tick);
+    } else {
+      validatePendingPrice(spec, request.type, request.side, request.price, tick);
+    }
 
     // Protective levels are measured against the resting price, not the market.
     // The order will open at roughly where it rests, so that is the reference a
     // stop-loss has to sit the right side of; validating against today's market
-    // would accept a stop that is nonsense by the time the order fills.
+    // would accept a stop that is nonsense by the time the order fills. For a
+    // stop-limit that is its limit: the price it fills at or better.
     validateProtectiveLevels(spec, request.side, request.price, {
       stopLoss: request.stopLoss ?? null,
       takeProfit: request.takeProfit ?? null,
@@ -915,7 +940,12 @@ export class OrdersService {
           timeInForce,
           volume: volume.toString(),
           price: request.price,
-          stopPrice: request.type === 'STOP' ? request.price : null,
+          stopPrice:
+            request.type === 'STOP'
+              ? request.price
+              : request.type === 'STOP_LIMIT'
+                ? (request.stopPrice ?? null)
+                : null,
           stopLoss: request.stopLoss ?? null,
           takeProfit: request.takeProfit ?? null,
           trailingStopDistance: request.trailingStopDistance ?? null,
@@ -932,7 +962,12 @@ export class OrdersService {
             orderId: created.id,
             type: 'CREATED',
             toStatus: OrderStatus.NEW,
-            payload: { volume: volume.toString(), price: request.price, type: request.type },
+            payload: {
+              volume: volume.toString(),
+              price: request.price,
+              type: request.type,
+              ...(request.stopPrice === undefined ? {} : { stopPrice: request.stopPrice }),
+            },
           },
           {
             tenantId: requireTenantId(),
@@ -961,6 +996,7 @@ export class OrdersService {
       type: request.type,
       volume: volume.toString(),
       price: request.price,
+      ...(request.stopPrice === undefined ? {} : { stopPrice: request.stopPrice }),
     });
     await this.audit.record({
       actorId: userId,
@@ -974,6 +1010,7 @@ export class OrdersService {
         type: request.type,
         volume: volume.toString(),
         price: request.price,
+        ...(request.stopPrice === undefined ? {} : { stopPrice: request.stopPrice }),
         timeInForce,
       },
     });
@@ -1037,14 +1074,27 @@ export class OrdersService {
   ): Promise<'filled' | 'rejected' | 'lost' | 'not-reached'> {
     const resting = await this.prisma.order.findUnique({
       where: { id: orderId },
-      select: { type: true, side: true, price: true, version: true, status: true },
+      select: {
+        type: true,
+        side: true,
+        price: true,
+        stopPrice: true,
+        activatedAt: true,
+        version: true,
+        status: true,
+      },
     });
     if (resting === null || resting.status !== OrderStatus.PENDING) return 'lost';
-    if (
-      resting.type === 'LIMIT' &&
-      resting.price !== null &&
-      !shouldTriggerPending('LIMIT', resting.side, resting.price.toString(), tick)
-    ) {
+    // A stop-limit fills only as a limit, after its stop has activated it.
+    // Never before: that would be a stop, which is what it was placed not to be.
+    if (resting.type === 'STOP_LIMIT' && resting.activatedAt === null) return 'not-reached';
+    const leg = activeLeg({
+      type: resting.type,
+      price: resting.price?.toString() ?? null,
+      stopPrice: resting.stopPrice?.toString() ?? null,
+      activated: resting.activatedAt !== null,
+    });
+    if (leg?.type === 'LIMIT' && !shouldTriggerPending('LIMIT', resting.side, leg.price, tick)) {
       return 'not-reached';
     }
 
@@ -1296,6 +1346,103 @@ export class OrdersService {
   }
 
   /**
+   * A stop-limit's stop has been reached: from now on it rests as a limit.
+   *
+   * Called by the trigger engine with the version it read the order at, so
+   * an activation decided on a stop the trader has since moved is lost rather
+   * than applied — the next tick decides again on the stop the order has.
+   *
+   * The order stays resting, so its status goes PENDING → MODIFY_REQUESTED →
+   * PENDING inside one transaction — the existing edges, with the change
+   * written down as a modification the platform made: the stop is spent and
+   * the order is now its limit. Not TRIGGERED: that state means a fill is in
+   * progress, and the interrupted-fill sweep would reject a stop-limit left
+   * resting there for its two minutes.
+   */
+  async activateStopLimit(
+    orderId: string,
+    version: number,
+    tick: Tick,
+  ): Promise<'activated' | 'lost'> {
+    const activatedAt = new Date();
+    const order = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.order.updateMany({
+        where: {
+          id: orderId,
+          type: 'STOP_LIMIT',
+          status: OrderStatus.PENDING,
+          activatedAt: null,
+          version,
+        },
+        data: {
+          status: transitionOrder(OrderStatus.PENDING, OrderStatus.MODIFY_REQUESTED),
+          version: { increment: 1 },
+        },
+      });
+      if (claimed.count === 0) return null;
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: transitionOrder(OrderStatus.MODIFY_REQUESTED, OrderStatus.PENDING),
+          activatedAt,
+          version: { increment: 1 },
+        },
+        include: { symbol: true },
+      });
+      const stopPrice = updated.stopPrice?.toString() ?? null;
+      const limitPrice = updated.price?.toString() ?? null;
+      await tx.orderEvent.createMany({
+        data: [
+          {
+            tenantId: requireTenantId(),
+            orderId,
+            type: 'MODIFY_REQUESTED',
+            fromStatus: OrderStatus.PENDING,
+            toStatus: OrderStatus.MODIFY_REQUESTED,
+            payload: { by: 'SYSTEM', reason: 'STOP_REACHED' },
+          },
+          {
+            tenantId: requireTenantId(),
+            orderId,
+            type: 'MODIFIED',
+            fromStatus: OrderStatus.MODIFY_REQUESTED,
+            toStatus: OrderStatus.PENDING,
+            payload: {
+              activated: true,
+              stopPrice,
+              limitPrice,
+              bid: tick.bid,
+              ask: tick.ask,
+            },
+          },
+        ],
+      });
+      return updated;
+    });
+    if (order === null) return 'lost';
+
+    const stopPrice = order.stopPrice?.toString() ?? null;
+    const limitPrice = order.price?.toString() ?? null;
+    await this.events.publish(DomainEvent.ORDER_ACTIVATED, order.accountId, {
+      orderId,
+      symbol: order.symbol.code,
+      side: order.side,
+      stopPrice,
+      limitPrice,
+      activatedAt: activatedAt.toISOString(),
+    });
+    await this.audit.record({
+      actorId: null,
+      actorType: 'SYSTEM',
+      action: 'ORDER_ACTIVATE',
+      resourceType: 'Order',
+      resourceId: orderId,
+      after: { symbol: order.symbol.code, stopPrice, limitPrice, bid: tick.bid, ask: tick.ask },
+    });
+    return 'activated';
+  }
+
+  /**
    * Reject an order a fill claimed and never finished.
    *
    * Called by the trigger engine's sweep for orders `TRIGGERED` for longer
@@ -1544,8 +1691,30 @@ export class OrdersService {
 
     const symbolCode = order.symbol.code;
     const spec = this.symbols.require(symbolCode).spec;
-    const type = order.type === 'STOP' ? 'STOP' : 'LIMIT';
+    const stopLimit = order.type === 'STOP_LIMIT';
+    const activated = order.activatedAt !== null;
     const now = Date.now();
+
+    /**
+     * Only a stop-limit has a stop of its own, and only until it is reached.
+     * After that the stop is spent: the order is a limit, and moving a price
+     * it has already passed would describe an order that no longer exists.
+     */
+    if (request.stopPrice !== undefined && !stopLimit) {
+      throw new DomainError(
+        TradingErrorCode.VALIDATION_FAILED,
+        `A ${order.type} order has one price; move it with price, not stopPrice`,
+        { orderId: request.orderId, type: order.type },
+      );
+    }
+    if (request.stopPrice !== undefined && activated) {
+      throw new DomainError(
+        TradingErrorCode.ORDER_NOT_MODIFIABLE,
+        'This stop-limit’s stop has already been reached; it rests as a limit now, and only its limit price can move',
+        { orderId: request.orderId, activatedAt: order.activatedAt?.toISOString() ?? null },
+      );
+    }
+
     const tick = await this.quotes.requireFresh(symbolCode, now);
 
     const price = request.price ?? order.price?.toString() ?? '';
@@ -1554,7 +1723,14 @@ export class OrdersService {
         orderId: request.orderId,
       });
     }
-    validatePendingPrice(spec, type, order.side, price, tick);
+    const stopPrice = stopLimit ? (request.stopPrice ?? order.stopPrice?.toString() ?? '') : null;
+    if (stopLimit && !activated) {
+      // Still waiting for its stop: both prices, as at placement.
+      validateStopLimit(spec, order.side, stopPrice ?? '', price, tick);
+    } else {
+      // A limit, a stop, or a stop-limit already resting as its limit.
+      validatePendingPrice(spec, order.type === 'STOP' ? 'STOP' : 'LIMIT', order.side, price, tick);
+    }
 
     let volume = toDecimal(order.volume.toString());
     if (request.volume !== undefined) {
@@ -1604,7 +1780,7 @@ export class OrdersService {
         data: {
           status: transitionOrder(OrderStatus.MODIFY_REQUESTED, OrderStatus.PENDING),
           price,
-          stopPrice: type === 'STOP' ? price : null,
+          stopPrice: order.type === 'STOP' ? price : stopPrice,
           volume: volume.toString(),
           stopLoss,
           takeProfit,
@@ -1633,6 +1809,9 @@ export class OrdersService {
             previousVolume: order.volume.toString(),
             previousStopLoss: order.stopLoss?.toString() ?? null,
             previousTakeProfit: order.takeProfit?.toString() ?? null,
+            ...(stopLimit
+              ? { previousStopPrice: order.stopPrice?.toString() ?? null, stopPrice }
+              : {}),
             price,
             volume: volume.toString(),
             stopLoss,
@@ -1648,8 +1827,12 @@ export class OrdersService {
       action: 'ORDER_MODIFY',
       resourceType: 'Order',
       resourceId: request.orderId,
-      before: { price: order.price?.toString() ?? null, volume: order.volume.toString() },
-      after: { price, volume: volume.toString() },
+      before: {
+        price: order.price?.toString() ?? null,
+        volume: order.volume.toString(),
+        ...(stopLimit ? { stopPrice: order.stopPrice?.toString() ?? null } : {}),
+      },
+      after: { price, volume: volume.toString(), ...(stopLimit ? { stopPrice } : {}) },
     });
 
     const updated = await this.prisma.order.findUniqueOrThrow({
@@ -1705,6 +1888,8 @@ export class OrdersService {
       type: string;
       volume: { toString(): string };
       price: { toString(): string } | null;
+      stopPrice: { toString(): string } | null;
+      activatedAt: Date | null;
       stopLoss: { toString(): string } | null;
       takeProfit: { toString(): string } | null;
       trailingStopDistance: { toString(): string } | null;
@@ -1722,6 +1907,10 @@ export class OrdersService {
       type: order.type,
       volume: order.volume.toString(),
       price: order.price?.toString() ?? '',
+      // Only a stop-limit's stop is a second price; a plain stop stores its one
+      // price in both columns, and reporting it twice would suggest two.
+      stopPrice: order.type === 'STOP_LIMIT' ? (order.stopPrice?.toString() ?? null) : null,
+      activatedAt: order.activatedAt?.toISOString() ?? null,
       stopLoss: order.stopLoss?.toString() ?? null,
       takeProfit: order.takeProfit?.toString() ?? null,
       trailingStopDistance: order.trailingStopDistance?.toString() ?? null,

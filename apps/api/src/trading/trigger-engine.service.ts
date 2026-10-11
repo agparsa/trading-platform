@@ -9,11 +9,11 @@ import { ConfigService } from '@nestjs/config';
 import { isStopOut, toDecimal } from '@tp/financial-core';
 import { TickWindow, type CoalescedTick, type Tick } from '@tp/market-core';
 import {
+  activeLeg,
   bestExitInRange,
   evaluateProtectiveTriggerOverRange,
   favourableQuote,
   isExpired,
-  isPendingOrderType,
   nextHighWater,
   nextTrailingStop,
   shouldTriggerPendingOverRange,
@@ -445,13 +445,16 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
         where: {
           status: OrderStatus.PENDING,
           symbol: { code: tick.symbol },
-          type: { in: ['LIMIT', 'STOP'] },
+          type: { in: ['LIMIT', 'STOP', 'STOP_LIMIT'] },
         },
         select: {
           id: true,
           side: true,
           type: true,
           price: true,
+          stopPrice: true,
+          activatedAt: true,
+          version: true,
           expiresAt: true,
           tenantId: true,
         },
@@ -466,10 +469,40 @@ export class TriggerEngineService implements OnApplicationBootstrap, OnApplicati
         await withTenant(tenant, () => this.orders.expirePending(order.id));
         continue;
       }
-      const price = order.price?.toString();
-      if (price === undefined) continue;
-      if (!isPendingOrderType(order.type)) continue;
-      if (!shouldTriggerPendingOverRange(order.type, order.side, price, coalesced)) continue;
+      // What the order is waiting for now: its one price, or — for a
+      // stop-limit — its stop until reached and its limit after.
+      const leg = activeLeg({
+        type: order.type,
+        price: order.price?.toString() ?? null,
+        stopPrice: order.stopPrice?.toString() ?? null,
+        activated: order.activatedAt !== null,
+      });
+      if (leg === null) continue;
+      if (!shouldTriggerPendingOverRange(leg.type, order.side, leg.price, coalesced)) continue;
+
+      if (order.type === 'STOP_LIMIT' && order.activatedAt === null) {
+        /**
+         * The stop was reached: the order becomes a limit. Then, in the same
+         * pass, it is offered the fill a limit gets — at the latest price if
+         * that honours the limit, otherwise it rests. A buy whose limit sits
+         * above its stop therefore fills on the tick that activates it, as
+         * long as the ask is still at or under the limit; one whose limit is
+         * below waits for the market to come back to it.
+         */
+        let activated: 'activated' | 'lost';
+        try {
+          activated = await withTenant(tenant, () =>
+            this.orders.activateStopLimit(order.id, order.version, tick),
+          );
+        } catch (error) {
+          // One order's failed write must not cost the orders behind it their
+          // pass. Nothing changed (the activation is one transaction), and the
+          // next tick that reaches the stop tries again.
+          this.logger.error({ err: error, orderId: order.id }, 'Stop-limit activation failed');
+          continue;
+        }
+        if (activated === 'lost') continue;
+      }
 
       // `fillPending` claims the order itself, so a concurrent pass loses
       // rather than opening a second position from one order. It counts its own

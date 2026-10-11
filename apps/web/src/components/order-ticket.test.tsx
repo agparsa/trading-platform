@@ -24,11 +24,12 @@ import { DomainError, Permission } from '@tp/shared-types';
  * component.
  */
 const mutateAsync = vi.fn();
+const placeMutateAsync = vi.fn();
 
 vi.mock('@/lib/queries', () => ({
   useAccountState: () => ({ data: undefined }),
   useOpenPosition: () => ({ mutateAsync, isPending: false }),
-  usePlacePending: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  usePlacePending: () => ({ mutateAsync: placeMutateAsync, isPending: false }),
   usePermissions: () => ({ data: { role: 'TRADER', permissions: [Permission.ORDERS_CREATE] } }),
 }));
 
@@ -88,6 +89,7 @@ const quote = () => {
 afterEach(() => {
   cleanup();
   mutateAsync.mockReset();
+  placeMutateAsync.mockReset();
 });
 
 describe('the order ticket, rendered', () => {
@@ -298,5 +300,48 @@ describe('the order ticket, rendered', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Cancel$/ }));
     expect(screen.queryByTestId('ticket-confirm')).toBeNull();
     expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A stop-limit sends both prices: the stop that activates it and the limit
+   * it then rests at — and refuses, before sending, a stop the market has
+   * already reached.
+   */
+  it('sends a stop-limit with its stop and its limit, and holds back a stop already reached', async () => {
+    placeMutateAsync.mockResolvedValue({ orderId: 'o-1', status: 'PENDING' });
+    quote();
+    render(
+      <OrderTicket
+        symbol={SYMBOL}
+        account={ACCOUNT}
+        accountId="acc-1"
+        preferences={PREFERENCES}
+        shortcut={null}
+        onShortcutHandled={() => undefined}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^STOP LMT$/ }));
+    const send = () =>
+      screen
+        .getAllByRole('button')
+        .find((node) => /BUY XAUUSD STOP LMT/.test(node.textContent ?? ''));
+
+    // A buy stop below the ask has already been reached.
+    fireEvent.change(screen.getByLabelText('Stop price'), { target: { value: '4580.00' } });
+    fireEvent.change(screen.getByLabelText('Limit price'), { target: { value: '4602.00' } });
+    expect(screen.getByText(/already been reached/)).toBeDefined();
+    expect((send() as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Stop price'), { target: { value: '4600.00' } });
+    fireEvent.click(send()!);
+    await waitFor(() => {
+      expect(placeMutateAsync).toHaveBeenCalled();
+    });
+    expect(placeMutateAsync.mock.calls[0]?.[0]).toMatchObject({
+      type: 'STOP_LIMIT',
+      side: 'BUY',
+      stopPrice: '4600.00',
+      price: '4602.00',
+    });
   });
 });

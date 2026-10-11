@@ -740,6 +740,12 @@ model Order {
   /// with the trail the trader asked for; copied to the position at the fill.
   trailingStopDistance Decimal? @map("trailing_stop_distance") @db.Decimal(28, 10)
 
+  /// When a STOP_LIMIT's stop was reached and it began resting as a limit at
+  /// `price`. Null on every other order, and on a stop-limit still waiting
+  /// for its stop. The status stays PENDING throughout: the order is resting
+  /// either way, and a stop-limit is not a fill in progress (TRIGGERED).
+  activatedAt DateTime? @map("activated_at") @db.Timestamptz(6)
+
   /// Set once an opening order fills, or on creation for a closing order.
   positionId String? @map("position_id") @db.Uuid
 

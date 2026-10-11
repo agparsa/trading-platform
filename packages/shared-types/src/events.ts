@@ -214,6 +214,12 @@ export type WsMessage =
 export const DomainEvent = {
   ORDER_CREATED: 'order.created',
   ORDER_ACCEPTED: 'order.accepted',
+  /**
+   * A stop-limit's stop was reached: it now rests as a limit at its limit
+   * price. Not a fill and not a new order — the same resting order, in its
+   * second phase. Reaches a client as `order.updated`.
+   */
+  ORDER_ACTIVATED: 'order.activated',
   ORDER_REJECTED: 'order.rejected',
   ORDER_FILLED: 'order.filled',
   ORDER_CANCELLED: 'order.cancelled',

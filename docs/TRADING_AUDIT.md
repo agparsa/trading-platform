@@ -57,10 +57,10 @@ rather than implied here:
 
 ## 3. Orders
 
-**Supported at the API today:** `MARKET`, and resting `LIMIT` and `STOP`, with
+**Supported at the API today:** `MARKET`, and resting `LIMIT`, `STOP` and `STOP_LIMIT`, with
 `GTC`, `DAY`, `GTD`.
 
-**Present in the schema but not accepted by the API:** `STOP_LIMIT`, and `IOC` /
+**Present in the schema but not accepted by the API:** `IOC` /
 `FOK`. The enums exist so the state machine and the database are ready; the DTO
 deliberately does not accept them, because accepting an order type the engine
 does not fully execute would be worse than refusing it. This is the honest
@@ -176,6 +176,11 @@ carries its own audit.
 
 Deliberate and correct. Recorded so nobody "fixes" it by widening the DTO
 without implementing the fill semantics.
+
+**Update, 10 October 2026: `STOP_LIMIT` is implemented**, with its fill
+semantics — activation on the stop, then a limit that never fills beyond its
+price — and tests for the gap, the burst and the race (see
+`order-lifecycle.md`). `IOC` and `FOK` remain declared and refused.
 
 ### T-3 — Slippage and requote behaviour are not modelled · **Medium**
 

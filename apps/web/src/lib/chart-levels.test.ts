@@ -279,6 +279,35 @@ describe('pendingLevelsFor', () => {
     const levels = pendingLevelsFor([pending()], 'XAUUSD', XAUUSD, undefined);
     expect(levels[0]?.title).toBe('BUY LIMIT 1');
   });
+
+  /**
+   * A stop-limit waiting for its stop is two prices, so two lines: the stop
+   * that activates it and the limit it will rest at — neither draggable. Once
+   * activated, one line: a limit.
+   */
+  it('draws a waiting stop-limit as its stop and its limit, and an activated one as a limit', () => {
+    const waiting = pending({
+      type: 'STOP_LIMIT',
+      price: '4602.00',
+      stopPrice: '4600.00',
+      activatedAt: null,
+    });
+    const both = pendingLevelsFor([waiting], 'XAUUSD', XAUUSD, QUOTE);
+    expect(both.map((level) => level.price)).toEqual(['4600.00', '4602.00']);
+    expect(both.every((level) => !level.draggable)).toBe(true);
+    expect(both[0]?.title).toContain('stop');
+    expect(both[1]?.title).toContain('limit');
+
+    const activated = pendingLevelsFor(
+      [{ ...waiting, activatedAt: '2026-10-10T18:00:00.000Z' }],
+      'XAUUSD',
+      XAUUSD,
+      QUOTE,
+    );
+    expect(activated).toHaveLength(1);
+    expect(activated[0]?.price).toBe('4602.00');
+    expect(activated[0]?.draggable).toBe(true);
+  });
 });
 
 describe('priceFromPendingDrag', () => {
@@ -320,6 +349,23 @@ describe('priceFromPendingDrag', () => {
   it('refuses a coordinate that is not a price at all', () => {
     expect(priceFromPendingDrag(XAUUSD, pending(), Number.NaN, QUOTE).error).not.toBeNull();
     expect(priceFromPendingDrag(XAUUSD, pending(), -1, QUOTE).error).not.toBeNull();
+  });
+
+  it('drags an activated stop-limit as the limit it now is, and not one still waiting', () => {
+    const activated = pending({
+      type: 'STOP_LIMIT',
+      price: '4570.00',
+      stopPrice: '4600.00',
+      activatedAt: '2026-10-10T18:00:00.000Z',
+    });
+    expect(priceFromPendingDrag(XAUUSD, activated, 4575, QUOTE).error).toBeNull();
+    // Above the ask a buy limit fills at once: refused as for any limit.
+    expect(priceFromPendingDrag(XAUUSD, activated, 4590, QUOTE).error).toContain(
+      'fill immediately',
+    );
+    expect(
+      priceFromPendingDrag(XAUUSD, { ...activated, activatedAt: null }, 4575, QUOTE).error,
+    ).toContain('Pending tab');
   });
 
   it('refuses to drag an order type that does not rest on a price', () => {

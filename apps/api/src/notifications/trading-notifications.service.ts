@@ -247,9 +247,12 @@ export function describe(envelope: DomainEventEnvelope): Notice | null {
      * for one action — which is precisely the duplicate §26 is about, arriving
      * by design rather than by accident.
      */
+    // ORDER_ACTIVATED likewise: a stop-limit whose stop was reached is still
+    // resting, and the trader hears about it when it fills.
     case DomainEvent.ORDER_FILLED:
     case DomainEvent.ORDER_CREATED:
     case DomainEvent.ORDER_ACCEPTED:
+    case DomainEvent.ORDER_ACTIVATED:
     case DomainEvent.ORDER_REJECTED:
     case DomainEvent.BALANCE_CHANGED:
     case DomainEvent.MARGIN_CALL:

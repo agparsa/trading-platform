@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { DomainError } from '@tp/shared-types';
 import { XAUUSD } from './__fixtures__/instruments';
 import {
+  activeLeg,
   isExpired,
   shouldTriggerPending,
   validatePendingPrice,
+  validateStopLimit,
   waitsForFall,
 } from './pending-orders';
 
@@ -119,6 +121,65 @@ describe('validatePendingPrice', () => {
 
   it('rejects a non-positive price', () => {
     expect(check('LIMIT', 'BUY', '0')).toThrow(/positive/);
+  });
+});
+
+describe('stop-limit', () => {
+  const order = (activated: boolean) => ({
+    type: 'STOP_LIMIT',
+    price: '2012.00',
+    stopPrice: '2010.00',
+    activated,
+  });
+
+  /**
+   * The whole engine rests on this: before its stop is reached a stop-limit is
+   * a stop on the stop price, after it a limit on the limit price. Getting the
+   * phase or the price wrong turns it into a stop (a market order at the
+   * stop) or into a limit resting on the wrong side.
+   */
+  it('waits as a stop on its stop price, then as a limit on its limit price', () => {
+    expect(activeLeg(order(false))).toEqual({ type: 'STOP', price: '2010.00' });
+    expect(activeLeg(order(true))).toEqual({ type: 'LIMIT', price: '2012.00' });
+  });
+
+  it('leaves limits and stops as they were, and works nothing else', () => {
+    expect(
+      activeLeg({ type: 'LIMIT', price: '1990.00', stopPrice: null, activated: false }),
+    ).toEqual({ type: 'LIMIT', price: '1990.00' });
+    // A plain stop stores its price in both columns; the resting price is the one used.
+    expect(
+      activeLeg({ type: 'STOP', price: '2010.00', stopPrice: '2010.00', activated: false }),
+    ).toEqual({ type: 'STOP', price: '2010.00' });
+    expect(
+      activeLeg({ type: 'MARKET', price: null, stopPrice: null, activated: false }),
+    ).toBeNull();
+    expect(activeLeg({ ...order(false), stopPrice: null })).toBeNull();
+    expect(activeLeg({ ...order(true), price: null })).toBeNull();
+  });
+
+  const check = (side: 'BUY' | 'SELL', stop: string, limit: string) => () =>
+    validateStopLimit(XAUUSD, side, stop, limit, quote);
+
+  it('accepts a stop on the far side, with the limit either side of it', () => {
+    // A buy breakout capped above the stop, and one waiting for the pull-back.
+    expect(check('BUY', '2010.00', '2012.00')).not.toThrow();
+    expect(check('BUY', '2010.00', '2005.00')).not.toThrow();
+    expect(check('SELL', '1990.00', '1988.00')).not.toThrow();
+    expect(check('SELL', '1990.00', '1995.00')).not.toThrow();
+  });
+
+  it('refuses a stop the market has already reached, and says what to place instead', () => {
+    expect(check('BUY', '2000.20', '2012.00')).toThrow(/already been reached/);
+    expect(check('SELL', '2000.00', '1990.00')).toThrow(/already been reached/);
+    expect(check('BUY', '1990.00', '2012.00')).toThrow(/must be above/);
+    expect(check('BUY', '1990.00', '2012.00')).toThrow(/BUY LIMIT at 2012.00/);
+  });
+
+  it('holds both prices to the tick grid and to being positive', () => {
+    expect(check('BUY', '2010.005', '2012.00')).toThrow(/tick size/);
+    expect(check('BUY', '2010.00', '2012.005')).toThrow(/tick size/);
+    expect(check('BUY', '2010.00', '0')).toThrow(/positive/);
   });
 });
 

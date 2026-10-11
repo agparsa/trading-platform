@@ -208,6 +208,18 @@ widens to 400px), and the panel is 280px rather than 250px at `lg`. The
 browser walk measures it at 1100, 1440 and 1680px, so a column added later
 that pushes the table past its panel fails a check rather than hiding.
 
+**Stop-limit orders.** A fourth tab, "STOP LMT", with a stop price (what
+activates it) and a limit price (where it then rests and fills, or better). The
+ticket runs the server's own `validateStopLimit` as you type, so a stop the
+market has already passed is refused before sending, in the server's words. The
+pending tab shows both prices and the phase — "waiting" for the stop, "at
+limit" once reached — measures the distance to whichever it is waiting for,
+and edits both prices while it waits and only the limit after. On the chart a
+waiting stop-limit is two lines, its stop and its limit, neither draggable;
+activated, it is one limit line that drags like any other. The phone lists it
+as "stop 4600, then limit 4602" or "stop reached · resting at limit 4602". The
+engine side is in `order-lifecycle.md`.
+
 ## 5. What Phase 6 does not deliver
 
 Stated rather than stubbed. None of this is built:
@@ -215,18 +227,6 @@ Stated rather than stubbed. None of this is built:
 - **A ticket inside a watchlist row.** Search, favourites, categories and
   Top movers exist, and the bid and ask stage an order (§4); rows do not
   expand into a ticket of their own with a volume stepper.
-- **Stop-limit orders.** The ticket offers market, limit and stop. `STOP_LIMIT`
-  is already in the database's `OrderType` enum, so no migration is needed for
-  the type — but the order's _second_ state is. After its stop is reached it
-  rests as a limit, possibly for hours, and nothing in the order model can say
-  "stop reached, now resting at the limit": `TRIGGERED` means a fill is in
-  progress, and the interrupted-fill sweep rejects any order left there for two
-  minutes; `PENDING → PENDING` is not an edge of the order state machine. The
-  honest options are an `activated_at` column with a new `ACTIVATED` order
-  event — an enum value an older image cannot read, so the deploy needs a
-  rollback floor — or a new edge in the state machine and its documented
-  table. Either is an engine change to make on its own, with its own tests,
-  not alongside a form.
 - **Finance and Logs tabs.** Neither has a design. (Alerts is built — price
   alerts have their own tab, next to pending orders; see `price-alerts.md`.)
 - **Design tokens beyond colour.** There is no spacing scale and no typography

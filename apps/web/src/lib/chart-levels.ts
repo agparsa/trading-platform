@@ -252,6 +252,37 @@ export function pendingLevelsFor(
     if (order.symbol !== symbolCode) continue;
 
     const reference = quote === undefined ? null : quote[entrySideOf(order.side)];
+
+    /**
+     * A stop-limit waiting for its stop is two lines: the stop that will
+     * activate it and the limit it will then rest at. Neither is dragged —
+     * moving one is a question about the other, and the pending tab asks it.
+     * Once activated it is one line, a limit like any other.
+     */
+    if (order.type === 'STOP_LIMIT' && order.activatedAt == null && order.stopPrice != null) {
+      const precision = spec?.pricePrecision ?? 2;
+      const toStop = distanceInPoints(order.stopPrice, reference, precision);
+      levels.push({
+        positionId: null,
+        orderId: order.orderId,
+        kind: LevelKind.PENDING,
+        price: order.stopPrice,
+        draggable: false,
+        trailing: false,
+        title: `${order.side} STOP LMT stop ${order.volume}${toStop === null ? '' : `  ${toStop} pt`}`,
+      });
+      levels.push({
+        positionId: null,
+        orderId: order.orderId,
+        kind: LevelKind.PENDING,
+        price: order.price,
+        draggable: false,
+        trailing: false,
+        title: `${order.side} STOP LMT limit ${order.volume}`,
+      });
+      continue;
+    }
+
     const away = distanceInPoints(order.price, reference, spec?.pricePrecision ?? 2);
     const suffix = away === null ? '' : `  ${away} pt`;
 
@@ -262,7 +293,7 @@ export function pendingLevelsFor(
       price: order.price,
       draggable: true,
       trailing: false,
-      title: `${order.side} ${order.type} ${order.volume}${suffix}`,
+      title: `${order.side} ${order.type === 'STOP_LIMIT' ? 'STOP LMT at limit' : order.type} ${order.volume}${suffix}`,
     });
   }
 
@@ -279,7 +310,10 @@ export function pendingLevelsFor(
  * all, it is a market order the trader did not ask for, executing on the next
  * tick at a price they never saw.
  *
- * Only `LIMIT` and `STOP` rest. Anything else is refused rather than guessed at.
+ * `LIMIT` and `STOP` rest, and so does a stop-limit once its stop is reached —
+ * as a limit. One still waiting for its stop is not dragged (it has two
+ * prices; see `pendingLevelsFor`). Anything else is refused rather than
+ * guessed at.
  */
 export function priceFromPendingDrag(
   spec: SymbolRow | undefined,
@@ -291,9 +325,18 @@ export function priceFromPendingDrag(
   if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
     return { price: '', error: 'That is not a price.' };
   }
-  if (order.type !== 'LIMIT' && order.type !== 'STOP') {
+  const activatedStopLimit = order.type === 'STOP_LIMIT' && order.activatedAt != null;
+  if (order.type === 'STOP_LIMIT' && !activatedStopLimit) {
+    return {
+      price: '',
+      error:
+        'A stop-limit waiting for its stop is moved from the Pending tab, both prices together.',
+    };
+  }
+  if (order.type !== 'LIMIT' && order.type !== 'STOP' && !activatedStopLimit) {
     return { price: '', error: `A ${order.type} order cannot be dragged.` };
   }
+  const restsAs: 'LIMIT' | 'STOP' = order.type === 'STOP' ? 'STOP' : 'LIMIT';
 
   const snapped = normalizePrice(spec as SymbolSpec, toDecimal(rawPrice.toFixed(10))).toFixed(
     spec.pricePrecision,
@@ -304,7 +347,7 @@ export function priceFromPendingDrag(
   if (quote === undefined) return { price: snapped, error: null };
 
   try {
-    validatePendingPrice(spec as SymbolSpec, order.type, order.side, snapped, quote);
+    validatePendingPrice(spec as SymbolSpec, restsAs, order.side, snapped, quote);
     return { price: snapped, error: null };
   } catch (error) {
     return {

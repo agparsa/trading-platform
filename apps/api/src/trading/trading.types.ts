@@ -84,11 +84,16 @@ export interface PlacePendingRequest {
   readonly accountId: string;
   readonly symbol: string;
   readonly side: OrderSide;
-  /** LIMIT rests on the favourable side of the market, STOP on the far side. */
-  readonly type: 'LIMIT' | 'STOP';
+  /**
+   * LIMIT rests on the favourable side of the market, STOP on the far side.
+   * STOP_LIMIT waits as a stop on `stopPrice`, then rests as a limit on `price`.
+   */
+  readonly type: 'LIMIT' | 'STOP' | 'STOP_LIMIT';
   readonly volume: string;
-  /** The price the order rests at, as a decimal string. */
+  /** The price the order rests at, as a decimal string; for a STOP_LIMIT, its limit. */
   readonly price: string;
+  /** A STOP_LIMIT's stop. Required for that type, refused for the others. */
+  readonly stopPrice?: string;
   readonly stopLoss?: string | null;
   readonly takeProfit?: string | null;
   /** Carried on the order; the position opens with it when the order fills. */
@@ -103,6 +108,8 @@ export interface ModifyPendingRequest {
   readonly orderId: string;
   /** `undefined` leaves a field alone; `null` clears a protective level. */
   readonly price?: string;
+  /** A STOP_LIMIT's stop, only while it has not been reached. */
+  readonly stopPrice?: string;
   readonly volume?: string;
   readonly stopLoss?: string | null;
   readonly takeProfit?: string | null;
@@ -115,7 +122,15 @@ export interface PendingOrderResult {
   side: OrderSide;
   type: string;
   volume: string;
+  /** The resting price; for a STOP_LIMIT, the limit. */
   price: string;
+  /** A STOP_LIMIT's stop; `null` for every other type. */
+  stopPrice: string | null;
+  /**
+   * When a STOP_LIMIT's stop was reached and it began resting as a limit
+   * (ISO 8601); `null` while it waits, and on every other type.
+   */
+  activatedAt: string | null;
   stopLoss: string | null;
   takeProfit: string | null;
   /** The trail the position will open with when this fills, if one was asked for. */
