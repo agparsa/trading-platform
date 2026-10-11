@@ -194,3 +194,20 @@ jobs:
             NEXT_PUBLIC_API_URL=https://example.invalid/api/v1
             NEXT_PUBLIC_WS_URL=https://example.invalid
           push: false
+
+  dependency-compatibility:
+    name: Workspace dependency compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # This job proves compatibility independently; verify still enforces the audit gate.
+      - run: pnpm exec vitest run packages scripts/dependency-audit.test.ts
