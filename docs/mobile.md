@@ -272,6 +272,19 @@ field. The positions list names the trail, including the stretch before the
 ratchet has placed its first stop, when the row would otherwise read as
 unprotected.
 
+**Resting orders are placed from the same ticket.** Market, Limit, Stop and
+Stop-limit (the last hidden when the firm switched `stop_limit` off) — a
+resting order goes to `POST /orders/pending` with its price, a stop-limit with
+its stop as well, and "until cancelled" or "today only". The preview stays the
+market's and says so ("At today's market"); its margin verdict does not stop a
+resting order, which holds no margin and is checked when it fires, and its
+violations are prefixed "If it filled at today's price". Which side of the
+market a price belongs on is not re-implemented on the phone: the server's
+refusal arrives in its own words. The body is built by
+`restingOrderRequest` in `lib/order-request.ts`, tested like the market one —
+including that a stop price never reaches the API on anything but a
+stop-limit.
+
 What the phone does not have that the terminal does: levels entered as a
 distance, points, money or percent (it takes prices), and multi-select
 "Close (n)" and the filter/export on positions.

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { offersTrailing, orderRequest, type TicketFields } from './order-request';
+import {
+  offeredOrderKinds,
+  offersTrailing,
+  orderRequest,
+  restingFieldsProblem,
+  restingOrderRequest,
+  restingSummary,
+  type TicketFields,
+} from './order-request';
 
 const fields: TicketFields = {
   accountId: 'acc-1',
@@ -62,5 +70,65 @@ describe('offering the trailing field', () => {
     // refuses a trail the firm does not allow whatever the phone shows.
     expect(offersTrailing(undefined)).toBe(true);
     expect(offersTrailing({})).toBe(true);
+  });
+});
+
+describe('a resting order from the phone', () => {
+  it('sends where it rests, and a stop only for a stop-limit', () => {
+    const limit = restingOrderRequest({
+      ...fields,
+      kind: 'LIMIT',
+      price: ' 4550.00 ',
+      stopPrice: '4540.00',
+      timeInForce: 'GTC',
+    });
+    expect(limit).toMatchObject({ type: 'LIMIT', price: '4550.00', timeInForce: 'GTC' });
+    // The API refuses a stop price on a limit; a stale field must not reach it.
+    expect(limit).not.toHaveProperty('stopPrice');
+
+    const stopLimit = restingOrderRequest({
+      ...fields,
+      kind: 'STOP_LIMIT',
+      price: '4602.00',
+      stopPrice: ' 4600.00',
+      timeInForce: 'DAY',
+      trailingDistance: '3',
+    });
+    expect(stopLimit).toMatchObject({
+      type: 'STOP_LIMIT',
+      price: '4602.00',
+      stopPrice: '4600.00',
+      timeInForce: 'DAY',
+      trailingStopDistance: '3',
+    });
+  });
+
+  it('says which price is missing before anything is reviewed', () => {
+    expect(restingFieldsProblem('MARKET', '', '')).toBeNull();
+    expect(restingFieldsProblem('LIMIT', '', '')).toBe('Enter the limit price.');
+    expect(restingFieldsProblem('STOP', 'abc', '')).toBe('The stop price must be a number.');
+    expect(restingFieldsProblem('STOP_LIMIT', '4602', '')).toBe('Enter the stop price.');
+    expect(restingFieldsProblem('STOP_LIMIT', '', '4600')).toBe('Enter the limit price.');
+    expect(restingFieldsProblem('STOP_LIMIT', '4602', '4600')).toBeNull();
+  });
+
+  it('offers a stop-limit unless the firm has switched it off', () => {
+    expect(offeredOrderKinds(undefined)).toContain('STOP_LIMIT');
+    expect(offeredOrderKinds({ stop_limit: true })).toContain('STOP_LIMIT');
+    expect(offeredOrderKinds({ stop_limit: false })).toEqual(['MARKET', 'LIMIT', 'STOP']);
+  });
+
+  it('names the order in one sentence for the confirmation', () => {
+    const base = { ...fields, timeInForce: 'GTC' as const, stopPrice: '4600.00' };
+    expect(restingSummary(restingOrderRequest({ ...base, kind: 'LIMIT', price: '4550.00' }))).toBe(
+      'BUY 0.10 XAUUSD limit at 4550.00, until cancelled.',
+    );
+    expect(
+      restingSummary(
+        restingOrderRequest({ ...base, kind: 'STOP_LIMIT', price: '4602.00', timeInForce: 'DAY' }),
+      ),
+    ).toBe(
+      'BUY 0.10 XAUUSD stop-limit stop 4600.00, then limit 4602.00, until the end of the trading day.',
+    );
   });
 });

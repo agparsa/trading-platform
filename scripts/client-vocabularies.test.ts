@@ -54,6 +54,7 @@ const MAPS: Readonly<Record<string, Vocabulary | { none: string }>> = {
   'apps/web/src/components/order-ticket.tsx:ORDER_TYPE_LABEL': 'prisma.OrderType',
   'apps/web/src/components/order-ticket.tsx:ORDER_TYPE_HINT': 'prisma.OrderType',
   'apps/mobile/src/app/(tabs)/history.tsx:REASON_LABEL': 'prisma.CloseReason',
+  'apps/mobile/src/lib/order-request.ts:ORDER_KIND_LABEL': 'prisma.OrderType',
   'apps/mobile/src/app/(tabs)/profile.tsx:KYC_LABELS': 'prisma.KycStatus',
   'apps/mobile/src/app/(tabs)/settings.tsx:LABELS': 'prisma.NotificationCategory',
 };

@@ -6,7 +6,16 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { DomainError, type OrderSide } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
 import { useFeatures, useMobileTrading } from '../../lib/features';
-import { offersTrailing, orderRequest } from '../../lib/order-request';
+import {
+  ORDER_KIND_LABEL,
+  offeredOrderKinds,
+  offersTrailing,
+  orderRequest,
+  restingFieldsProblem,
+  restingOrderRequest,
+  restingSummary,
+  type OrderKind,
+} from '../../lib/order-request';
 import { Button, Card, ErrorNote, Figure, Screen } from '../../components/ui';
 import { theme } from '../../lib/theme';
 
@@ -48,6 +57,15 @@ interface OrderPreview {
  * dangerous thing in the app. The first press previews; the second commits. The
  * confirmation shows the *snapped* volume and the crossed price, because those
  * are what will actually happen and they are not always what was typed.
+ *
+ * ## Market, or resting
+ *
+ * The same ticket places limit, stop and stop-limit orders through
+ * `POST /orders/pending`. The preview is still today's market — that is what
+ * it prices — and is labelled as such: a resting order holds no margin and is
+ * checked again when it fires, so a preview that says "insufficient margin
+ * now" does not stop one from being placed. Which side of the market each
+ * price belongs on is the server's rule; its refusal is shown in its words.
  */
 export default function OrderTicket(): React.ReactElement {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
@@ -68,7 +86,15 @@ export default function OrderTicket(): React.ReactElement {
   const [stopLoss, setStopLoss] = useState('');
   const [takeProfit, setTakeProfit] = useState('');
   const [trailing, setTrailing] = useState('');
-  const trailingOffered = offersTrailing(useFeatures());
+  const features = useFeatures();
+  const trailingOffered = offersTrailing(features);
+  const kinds = offeredOrderKinds(features);
+  const [chosenKind, setKind] = useState<OrderKind>('MARKET');
+  // A kind the firm has since switched off is not kept selected.
+  const kind: OrderKind = kinds.includes(chosenKind) ? chosenKind : 'MARKET';
+  const [restingPrice, setRestingPrice] = useState('');
+  const [stopTrigger, setStopTrigger] = useState('');
+  const [timeInForce, setTimeInForce] = useState<'GTC' | 'DAY'>('GTC');
   const [preview, setPreview] = useState<OrderPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -91,6 +117,49 @@ export default function OrderTicket(): React.ReactElement {
           }),
     [account, symbol, side, volume, stopLoss, takeProfit, trailing, trailingOffered],
   );
+
+  const resting = useMemo(
+    () =>
+      request === null || kind === 'MARKET'
+        ? null
+        : restingOrderRequest({
+            accountId: request.accountId,
+            symbol: request.symbol,
+            side,
+            volume,
+            stopLoss,
+            takeProfit,
+            trailingDistance: trailingOffered ? trailing : '',
+            kind,
+            price: restingPrice,
+            stopPrice: stopTrigger,
+            timeInForce,
+          }),
+    [
+      request,
+      kind,
+      side,
+      volume,
+      stopLoss,
+      takeProfit,
+      trailing,
+      trailingOffered,
+      restingPrice,
+      stopTrigger,
+      timeInForce,
+    ],
+  );
+  const restingProblem = restingFieldsProblem(kind, restingPrice, stopTrigger);
+  /**
+   * Whether the ticket may go to review. A market order needs the preview's
+   * yes; a resting one needs its prices, and a preview at all (no price means
+   * the market is shut, where the server refuses it anyway) — not the
+   * preview's verdict on margin today.
+   */
+  const reviewable =
+    preview !== null &&
+    mobileTrading.mayOpen &&
+    (kind === 'MARKET' ? preview.wouldBeAccepted : restingProblem === null);
 
   const refreshPreview = useCallback(async () => {
     if (request === null) return;
@@ -137,6 +206,13 @@ export default function OrderTicket(): React.ReactElement {
     setBusy(true);
     setError(null);
     try {
+      if (resting !== null) {
+        await api.post('/orders/pending', resting, {
+          idempotencyKey: `pending:${account?.id}:${symbol}:${side}:${resting.type}:${Date.now()}`,
+        });
+        router.replace('/(tabs)/orders');
+        return;
+      }
       await api.post('/orders', request, {
         // One key per attempt, so a retry after a timeout cannot open a second
         // position — the server recognises the repeat and returns the first
@@ -174,8 +250,64 @@ export default function OrderTicket(): React.ReactElement {
           />
         </View>
 
+        <View style={styles.sides} accessibilityRole="tablist">
+          {kinds.map((value) => (
+            <View key={value} style={styles.kind}>
+              <Button
+                label={ORDER_KIND_LABEL[value]}
+                variant={value === kind ? 'primary' : 'quiet'}
+                onPress={() => {
+                  setKind(value);
+                  setConfirming(false);
+                }}
+              />
+            </View>
+          ))}
+        </View>
+
         <Card title="Order">
           <Field label="Volume (lots)" value={volume} onChange={setVolume} keyboard="decimal-pad" />
+          {kind === 'STOP_LIMIT' ? (
+            <Field
+              label="Stop price — activates it"
+              value={stopTrigger}
+              onChange={setStopTrigger}
+              keyboard="decimal-pad"
+              placeholder={side === 'BUY' ? 'above the ask' : 'below the bid'}
+            />
+          ) : null}
+          {kind === 'MARKET' ? null : (
+            <Field
+              label={kind === 'STOP' ? 'Stop price' : 'Limit price'}
+              value={restingPrice}
+              onChange={setRestingPrice}
+              keyboard="decimal-pad"
+              placeholder={
+                kind === 'STOP_LIMIT'
+                  ? 'fills here or better'
+                  : kind === 'LIMIT'
+                    ? side === 'BUY'
+                      ? 'below the ask'
+                      : 'above the bid'
+                    : side === 'BUY'
+                      ? 'above the ask'
+                      : 'below the bid'
+              }
+            />
+          )}
+          {kind === 'MARKET' ? null : (
+            <View style={styles.sides}>
+              {(['GTC', 'DAY'] as const).map((value) => (
+                <View key={value} style={styles.kind}>
+                  <Button
+                    label={value === 'GTC' ? 'Until cancelled' : 'Today only'}
+                    variant={value === timeInForce ? 'primary' : 'quiet'}
+                    onPress={() => setTimeInForce(value)}
+                  />
+                </View>
+              ))}
+            </View>
+          )}
           <Field
             label="Stop loss"
             value={stopLoss}
@@ -208,7 +340,7 @@ export default function OrderTicket(): React.ReactElement {
         </Card>
 
         {preview === null ? null : (
-          <Card title="Before you place it">
+          <Card title={kind === 'MARKET' ? 'Before you place it' : 'At today’s market'}>
             <Figure label="Symbol" value={preview.symbol} />
             <Figure label="Side" value={preview.side} />
             {/* The snapped volume, not what was typed. They differ whenever the
@@ -232,7 +364,15 @@ export default function OrderTicket(): React.ReactElement {
         )}
 
         {preview !== null && (preview.warnings.length > 0 || preview.violations.length > 0) ? (
-          <ErrorNote message={[...preview.warnings, ...preview.violations].join('\n')} />
+          <ErrorNote
+            message={
+              (kind === 'MARKET' ? '' : 'If it filled at today’s price:\n') +
+              [...preview.warnings, ...preview.violations].join('\n')
+            }
+          />
+        ) : null}
+        {kind !== 'MARKET' && restingProblem !== null ? (
+          <ErrorNote message={restingProblem} />
         ) : null}
 
         {mobileTrading.mayOpen ? null : <ErrorNote message={mobileTrading.reason ?? ''} />}
@@ -242,25 +382,24 @@ export default function OrderTicket(): React.ReactElement {
             <Text style={styles.confirm}>
               {preview === null
                 ? 'Pricing…'
-                : `${preview.side} ${preview.volume} ${preview.symbol} at ${preview.price}. ` +
-                  `Margin ${preview.requiredMargin} ${preview.accountCurrency}, ` +
-                  `commission ${preview.estimatedCommission} ${preview.accountCurrency}.`}
+                : resting !== null
+                  ? `${restingSummary(resting)} No margin is held while it rests; ` +
+                    'it is checked again when the order fires.'
+                  : `${preview.side} ${preview.volume} ${preview.symbol} at ${preview.price}. ` +
+                    `Margin ${preview.requiredMargin} ${preview.accountCurrency}, ` +
+                    `commission ${preview.estimatedCommission} ${preview.accountCurrency}.`}
             </Text>
             <Button
               label="Place order"
               variant={side === 'SELL' ? 'danger' : 'primary'}
               busy={busy}
-              disabled={preview === null || !preview.wouldBeAccepted || !mobileTrading.mayOpen}
+              disabled={!reviewable}
               onPress={() => void submit()}
             />
             <Button label="Cancel" variant="quiet" onPress={() => setConfirming(false)} />
           </Card>
         ) : (
-          <Button
-            label="Review order"
-            disabled={preview === null || !preview.wouldBeAccepted || !mobileTrading.mayOpen}
-            onPress={() => setConfirming(true)}
-          />
+          <Button label="Review order" disabled={!reviewable} onPress={() => setConfirming(true)} />
         )}
       </ScrollView>
     </Screen>
@@ -304,6 +443,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing(1),
   },
   sides: { flexDirection: 'row', marginBottom: theme.spacing(1) },
+  kind: { flex: 1, marginHorizontal: theme.spacing(0.25) },
   field: { marginBottom: theme.spacing(1) },
   fieldLabel: { color: theme.colors.textMuted, fontSize: 13, marginBottom: theme.spacing(0.5) },
   input: {
