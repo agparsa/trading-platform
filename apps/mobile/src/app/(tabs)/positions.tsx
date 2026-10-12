@@ -16,9 +16,12 @@ import { applyPnl } from '../../lib/live-book';
 import { Button, Empty, ErrorNote, Screen } from '../../components/ui';
 import { describePatch, protectionLine, protectivePatch } from '../../lib/protective-levels';
 import {
+  closeAllBody,
   closeAllKey,
   closeAllQuestion,
   closeAllReport,
+  stillSelected,
+  toggleSelected,
   type CloseAllOutcome,
   type CloseAllReport,
 } from '../../lib/close-all';
@@ -66,8 +69,16 @@ export default function Positions(): React.ReactElement {
    * was asked — so a second tap or a retry is the same command, and asking
    * again after cancelling is a new one. See `closeAllKey`.
    */
-  const [closingAll, setClosingAll] = useState<{ key: string; count: number } | null>(null);
+  const [closingAll, setClosingAll] = useState<{
+    key: string;
+    count: number;
+    /** The ticked positions this question is about; `null` is the whole book. */
+    positionIds: string[] | null;
+  } | null>(null);
   const [allReport, setAllReport] = useState<CloseAllReport | null>(null);
+  /** "Close (n)": ticked rows, counted only while they are still open. */
+  const [ticked, setTicked] = useState<string[]>([]);
+  const selected = stillSelected(ticked, positions ?? []);
 
   /**
    * The open book of the selected account.
@@ -135,11 +146,12 @@ export default function Positions(): React.ReactElement {
     try {
       const outcome = await api.post<CloseAllOutcome>(
         '/positions/close-all',
-        { accountId: account.id },
+        closeAllBody(account.id, closingAll.positionIds),
         { idempotencyKey: closingAll.key },
       );
       setAllReport(closeAllReport(outcome));
       setClosingAll(null);
+      setTicked([]);
       await load();
     } catch (caught) {
       setError(
@@ -212,7 +224,21 @@ export default function Positions(): React.ReactElement {
       )}
       {(positions ?? []).length < 2 ? null : closingAll === null ? (
         <View style={styles.bookBar}>
-          <Text style={styles.detail}>{(positions ?? []).length} open</Text>
+          <Text style={styles.detail}>
+            {selected.length === 0
+              ? `${(positions ?? []).length} open`
+              : `${selected.length} of ${(positions ?? []).length} selected`}
+          </Text>
+          {selected.length === 0 ? null : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Clear the selection"
+              style={styles.closeAffordance}
+              onPress={() => setTicked([])}
+            >
+              <Text style={styles.closeLabel}>Clear</Text>
+            </Pressable>
+          )}
           <Pressable
             accessibilityRole="button"
             style={styles.closeAffordance}
@@ -224,18 +250,29 @@ export default function Positions(): React.ReactElement {
                   Date.now(),
                   Math.random().toString(36).slice(2),
                 ),
-                count: (positions ?? []).length,
+                count: selected.length === 0 ? (positions ?? []).length : selected.length,
+                positionIds: selected.length === 0 ? null : selected,
               });
             }}
           >
-            <Text style={styles.closeLabel}>Close all ({(positions ?? []).length})</Text>
+            <Text style={styles.closeLabel}>
+              {selected.length === 0
+                ? `Close all (${(positions ?? []).length})`
+                : `Close (${selected.length})`}
+            </Text>
           </Pressable>
         </View>
       ) : (
         <View style={styles.confirm}>
-          <Text style={styles.confirmText}>{closeAllQuestion(closingAll.count)}</Text>
+          <Text style={styles.confirmText}>
+            {closeAllQuestion(closingAll.count, closingAll.positionIds !== null)}
+          </Text>
           <Button
-            label={`Close all ${closingAll.count}`}
+            label={
+              closingAll.positionIds === null
+                ? `Close all ${closingAll.count}`
+                : `Close ${closingAll.count} selected`
+            }
             variant="danger"
             busy={busy}
             onPress={() => void closeAll()}
@@ -346,6 +383,19 @@ export default function Positions(): React.ReactElement {
               </View>
             ) : (
               <View style={styles.actions}>
+                {(positions ?? []).length < 2 ? null : (
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected.includes(item.id) }}
+                    accessibilityLabel={`Select ${item.symbol} ${item.side} ${item.volume}`}
+                    onPress={() => setTicked((current) => toggleSelected(current, item.id))}
+                    style={styles.closeAffordance}
+                  >
+                    <Text style={styles.closeLabel}>
+                      {selected.includes(item.id) ? '☑ Selected' : '☐ Select'}
+                    </Text>
+                  </Pressable>
+                )}
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Change stop loss and take profit for ${item.symbol}`}

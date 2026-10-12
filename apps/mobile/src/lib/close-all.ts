@@ -31,13 +31,51 @@ export function closeAllKey(accountId: string, askedAt: number, nonce: string): 
   return `close-all:${accountId}:${askedAt}:${nonce}`;
 }
 
-/** The question, in words, before anything is sent. */
-export function closeAllQuestion(count: number): string {
+/**
+ * The question, in words, before anything is sent. `selected` asks about the
+ * positions the trader ticked rather than the whole book — the same command,
+ * narrowed, with the same promise about the ones that cannot close.
+ */
+export function closeAllQuestion(count: number, selected = false): string {
   const noun = count === 1 ? 'position' : 'positions';
   return (
-    `Close all ${count} ${noun} at market? Each closes at its own price. ` +
+    (selected
+      ? `Close the ${count} selected ${noun} at market? `
+      : `Close all ${count} ${noun} at market? `) +
+    'Each closes at its own price. ' +
     'Any that cannot be closed right now stays open and is listed.'
   );
+}
+
+/**
+ * "Close (n)": the positions ticked on this screen.
+ *
+ * The selection is ids, and only ids of positions still in the list count:
+ * one closed elsewhere — by its stop, or from the terminal — drops out rather
+ * than being sent, so the count the trader confirms is the count still open.
+ * The server would refuse a closed one by name anyway; this keeps the
+ * question honest before it is asked.
+ */
+export function toggleSelected(selected: readonly string[], id: string): string[] {
+  return selected.includes(id) ? selected.filter((one) => one !== id) : [...selected, id];
+}
+
+export function stillSelected(
+  selected: readonly string[],
+  open: ReadonlyArray<{ readonly id: string }>,
+): string[] {
+  const ids = new Set(open.map((one) => one.id));
+  return selected.filter((id) => ids.has(id));
+}
+
+/** The body for `POST /positions/close-all`: the whole book, or the named positions. */
+export function closeAllBody(
+  accountId: string,
+  positionIds: readonly string[] | null,
+): { accountId: string; positionIds?: string[] } {
+  return positionIds === null || positionIds.length === 0
+    ? { accountId }
+    : { accountId, positionIds: [...positionIds] };
 }
 
 export interface CloseAllReport {

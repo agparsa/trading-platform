@@ -285,9 +285,18 @@ refusal arrives in its own words. The body is built by
 including that a stop price never reaches the API on anything but a
 stop-limit.
 
+**"Close (n)".** With two or more positions open, each row can be ticked; the
+bar then reads "2 of 5 selected" and its button "Close (2)", which sends the
+same `POST /positions/close-all` with `positionIds` — the command the
+terminal's selection sends, one intent and a per-position report. A ticked
+position that closes elsewhere (its stop, the terminal) drops out of the count
+before the question is asked, so the number confirmed is the number still open.
+Nothing ticked, the button is "Close all" as before. The selection helpers and
+the request body are in `lib/close-all.ts`, tested.
+
 What the phone does not have that the terminal does: levels entered as a
-distance, points, money or percent (it takes prices), and multi-select
-"Close (n)" and the filter/export on positions.
+distance, points, money or percent (it takes prices), and the filter/export on
+positions.
 
 ## Guessing an API shape is how a screen lies
 

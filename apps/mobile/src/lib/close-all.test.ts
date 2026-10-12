@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { closeAllKey, closeAllQuestion, closeAllReport } from './close-all';
+import {
+  closeAllBody,
+  closeAllKey,
+  closeAllQuestion,
+  closeAllReport,
+  stillSelected,
+  toggleSelected,
+} from './close-all';
 
 describe('close all, on the phone', () => {
   it('carries one key per confirmation, and a new one for a new question', () => {
@@ -57,5 +64,37 @@ describe('close all, on the phone', () => {
     expect(report.tone).toBe('partial');
     expect(report.message).toMatch(/^Closed 1 of 3\. 2 are still open/);
     expect(report.stillOpen.map((one) => one.positionId)).toEqual(['b', 'c']);
+  });
+});
+
+describe('close (n), on the phone', () => {
+  it('ticks and unticks', () => {
+    expect(toggleSelected([], 'a')).toEqual(['a']);
+    expect(toggleSelected(['a', 'b'], 'a')).toEqual(['b']);
+  });
+
+  /** A position closed elsewhere is not in the count the trader confirms. */
+  it('keeps only what is still open', () => {
+    expect(stillSelected(['a', 'gone', 'c'], [{ id: 'a' }, { id: 'b' }, { id: 'c' }])).toEqual([
+      'a',
+      'c',
+    ]);
+  });
+
+  it('names the positions when some are ticked, and the whole book otherwise', () => {
+    expect(closeAllBody('acc-1', ['a', 'c'])).toEqual({
+      accountId: 'acc-1',
+      positionIds: ['a', 'c'],
+    });
+    // Nothing ticked is not "close nothing": the key is left out, and the
+    // command means the whole book, as the button for it says.
+    expect(closeAllBody('acc-1', [])).toEqual({ accountId: 'acc-1' });
+    expect(closeAllBody('acc-1', null)).toEqual({ accountId: 'acc-1' });
+  });
+
+  it('asks about the selection in its own words', () => {
+    expect(closeAllQuestion(2, true)).toMatch(/^Close the 2 selected positions at market\?/);
+    expect(closeAllQuestion(1, true)).toMatch(/^Close the 1 selected position at market\?/);
+    expect(closeAllQuestion(2, true)).toMatch(/stays open and is listed/);
   });
 });
