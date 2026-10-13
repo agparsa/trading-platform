@@ -17,6 +17,12 @@
   --color-terminal-long: #26a69a;
   --color-terminal-short: #ef5350;
   --color-terminal-warning: #f0b90b;
+  /*
+   * The one colour that means "selected" or "the primary action", not a
+   * direction. Blue, because green and red here are buy and sell, and amber is
+   * a warning. 7:1 on the page and readable as dark text on itself.
+   */
+  --color-terminal-accent: #5b9cff;
 
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
 }

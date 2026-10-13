@@ -147,6 +147,6 @@ export function markClasses(kind: InstrumentKind): string {
     case InstrumentKind.FX:
       return 'bg-sky-500/15 text-sky-300 ring-sky-500/30';
     default:
-      return 'bg-terminal-panel text-terminal-muted ring-white/10';
+      return 'bg-terminal-raised text-terminal-muted ring-white/10';
   }
 }

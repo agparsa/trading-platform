@@ -127,9 +127,7 @@ function Flags({
                     )}
                   </td>
                   <td className="px-3 py-1.5">
-                    <span
-                      className={row.enabled ? 'text-terminal-success' : 'text-terminal-danger'}
-                    >
+                    <span className={row.enabled ? 'text-terminal-long' : 'text-terminal-short'}>
                       {row.enabled ? 'on' : 'off'}
                     </span>
                     {row.override === null ? (

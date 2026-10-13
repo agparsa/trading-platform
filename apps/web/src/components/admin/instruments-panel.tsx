@@ -205,7 +205,7 @@ function InstrumentEditor({ row }: { row: AdminInstrumentRow }) {
           value={reason}
           onChange={(event) => setReason(event.target.value)}
           placeholder="Why this is changing"
-          className="rounded border border-terminal-border bg-terminal-panel px-2 py-1 text-xs text-terminal-text"
+          className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-xs text-terminal-text"
         />
       </label>
 
@@ -295,7 +295,7 @@ function Field({
         value={value}
         inputMode="decimal"
         onChange={(event) => onChange(event.target.value)}
-        className="numeric rounded border border-terminal-border bg-terminal-panel px-2 py-1 text-xs text-terminal-text"
+        className="numeric rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-xs text-terminal-text"
       />
     </label>
   );

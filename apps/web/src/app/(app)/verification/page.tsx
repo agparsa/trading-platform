@@ -144,7 +144,7 @@ export default function VerificationPage() {
                 ) : null}
               </div>
               {upload.error === null ? null : (
-                <p className="text-[11px] text-terminal-negative">
+                <p className="text-[11px] text-terminal-short">
                   {upload.error instanceof DomainError
                     ? upload.error.message
                     : 'The file could not be uploaded.'}
@@ -169,7 +169,7 @@ export default function VerificationPage() {
                 </p>
               )}
               {submit.error === null ? null : (
-                <p className="text-[11px] text-terminal-negative">
+                <p className="text-[11px] text-terminal-short">
                   {submit.error instanceof DomainError
                     ? submit.error.message
                     : 'The submission did not go through.'}

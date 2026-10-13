@@ -302,7 +302,7 @@ function TransferForm({
       </Field>
 
       {error === null || error === undefined ? null : (
-        <p className="text-[11px] text-terminal-negative">
+        <p className="text-[11px] text-terminal-short">
           {error instanceof DomainError ? error.message : 'The transfer did not go through.'}
         </p>
       )}
@@ -419,7 +419,7 @@ function DepositForm({
       </Field>
 
       {error === null || error === undefined ? null : (
-        <p className="text-[11px] text-terminal-negative">
+        <p className="text-[11px] text-terminal-short">
           {error instanceof DomainError ? error.message : 'The deposit could not be started.'}
         </p>
       )}
@@ -610,7 +610,7 @@ function WithdrawSection({
         </Field>
 
         {error === null || error === undefined ? null : (
-          <p className="text-[11px] text-terminal-negative">
+          <p className="text-[11px] text-terminal-short">
             {error instanceof DomainError ? error.message : 'The request did not go through.'}
           </p>
         )}

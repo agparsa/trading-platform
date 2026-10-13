@@ -231,7 +231,15 @@ Stated rather than stubbed. None of this is built:
   alerts have their own tab, next to pending orders; see `price-alerts.md`.)
 - **Design tokens beyond colour.** There is no spacing scale and no typography
   scale; sizes are arbitrary utilities repeated inline. There is no light
-  theme.
+  theme. The colour tokens themselves are now held to their definitions:
+  `scripts/theme-tokens.test.ts` fails on any `terminal-*` colour the theme
+  does not define. Its first run found twenty-six uses of six undefined names
+  — `negative`, `danger`, `loss`, `success`, `panel`, `accent` — which Tailwind
+  silently renders as nothing: wallet and verification errors in ordinary
+  text, the feature switches' ON and OFF in the same colour, an admin "Save"
+  button as dark text on no background. The synonyms became `short`, `long`
+  and `bg`/`raised`; `accent` (blue, for "selected" and the primary action)
+  is now defined.
 - **Documented screen-reader paths.** An _automated_ accessibility pass now
   runs on every browser suite — nine screens, WCAG 2.1 AA, serious violations
   failing the run — and it found two real defects on its first run (see

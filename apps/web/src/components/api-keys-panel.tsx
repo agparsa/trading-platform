@@ -167,7 +167,7 @@ export function ApiKeysPanel() {
           </Field>
         </div>
         {mint.error === null ? null : (
-          <p className="text-[11px] text-terminal-negative">
+          <p className="text-[11px] text-terminal-short">
             {mint.error instanceof DomainError ? mint.error.message : 'The key was not created.'}
           </p>
         )}
@@ -199,7 +199,7 @@ export function ApiKeysPanel() {
       </div>
 
       {revoke.error === null ? null : (
-        <p className="text-[11px] text-terminal-negative">
+        <p className="text-[11px] text-terminal-short">
           {revoke.error instanceof DomainError ? revoke.error.message : 'The key was not revoked.'}
         </p>
       )}

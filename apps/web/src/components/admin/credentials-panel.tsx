@@ -222,7 +222,7 @@ function TokensTab() {
           </div>
         </div>
         {mint.error === null ? null : (
-          <p className="text-[11px] text-terminal-negative">
+          <p className="text-[11px] text-terminal-short">
             {mint.error instanceof DomainError ? mint.error.message : 'The token was not created.'}
           </p>
         )}

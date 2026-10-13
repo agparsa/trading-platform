@@ -189,9 +189,9 @@ function Endpoints({
               <td className="px-3 py-1.5 font-mono text-terminal-muted">…{row.secretHint}</td>
               <td className="px-3 py-1.5">
                 {row.enabled ? (
-                  <span className="text-terminal-success">on</span>
+                  <span className="text-terminal-long">on</span>
                 ) : (
-                  <span className="text-terminal-danger" title={row.disabledReason ?? ''}>
+                  <span className="text-terminal-short" title={row.disabledReason ?? ''}>
                     off
                     {row.disabledReason?.startsWith('switched off by the platform')
                       ? ' — by the platform'
@@ -254,9 +254,9 @@ function Endpoints({
 
 const STATUS_TONE: Record<WebhookDeliveryRow['status'], string> = {
   PENDING: 'text-terminal-muted',
-  DELIVERED: 'text-terminal-success',
+  DELIVERED: 'text-terminal-long',
   FAILED: 'text-terminal-warning',
-  EXHAUSTED: 'text-terminal-danger',
+  EXHAUSTED: 'text-terminal-short',
 };
 
 function Deliveries({ endpointId }: { endpointId: string }) {

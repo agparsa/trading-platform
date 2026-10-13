@@ -133,7 +133,7 @@ export function AlertsPanel({
       </form>
 
       {error === null ? null : (
-        <p className="px-3 text-xs text-terminal-loss" role="alert">
+        <p className="px-3 text-xs text-terminal-short" role="alert">
           {error}
         </p>
       )}

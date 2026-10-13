@@ -166,9 +166,7 @@ function Rules({ data }: { data: NonNullable<ReturnType<typeof useIpRules>['data
                 <td className="numeric px-3 py-1.5">{rule.cidr}</td>
                 <td className="px-3 py-1.5">
                   <span
-                    className={
-                      rule.kind === 'DENY' ? 'text-terminal-danger' : 'text-terminal-success'
-                    }
+                    className={rule.kind === 'DENY' ? 'text-terminal-short' : 'text-terminal-long'}
                   >
                     {rule.kind === 'DENY' ? 'Deny' : 'Allow'}
                   </span>
