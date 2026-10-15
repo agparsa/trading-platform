@@ -1017,6 +1017,52 @@ async function main(): Promise<void> {
       );
     }
     /**
+     * A row's own ticket stages the volume it shows, for its instrument, and
+     * sends nothing until the main ticket is answered. Left open afterwards,
+     * so the column-fit checks and the terminal's accessibility audit below
+     * both run over a row with its ticket showing.
+     */
+    let rowTicketCode = '';
+    {
+      const label =
+        (await page
+          .getByRole('button', { name: /^Buy [A-Z]+ at / })
+          .first()
+          .getAttribute('aria-label')) ?? '';
+      rowTicketCode = /^Buy ([A-Z]+) at /.exec(label)?.[1] ?? '';
+      if (rowTicketCode === '') {
+        ok(false, 'a watchlist row opens a ticket of its own', 'no open market to try it on');
+      } else {
+        await page.getByRole('button', { name: `Open the ${rowTicketCode} row ticket` }).click();
+        const field = page.getByLabel(`${rowTicketCode} volume in lots`);
+        const opened = await field.inputValue();
+        await page.getByRole('button', { name: `Increase the ${rowTicketCode} volume` }).click();
+        const chosen = await field.inputValue();
+        await page
+          .getByRole('button', {
+            name: new RegExp(`^Buy ${chosen.replace('.', '\\.')} lots of ${rowTicketCode}`),
+          })
+          .click();
+        const question = await page.getByTestId('ticket-confirm').innerText();
+        await page
+          .getByRole('button', { name: /^Cancel$/ })
+          .first()
+          .click();
+        const ordersAfter = await prisma.order.count({
+          where: { account: { user: { email: people.trader.email } } },
+        });
+        ok(
+          chosen !== opened &&
+            question.includes(`BUY ${chosen} ${rowTicketCode}`) &&
+            /at market/.test(question) &&
+            ordersAfter === 0,
+          'a watchlist row ticket stages the volume it shows, and sends nothing until confirmed',
+          `opened on ${opened}, chose ${chosen} · ${question.replace(/\s+/g, ' ')} · orders after cancel: ${ordersAfter}`,
+        );
+      }
+    }
+
+    /**
      * Every watchlist column fits its panel, at each width the terminal lays
      * out three columns. The change column is last and was the one cut off —
      * the number "Movers" ranks by, behind a horizontal scroll nobody finds.
@@ -1040,6 +1086,9 @@ async function main(): Promise<void> {
     }
     await page.setViewportSize({ width: 1440, height: 900 });
     await auditAccessibility(page, 'the terminal');
+    if (rowTicketCode !== '') {
+      await page.getByRole('button', { name: `Close the ${rowTicketCode} row ticket` }).click();
+    }
     /**
      * Price alerts, set through the browser and read back from the database.
      *

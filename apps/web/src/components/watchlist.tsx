@@ -1,7 +1,8 @@
 'use client';
 
 import { marketNotice } from '../lib/market-state';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { entrySideOf } from '@tp/financial-core';
 import { cn } from '@tp/ui';
 import { percent, price as formatPrice } from '@/lib/format';
 import { useMarketStats, useQuoteSnapshot, type SymbolRow } from '@/lib/queries';
@@ -16,6 +17,7 @@ import {
   topMovers,
   viewFor,
 } from '@/lib/watchlist-prefs';
+import { inlineStartVolume, stepVolume, volumeProblem } from '@/lib/ticket';
 import { EmptyState, inputClass } from './primitives';
 
 /**
@@ -36,12 +38,17 @@ import { EmptyState, inputClass } from './primitives';
  * groups are the platform's own (`category` on `GET /symbols`), and the
  * ranking is that same server change, so it moves once a minute rather than
  * on every tick under the trader's cursor.
+ *
+ * A row opens a ticket of its own — a volume for that instrument and its two
+ * prices — and that ticket stages, exactly as the bare prices do. It never
+ * sends: the order still goes through the one ticket that checks and asks.
  */
 export function Watchlist({
   symbols,
   selected,
   onSelect,
   onTrade,
+  defaultVolume = '0.10',
 }: {
   symbols: readonly SymbolRow[];
   selected: string | null;
@@ -51,7 +58,9 @@ export function Watchlist({
    * (buy). The watchlist never sends: the ticket asks, names the order, and
    * applies the same checks as every other order. Absent, the prices are plain.
    */
-  onTrade?: (code: string, side: 'BUY' | 'SELL') => void;
+  onTrade?: (code: string, side: 'BUY' | 'SELL', volume?: string) => void;
+  /** The trader's default volume, which a row's ticket opens on where it can. */
+  defaultVolume?: string;
 }) {
   const snapshot = useQuoteSnapshot();
   const stats = useMarketStats();
@@ -62,6 +71,8 @@ export function Watchlist({
   const [favourites, setFavourites] = useState<string[]>([]);
   const [category, setCategory] = useState<string | null>(null);
   const [movers, setMovers] = useState(false);
+  /** The one row whose own ticket is open. One, so the list stays a list. */
+  const [opened, setOpened] = useState<string | null>(null);
 
   // Read once on mount, not during render: the server has no `window`, and a
   // value read during render would differ between the server pass and the
@@ -230,6 +241,9 @@ export function Watchlist({
                   onSelect={onSelect}
                   onStar={star}
                   onTrade={onTrade}
+                  opened={symbol.code === opened}
+                  onToggle={(code) => setOpened((now) => (now === code ? null : code))}
+                  defaultVolume={defaultVolume}
                 />
               ))}
             </tbody>
@@ -286,6 +300,9 @@ function WatchlistRow({
   onSelect,
   onStar,
   onTrade,
+  opened,
+  onToggle,
+  defaultVolume,
 }: {
   symbol: SymbolRow;
   quote: Quote | undefined;
@@ -294,7 +311,10 @@ function WatchlistRow({
   selected: boolean;
   onSelect: (code: string) => void;
   onStar: (code: string) => void;
-  onTrade?: (code: string, side: 'BUY' | 'SELL') => void;
+  onTrade?: (code: string, side: 'BUY' | 'SELL', volume?: string) => void;
+  opened: boolean;
+  onToggle: (code: string) => void;
+  defaultVolume: string;
 }) {
   // A closed market or a missing quote has no price to deal at; the cell stays
   // a price, not a button that the server would only refuse.
@@ -308,127 +328,272 @@ function WatchlistRow({
         ? 'text-terminal-long'
         : 'text-terminal-short';
 
+  const ticketId = `row-ticket-${symbol.code}`;
+
   return (
-    <tr
-      onClick={() => onSelect(symbol.code)}
-      className={cn(
-        'cursor-pointer border-t border-terminal-border/60 transition-colors',
-        selected ? 'bg-terminal-raised' : 'hover:bg-terminal-raised/50',
-      )}
-    >
-      {/* Tight padding throughout, because every column must fit the panel:
+    <Fragment>
+      <tr
+        onClick={() => onSelect(symbol.code)}
+        className={cn(
+          'cursor-pointer border-t border-terminal-border/60 transition-colors',
+          selected ? 'bg-terminal-raised' : 'hover:bg-terminal-raised/50',
+        )}
+      >
+        {/* Tight padding throughout, because every column must fit the panel:
           the change column is last, and when it was cut off the number
           "Movers" ranks by sat behind a scroll bar. A session label wraps
           under the code rather than widening the column. */}
-      <td className="py-1.5 pl-2 pr-1">
-        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+        <td className="py-1.5 pl-2 pr-1">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <button
+              type="button"
+              onClick={(event) => {
+                // The row selects an instrument; the star does not.
+                event.stopPropagation();
+                onStar(symbol.code);
+              }}
+              aria-pressed={starred}
+              aria-label={starred ? `Unstar ${symbol.code}` : `Star ${symbol.code}`}
+              /**
+               * The resting star is `muted`, not `border`.
+               *
+               * It was `text-terminal-border` — #232a35 on a #12161d row, which
+               * is **1.26:1**. The intent was "subtle until hovered" and the
+               * effect was invisible: the only way to favourite an instrument
+               * was a control most people cannot see is there. axe never said
+               * so, because the row background is semi-transparent and it files
+               * those as undetermined rather than failing them.
+               *
+               * `muted` is the token this UI already uses for secondary text, so
+               * the star stays quiet against the instrument code beside it while
+               * clearing 4.5:1. The three states remain distinct: quiet, brighter
+               * on hover, warning-coloured when set.
+               */
+              className={cn(
+                'text-[11px] leading-none transition-colors',
+                starred ? 'text-terminal-warning' : 'text-terminal-muted hover:text-terminal-text',
+              )}
+            >
+              ★
+            </button>
+            <InstrumentBadge code={symbol.code} />
+            <span className="font-medium text-terminal-text">{symbol.code}</span>
+            {onTrade === undefined ? null : (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggle(symbol.code);
+                }}
+                aria-expanded={opened}
+                // Only while there is something to point at.
+                aria-controls={opened ? ticketId : undefined}
+                aria-label={`${opened ? 'Close' : 'Open'} the ${symbol.code} row ticket`}
+                title={opened ? 'Close this ticket' : 'Choose a volume and trade from this row'}
+                className={cn(
+                  'text-[10px] leading-none transition-colors',
+                  opened ? 'text-terminal-accent' : 'text-terminal-muted hover:text-terminal-text',
+                )}
+              >
+                {opened ? '▾' : '▸'}
+              </button>
+            )}
+            {/* One word in a column with no room for more; the title carries the
+              reason and, where the platform knows it, the opening time. */}
+            {symbol.sessionOpen ? null : (
+              <span
+                className="rounded bg-terminal-raised px-1 text-[9px] uppercase tracking-wider text-terminal-muted"
+                title={
+                  symbol.market === undefined
+                    ? "Outside this instrument's trading session"
+                    : (marketNotice(symbol.market, symbol.code).detail ??
+                      "Outside this instrument's trading session")
+                }
+              >
+                {symbol.market === undefined
+                  ? 'closed'
+                  : marketNotice(symbol.market, symbol.code).label}
+              </span>
+            )}
+          </div>
+        </td>
+        <td
+          className={cn(
+            'numeric px-1 py-1.5 text-right transition-colors duration-300',
+            direction === 'up' && 'text-terminal-long',
+            direction === 'down' && 'text-terminal-short',
+            direction === null && 'text-terminal-text',
+          )}
+        >
+          {tradeable ? (
+            <PriceButton
+              side="SELL"
+              code={symbol.code}
+              price={formatPrice(quote.bid, symbol.pricePrecision)}
+              onTrade={onTrade}
+            />
+          ) : quote === undefined ? (
+            '—'
+          ) : (
+            formatPrice(quote.bid, symbol.pricePrecision)
+          )}
+        </td>
+        <td className="numeric px-1 py-1.5 text-right text-terminal-text">
+          {tradeable ? (
+            <PriceButton
+              side="BUY"
+              code={symbol.code}
+              price={formatPrice(quote.ask, symbol.pricePrecision)}
+              onTrade={onTrade}
+            />
+          ) : quote === undefined ? (
+            '—'
+          ) : (
+            formatPrice(quote.ask, symbol.pricePrecision)
+          )}
+        </td>
+        <td
+          className={cn('numeric py-1.5 pl-1 pr-2 text-right', changeTone)}
+          title={
+            stats === undefined || stats.reference === null
+              ? 'No reference price yet for this instrument'
+              : `${stats.change ?? '—'} from ${
+                  stats.referenceKind === 'PREVIOUS_CLOSE'
+                    ? 'the previous daily close'
+                    : "today's open"
+                } of ${stats.reference}`
+          }
+        >
+          {/* An em dash, never a zero. "No reference yet" and "unchanged" are
+            different claims and only one of them is ever true here. */}
+          {changePercent === null
+            ? '—'
+            : `${Number(changePercent) > 0 ? '+' : ''}${percent(changePercent, 2)}`}
+        </td>
+        <td className="numeric hidden px-3 py-1.5 text-right text-terminal-muted 2xl:table-cell">
+          {quote === undefined ? '—' : formatPrice(quote.spread, symbol.pricePrecision)}
+        </td>
+      </tr>
+      {opened && onTrade !== undefined ? (
+        <RowTicket
+          id={ticketId}
+          symbol={symbol}
+          quote={quote}
+          defaultVolume={defaultVolume}
+          onTrade={onTrade}
+        />
+      ) : null}
+    </Fragment>
+  );
+}
+
+/**
+ * A ticket inside a watchlist row: a volume for this instrument, and its bid
+ * and ask to sell or buy that volume at.
+ *
+ * The volume is chosen *here* because the bare prices cannot choose one —
+ * they stage whatever the main ticket held, which was picked for whichever
+ * instrument it showed before. The row knows its own instrument's lot step,
+ * minimum and maximum, and refuses a volume the server would refuse before
+ * offering to stage it.
+ *
+ * Pressing a price stages; it does not send. The main ticket switches to
+ * this instrument and this volume and asks "Send SELL 0.20 XAUUSD at
+ * market?", with every check it applies to any other order.
+ */
+function RowTicket({
+  id,
+  symbol,
+  quote,
+  defaultVolume,
+  onTrade,
+}: {
+  id: string;
+  symbol: SymbolRow;
+  quote: Quote | undefined;
+  defaultVolume: string;
+  onTrade: (code: string, side: 'BUY' | 'SELL', volume?: string) => void;
+}) {
+  const [volume, setVolume] = useState(() => inlineStartVolume(symbol, defaultVolume));
+  const problem = volumeProblem(symbol, volume);
+  const closedReason = !symbol.sessionOpen
+    ? 'This market is closed, so there is no price to deal at.'
+    : quote === undefined
+      ? 'No price has arrived for this instrument yet.'
+      : null;
+  const ready = problem === null && closedReason === null && quote !== undefined;
+  const lots = volume.trim();
+
+  return (
+    <tr id={id} className="border-t border-terminal-border/60 bg-terminal-raised/40">
+      <td colSpan={5} className="px-2 py-1.5">
+        <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={(event) => {
-              // The row selects an instrument; the star does not.
-              event.stopPropagation();
-              onStar(symbol.code);
-            }}
-            aria-pressed={starred}
-            aria-label={starred ? `Unstar ${symbol.code}` : `Star ${symbol.code}`}
-            /**
-             * The resting star is `muted`, not `border`.
-             *
-             * It was `text-terminal-border` — #232a35 on a #12161d row, which
-             * is **1.26:1**. The intent was "subtle until hovered" and the
-             * effect was invisible: the only way to favourite an instrument
-             * was a control most people cannot see is there. axe never said
-             * so, because the row background is semi-transparent and it files
-             * those as undetermined rather than failing them.
-             *
-             * `muted` is the token this UI already uses for secondary text, so
-             * the star stays quiet against the instrument code beside it while
-             * clearing 4.5:1. The three states remain distinct: quiet, brighter
-             * on hover, warning-coloured when set.
-             */
-            className={cn(
-              'text-[11px] leading-none transition-colors',
-              starred ? 'text-terminal-warning' : 'text-terminal-muted hover:text-terminal-text',
-            )}
+            onClick={() => setVolume(stepVolume(symbol, volume, -1))}
+            aria-label={`Decrease the ${symbol.code} volume`}
+            className="shrink-0 rounded border border-terminal-border px-1.5 py-0.5 text-terminal-text hover:bg-terminal-raised"
           >
-            ★
+            −
           </button>
-          <InstrumentBadge code={symbol.code} />
-          <span className="font-medium text-terminal-text">{symbol.code}</span>
-          {/* One word in a column with no room for more; the title carries the
-              reason and, where the platform knows it, the opening time. */}
-          {symbol.sessionOpen ? null : (
-            <span
-              className="rounded bg-terminal-raised px-1 text-[9px] uppercase tracking-wider text-terminal-muted"
-              title={
-                symbol.market === undefined
-                  ? "Outside this instrument's trading session"
-                  : (marketNotice(symbol.market, symbol.code).detail ??
-                    "Outside this instrument's trading session")
-              }
-            >
-              {symbol.market === undefined
-                ? 'closed'
-                : marketNotice(symbol.market, symbol.code).label}
-            </span>
-          )}
+          <input
+            className={cn(inputClass, 'numeric min-w-0 py-0.5 text-center text-xs')}
+            value={volume}
+            inputMode="decimal"
+            aria-label={`${symbol.code} volume in lots`}
+            aria-invalid={problem !== null}
+            aria-describedby={problem === null ? undefined : `${id}-problem`}
+            onChange={(event) => setVolume(event.target.value)}
+          />
+          <button
+            type="button"
+            onClick={() => setVolume(stepVolume(symbol, volume, 1))}
+            aria-label={`Increase the ${symbol.code} volume`}
+            className="shrink-0 rounded border border-terminal-border px-1.5 py-0.5 text-terminal-text hover:bg-terminal-raised"
+          >
+            +
+          </button>
         </div>
-      </td>
-      <td
-        className={cn(
-          'numeric px-1 py-1.5 text-right transition-colors duration-300',
-          direction === 'up' && 'text-terminal-long',
-          direction === 'down' && 'text-terminal-short',
-          direction === null && 'text-terminal-text',
+        {problem === null ? null : (
+          <p id={`${id}-problem`} className="mt-1 text-[11px] text-terminal-short">
+            {problem}
+          </p>
         )}
-      >
-        {tradeable ? (
-          <PriceButton
-            side="SELL"
-            code={symbol.code}
-            price={formatPrice(quote.bid, symbol.pricePrecision)}
-            onTrade={onTrade}
-          />
-        ) : quote === undefined ? (
-          '—'
-        ) : (
-          formatPrice(quote.bid, symbol.pricePrecision)
+        <div className="mt-1 flex gap-1">
+          {(['SELL', 'BUY'] as const).map((side) => {
+            const at =
+              quote === undefined
+                ? null
+                : formatPrice(quote[entrySideOf(side)], symbol.pricePrecision);
+            return (
+              <button
+                key={side}
+                type="button"
+                disabled={!ready}
+                onClick={() => onTrade(symbol.code, side, lots)}
+                aria-label={`${side === 'BUY' ? 'Buy' : 'Sell'} ${lots} lots of ${symbol.code}${
+                  at === null ? '' : ` at ${at}`
+                }`}
+                title="Stages the order in the ticket, which asks before sending"
+                // Solid, as the main ticket's buttons are: the tinted version
+                // put the short colour on its own tint at 4.2:1, which the
+                // terminal's accessibility audit refused.
+                className={cn(
+                  'flex-1 rounded px-1 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                  side === 'BUY'
+                    ? 'bg-terminal-long text-terminal-bg hover:opacity-90'
+                    : 'bg-terminal-short text-terminal-bg hover:opacity-90',
+                )}
+              >
+                {side === 'BUY' ? 'Buy' : 'Sell'}
+                {at === null ? null : <span className="numeric ml-1">{at}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {closedReason === null ? null : (
+          <p className="mt-1 text-[11px] text-terminal-muted">{closedReason}</p>
         )}
-      </td>
-      <td className="numeric px-1 py-1.5 text-right text-terminal-text">
-        {tradeable ? (
-          <PriceButton
-            side="BUY"
-            code={symbol.code}
-            price={formatPrice(quote.ask, symbol.pricePrecision)}
-            onTrade={onTrade}
-          />
-        ) : quote === undefined ? (
-          '—'
-        ) : (
-          formatPrice(quote.ask, symbol.pricePrecision)
-        )}
-      </td>
-      <td
-        className={cn('numeric py-1.5 pl-1 pr-2 text-right', changeTone)}
-        title={
-          stats === undefined || stats.reference === null
-            ? 'No reference price yet for this instrument'
-            : `${stats.change ?? '—'} from ${
-                stats.referenceKind === 'PREVIOUS_CLOSE'
-                  ? 'the previous daily close'
-                  : "today's open"
-              } of ${stats.reference}`
-        }
-      >
-        {/* An em dash, never a zero. "No reference yet" and "unchanged" are
-            different claims and only one of them is ever true here. */}
-        {changePercent === null
-          ? '—'
-          : `${Number(changePercent) > 0 ? '+' : ''}${percent(changePercent, 2)}`}
-      </td>
-      <td className="numeric hidden px-3 py-1.5 text-right text-terminal-muted 2xl:table-cell">
-        {quote === undefined ? '—' : formatPrice(quote.spread, symbol.pricePrecision)}
       </td>
     </tr>
   );

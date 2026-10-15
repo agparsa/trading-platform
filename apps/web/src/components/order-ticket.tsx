@@ -71,8 +71,10 @@ export function OrderTicket({
   /**
    * A market order staged from the watchlist's bid or ask, waiting here for
    * the trader's confirmation. Optional: the ticket works without a watchlist.
+   * `volume` is there when the row's own ticket chose one for that
+   * instrument; without it the order takes this ticket's volume.
    */
-  staged?: { side: 'BUY' | 'SELL'; at: number } | null;
+  staged?: { side: 'BUY' | 'SELL'; at: number; volume?: string } | null;
   onStagedHandled?: () => void;
 }) {
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
@@ -407,6 +409,7 @@ export function OrderTicket({
     onStagedHandled?.();
     setOrderType('MARKET');
     setSide(staged.side);
+    if (staged.volume !== undefined) setVolume(staged.volume);
     setSubmitError([]);
     setStagedMarket(true);
     setPendingConfirm(staged.side);

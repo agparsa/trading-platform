@@ -136,7 +136,11 @@ export function Terminal() {
    */
   const [shortcut, setShortcut] = useState<{ action: ShortcutAction; at: number } | null>(null);
   /** A market order staged from the watchlist, for the ticket to confirm. */
-  const [staged, setStaged] = useState<{ side: 'BUY' | 'SELL'; at: number } | null>(null);
+  const [staged, setStaged] = useState<{
+    side: 'BUY' | 'SELL';
+    at: number;
+    volume?: string;
+  } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
   const onShortcut = useCallback((action: ShortcutAction) => {
@@ -341,9 +345,10 @@ export function Terminal() {
             symbols={tradeableSymbols}
             selected={selectedSymbol}
             onSelect={setSelectedSymbol}
-            onTrade={(code, side) => {
+            defaultVolume={preferences.defaultVolume}
+            onTrade={(code, side, volume) => {
               setSelectedSymbol(code);
-              setStaged({ side, at: Date.now() });
+              setStaged({ side, at: Date.now(), ...(volume === undefined ? {} : { volume }) });
             }}
           />
         </Panel>

@@ -183,6 +183,22 @@ market?". A closed market or a missing quote shows a plain price, not a button
 the server would only refuse. At rest the buttons look like the prices they
 replace; hover and focus show which side they deal.
 
+**A row's own ticket.** The arrow beside an instrument's code opens a ticket
+inside that row: a volume stepper and the two prices as Sell and Buy. It
+exists for the problem the bare prices cannot solve — they stage whatever
+volume the main ticket held, chosen for a different instrument. The row
+opens on the trader's default volume where that instrument accepts it and on
+the instrument's minimum where it does not (never on more), steps by the
+instrument's own lot step, and names a volume the server would refuse
+(`volumeProblem`, the same `checkVolume` the API runs) instead of offering to
+stage it. Pressing Sell or Buy stages that volume in the main ticket, which
+asks "Send BUY 0.37 XAUUSD at market?" exactly as above — the row never
+sends. One row is open at a time; on a closed market its buttons are
+disabled with the reason beside them. Rendered tests in
+`watchlist.test.tsx`; the browser walk opens one, stages, cancels, checks
+that no order exists, and runs the terminal's accessibility audit with the
+row ticket open (its first version, tinted buttons, failed it at 4.2:1).
+
 **Categories and Top movers.** The groups are the platform's own — the
 `category` an administrator files an instrument under, sent on `GET /symbols`
 — offered as chips in the order the platform lists its instruments, and only
@@ -244,9 +260,6 @@ leg now has its own identity, and a test says so.
 
 Stated rather than stubbed. None of this is built:
 
-- **A ticket inside a watchlist row.** Search, favourites, categories and
-  Top movers exist, and the bid and ask stage an order (§4); rows do not
-  expand into a ticket of their own with a volume stepper.
 - **Finance and Logs tabs.** Neither has a design. (Alerts is built — price
   alerts have their own tab, next to pending orders; see `price-alerts.md`.)
 - **Design tokens beyond colour.** There is no spacing scale and no typography

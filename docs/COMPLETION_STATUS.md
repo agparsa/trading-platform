@@ -43,10 +43,10 @@ reads as currency.
 **20 workspace packages**, on **70 Prisma models**
 with **59 migrations** applied, serving **240 API routes**.
 
-Roughly **167,000 lines** of TypeScript across
-842 files.
+Roughly **169,000 lines** of TypeScript across
+850 files.
 
-Counted at `7c0dec44` on 2026-10-10 by `pnpm measure`. The
+Counted at `7952022c` on 2026-10-15 by `pnpm measure`. The
 structural counts above are checked against the working tree on every build;
 the line and file counts move with every commit and are as old as the date
 beside them.

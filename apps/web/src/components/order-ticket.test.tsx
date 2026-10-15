@@ -282,6 +282,39 @@ describe('the order ticket, rendered', () => {
     expect(mutateAsync.mock.calls[0]?.[0]).not.toHaveProperty('price');
   });
 
+  /**
+   * A row ticket chose its volume for its own instrument; the ticket asks
+   * about that volume and sends that volume, not the one it held before.
+   */
+  it('asks about, and sends, the volume a watchlist row chose', async () => {
+    mutateAsync.mockResolvedValue({ orderId: 'o-10', status: 'FILLED', positionId: 'p-10' });
+    quote();
+    render(
+      <OrderTicket
+        symbol={SYMBOL}
+        account={ACCOUNT}
+        accountId="acc-1"
+        preferences={PREFERENCES}
+        shortcut={null}
+        onShortcutHandled={() => undefined}
+        staged={{ side: 'BUY', at: 2, volume: '0.37' }}
+        onStagedHandled={() => undefined}
+      />,
+    );
+    expect(screen.getByTestId('ticket-confirm').textContent).toMatch(
+      /Send BUY 0\.37 XAUUSD at market\?/,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Send$/ }));
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledTimes(1);
+    });
+    expect(mutateAsync.mock.calls[0]?.[0]).toMatchObject({
+      symbol: 'XAUUSD',
+      side: 'BUY',
+      volume: '0.37',
+    });
+  });
+
   it('sends nothing when the staged order is cancelled', () => {
     quote();
     render(

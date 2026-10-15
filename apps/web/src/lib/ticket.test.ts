@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   estimateCosts,
+  inlineStartVolume,
   projectedOutcome,
   rewardToRisk,
   stepVolume,
   validateRestingPrice,
   validateStopLimitPrices,
   validateTicket,
+  volumeProblem,
 } from './ticket';
 import type { AccountSummary, SymbolRow } from './queries';
 
@@ -51,6 +53,44 @@ describe('stepVolume', () => {
 
   it('recovers from a field the trader has half-typed', () => {
     expect(stepVolume(XAUUSD, 'abc', 1)).toBe('0.02');
+  });
+});
+
+/** An instrument dealt only in whole lots, where 0.10 is not a volume at all. */
+const WHOLE_LOTS: SymbolRow = {
+  ...XAUUSD,
+  code: 'US500',
+  volumeStep: '1',
+  volumePrecision: 0,
+  minVolume: '1',
+  maxVolume: '20',
+};
+
+describe('volumeProblem', () => {
+  it('accepts a volume the instrument takes', () => {
+    expect(volumeProblem(XAUUSD, '0.10')).toBeNull();
+    expect(volumeProblem(WHOLE_LOTS, '3')).toBeNull();
+  });
+
+  it('names each reason the server would refuse it', () => {
+    expect(volumeProblem(XAUUSD, 'lots')).toBe('Volume must be a decimal number.');
+    expect(volumeProblem(XAUUSD, '0')).toBe('Volume must be greater than zero.');
+    expect(volumeProblem(WHOLE_LOTS, '0.10')).toBe('Minimum volume for US500 is 1 lots.');
+    expect(volumeProblem(WHOLE_LOTS, '1.5')).toBe('Volume must be a multiple of 1.');
+    expect(volumeProblem(XAUUSD, '51')).toBe('Maximum volume for XAUUSD is 50 lots.');
+  });
+});
+
+describe('inlineStartVolume', () => {
+  it("opens on the trader's default where the instrument accepts it", () => {
+    expect(inlineStartVolume(XAUUSD, '0.25')).toBe('0.25');
+    expect(inlineStartVolume(XAUUSD, '0.1')).toBe('0.10');
+  });
+
+  it("opens on the instrument's minimum where the default is refused — never on more", () => {
+    expect(inlineStartVolume(WHOLE_LOTS, '0.10')).toBe('1');
+    expect(inlineStartVolume(XAUUSD, '75')).toBe('0.01');
+    expect(inlineStartVolume(XAUUSD, 'lots')).toBe('0.01');
   });
 });
 

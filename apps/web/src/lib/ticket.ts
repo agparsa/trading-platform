@@ -37,6 +37,38 @@ export function stepVolume(spec: SymbolRow, current: string, direction: 1 | -1):
   return (next.lt(floor) ? floor : next).toFixed(spec.volumePrecision);
 }
 
+/**
+ * What is wrong with a volume for this instrument, in the trader's words, or
+ * null when nothing is. The same `checkVolume` the API runs.
+ */
+export function volumeProblem(spec: SymbolRow, volume: string): string | null {
+  if (!isDecimalString(volume)) return 'Volume must be a decimal number.';
+  const check = checkVolume(spec as SymbolSpec, volume.trim());
+  if (check.ok) return null;
+  const reasons: Record<string, string> = {
+    NOT_POSITIVE: 'Volume must be greater than zero.',
+    BELOW_MIN: `Minimum volume for ${spec.code} is ${spec.minVolume} lots.`,
+    ABOVE_MAX: `Maximum volume for ${spec.code} is ${spec.maxVolume} lots.`,
+    OFF_STEP: `Volume must be a multiple of ${spec.volumeStep}.`,
+  };
+  return reasons[check.reason ?? ''] ?? 'Invalid volume.';
+}
+
+/**
+ * The volume a watchlist row's own ticket opens with.
+ *
+ * The trader's default where it is a volume this instrument accepts, and the
+ * instrument's minimum where it is not — a default of 0.10 is no use on an
+ * instrument traded in whole lots, and opening on a volume the row would then
+ * refuse is a ticket that starts out broken. Never more than the default: a
+ * row ticket that rounded a refused default *up* would offer a bigger order
+ * than the trader asked for.
+ */
+export function inlineStartVolume(spec: SymbolRow, preferred: string): string {
+  const chosen = volumeProblem(spec, preferred) === null ? preferred : spec.minVolume;
+  return toDecimal(chosen).toFixed(spec.volumePrecision);
+}
+
 export interface TicketValidation {
   error: string | null;
   volumeOk: boolean;
@@ -61,20 +93,8 @@ export function validateTicket(
   trailingDistance = '',
 ): TicketValidation {
   if (spec === undefined) return { error: null, volumeOk: false };
-  if (!isDecimalString(volume)) {
-    return { error: 'Volume must be a decimal number.', volumeOk: false };
-  }
-
-  const check = checkVolume(spec as SymbolSpec, volume);
-  if (!check.ok) {
-    const reasons: Record<string, string> = {
-      NOT_POSITIVE: 'Volume must be greater than zero.',
-      BELOW_MIN: `Minimum volume for ${spec.code} is ${spec.minVolume} lots.`,
-      ABOVE_MAX: `Maximum volume for ${spec.code} is ${spec.maxVolume} lots.`,
-      OFF_STEP: `Volume must be a multiple of ${spec.volumeStep}.`,
-    };
-    return { error: reasons[check.reason ?? ''] ?? 'Invalid volume.', volumeOk: false };
-  }
+  const volumeError = volumeProblem(spec, volume);
+  if (volumeError !== null) return { error: volumeError, volumeOk: false };
 
   const sl = stopLoss.trim();
   const tp = takeProfit.trim();
