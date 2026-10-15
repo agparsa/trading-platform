@@ -33,6 +33,8 @@ import {
   type ChartLevel,
 } from '@/lib/chart-levels';
 import { useTradingCommands } from '@/lib/chart-commands';
+import { documentPalette, levelColour } from '@/lib/chart-theme';
+import { useThemeVersion } from '@/lib/use-theme';
 import {
   useCandles,
   useResolutions,
@@ -216,23 +218,24 @@ function Candles({
     const container = containerRef.current;
     if (container === null) return;
 
+    const palette = documentPalette();
     const chart = createChart(container, {
       layout: {
         background: { color: 'transparent' },
-        textColor: '#8b94a3',
+        textColor: palette.text,
         fontFamily:
           "ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace",
         fontSize: 11,
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: '#232a35' },
-        horzLines: { color: '#232a35' },
+        vertLines: { color: palette.grid },
+        horzLines: { color: palette.grid },
       },
       crosshair: { mode: 0 },
-      rightPriceScale: { borderColor: '#232a35' },
+      rightPriceScale: { borderColor: palette.grid },
       timeScale: {
-        borderColor: '#232a35',
+        borderColor: palette.grid,
         // Intraday bars are meaningless without the time of day on the axis.
         timeVisible: true,
         secondsVisible: false,
@@ -241,11 +244,11 @@ function Candles({
     });
 
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#26a69a',
-      downColor: '#ef5350',
+      upColor: palette.up,
+      downColor: palette.down,
       borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
+      wickUpColor: palette.up,
+      wickDownColor: palette.down,
     });
 
     chartRef.current = chart;
@@ -258,6 +261,34 @@ function Candles({
       seriesKeyRef.current = '';
     };
   }, []);
+
+  /**
+   * The theme changed: repaint in its colours. The chart draws on a canvas and
+   * cannot see the stylesheet, so it is told.
+   */
+  const themeVersion = useThemeVersion();
+  const palette = useMemo(
+    () => documentPalette(),
+    // Re-read when the theme changes; the version is the only signal.
+    [themeVersion],
+  );
+  useEffect(() => {
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    if (chart === null || series === null) return;
+    chart.applyOptions({
+      layout: { textColor: palette.text },
+      grid: { vertLines: { color: palette.grid }, horzLines: { color: palette.grid } },
+      rightPriceScale: { borderColor: palette.grid },
+      timeScale: { borderColor: palette.grid },
+    });
+    series.applyOptions({
+      upColor: palette.up,
+      downColor: palette.down,
+      wickUpColor: palette.up,
+      wickDownColor: palette.down,
+    });
+  }, [palette]);
 
   // Price formatting follows the instrument, so gold does not render to five
   // decimals and a currency pair does not round away four of them.
@@ -399,7 +430,7 @@ function Candles({
         levelIdentity(level),
         series.createPriceLine({
           price: Number(level.price),
-          color: LEVEL_COLOR[level.kind],
+          color: levelColour(level.kind, palette),
           lineWidth: 1,
           lineStyle: level.kind === LevelKind.ENTRY ? LineStyle.Solid : LineStyle.Dashed,
           axisLabelVisible: true,
@@ -422,7 +453,7 @@ function Candles({
         'preview',
         series.createPriceLine({
           price: Number(drag.price),
-          color: drag.error === null ? '#e0b341' : '#ef5350',
+          color: drag.error === null ? palette.pending : palette.down,
           lineWidth: 2,
           lineStyle: LineStyle.LargeDashed,
           axisLabelVisible: true,
@@ -440,7 +471,7 @@ function Candles({
       for (const line of linesRef.current.values()) series.removePriceLine(line);
       linesRef.current.clear();
     };
-  }, [levels, drag, byId, spec, currency]);
+  }, [levels, drag, byId, spec, currency, palette]);
 
   /**
    * Which level, if any, is under the pointer.
@@ -630,15 +661,6 @@ interface DragState {
 
 /** Within this many pixels counts as grabbing the line. A 1px target is unusable. */
 const GRAB_RADIUS_PX = 6;
-
-const LEVEL_COLOR: Record<LevelKind, string> = {
-  [LevelKind.ENTRY]: '#8b94a3',
-  [LevelKind.STOP_LOSS]: '#ef5350',
-  [LevelKind.TAKE_PROFIT]: '#26a69a',
-  // Its own colour, because it is its own kind of thing: an instruction that
-  // will *open* a trade, not one that closes an existing one.
-  [LevelKind.PENDING]: '#e0b341',
-};
 
 /**
  * Prices become JS numbers here, at the rendering boundary and nowhere else.

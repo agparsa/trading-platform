@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { isWorthRetrying } from '@tp/api-client';
 import { SessionProvider } from '@/lib/session';
+import { ThemeSync } from '@/lib/use-theme';
 
 /**
  * Client-side providers.
@@ -47,6 +48,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <ThemeSync />
       <SessionProvider>{children}</SessionProvider>
     </QueryClientProvider>
   );

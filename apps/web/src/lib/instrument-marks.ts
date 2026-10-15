@@ -141,12 +141,12 @@ export function markFor(code: string): InstrumentMark {
 export function markClasses(kind: InstrumentKind): string {
   switch (kind) {
     case InstrumentKind.METAL:
-      return 'bg-amber-500/15 text-amber-300 ring-amber-500/30';
+      return 'bg-amber-500/15 text-amber-300 ring-amber-500/30 light:text-amber-800 light:ring-amber-600/40';
     case InstrumentKind.CRYPTO:
-      return 'bg-violet-500/15 text-violet-300 ring-violet-500/30';
+      return 'bg-violet-500/15 text-violet-300 ring-violet-500/30 light:text-violet-800 light:ring-violet-600/40';
     case InstrumentKind.FX:
-      return 'bg-sky-500/15 text-sky-300 ring-sky-500/30';
+      return 'bg-sky-500/15 text-sky-300 ring-sky-500/30 light:text-sky-800 light:ring-sky-600/40';
     default:
-      return 'bg-terminal-raised text-terminal-muted ring-white/10';
+      return 'bg-terminal-raised text-terminal-muted ring-white/10 light:ring-black/10';
   }
 }

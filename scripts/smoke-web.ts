@@ -1246,6 +1246,35 @@ async function main(): Promise<void> {
     await visit(page, '/settings', { url: '/settings', text: /One-click/i });
     await auditAccessibility(page, 'the settings screen');
 
+    /**
+     * The light theme, chosen the way a trader chooses it and then audited
+     * like the dark one. Contrast is the thing a second palette breaks, and
+     * axe measures contrast; a theme only looked at in screenshots is a theme
+     * whose muted text was never measured. The choice is per browser, so it is
+     * put back afterwards for the rest of the walk.
+     */
+    {
+      await page.getByRole('radio', { name: 'Light' }).click();
+      const applied = await page.locator('html').getAttribute('data-theme');
+      // A reload proves the boot script, not only the click handler, sets it.
+      await page.reload();
+      const afterReload = await page.locator('html').getAttribute('data-theme');
+      const background = await page.evaluate<string>(
+        'getComputedStyle(document.body).backgroundColor',
+      );
+      ok(
+        applied === 'light' && afterReload === 'light' && background === 'rgb(244, 246, 249)',
+        'the light theme is chosen in settings, survives a reload, and repaints the page',
+        `${applied} → ${afterReload}, body ${background}`,
+      );
+      await auditAccessibility(page, 'the settings screen, light');
+      await visit(page, '/terminal', { url: '/terminal' });
+      await screenshot(page, 'terminal-light');
+      await auditAccessibility(page, 'the terminal, light');
+      await visit(page, '/settings', { url: '/settings', text: /One-click/i });
+      await page.getByRole('radio', { name: 'Dark' }).click();
+    }
+
     console.log('\n  As an administrator\n');
     const adminContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const adminPage = await adminContext.newPage();

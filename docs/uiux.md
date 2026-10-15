@@ -220,6 +220,26 @@ activated, it is one limit line that drags like any other. The phone lists it
 as "stop 4600, then limit 4602" or "stop reached · resting at limit 4602". The
 engine side is in `order-lifecycle.md`.
 
+**Appearance: light or dark.** Settings offers Dark (the default — the
+terminal is looked at for hours), Light, and "Same as this device", which
+follows the operating system and keeps following it. The choice is per
+browser, like the trading preferences. It is the same colour names with other
+values (`:root[data-theme='light']` in `globals.css`), so every screen follows
+without a per-screen change; the long and short colours are darker in light
+(#26a69a on white is 2.9:1), and every light colour clears 4.5:1 as text on
+the page, a panel and a raised row. A script in the document head sets the
+theme before the first paint — no dark flash on load — and `theme.test.ts`
+runs that script against every case of the TypeScript rule so the two cannot
+drift. The chart draws on a canvas that cannot see a stylesheet, so it reads
+its colours from the theme's variables and repaints when the theme changes.
+The browser walk chooses Light in settings, reloads, checks the page is light,
+and runs the same accessibility audit on settings and the terminal.
+
+Building it found a leak in the stop-limit chart lines: a waiting stop-limit's
+two lines shared one identity, so the chart kept only the limit line's handle
+and added a new, never-removed stop line on every redraw — every quote. Each
+leg now has its own identity, and a test says so.
+
 ## 5. What Phase 6 does not deliver
 
 Stated rather than stubbed. None of this is built:
@@ -230,8 +250,8 @@ Stated rather than stubbed. None of this is built:
 - **Finance and Logs tabs.** Neither has a design. (Alerts is built — price
   alerts have their own tab, next to pending orders; see `price-alerts.md`.)
 - **Design tokens beyond colour.** There is no spacing scale and no typography
-  scale; sizes are arbitrary utilities repeated inline. There is no light
-  theme. The colour tokens themselves are now held to their definitions:
+  scale; sizes are arbitrary utilities repeated inline. (A light theme now
+  exists — see "Appearance" above.) The colour tokens themselves are now held to their definitions:
   `scripts/theme-tokens.test.ts` fails on any `terminal-*` colour the theme
   does not define. Its first run found twenty-six uses of six undefined names
   — `negative`, `danger`, `loss`, `success`, `panel`, `accent` — which Tailwind

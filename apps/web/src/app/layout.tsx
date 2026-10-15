@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Providers } from './providers';
+import { THEME_BOOT_SCRIPT } from '@/lib/theme';
 
 export const metadata: Metadata = {
   title: 'Trading Platform',
@@ -8,7 +9,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0b0e13',
+  // The browser's own chrome, per the system's scheme; the page's theme is
+  // the trader's choice and set by the boot script below.
+  themeColor: [
+    { media: '(prefers-color-scheme: dark)', color: '#0b0e13' },
+    { media: '(prefers-color-scheme: light)', color: '#f4f6f9' },
+  ],
   width: 'device-width',
   initialScale: 1,
   /**
@@ -30,7 +36,13 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    // `suppressHydrationWarning`: the boot script sets data-theme before React
+    // hydrates, so the attribute differs from the server's markup by design.
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
+      <head>
+        {/* Before the first paint, so a light-theme trader never sees a dark flash. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body className="min-h-screen antialiased">
         <Providers>{children}</Providers>
       </body>

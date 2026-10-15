@@ -7,6 +7,9 @@
  * is a number that moved. Light mode exists but the terminal is dark by
  * default: it is looked at for hours.
  */
+/* `light:` — for the few colours that are not theme tokens (instrument marks). */
+@custom-variant light (&:where([data-theme='light'], [data-theme='light'] *));
+
 @theme {
   --color-terminal-bg: #0b0e13;
   --color-terminal-surface: #12161d;
@@ -27,7 +30,31 @@
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
 }
 
+/*
+ * Light theme: the same names, other values, chosen per device (lib/theme.ts)
+ * and set on <html data-theme> before the first paint.
+ *
+ * Every colour clears 4.5:1 as text on the page, a panel and a raised row —
+ * the long and short greens and reds are darker than the dark theme's,
+ * because #26a69a on white is 2.9:1. `scripts/theme-tokens.test.ts` fails if
+ * a colour exists in one theme and not the other.
+ */
+:root[data-theme='light'] {
+  --color-terminal-bg: #f4f6f9;
+  --color-terminal-surface: #ffffff;
+  --color-terminal-raised: #e8ecf1;
+  --color-terminal-border: #d3d9e1;
+  --color-terminal-text: #111720;
+  --color-terminal-muted: #556070;
+  --color-terminal-long: #0a7368;
+  --color-terminal-short: #c0282d;
+  --color-terminal-warning: #855600;
+  --color-terminal-accent: #1c5bc8;
+  color-scheme: light;
+}
+
 :root {
+  color-scheme: dark;
   --tp-bg: var(--color-terminal-bg);
   --tp-surface: var(--color-terminal-surface);
   --tp-surface-raised: var(--color-terminal-raised);

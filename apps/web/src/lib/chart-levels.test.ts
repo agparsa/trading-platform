@@ -297,6 +297,9 @@ describe('pendingLevelsFor', () => {
     expect(both.every((level) => !level.draggable)).toBe(true);
     expect(both[0]?.title).toContain('stop');
     expect(both[1]?.title).toContain('limit');
+    // Two lines, two identities: the chart keeps one handle per identity, and
+    // a shared one leaked a stop line on every redraw.
+    expect(new Set(both.map(levelIdentity)).size).toBe(2);
 
     const activated = pendingLevelsFor(
       [{ ...waiting, activatedAt: '2026-10-10T18:00:00.000Z' }],

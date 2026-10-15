@@ -60,6 +60,21 @@ describe('the terminal theme', () => {
     expect(missing).toEqual([]);
   });
 
+  /**
+   * A colour defined in the dark theme and not the light one is the light
+   * page painted with a dark-theme colour: dark text on a light background
+   * reads, but the dark theme's near-black raised row does not.
+   */
+  it('gives the light theme every colour the dark theme has, and no others', () => {
+    const block = /:root\[data-theme='light'\]\s*\{([^}]*)\}/.exec(CSS);
+    expect(block, 'globals.css has a light theme block').not.toBeNull();
+    const light = definedColours(block![1]!);
+    const dark = definedColours(
+      CSS.slice(CSS.indexOf('@theme'), CSS.indexOf('}', CSS.indexOf('@theme'))),
+    );
+    expect([...light].sort()).toEqual([...dark].sort());
+  });
+
   it('finds a use in every shape it is written', () => {
     expect(usedColours("'text-terminal-short' bg-terminal-raised/40 border-b-terminal-x")).toEqual([
       'short',

@@ -47,11 +47,25 @@ export interface ChartLevel {
   /** Set on a stop that the trailing engine is moving. */
   trailing: boolean;
   title: string;
+  /**
+   * Which of an order's two prices this line is, when it has two: a
+   * stop-limit waiting for its stop is drawn as its stop and its limit.
+   */
+  leg?: 'stop' | 'limit';
 }
 
-/** Stable identity for one drawn line. */
+/**
+ * Stable identity for one drawn line.
+ *
+ * The leg is part of it. Without it a waiting stop-limit's two lines shared one
+ * identity: the chart kept one handle per identity, so the stop line's handle
+ * was overwritten by the limit's, never removed, and a new stop line was added
+ * on every redraw — which is every quote, because the label carries the
+ * distance to the market.
+ */
 export function levelIdentity(level: ChartLevel): string {
-  return `${level.positionId ?? level.orderId ?? '?'}:${level.kind}`;
+  const owner = `${level.positionId ?? level.orderId ?? '?'}:${level.kind}`;
+  return level.leg === undefined ? owner : `${owner}:${level.leg}`;
 }
 
 /**
@@ -269,6 +283,7 @@ export function pendingLevelsFor(
         price: order.stopPrice,
         draggable: false,
         trailing: false,
+        leg: 'stop',
         title: `${order.side} STOP LMT stop ${order.volume}${toStop === null ? '' : `  ${toStop} pt`}`,
       });
       levels.push({
@@ -278,6 +293,7 @@ export function pendingLevelsFor(
         price: order.price,
         draggable: false,
         trailing: false,
+        leg: 'limit',
         title: `${order.side} STOP LMT limit ${order.volume}`,
       });
       continue;
