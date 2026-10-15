@@ -1389,6 +1389,39 @@ describe('scripts/compensate-ledger-entries.sh', () => {
   });
 });
 
+describe('scripts/incident-snapshot.sh', () => {
+  const script = read('scripts/incident-snapshot.sh');
+  const shell = script
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+
+  /**
+   * Run on a host in trouble, before anyone has decided what to do. Its
+   * value is that it can be run without thinking — which holds only while it
+   * cannot change anything.
+   */
+  it('reads and never changes: no restart, stop, removal, exec or compose', () => {
+    expect(shell).not.toMatch(
+      /docker\s+(?:compose|restart|stop|start|kill|rm|rmi|exec|run|prune|system|volume|network)\b/,
+    );
+    // As commands, not as words: `last -x reboot shutdown` reads the record of them.
+    expect(shell).not.toMatch(/(?:^|[;&|]\s*)(?:reboot|shutdown|halt|poweroff)\b/m);
+    expect(shell).not.toMatch(/systemctl\s+(?:restart|stop|start)|(?:^|\s)(?:rm|mv)\s/m);
+    // Writes nowhere: the only redirection is to /dev/null.
+    expect(shell).not.toMatch(/>{1,2}\s*(?!\/dev\/null|&)\S/);
+  });
+
+  it('prints no environment and no full inspect output', () => {
+    expect(shell).not.toMatch(/\benv\b|printenv|\.Config\.Env|docker inspect [^-]/);
+    expect(shell).toContain('{{.State.OOMKilled}}');
+  });
+
+  it('is what the runbook tells the operator to run first', () => {
+    expect(read('docs/runbook.md')).toContain('scripts/incident-snapshot.sh');
+  });
+});
+
 describe('the API document in production', () => {
   /**
    * Swagger's UI mounts on Express, outside Nest's guards: whoever can reach

@@ -32,6 +32,31 @@ pnpm verify:production                 # the public surface over HTTPS, no crede
 `/ready` failing while `/health` passes means the process is up but a dependency
 is not. That is the usual shape of an outage, and it tells you where to look.
 
+### The host stopped answering, or the platform restarted on its own
+
+Cloudflare's **522** means it could not reach the origin. If the origin accepts
+a connection on every port but no service sends a byte — no SSH banner, no
+HTTP — the machine itself is stuck (memory, a hung disk) or something in front
+of it is; that is the provider's console and a power-cycle, not a container
+restart. An `uptimeSeconds` on `/health` younger than the last deploy means
+something restarted the API without one.
+
+Either way, once a shell works, before anything is restarted or changed:
+
+```bash
+sh /opt/trading-platform/scripts/incident-snapshot.sh      # 48 hours back; pass 72 for more
+```
+
+It reads and prints only: reboots, kernel memory kills and hung tasks (and
+whether the previous boot's kernel log survived at all), memory and I/O
+pressure, disk and inodes, each platform container's start time, restart
+count, exit code and OOM flag, every container death on the host in the
+window — other projects share this machine — and the largest processes by
+memory. Evidence ages: run it first, keep the output, then decide.
+
+Written after 13–15 October 2026: about a day unreachable (522; every port
+accepting, none answering), then a second restart at 02:51 UTC on the 15th.
+
 ## Symptoms
 
 ### Traders say prices are frozen
