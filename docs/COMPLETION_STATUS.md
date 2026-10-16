@@ -44,9 +44,9 @@ reads as currency.
 with **59 migrations** applied, serving **240 API routes**.
 
 Roughly **169,000 lines** of TypeScript across
-850 files.
+851 files.
 
-Counted at `7952022c` on 2026-10-15 by `pnpm measure`. The
+Counted at `67bc63c3` on 2026-10-16 by `pnpm measure`. The
 structural counts above are checked against the working tree on every build;
 the line and file counts move with every commit and are as old as the date
 beside them.
@@ -97,22 +97,25 @@ Complete in the sense the prompt defines — UI → API → business logic → d
 
 ## Partial
 
-| §   | Area        | What exists                                                                                                                                                                                       | What is missing                                                                             |
-| --- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 29  | Admin panel | 13 sections at their own addresses — overview, people (+ detail, with role assignment), accounts (+ detail), instruments, risk, payments, verification, withdrawals, reconciliation, roles, audit | ~17 sections asked for. No tenants, tokens, API management, security centre.                |
-| 35  | Finance     | wallets, transfers bounded by free margin, manual deposits and corrections, freeze, full audit, deposits through a provider port                                                                  | no third-party payment provider (a commercial decision, see below), no withdrawal — phase 7 |
+Held to the code by `scripts/completion-claims.test.ts`, as is the table after
+it. On 16 October both still said what they said on 3 September: the "zero
+code" list named webhooks, KYC, the Security Centre and wallets — each built,
+tested and in production for weeks — and the admin panel was "13 sections"
+with 21 deployed. Nothing compared them to anything.
+
+| §   | Area        | What exists                                                                                                                                                                                                                                        | What is missing                                                                                                 |
+| --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| 29  | Admin panel | 21 sections at their own addresses — overview, people, accounts, instruments, risk, book, desks, brokers, connections, credentials, features, payments, kyc, withdrawals, reconciliation, reports, notifications, security, webhooks, roles, audit | Fees, admin alert rules and Branding — the list `broker-panel.md` §5 keeps, which `panel-claims.test.ts` checks |
+| 6   | KYC         | records and documents, manual review with its own permission, identity re-checked before a withdrawal is approved                                                                                                                                  | an identity-verification provider                                                                               |
+| 35  | Finance     | wallets, transfers bounded by free margin, manual deposits and corrections, freeze, full audit, deposits through a provider port, withdrawals held at request and approved by FINANCE                                                              | a third-party payment provider (a commercial decision, see below) and a payout rail for withdrawals             |
 
 ## Does not exist — zero code
 
-Checked by search, not by assumption.
+Checked by the test above, not by assumption.
 
 | §   | Area                 | Status                                                                                 |
 | --- | -------------------- | -------------------------------------------------------------------------------------- |
-| 10  | Webhooks             | no `Webhook` model, no outbound delivery                                               |
-| 6   | KYC                  | no `KYCRecord` model, nothing in `apps/api/src`                                        |
-| 34  | Security Centre      | the data exists (sessions, audit, risk events); the admin section does not             |
 | 38  | **AI context layer** | absent. No tool abstraction, no Redis Context Engine boundary.                         |
-| —   | Wallet / payments    | no `Wallet` or `Transaction` model                                                     |
 | —   | **Real market data** | `MARKET_DATA_PROVIDER` defaults to `internal-simulator`; `external` **throws on boot** |
 
 That last row deserves emphasis. §50 says never fake functionality. The
@@ -148,8 +151,12 @@ Added recently: `web-routes.md`, the address of every screen and why the
 terminal is not inside the shell around the others; `wallet.md`, the two ledgers
 and the invariant between them.
 
-Missing: `TOKEN_MANAGEMENT` and `AI_CONTEXT` — because the features they would
-describe do not exist, and §45 says do not document features that do not exist.
+Token management is `api-keys.md` — API keys and service tokens, hashed at
+rest and shown once — written when the feature was; the line here kept calling
+it missing until 16 October.
+
+Missing: `AI_CONTEXT` — because the feature it would describe does not exist,
+and §45 says do not document features that do not exist.
 
 ## Where this sits in the plan
 
