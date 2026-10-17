@@ -4,7 +4,7 @@ Phase 0 deliverables — the design the implementation is held to.
 
 **The audit against the multi-broker specification (3 September 2026)**
 
-- [architecture-audit.md](./architecture-audit.md) — the repository against the current specification: what exists, what is short, what is absent, and the extension point for each
+- [architecture-audit.md](./architecture-audit.md) — the repository against the multi-broker specification as it stood on 3 September, before that plan was built: the extension point for each gap. A snapshot; the current matrix is final-audit.md
 - [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) — sixteen phases numbered as the specification numbers them, dependencies, honest estimates, and where the work is blocked on a broker's API
 - [COMPLETION_STATUS.md](./COMPLETION_STATUS.md) — what is built, tested and running, measured rather than remembered; its figures are generated
 - [upgrade-plan.md](./upgrade-plan.md) — the master upgrade's current-state audit and the plan it produced
@@ -97,7 +97,7 @@ Kept as history; several things they call missing now exist.
 - [soak.md](./soak.md) — what a leak looks like, and why a slope needs a fit
 - [capacity.md](./capacity.md) — what the load harness found, and the run that has not been done
 - [failure-injection.md](./failure-injection.md) — `pnpm chaos`: killing the dependencies and checking nothing is closed by it
-- [final-audit.md](./final-audit.md) — the browser, concurrency and integration pass, and the margin race it found
+- [final-audit.md](./final-audit.md) — the current §107 matrix (PASS / PARTIAL / BLOCKED per area), and the earlier browser, concurrency and integration pass with the margin race it found
 - [backup-restore.md](./backup-restore.md) — the rehearsal, and why row counts are not the check
 - [disaster-recovery.md](./disaster-recovery.md) — what is lost, how much, and how long until the platform is back
 - [observability.md](./observability.md) — logs, metrics, health, what to alert on

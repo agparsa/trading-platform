@@ -1,5 +1,11 @@
 # Architecture audit — the repository against the multi-broker specification
 
+> **A snapshot, not the current state.** Every status below is the repository
+> at the baseline named underneath, on 3 September 2026, before any of the
+> multi-broker plan was built. Webhooks, break-glass, the server-side
+> close-all, external execution and much else marked MISSING here have since
+> been built. The current matrix is [final-audit.md](./final-audit.md).
+
 **Baseline:** `445a801` (cloud) / `f630e3e` (GitHub `main`, deployed at devopss.ir).
 4 applications, 16 workspace packages, 49 Prisma models, 146 API routes, 134
 test files / 1,787 tests, 18 API smoke checks, 8 WebSocket checks, 69 browser

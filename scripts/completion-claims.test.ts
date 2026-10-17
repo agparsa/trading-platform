@@ -138,6 +138,55 @@ describe('COMPLETION_STATUS against the code', () => {
     expect(wrong).toEqual([]);
   });
 
+  /**
+   * final-audit.md's terminal row listed the row ticket, categories, top
+   * movers and the Alerts tab as missing well after each shipped. Its
+   * "not built" clause must name exactly what the code lacks.
+   */
+  it("final-audit's terminal row names as not built exactly what is absent", () => {
+    const row = /^\| 17–24 [^\n]*$/m.exec(read('docs/final-audit.md'))?.[0] ?? '';
+    const at = row.indexOf('**not built:**');
+    expect(at).toBeGreaterThan(-1);
+    const clause = row.slice(
+      at,
+      row.indexOf(' — ', at) === -1 ? undefined : row.indexOf(' — ', at),
+    );
+    const terminal = read('apps/web/src/components/terminal.tsx');
+    const tab = (label: string) => new RegExp(`label: '${label}'`).test(terminal);
+    const parts: Array<{ name: string; pattern: RegExp; built: boolean }> = [
+      {
+        name: 'row ticket',
+        pattern: /row ticket|inline|quick ticket/i,
+        built: /function RowTicket\b/.test(read('apps/web/src/components/watchlist.tsx')),
+      },
+      {
+        name: 'categories',
+        pattern: /categor/i,
+        built: /export function categoriesOf\b/.test(read('apps/web/src/lib/watchlist-prefs.ts')),
+      },
+      {
+        name: 'top movers',
+        pattern: /movers/i,
+        built: /export function topMovers\b/.test(read('apps/web/src/lib/watchlist-prefs.ts')),
+      },
+      { name: 'Alerts tab', pattern: /Alerts/, built: tab('Alerts') },
+      { name: 'Finance tab', pattern: /Finance/, built: tab('Finance') },
+      { name: 'Logs tab', pattern: /Logs/, built: tab('Logs') },
+      {
+        name: 'typography scale',
+        pattern: /typography/i,
+        built: /--text-[a-z]/.test(read('apps/web/src/app/globals.css')),
+      },
+    ];
+    const wrong = parts.flatMap((part) => {
+      const named = part.pattern.test(clause);
+      if (named && part.built) return [`${part.name} is named as not built but is built`];
+      if (!named && !part.built) return [`${part.name} is absent but not named`];
+      return [];
+    });
+    expect(wrong).toEqual([]);
+  });
+
   it('reads table rows, not the prose around them', () => {
     const text = '## X\n\nWebhooks were absent once.\n\n| a | b |\n| - | - |\n| 1 | KYC |\n';
     expect(tableRows(section(text, 'X'))).toEqual(['| 1 | KYC |']);

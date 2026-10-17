@@ -35,7 +35,7 @@ interface Feature {
 const FEATURES: readonly Feature[] = [
   {
     name: 'Reports',
-    pattern: /\bReports\b/,
+    pattern: /\b[Rr]eports\b/,
     built: () =>
       exists('apps/api/src/reports/reports.controller.ts') &&
       /@Get\(':id\/download'\)/.test(read('apps/api/src/reports/reports.controller.ts')),
@@ -140,6 +140,36 @@ describe('the broker panel\'s "not built" list, against the code', () => {
         missing.map((feature) => feature.name),
         `absent from the code and from the list: ${missing.map((feature) => feature.name).join(', ')}`,
       ).toEqual([]);
+    });
+  });
+
+  /**
+   * The fourth copy: final-audit.md's §107 row. It said "server-side reports"
+   * were not built until 17 October — a month after they shipped — because
+   * this test read three documents and the matrix was the fourth.
+   */
+  describe('docs/final-audit.md, row 13–14', () => {
+    const row = /^\| 13–14 [^\n]*$/m.exec(read('docs/final-audit.md'))?.[0] ?? '';
+    // Up to the dash that ends the list; what follows is commentary, and may
+    // name a feature in saying it was once wrongly listed.
+    const from = row.indexOf('**not built:**');
+    const to = row.indexOf(' — ', from);
+    const clause = row.slice(from, to === -1 ? undefined : to);
+
+    it('has a "not built" clause', () => {
+      expect(row).not.toBe('');
+      expect(clause.startsWith('**not built:**')).toBe(true);
+    });
+
+    it('names no feature the code has, and every feature it lacks', () => {
+      const wrongly = FEATURES.filter((feature) => feature.built() && feature.pattern.test(clause));
+      const missing = FEATURES.filter(
+        (feature) => !feature.built() && !feature.pattern.test(clause),
+      );
+      expect({
+        wrongly: wrongly.map((feature) => feature.name),
+        missing: missing.map((feature) => feature.name),
+      }).toEqual({ wrongly: [], missing: [] });
     });
   });
 
