@@ -27,6 +27,7 @@ import { PendingPanel } from './pending-panel';
 import { OrderTicket } from './order-ticket';
 import { PositionsPanel } from './positions-panel';
 import { AlertsPanel } from './alerts-panel';
+import { FinancePanel } from './finance-panel';
 import { TradingSettings } from './trading-settings';
 import { SecuritySettings } from './security-settings';
 import { NotificationBell } from './notification-bell';
@@ -37,7 +38,7 @@ import { Toasts } from './toasts';
 import { Button, Panel, Tabs } from './primitives';
 import { Watchlist } from './watchlist';
 
-type BottomTab = 'open' | 'pending' | 'alerts' | HistoryTab;
+type BottomTab = 'open' | 'pending' | 'alerts' | 'finance' | HistoryTab;
 
 /**
  * The trading terminal.
@@ -380,11 +381,20 @@ export function Terminal() {
                   { id: 'closed', label: 'Closed' },
                   { id: 'orders', label: 'Orders' },
                   { id: 'alerts', label: 'Alerts' },
+                  { id: 'finance', label: 'Finance' },
                 ]}
               />
             }
           >
-            {bottomTab === 'alerts' ? (
+            {bottomTab === 'finance' ? (
+              /*
+               * The balance's own history. Trades and Closed show what the
+               * positions did; this shows what reached the balance — and
+               * deposits, transfers, fees and adjustments, which no position
+               * explains.
+               */
+              <FinancePanel accountId={accountId} />
+            ) : bottomTab === 'alerts' ? (
               /*
                * A tab of its own, next to pending orders rather than inside
                * them. They look alike on screen and are not alike at all: a

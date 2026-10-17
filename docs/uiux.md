@@ -16,7 +16,7 @@ order ticket — collapsing to one scrolling column below `lg`. The account stri
 sits under the header; toasts and the shortcut card float.
 
 The activity panel's tabs today are **Positions (n) · Pending (n) · Trades ·
-Closed · Orders · Alerts**. `scripts/uiux-doc.test.ts` reads this line against
+Closed · Orders · Alerts · Finance**. `scripts/uiux-doc.test.ts` reads this line against
 the tabs `terminal.tsx` renders; it had stopped at Orders for as long as the
 Alerts tab had existed.
 
@@ -199,6 +199,26 @@ disabled with the reason beside them. Rendered tests in
 that no order exists, and runs the terminal's accessibility audit with the
 row ticket open (its first version, tinted buttons, failed it at 4.2:1).
 
+**The Finance tab.** The account's balance history: every entry of its
+ledger, newest first — deposits, transfers, closed trades, commission, swap,
+fees and adjustments — each with the balance it left, so the top row's
+balance is the balance the account shows. It reads `GET
+/accounts/:id/ledger`, the append-only rows reconciliation replays, fifty at
+a time with "Load older movements"; nothing is netted or recomputed in the
+browser, and the CSV export writes the loaded rows with the server's own
+decimal strings. TRADE_PROFIT and TRADE_LOSS both read "Closed trade" — the
+sign says which — and a type the screen does not know is shown as the server
+spelled it rather than hidden. The account page shows the same component
+under "Balance history". The browser walk compares the tab with the database
+(row count, and the newest balance against the account's) and audits it.
+
+Building it turned up the endpoint's paging: ordered by `created_at` alone
+with an id cursor, Prisma could not form a keyset and sent every entry at or
+before the cursor **with no LIMIT**, cutting the page in memory — each page
+of a long ledger read the ledger. It now orders by `(created_at, id)`, which
+becomes a bounded keyset query; `scripts/cursor-order.test.ts` holds every
+cursor query in the API to that.
+
 **Categories and Top movers.** The groups are the platform's own — the
 `category` an administrator files an instrument under, sent on `GET /symbols`
 — offered as chips in the order the platform lists its instruments, and only
@@ -260,8 +280,10 @@ leg now has its own identity, and a test says so.
 
 Stated rather than stubbed. None of this is built:
 
-- **Finance and Logs tabs.** Neither has a design. (Alerts is built — price
-  alerts have their own tab, next to pending orders; see `price-alerts.md`.)
+- **A Logs tab.** It has no design: what a trader's log would hold that the
+  order history (every instruction, rejections included) and the security
+  feed on Settings do not is undecided. (Alerts and Finance are built — see
+  `price-alerts.md`, and "The Finance tab" above.)
 - **Design tokens beyond colour.** There is no spacing scale and no typography
   scale; sizes are arbitrary utilities repeated inline. (A light theme now
   exists — see "Appearance" above.) The colour tokens themselves are now held to their definitions:

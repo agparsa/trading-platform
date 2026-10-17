@@ -1,6 +1,12 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
 import type { ApiClient } from '@tp/api-client';
 import type { MarketStatusDto } from '@tp/shared-types';
 import { barWindow, RESOLUTION_MINUTES, type Resolution } from '@tp/chart-core';
@@ -214,6 +220,7 @@ export const queryKeys = {
   securityEvents: ['security-events'] as const,
   addresses: ['addresses'] as const,
   features: ['features'] as const,
+  ledger: (accountId: string) => ['ledger', accountId] as const,
 };
 
 /** Everything a trading event can invalidate, in one place. */
@@ -223,6 +230,7 @@ export function invalidateTradingState(client: QueryClient, accountId: string): 
   void client.invalidateQueries({ queryKey: queryKeys.orders(accountId) });
   void client.invalidateQueries({ queryKey: queryKeys.pending(accountId) });
   void client.invalidateQueries({ queryKey: queryKeys.accountState(accountId) });
+  void client.invalidateQueries({ queryKey: queryKeys.ledger(accountId) });
   void client.invalidateQueries({ queryKey: queryKeys.accounts });
 }
 
@@ -817,7 +825,51 @@ export function useWalletTransfer() {
       void client.invalidateQueries({ queryKey: ['wallet-transactions'] });
       void client.invalidateQueries({ queryKey: queryKeys.accounts });
       void client.invalidateQueries({ queryKey: queryKeys.accountState(input.accountId) });
+      void client.invalidateQueries({ queryKey: queryKeys.ledger(input.accountId) });
     },
+  });
+}
+
+export interface LedgerEntryRow {
+  id: string;
+  type: string;
+  /** Signed: positive credited the account, negative debited it. */
+  amount: string;
+  balanceAfter: string;
+  currency: string;
+  description: string | null;
+  createdAt: string;
+}
+
+/** The size of one page of balance history. */
+export const LEDGER_PAGE = 50;
+
+/**
+ * An account's balance history, newest first, a page at a time.
+ *
+ * Paged rather than read whole: the ledger is append-only and grows with
+ * every fill, commission and swap, and the oldest pages are the ones least
+ * often wanted. The server's cursor is the last entry's id; it orders by
+ * `(created_at, id)`, so a boundary inside entries sharing one instant
+ * neither repeats nor skips one.
+ */
+export function useLedger(accountId: string | null) {
+  const { api } = useSession();
+  return useInfiniteQuery({
+    queryKey: queryKeys.ledger(accountId ?? 'none'),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      api.get<{ entries: LedgerEntryRow[]; nextCursor?: string }>(
+        `/accounts/${accountId ?? ''}/ledger`,
+        {
+          query: {
+            limit: LEDGER_PAGE,
+            ...(pageParam === undefined ? {} : { cursor: pageParam }),
+          },
+        },
+      ),
+    getNextPageParam: (page) => page.nextCursor,
+    enabled: accountId !== null,
   });
 }
 

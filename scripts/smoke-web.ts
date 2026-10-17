@@ -20,7 +20,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { chromium, type Browser, type ConsoleMessage, type Page } from 'playwright';
 
 /**
@@ -1142,6 +1142,50 @@ async function main(): Promise<void> {
     );
     await screenshot(page, 'terminal alerts tab');
     await auditAccessibility(page, 'the alerts tab');
+
+    /**
+     * The Finance tab is the account's ledger, compared with the database —
+     * the newest entry's balance is the balance the database holds for the
+     * account, and the rows shown are the ledger rows, not a count the page
+     * computed. Then audited, like every tab.
+     */
+    {
+      await page.getByRole('tab', { name: /^Finance$/ }).click();
+      const history = page.getByTestId('balance-history');
+      await history.waitFor({ timeout: 10_000 }).catch(() => undefined);
+      const account = await prisma.account.findFirst({
+        where: { user: { email: people.trader.email } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, balance: true },
+      });
+      const entries =
+        account === null
+          ? []
+          : await prisma.balanceLedger.findMany({
+              where: { accountId: account.id },
+              orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+              take: 50,
+              select: { balanceAfter: true },
+            });
+      const shownRows =
+        (await history.count()) === 0 ? 0 : await history.locator('tbody tr').count();
+      const topBalance =
+        shownRows === 0
+          ? null
+          : await history.locator('tbody tr').first().locator('td').last().getAttribute('title');
+      const same = (a: string | null | undefined, b: string | null | undefined) =>
+        a != null && b != null && new Prisma.Decimal(a).equals(new Prisma.Decimal(b));
+      ok(
+        account !== null &&
+          entries.length > 0 &&
+          shownRows === entries.length &&
+          same(topBalance, entries[0]?.balanceAfter.toString()) &&
+          same(topBalance, account.balance.toString()),
+        "the Finance tab lists the account's ledger, and its newest balance is the account's",
+        `${shownRows} shown / ${entries.length} in the ledger · top ${topBalance ?? '—'} · account ${account?.balance.toString() ?? '—'}`,
+      );
+      await auditAccessibility(page, 'the Finance tab');
+    }
 
     await visit(page, '/account', { url: '/account', text: /Account/i });
     await checkSectionLinks(page, 'the account page header');

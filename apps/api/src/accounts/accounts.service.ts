@@ -122,7 +122,14 @@ export class AccountsService {
     await this.access.resolve(userId, accountId, Permission.ACCOUNTS_READ);
     const entries = await this.prisma.balanceLedger.findMany({
       where: { accountId },
-      orderBy: { createdAt: 'desc' },
+      /**
+       * `id` breaks ties. Prisma stamps `created_at` to the millisecond, and
+       * one transaction posting a close's profit, commission and swap can put
+       * several entries in the same one. Ordered by time alone, the order
+       * among them was whatever the plan chose, and a page boundary falling
+       * inside the group could show one entry twice and skip another.
+       */
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,
       ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 }),
     });

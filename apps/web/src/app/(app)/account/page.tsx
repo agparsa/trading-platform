@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shell/app-shell';
 import { AccountHeader } from '@/components/account-header';
+import { FinancePanel } from '@/components/finance-panel';
 import { EmptyState, Panel } from '@/components/primitives';
 import { money, utcTime } from '@/lib/format';
 import { useAccounts, useOrders, usePositions } from '@/lib/queries';
@@ -15,10 +16,9 @@ import { useAccounts, useOrders, usePositions } from '@/lib/queries';
  * What this page adds is everything the strip has no room for: which accounts
  * exist, when each was opened, and the terms it trades on.
  *
- * There is no ledger table here yet. The endpoint exists (`/accounts/:id/ledger`)
- * and a page listing money movements belongs with the wallet it does not have —
- * building the table now would mean deciding what a "transaction" is called
- * twice, and changing it the moment Phase 4 lands.
+ * And the balance history: the account's ledger, the same component as the
+ * terminal's Finance tab. The wallet page lists the wallet's own movements;
+ * this lists the account's, which include every fill, commission and swap.
  */
 export default function AccountPage() {
   const accounts = useAccounts();
@@ -81,6 +81,12 @@ export default function AccountPage() {
                 <Detail label="Balance" value={money(account.balance, account.currency)} />
                 <Detail label="Opened" value={utcTime(account.createdAt)} />
               </dl>
+            </Panel>
+          )}
+
+          {account === undefined ? null : (
+            <Panel title="Balance history" className="max-h-[32rem]">
+              <FinancePanel accountId={account.id} />
             </Panel>
           )}
         </div>
