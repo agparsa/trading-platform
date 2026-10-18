@@ -44,9 +44,9 @@ reads as currency.
 with **59 migrations** applied, serving **240 API routes**.
 
 Roughly **170,000 lines** of TypeScript across
-863 files.
+864 files.
 
-Counted at `86b4f323` on 2026-10-18 by `pnpm measure`. The
+Counted at `07710c2c` on 2026-10-18 by `pnpm measure`. The
 structural counts above are checked against the working tree on every build;
 the line and file counts move with every commit and are as old as the date
 beside them.

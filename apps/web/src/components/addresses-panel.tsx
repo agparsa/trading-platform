@@ -24,29 +24,29 @@ export function AddressesPanel() {
   return (
     <div className="space-y-3" data-testid="addresses">
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">
+        <p className="text-label uppercase tracking-wider text-terminal-muted">
           Where you have signed in from
         </p>
-        <p className="mt-1 text-[11px] leading-relaxed text-terminal-muted">
+        <p className="mt-1 text-caption leading-relaxed text-terminal-muted">
           Every address this account has been signed in from, for as long as sign-in records are
           kept. An address you do not recognise, with a session still open, is the one to end.
         </p>
       </div>
 
       {addresses.isPending ? (
-        <p className="text-[11px] text-terminal-muted">Loading…</p>
+        <p className="text-caption text-terminal-muted">Loading…</p>
       ) : addresses.isError ? (
-        <p className="text-[11px] text-terminal-short">Could not load your sign-in history.</p>
+        <p className="text-caption text-terminal-short">Could not load your sign-in history.</p>
       ) : rows.length === 0 ? (
-        <p className="text-[11px] text-terminal-muted">No sign-ins recorded yet.</p>
+        <p className="text-caption text-terminal-muted">No sign-ins recorded yet.</p>
       ) : (
         <ul className="divide-y divide-terminal-border">
           {rows.map((row: AddressRow) => (
-            <li key={row.ipAddress} className="flex items-start gap-3 py-2 text-[11px]">
+            <li key={row.ipAddress} className="flex items-start gap-3 py-2 text-caption">
               <span className="w-36 shrink-0 tabular-nums text-terminal-text">
                 {row.ipAddress}
                 {row.current ? (
-                  <span className="ml-1 text-[10px] text-terminal-long">you, now</span>
+                  <span className="ml-1 text-label text-terminal-long">you, now</span>
                 ) : null}
               </span>
               <span className="min-w-0 flex-1">

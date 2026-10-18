@@ -23,11 +23,11 @@ export function ErrorLine({ error }: { error: unknown }) {
       : error instanceof Error
         ? error.message
         : 'The request failed. Nothing was changed.';
-  return <p className="px-3 py-2 text-[11px] text-terminal-short">{message}</p>;
+  return <p className="px-3 py-2 text-caption text-terminal-short">{message}</p>;
 }
 
 export function Loading({ children = 'Loading…' }: { children?: React.ReactNode }) {
-  return <p className="px-3 py-3 text-[11px] text-terminal-muted">{children}</p>;
+  return <p className="px-3 py-3 text-caption text-terminal-muted">{children}</p>;
 }
 
 export function SearchBox({
@@ -56,9 +56,7 @@ export function StatusPill({ status }: { status: string }) {
       : status === 'CLOSED' || status === 'SUSPENDED' || status === 'REVOKED'
         ? 'bg-terminal-short/15 text-terminal-short'
         : 'bg-terminal-warning/15 text-terminal-warning';
-  return (
-    <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium', tone)}>{status}</span>
-  );
+  return <span className={cn('rounded px-1.5 py-0.5 text-label font-medium', tone)}>{status}</span>;
 }
 
 export function SeverityPill({ severity }: { severity: string }) {
@@ -69,7 +67,7 @@ export function SeverityPill({ severity }: { severity: string }) {
         ? 'bg-terminal-warning/15 text-terminal-warning'
         : 'bg-terminal-raised text-terminal-muted';
   return (
-    <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium', tone)}>{severity}</span>
+    <span className={cn('rounded px-1.5 py-0.5 text-label font-medium', tone)}>{severity}</span>
   );
 }
 
@@ -162,7 +160,7 @@ export function Head({
 }) {
   return (
     <thead className="sticky top-0 z-10 bg-terminal-surface">
-      <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+      <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
         {columns.map((column) => {
           const label = typeof column === 'string' ? column : column.label;
           const right = typeof column === 'string' ? false : column.right === true;

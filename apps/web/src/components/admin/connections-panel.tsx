@@ -71,11 +71,11 @@ export function ConnectionsPanel() {
   return (
     <div className="flex flex-col" data-testid="connections-panel">
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-        <p className="text-[11px] text-terminal-muted">
+        <p className="text-caption text-terminal-muted">
           Where this firm&apos;s orders execute when an account is set to an external broker. A
           connection&apos;s credentials are sealed on arrival and never shown again.
         </p>
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {rows.length} {rows.length === 1 ? 'connection' : 'connections'}
         </span>
       </div>
@@ -109,10 +109,10 @@ export function ConnectionsPanel() {
 
       {mayManage ? (
         <div className="space-y-3 border-t border-terminal-border px-3 py-3">
-          <p className="text-[10px] uppercase tracking-wider text-terminal-muted">New connection</p>
+          <p className="text-label uppercase tracking-wider text-terminal-muted">New connection</p>
           <ErrorLine error={create.error ?? connectors.error} />
           {available.length === 0 ? (
-            <p className="text-[11px] text-terminal-muted">
+            <p className="text-caption text-terminal-muted">
               This build has no venue connectors. One is added by writing it against a venue&apos;s
               published API and registering it — see docs/broker-integration.md.
             </p>
@@ -142,12 +142,12 @@ export function ConnectionsPanel() {
                 </Field>
               </div>
               {chosen !== undefined && chosen.documentation === '' ? (
-                <p className="text-[11px] text-terminal-warning">
+                <p className="text-caption text-terminal-warning">
                   {chosen.displayName} is not a real venue. It behaves like one so the platform can
                   be exercised; it executes nothing.
                 </p>
               ) : chosen !== undefined ? (
-                <p className="text-[10px] text-terminal-muted">
+                <p className="text-label text-terminal-muted">
                   Written against {chosen.documentation}
                 </p>
               ) : null}
@@ -207,7 +207,7 @@ function ConnectionRow({
       <tr className="border-t border-terminal-border/60 align-top">
         <td className="px-3 py-1.5">
           <p className="text-terminal-text">{row.name}</p>
-          <p className="font-mono text-[10px] text-terminal-muted">
+          <p className="font-mono text-label text-terminal-muted">
             {connector?.displayName ?? row.adapterKind}
             {row.enabled ? '' : ' · disabled'}
           </p>
@@ -215,19 +215,19 @@ function ConnectionRow({
         <td className={cn('px-3 py-1.5', STATE_TONE[row.status] ?? 'text-terminal-muted')}>
           {STATE_WORDS[row.status] ?? row.status}
           {row.lastError === null ? null : (
-            <p className="text-[10px] text-terminal-muted">{row.lastError}</p>
+            <p className="text-label text-terminal-muted">{row.lastError}</p>
           )}
           {row.circuitOpenUntil === null ? null : (
-            <p className="text-[10px] text-terminal-muted">
+            <p className="text-label text-terminal-muted">
               Backing off until {utcTime(row.circuitOpenUntil)}
             </p>
           )}
         </td>
-        <td className="numeric px-3 py-1.5 text-[10px] text-terminal-muted">
+        <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
           {row.lastHeartbeatAt === null ? 'never' : utcTime(row.lastHeartbeatAt)}
           {row.latencyMs === null ? '' : ` · ${row.latencyMs}ms`}
         </td>
-        <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
+        <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
           {live === undefined ? (
             <span className="text-terminal-warning">none set</span>
           ) : (
@@ -241,7 +241,7 @@ function ConnectionRow({
             </>
           )}
         </td>
-        <td className="px-3 py-1.5 text-[10px] text-terminal-muted">{supports}</td>
+        <td className="px-3 py-1.5 text-label text-terminal-muted">{supports}</td>
         <td className="space-x-2 px-3 py-1.5 text-right">
           <Button variant="ghost" onClick={() => setPane(toggle('instruments'))}>
             Instruments
@@ -328,7 +328,7 @@ function MappingsPane({ connectionId, mayManage }: { connectionId: string; mayMa
   return (
     <div className="space-y-3" data-testid="broker-mappings">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] text-terminal-muted">
+        <p className="text-caption text-terminal-muted">
           An instrument with no mapping cannot be traded on this connection. Nothing here is
           inferred from a name that looks similar.
         </p>
@@ -346,7 +346,7 @@ function MappingsPane({ connectionId, mayManage }: { connectionId: string; mayMa
       <ErrorLine error={mappings.error ?? catalogue.error ?? map.error ?? sync.error} />
 
       {sync.data === undefined ? null : (
-        <div className="border border-terminal-border px-3 py-2 text-[11px]">
+        <div className="border border-terminal-border px-3 py-2 text-caption">
           <p className="text-terminal-muted">
             Checked {sync.data.checked} {sync.data.checked === 1 ? 'mapping' : 'mappings'}.
           </p>
@@ -378,12 +378,12 @@ function MappingsPane({ connectionId, mayManage }: { connectionId: string; mayMa
                   {mapping.symbolCode}
                   {mapping.enabled ? '' : ' · off'}
                 </td>
-                <td className="px-3 py-1.5 font-mono text-[11px]">{mapping.externalSymbol}</td>
-                <td className="px-3 py-1.5 text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 font-mono text-caption">{mapping.externalSymbol}</td>
+                <td className="px-3 py-1.5 text-label text-terminal-muted">
                   contract {mapping.contractSize ?? '—'} · step {mapping.volumeStep ?? '—'} ·{' '}
                   {mapping.minVolume ?? '—'}–{mapping.maxVolume ?? '—'} lots
                 </td>
-                <td className="numeric px-3 py-1.5 text-[10px] text-terminal-muted">
+                <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
                   {mapping.syncedAt === null ? 'never' : utcTime(mapping.syncedAt)}
                 </td>
                 <td className="px-3 py-1.5 text-right">
@@ -482,7 +482,7 @@ function InboxPane({ connectionId, mayManage }: { connectionId: string; mayManag
 
   return (
     <div className="space-y-3" data-testid="broker-inbox">
-      <p className="text-[11px] text-terminal-muted">
+      <p className="text-caption text-terminal-muted">
         Recorded before it is acted on, once per event however many times the venue sends it.
       </p>
       <ErrorLine error={inbox.error ?? replay.error} />
@@ -496,17 +496,17 @@ function InboxPane({ connectionId, mayManage }: { connectionId: string; mayManag
           <tbody>
             {events.map((event) => (
               <tr key={event.id} className="border-t border-terminal-border/60 align-top">
-                <td className="numeric px-3 py-1.5 text-[10px] text-terminal-muted">
+                <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
                   {utcTime(event.occurredAt)}
                   {event.sequence === null ? '' : ` · #${event.sequence}`}
                 </td>
                 <td className="px-3 py-1.5">
                   <p className="text-terminal-text">{event.kind}</p>
-                  <p className="font-mono text-[10px] text-terminal-muted">
+                  <p className="font-mono text-label text-terminal-muted">
                     {event.externalEventId}
                   </p>
                 </td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
                   {event.externalAccountId ?? '—'}
                 </td>
                 <td
@@ -514,10 +514,10 @@ function InboxPane({ connectionId, mayManage }: { connectionId: string; mayManag
                 >
                   {event.status}
                   {event.lastError === null ? null : (
-                    <p className="text-[10px] text-terminal-muted">{event.lastError}</p>
+                    <p className="text-label text-terminal-muted">{event.lastError}</p>
                   )}
                   {event.skipReason === null ? null : (
-                    <p className="text-[10px] text-terminal-muted">{event.skipReason}</p>
+                    <p className="text-label text-terminal-muted">{event.skipReason}</p>
                   )}
                 </td>
                 <td className="px-3 py-1.5 text-right">
@@ -557,7 +557,7 @@ function CredentialForm({
 
   if (connector === undefined) {
     return (
-      <p className="text-[11px] text-terminal-short">
+      <p className="text-caption text-terminal-short">
         This build has no connector of kind {row.adapterKind}, so it cannot say what credentials it
         needs.
       </p>
@@ -566,7 +566,7 @@ function CredentialForm({
 
   return (
     <div className="space-y-3" data-testid="broker-credential-form">
-      <p className="text-[11px] text-terminal-muted">
+      <p className="text-caption text-terminal-muted">
         These go to the server once and are sealed there. Nothing sends them back — afterwards this
         screen shows a fingerprint. Setting them revokes whatever this connection was using.
       </p>

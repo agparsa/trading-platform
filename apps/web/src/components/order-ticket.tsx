@@ -472,7 +472,7 @@ export function OrderTicket({
             aria-pressed={value === orderType}
             title={ORDER_TYPE_HINT[value]}
             className={cn(
-              'flex-1 whitespace-nowrap rounded px-1 py-1 text-[11px] transition-colors',
+              'flex-1 whitespace-nowrap rounded px-1 py-1 text-caption transition-colors',
               value === orderType
                 ? 'bg-terminal-raised text-terminal-text'
                 : 'text-terminal-muted hover:text-terminal-text',
@@ -505,7 +505,7 @@ export function OrderTicket({
         frame, not this browser's subtraction: the number a trader uses to judge
         cost should be the number the server would quote them.
       */}
-      <div className="flex items-baseline justify-between rounded border border-terminal-border/60 bg-terminal-raised/30 px-2 py-1 text-[10px] uppercase tracking-wider text-terminal-muted">
+      <div className="flex items-baseline justify-between rounded border border-terminal-border/60 bg-terminal-raised/30 px-2 py-1 text-label uppercase tracking-wider text-terminal-muted">
         <span>
           Bid{' '}
           <span className="numeric normal-case tracking-normal text-terminal-text">
@@ -688,7 +688,7 @@ export function OrderTicket({
         />
       </Field>
 
-      <dl className="space-y-1 rounded border border-terminal-border bg-terminal-bg px-2.5 py-2 text-[11px]">
+      <dl className="space-y-1 rounded border border-terminal-border bg-terminal-bg px-2.5 py-2 text-caption">
         <EstimateRow label="Est. margin" value={estimate.margin} />
         <EstimateRow label="Est. commission" value={estimate.commission} />
         {/*
@@ -747,14 +747,14 @@ export function OrderTicket({
       </dl>
 
       {orderType === 'MARKET' ? null : (
-        <p className="text-[10px] leading-relaxed text-terminal-muted">
+        <p className="text-label leading-relaxed text-terminal-muted">
           No margin is held while the order rests. It is checked again when the order fires, and
           rejected if the account cannot carry it then.
         </p>
       )}
 
       {symbol.sessionOpen ? null : (
-        <p className="text-[11px] text-terminal-warning">
+        <p className="text-caption text-terminal-warning">
           {symbol.market === undefined
             ? `${symbol.code} is outside its trading session.`
             : marketNotice(symbol.market, symbol.code).detail}{' '}
@@ -764,12 +764,14 @@ export function OrderTicket({
 
       <CommandLog commands={commands} />
 
-      {priceError === null ? null : <p className="text-[11px] text-terminal-short">{priceError}</p>}
+      {priceError === null ? null : (
+        <p className="text-caption text-terminal-short">{priceError}</p>
+      )}
       {validation.error === null ? null : (
-        <p className="text-[11px] text-terminal-short">{validation.error}</p>
+        <p className="text-caption text-terminal-short">{validation.error}</p>
       )}
       {submitError.length === 0 ? null : (
-        <ul className="space-y-0.5 text-[11px] text-terminal-short" role="alert">
+        <ul className="space-y-0.5 text-caption text-terminal-short" role="alert">
           {submitError.map((line) => (
             <li key={line}>{line}</li>
           ))}
@@ -797,7 +799,7 @@ export function OrderTicket({
          * they meant something the dialog will not name.
          */
         <div className="rounded border border-terminal-warning/60 bg-terminal-warning/10 p-2">
-          <p className="mb-2 text-[11px] text-terminal-text" data-testid="ticket-confirm">
+          <p className="mb-2 text-caption text-terminal-text" data-testid="ticket-confirm">
             Send{' '}
             <span className="numeric font-medium">
               {pendingConfirm} {volume} {symbol.code}
@@ -805,7 +807,7 @@ export function OrderTicket({
             {stagedMarket ? ' at market' : ''}?
           </p>
           {largeOrder === null ? null : (
-            <p className="mb-2 text-[11px] text-terminal-warning">{largeOrder}</p>
+            <p className="mb-2 text-caption text-terminal-warning">{largeOrder}</p>
           )}
           <div className="flex gap-2">
             <Button
@@ -831,7 +833,7 @@ export function OrderTicket({
         </div>
       )}
 
-      <p className="text-[10px] leading-relaxed text-terminal-muted">
+      <p className="text-label leading-relaxed text-terminal-muted">
         Costs are estimates from the last quote received here. The server prices the fill against
         the quote current at execution.
         {preferences.oneClick && !preferences.confirm ? (
@@ -908,16 +910,16 @@ function CommandLog({ commands }: { commands: readonly OrderCommand[] }) {
 
   return (
     <div className="rounded border border-terminal-border bg-terminal-bg px-2.5 py-2">
-      <p className="mb-1 text-[10px] uppercase tracking-wider text-terminal-muted">Sent</p>
+      <p className="mb-1 text-label uppercase tracking-wider text-terminal-muted">Sent</p>
       <ul className="space-y-1">
         {commands.slice(0, 4).map((command) => (
           <li key={command.commandId} className="flex items-baseline justify-between gap-2">
-            <span className="numeric truncate text-[11px] text-terminal-text">
+            <span className="numeric truncate text-caption text-terminal-text">
               {command.side} {command.volume} {command.symbol}
               {command.type === 'MARKET' ? '' : ` ${command.type}`}
             </span>
             <span
-              className={cn('shrink-0 text-[10px]', COMMAND_STATE_TONE[command.state])}
+              className={cn('shrink-0 text-label', COMMAND_STATE_TONE[command.state])}
               title={command.reason ?? `Command ${command.commandId}`}
             >
               {COMMAND_STATE_LABEL[command.state]}
@@ -926,7 +928,7 @@ function CommandLog({ commands }: { commands: readonly OrderCommand[] }) {
         ))}
       </ul>
       {commands[0]?.reason === null || commands[0]?.reason === undefined ? null : (
-        <p className="mt-1 text-[10px] leading-snug text-terminal-short">{commands[0].reason}</p>
+        <p className="mt-1 text-label leading-snug text-terminal-short">{commands[0].reason}</p>
       )}
     </div>
   );
@@ -965,7 +967,7 @@ function SideButton({
     >
       <span
         className={cn(
-          'block text-[10px] uppercase tracking-wider',
+          'block text-label uppercase tracking-wider',
           side === 'BUY' ? 'text-terminal-long' : 'text-terminal-short',
         )}
       >

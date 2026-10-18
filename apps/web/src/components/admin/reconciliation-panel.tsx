@@ -50,7 +50,7 @@ export function ReconciliationPanel() {
         />
         <div className="flex items-center gap-2">
           {request.data?.alreadyRunning === true ? (
-            <span className="text-[10px] text-terminal-warning">
+            <span className="text-label text-terminal-warning">
               A run is already in flight; this one was not queued.
             </span>
           ) : null}
@@ -82,7 +82,7 @@ function Findings() {
     <>
       <div className="flex items-center gap-2 border-b border-terminal-border px-3 py-2">
         <select
-          className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-[11px] text-terminal-text"
+          className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-caption text-terminal-text"
           value={status}
           onChange={(event) => setStatus(event.target.value)}
           aria-label="Finding status"
@@ -94,7 +94,7 @@ function Findings() {
           <option value="RESOLVED">Resolved</option>
           <option value="FALSE_POSITIVE">False positive</option>
         </select>
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {findings.data === undefined ? '' : `${findings.data.length} finding(s)`}
         </span>
       </div>
@@ -156,7 +156,7 @@ function Findings() {
                   </td>
                   <td
                     className={cn(
-                      'px-2 py-1.5 text-[10px] uppercase tracking-wider',
+                      'px-2 py-1.5 text-label uppercase tracking-wider',
                       CLOSING.has(row.status) ? 'text-terminal-muted' : 'text-terminal-warning',
                     )}
                   >
@@ -205,15 +205,15 @@ function Findings() {
                 {expanded === row.id ? (
                   <tr key={`${row.id}-detail`} className="border-t border-terminal-border/60">
                     <td colSpan={8} className="bg-terminal-bg px-3 py-2">
-                      <p className="mb-1 text-[11px] text-terminal-text">{row.message}</p>
-                      <p className="numeric text-[10px] text-terminal-muted">
+                      <p className="mb-1 text-caption text-terminal-text">{row.message}</p>
+                      <p className="numeric text-label text-terminal-muted">
                         expected {row.expected} · actual {row.actual} · difference {row.difference}
                         {row.subjectId === null
                           ? ''
                           : ` · ${row.subjectType ?? 'row'} ${row.subjectId}`}
                       </p>
                       {row.resolutionNote === null ? null : (
-                        <p className="mt-1 text-[10px] text-terminal-muted">
+                        <p className="mt-1 text-label text-terminal-muted">
                           Closed: {row.resolutionNote}
                         </p>
                       )}
@@ -226,7 +226,7 @@ function Findings() {
         </Table>
       )}
 
-      <p className="px-3 py-2 text-[10px] text-terminal-muted">
+      <p className="px-3 py-2 text-label text-terminal-muted">
         Resolving records that a person looked. It corrects nothing — if the drift is still there,
         the next run reopens it, which is what stops a tick put here in good faith from hiding a
         real inconsistency. Corrections are ledger entries, on the Accounts tab.
@@ -267,7 +267,7 @@ function Runs() {
                 </td>
                 <td
                   className={cn(
-                    'px-2 py-1.5 text-[10px] uppercase tracking-wider',
+                    'px-2 py-1.5 text-label uppercase tracking-wider',
                     run.status === 'FAILED'
                       ? 'text-terminal-short'
                       : run.status === 'RUNNING'
@@ -309,7 +309,7 @@ function Runs() {
           </tbody>
         </Table>
       )}
-      <p className="px-3 py-2 text-[10px] text-terminal-muted">
+      <p className="px-3 py-2 text-label text-terminal-muted">
         Clean runs are listed too. &ldquo;The last run found nothing&rdquo; and &ldquo;nothing has
         run since Tuesday&rdquo; look identical without them, and only one of those is reassuring.
       </p>
@@ -369,7 +369,7 @@ function VenueItems() {
     <>
       <div className="flex items-center gap-2 border-b border-terminal-border px-3 py-2">
         <select
-          className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-[11px] text-terminal-text"
+          className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-caption text-terminal-text"
           value={status}
           onChange={(event) => setStatus(event.target.value)}
           aria-label="Discrepancy kind"
@@ -381,7 +381,7 @@ function VenueItems() {
             </option>
           ))}
         </select>
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {items.data === undefined ? '' : `${items.data.length} disagreement(s)`}
         </span>
       </div>
@@ -447,7 +447,7 @@ function VenueItems() {
                       rule somebody set".
                     */}
                     {row.tolerance === null ? null : (
-                      <span className="ml-1 text-[10px] text-terminal-muted">±{row.tolerance}</span>
+                      <span className="ml-1 text-label text-terminal-muted">±{row.tolerance}</span>
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-terminal-muted">{utcTime(row.createdAt)}</td>
@@ -467,8 +467,8 @@ function VenueItems() {
                 {expanded === row.id ? (
                   <tr className="border-t border-terminal-border/30">
                     <td colSpan={8} className="px-4 py-2">
-                      <p className="text-[11px] text-terminal-muted">{row.message}</p>
-                      <p className="mt-1 text-[10px] text-terminal-muted">
+                      <p className="text-caption text-terminal-muted">{row.message}</p>
+                      <p className="mt-1 text-label text-terminal-muted">
                         Reference <span className="numeric">{row.key}</span>
                       </p>
                       <Decisions itemId={row.id} />
@@ -498,7 +498,7 @@ function Decisions({ itemId }: { itemId: string }) {
   if (resolutions.isLoading) return <Loading />;
   if (rows.length === 0) {
     return (
-      <p className="mt-2 text-[10px] text-terminal-muted">
+      <p className="mt-2 text-label text-terminal-muted">
         Nobody has recorded a decision about this yet.
       </p>
     );
@@ -507,11 +507,11 @@ function Decisions({ itemId }: { itemId: string }) {
   return (
     <ol className="mt-2 flex flex-col gap-1">
       {rows.map((row) => (
-        <li key={row.id} className="text-[11px]">
+        <li key={row.id} className="text-caption">
           <span className="text-terminal-text">
             {DECISIONS.find(([value]) => value === row.decision)?.[1] ?? row.decision}
           </span>
-          <span className="ml-2 text-[10px] text-terminal-muted">
+          <span className="ml-2 text-label text-terminal-muted">
             {row.decidedBy.displayName ?? row.decidedBy.email} · {utcTime(row.decidedAt)}
           </span>
           <p className="text-terminal-muted">{row.note}</p>

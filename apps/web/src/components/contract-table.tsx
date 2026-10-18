@@ -33,7 +33,7 @@ export function ContractTable({
   return (
     <table className="w-full border-collapse text-xs" data-testid="contract-table">
       <thead className="sticky top-0 z-10 bg-terminal-surface">
-        <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+        <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
           <th className="py-1.5 pl-3 pr-2 font-medium">Instrument</th>
           <th className="px-2 py-1.5 text-right font-medium">Contract</th>
           <th
@@ -65,33 +65,33 @@ export function ContractTable({
               <tr className="border-t border-terminal-border/60 align-top">
                 <td className="py-1.5 pl-3 pr-2">
                   <div className="font-medium text-terminal-text">{symbol.code}</div>
-                  <div className="text-[11px] text-terminal-muted">
+                  <div className="text-caption text-terminal-muted">
                     {symbol.description}
                     {symbol.category ? ` · ${symbol.category}` : ''}
                   </div>
                 </td>
                 <td className="numeric px-2 py-1.5 text-right text-terminal-text">
                   {plain(symbol.contractSize)}
-                  <div className="text-[11px] text-terminal-muted">
+                  <div className="text-caption text-terminal-muted">
                     quoted in {symbol.quoteCurrency}
                   </div>
                 </td>
                 <td className="numeric px-2 py-1.5 text-right text-terminal-text">
                   {plain(symbol.tickSize)}
-                  <div className="text-[11px] text-terminal-muted">
+                  <div className="text-caption text-terminal-muted">
                     {tickValuePerLot(symbol)} {symbol.quoteCurrency} a lot
                   </div>
                 </td>
                 <td className="numeric px-2 py-1.5 text-right text-terminal-text">
                   {plain(symbol.minVolume)} – {plain(symbol.maxVolume)}
-                  <div className="text-[11px] text-terminal-muted">
+                  <div className="text-caption text-terminal-muted">
                     step {plain(symbol.volumeStep)}
                   </div>
                 </td>
                 <td className="numeric px-2 py-1.5 text-right text-terminal-text">
                   {margin.charged ?? margin.instrument}
                   {margin.leverageBinds ? (
-                    <div className="text-[11px] text-terminal-muted">
+                    <div className="text-caption text-terminal-muted">
                       instrument {margin.instrument}; your leverage sets it
                     </div>
                   ) : null}
@@ -115,11 +115,11 @@ export function ContractTable({
                     aria-controls={expanded ? `hours-${symbol.code}` : undefined}
                     aria-label={`${expanded ? 'Hide hours' : 'Hours'} for ${symbol.code}`}
                     onClick={() => setOpen(expanded ? null : symbol.code)}
-                    className="rounded border border-terminal-border px-2 py-0.5 text-[11px] text-terminal-text hover:bg-terminal-raised"
+                    className="rounded border border-terminal-border px-2 py-0.5 text-caption text-terminal-text hover:bg-terminal-raised"
                   >
                     {expanded ? 'Hide' : 'Hours'}
                   </button>
-                  <div className="mt-0.5 text-[11px] text-terminal-muted">
+                  <div className="mt-0.5 text-caption text-terminal-muted">
                     {symbol.market === undefined
                       ? symbol.sessionOpen
                         ? 'Open'
@@ -145,7 +145,7 @@ function HoursRow({ code }: { code: string }) {
   const detail = useSymbolDetail(code);
   return (
     <tr id={`hours-${code}`} className="bg-terminal-raised/40">
-      <td colSpan={8} className="px-3 py-2 text-[11px]">
+      <td colSpan={8} className="px-3 py-2 text-caption">
         {detail.isError ? (
           <span className="text-terminal-muted">The trading hours could not be loaded.</span>
         ) : detail.data === undefined ? (

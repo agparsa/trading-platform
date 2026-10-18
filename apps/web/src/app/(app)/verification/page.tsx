@@ -81,18 +81,18 @@ export default function VerificationPage() {
       ) : (
         <div className="space-y-4">
           <Panel className="p-4">
-            <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Status</p>
+            <p className="text-label uppercase tracking-wider text-terminal-muted">Status</p>
             <p className={`mt-1 text-lg ${status?.tone ?? 'text-terminal-text'}`}>
               {status?.label ?? view.status}
             </p>
-            <p className="mt-1 text-[11px] text-terminal-muted">{status?.detail}</p>
+            <p className="mt-1 text-caption text-terminal-muted">{status?.detail}</p>
             {view.reason === null ? null : (
-              <p className="mt-2 rounded bg-terminal-raised px-3 py-2 text-[11px] text-terminal-text">
+              <p className="mt-2 rounded bg-terminal-raised px-3 py-2 text-caption text-terminal-text">
                 {view.reason}
               </p>
             )}
             {view.expiresAt === null ? null : (
-              <p className="mt-2 text-[10px] text-terminal-muted">
+              <p className="mt-2 text-label text-terminal-muted">
                 Valid until {utcTime(view.expiresAt)}.
               </p>
             )}
@@ -100,17 +100,17 @@ export default function VerificationPage() {
 
           {view.canSubmit ? (
             <Panel className="max-w-lg space-y-3 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-terminal-muted">
+              <p className="text-label uppercase tracking-wider text-terminal-muted">
                 Add a document
               </p>
-              <p className="text-[11px] leading-relaxed text-terminal-muted">
+              <p className="text-caption leading-relaxed text-terminal-muted">
                 A clear photograph or scan — JPEG, PNG, WebP or PDF, up to 10 MB. Every page of a
                 passport or card that carries your name, photo or number.
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   aria-label="Document type"
-                  className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-[11px] text-terminal-text"
+                  className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-caption text-terminal-text"
                   value={kind}
                   onChange={(event) => setKind(event.target.value)}
                 >
@@ -124,7 +124,7 @@ export default function VerificationPage() {
                   ref={fileInput}
                   type="file"
                   accept="image/jpeg,image/png,image/webp,application/pdf"
-                  className="text-[11px] text-terminal-muted"
+                  className="text-caption text-terminal-muted"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (file === undefined) return;
@@ -140,11 +140,11 @@ export default function VerificationPage() {
                   disabled={upload.isPending}
                 />
                 {upload.isPending ? (
-                  <span className="text-[11px] text-terminal-muted">Uploading…</span>
+                  <span className="text-caption text-terminal-muted">Uploading…</span>
                 ) : null}
               </div>
               {upload.error === null ? null : (
-                <p className="text-[11px] text-terminal-short">
+                <p className="text-caption text-terminal-short">
                   {upload.error instanceof DomainError
                     ? upload.error.message
                     : 'The file could not be uploaded.'}
@@ -157,19 +157,19 @@ export default function VerificationPage() {
 
           {view.canSubmit ? (
             <Panel className="max-w-lg space-y-2 p-4">
-              <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Submit</p>
+              <p className="text-label uppercase tracking-wider text-terminal-muted">Submit</p>
               {view.missing.length > 0 ? (
-                <p className="text-[11px] text-terminal-muted">
+                <p className="text-caption text-terminal-muted">
                   Still needed: {view.missing.join(' and ')}.
                 </p>
               ) : (
-                <p className="text-[11px] text-terminal-muted">
+                <p className="text-caption text-terminal-muted">
                   Everything required is here. Submitting hands it to a reviewer; nothing more can
                   be added until they decide.
                 </p>
               )}
               {submit.error === null ? null : (
-                <p className="text-[11px] text-terminal-short">
+                <p className="text-caption text-terminal-short">
                   {submit.error instanceof DomainError
                     ? submit.error.message
                     : 'The submission did not go through.'}
@@ -193,9 +193,9 @@ function DocumentList({ documents }: { documents: readonly KycDocumentRow[] }) {
   if (documents.length === 0) return null;
   return (
     <Panel className="overflow-auto">
-      <table className="w-full text-[11px]">
+      <table className="w-full text-caption">
         <thead>
-          <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+          <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
             <th className="px-3 py-2">Document</th>
             <th className="px-3 py-2">File</th>
             <th className="px-3 py-2 text-right">Size</th>

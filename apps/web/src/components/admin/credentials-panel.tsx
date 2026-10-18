@@ -73,7 +73,7 @@ function KeysTab() {
     <div className="flex flex-col">
       <div className="flex items-center justify-between gap-2 px-3 py-2">
         <SearchBox value={search} onChange={setSearch} placeholder="Holder, name or fingerprint" />
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {rows.length} {rows.length === 1 ? 'key' : 'keys'}
         </span>
       </div>
@@ -91,15 +91,15 @@ function KeysTab() {
                 <td className="px-3 py-1.5 text-terminal-text">{row.email}</td>
                 <td className="px-3 py-1.5">
                   <p className="text-terminal-text">{row.name}</p>
-                  <p className="font-mono text-[10px] text-terminal-muted">{row.fingerprint}</p>
+                  <p className="font-mono text-label text-terminal-muted">{row.fingerprint}</p>
                 </td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
                   {row.permissions.join(', ')}
                 </td>
                 <td className={cn('px-3 py-1.5', STATUS_TONE[row.status])}>
                   {row.status}
                   {row.revokedReason === null ? null : (
-                    <p className="text-[10px] text-terminal-muted">{row.revokedReason}</p>
+                    <p className="text-label text-terminal-muted">{row.revokedReason}</p>
                   )}
                 </td>
                 <td className="numeric px-3 py-1.5 text-terminal-muted">{lastUse(row)}</td>
@@ -149,10 +149,8 @@ function TokensTab() {
   return (
     <div className="flex flex-col">
       <div className="space-y-3 border-b border-terminal-border px-3 py-3">
-        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">
-          New service token
-        </p>
-        <p className="text-[11px] leading-relaxed text-terminal-muted">
+        <p className="text-label uppercase tracking-wider text-terminal-muted">New service token</p>
+        <p className="text-caption leading-relaxed text-terminal-muted">
           A machine identity for an integration. It reads across every account and writes nothing —
           every write on this platform is a person&apos;s, and a token is not one.
         </p>
@@ -161,11 +159,11 @@ function TokensTab() {
             className="space-y-2 rounded border border-terminal-warning/60 bg-terminal-raised p-3"
             data-testid="service-token-secret"
           >
-            <p className="text-[11px] text-terminal-warning">
+            <p className="text-caption text-terminal-warning">
               Shown once. Put it in the integration&apos;s secret store now; it cannot be shown
               again.
             </p>
-            <pre className="whitespace-pre-wrap break-all rounded bg-terminal-bg px-3 py-2 font-mono text-[11px] text-terminal-text">
+            <pre className="whitespace-pre-wrap break-all rounded bg-terminal-bg px-3 py-2 font-mono text-caption text-terminal-text">
               {shown}
             </pre>
             <Button variant="ghost" className="px-2 py-0.5" onClick={() => setShown(null)}>
@@ -202,14 +200,14 @@ function TokensTab() {
           />
         </Field>
         <div className="block">
-          <span className="mb-1 flex items-center justify-between text-[11px] uppercase tracking-wider text-terminal-muted">
+          <span className="mb-1 flex items-center justify-between text-caption uppercase tracking-wider text-terminal-muted">
             Reads
           </span>
           <div className="grid grid-cols-2 gap-1 md:grid-cols-4">
             {SERVICE_GRANTABLE_PERMISSIONS.map((permission) => (
               <label
                 key={permission}
-                className="flex cursor-pointer items-center gap-1.5 text-[11px] text-terminal-text"
+                className="flex cursor-pointer items-center gap-1.5 text-caption text-terminal-text"
               >
                 <input
                   type="checkbox"
@@ -222,7 +220,7 @@ function TokensTab() {
           </div>
         </div>
         {mint.error === null ? null : (
-          <p className="text-[11px] text-terminal-short">
+          <p className="text-caption text-terminal-short">
             {mint.error instanceof DomainError ? mint.error.message : 'The token was not created.'}
           </p>
         )}
@@ -265,18 +263,18 @@ function TokensTab() {
               <tr key={row.id} className="border-t border-terminal-border/60 align-top">
                 <td className="px-3 py-1.5">
                   <p className="text-terminal-text">{row.name}</p>
-                  <p className="font-mono text-[10px] text-terminal-muted">{row.fingerprint}</p>
+                  <p className="font-mono text-label text-terminal-muted">{row.fingerprint}</p>
                   {row.description === null ? null : (
-                    <p className="text-[10px] text-terminal-muted">{row.description}</p>
+                    <p className="text-label text-terminal-muted">{row.description}</p>
                   )}
                 </td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
                   {row.permissions.join(', ')}
                 </td>
                 <td className={cn('px-3 py-1.5', STATUS_TONE[row.status])}>
                   {row.status}
                   {row.revokedReason === null ? null : (
-                    <p className="text-[10px] text-terminal-muted">{row.revokedReason}</p>
+                    <p className="text-label text-terminal-muted">{row.revokedReason}</p>
                   )}
                 </td>
                 <td className="px-3 py-1.5 text-terminal-muted">{row.createdBy}</td>

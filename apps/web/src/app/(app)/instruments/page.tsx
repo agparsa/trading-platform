@@ -40,11 +40,11 @@ export default function InstrumentsPage() {
       ) : (
         <div className="space-y-3">
           {rows.length > 1 ? (
-            <div className="flex items-center gap-2 text-[11px] text-terminal-muted">
+            <div className="flex items-center gap-2 text-caption text-terminal-muted">
               <label htmlFor="margin-account">Margin measured for</label>
               <select
                 id="margin-account"
-                className="numeric rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-[11px] text-terminal-text"
+                className="numeric rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-caption text-terminal-text"
                 value={accountId ?? ''}
                 onChange={(event) => setAccountId(event.target.value)}
               >
@@ -56,7 +56,7 @@ export default function InstrumentsPage() {
               </select>
             </div>
           ) : account === undefined ? null : (
-            <p className="text-[11px] text-terminal-muted">
+            <p className="text-caption text-terminal-muted">
               Margin measured for #{account.number} at 1:{account.leverage}.
             </p>
           )}

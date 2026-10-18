@@ -58,7 +58,7 @@ export function PeoplePanel({
     <div className="flex flex-col">
       <div className="flex items-center gap-2 border-b border-terminal-border px-3 py-2">
         <SearchBox value={search} onChange={setSearch} placeholder="Email or name" />
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {users.data === undefined ? '' : `${users.data.length} shown`}
         </span>
       </div>
@@ -117,7 +117,7 @@ export function PeoplePanel({
                   <StatusPill status={user.isActive ? 'ACTIVE' : 'SUSPENDED'} />
                   {user.lockedUntil === null ? null : (
                     <span
-                      className="ml-1 text-[9px] uppercase text-terminal-warning"
+                      className="ml-1 text-micro uppercase text-terminal-warning"
                       title={`Locked out until ${utcTime(user.lockedUntil)} UTC after ${user.failedLoginAttempts} failed attempts`}
                     >
                       locked
@@ -189,11 +189,11 @@ export function UserDetail({ userId }: { userId: string }) {
 
   return (
     <div className="border-t border-terminal-border bg-terminal-bg px-3 py-3">
-      <p className="mb-2 text-[10px] uppercase tracking-wider text-terminal-muted">
+      <p className="mb-2 text-label uppercase tracking-wider text-terminal-muted">
         {data.email} — accounts
       </p>
       {data.accounts.length === 0 ? (
-        <p className="text-[11px] text-terminal-muted">No accounts.</p>
+        <p className="text-caption text-terminal-muted">No accounts.</p>
       ) : (
         <Table>
           <Head
@@ -235,11 +235,11 @@ export function UserDetail({ userId }: { userId: string }) {
         </Table>
       )}
 
-      <p className="mb-2 mt-4 text-[10px] uppercase tracking-wider text-terminal-muted">
+      <p className="mb-2 mt-4 text-label uppercase tracking-wider text-terminal-muted">
         Live sessions
       </p>
       {data.sessions.length === 0 ? (
-        <p className="text-[11px] text-terminal-muted">Nobody is signed in.</p>
+        <p className="text-caption text-terminal-muted">Nobody is signed in.</p>
       ) : (
         <Table>
           <Head columns={['Device', 'Address', 'Signed in', 'Last refreshed']} />
@@ -296,13 +296,13 @@ function DevicesSection({ userId, email }: { userId: string; email: string }) {
 
   return (
     <>
-      <p className="mb-2 mt-4 text-[10px] uppercase tracking-wider text-terminal-muted">Devices</p>
+      <p className="mb-2 mt-4 text-label uppercase tracking-wider text-terminal-muted">Devices</p>
       {devices.isLoading ? (
         <Loading />
       ) : devices.error !== null ? (
         <ErrorLine error={devices.error} />
       ) : (devices.data ?? []).length === 0 ? (
-        <p className="text-[11px] text-terminal-muted">No devices registered.</p>
+        <p className="text-caption text-terminal-muted">No devices registered.</p>
       ) : (
         <Table>
           <Head
@@ -357,7 +357,7 @@ function DevicesSection({ userId, email }: { userId: string; email: string }) {
                           { onSettled: () => setActing(null) },
                         );
                       }}
-                      className="border border-terminal-border px-2 py-0.5 text-[11px] text-terminal-text transition-colors hover:border-terminal-text disabled:opacity-40"
+                      className="border border-terminal-border px-2 py-0.5 text-caption text-terminal-text transition-colors hover:border-terminal-text disabled:opacity-40"
                     >
                       {acting === device.id ? '…' : staffRevoked ? 'Restore' : 'Revoke'}
                     </button>
@@ -376,10 +376,10 @@ function DevicesSection({ userId, email }: { userId: string; email: string }) {
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               placeholder="Why — required, and recorded in their security feed"
-              className="w-full border border-terminal-border bg-terminal-bg px-2 py-1 text-[11px] text-terminal-text placeholder:text-terminal-muted"
+              className="w-full border border-terminal-border bg-terminal-bg px-2 py-1 text-caption text-terminal-text placeholder:text-terminal-muted"
             />
           </label>
-          <p className="mt-1 text-[10px] text-terminal-muted">
+          <p className="mt-1 text-label text-terminal-muted">
             Revoking stops notifications, ends the sessions that device holds, and survives the app
             restarting. It cannot reach a browser session, which names no device — use Sign out when
             the account itself is compromised rather than one handset.

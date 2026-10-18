@@ -111,7 +111,7 @@ export function NotificationsPanel() {
             </option>
           ))}
         </select>
-        <span className="ml-auto text-[10px] text-terminal-muted">
+        <span className="ml-auto text-label text-terminal-muted">
           {rows.length} {rows.length === 1 ? 'delivery' : 'deliveries'}
         </span>
       </div>
@@ -137,12 +137,12 @@ export function NotificationsPanel() {
                 </td>
                 <td className="px-3 py-1.5 text-terminal-text">
                   <div>{row.notification.title}</div>
-                  <div className="font-mono text-[10px] text-terminal-muted">
+                  <div className="font-mono text-label text-terminal-muted">
                     {row.notification.kind}
                   </div>
                 </td>
                 <td className="px-3 py-1.5 text-terminal-text">{row.notification.userEmail}</td>
-                <td className="px-3 py-1.5 text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 text-label text-terminal-muted">
                   <div>
                     {row.device.platform.toLowerCase()}
                     {row.device.model === null ? '' : ` · ${row.device.model}`}
@@ -151,7 +151,7 @@ export function NotificationsPanel() {
                   <div className="font-mono">{row.device.tokenFingerprint ?? 'no token'}</div>
                 </td>
                 <td className="numeric px-3 py-1.5 text-terminal-muted">{row.attempts}</td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
                   {row.errorCode ??
                     (row.status === 'SENT' ? (row.providerMessageId ?? 'accepted') : '—')}
                 </td>
@@ -171,7 +171,5 @@ function OutcomePill({ status }: { status: PushDeliveryStatus }) {
       : status === 'DROPPED' || status === 'FAILED'
         ? 'bg-terminal-short/15 text-terminal-short'
         : 'bg-terminal-raised text-terminal-muted';
-  return (
-    <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium', tone)}>{status}</span>
-  );
+  return <span className={cn('rounded px-1.5 py-0.5 text-label font-medium', tone)}>{status}</span>;
 }

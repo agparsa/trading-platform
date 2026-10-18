@@ -57,7 +57,7 @@ export function ShortcutHelp({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="text-[13px] leading-none text-terminal-muted transition-colors hover:text-terminal-text"
+            className="text-body leading-none text-terminal-muted transition-colors hover:text-terminal-text"
           >
             ×
           </button>
@@ -70,7 +70,7 @@ export function ShortcutHelp({
               at a table of keys that do nothing, with no explanation, concludes
               the platform is broken.
             */
-            <p className="mb-3 rounded border border-terminal-warning/50 bg-terminal-warning/10 px-2 py-1.5 text-[11px] text-terminal-warning">
+            <p className="mb-3 rounded border border-terminal-warning/50 bg-terminal-warning/10 px-2 py-1.5 text-caption text-terminal-warning">
               Keyboard trading is off. These keys do nothing until you turn it on in Trading
               settings — Escape still works.
             </p>
@@ -81,7 +81,7 @@ export function ShortcutHelp({
               {rows.map(([key, description, trading]) => (
                 <tr key={`${key}-${description}`} className="border-t border-terminal-border/60">
                   <td className="w-20 py-1.5">
-                    <kbd className="numeric rounded border border-terminal-border bg-terminal-raised px-1.5 py-0.5 text-[11px] text-terminal-text">
+                    <kbd className="numeric rounded border border-terminal-border bg-terminal-raised px-1.5 py-0.5 text-caption text-terminal-text">
                       {key}
                     </kbd>
                   </td>
@@ -100,7 +100,7 @@ export function ShortcutHelp({
             </tbody>
           </table>
 
-          <p className="mt-3 text-[10px] leading-relaxed text-terminal-muted">
+          <p className="mt-3 text-label leading-relaxed text-terminal-muted">
             Keys never fire while you are typing in a field — except Escape, which only ever stops
             something.
             {preferences.oneClick && !preferences.confirm ? (

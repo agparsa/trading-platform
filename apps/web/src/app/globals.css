@@ -28,6 +28,21 @@
   --color-terminal-accent: #5b9cff;
 
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+
+  /*
+   * The type scale below Tailwind's own `text-xs` (12px), where a dense
+   * terminal lives. Named by role, so a size is chosen for what the text is
+   * rather than typed as a pixel count: 460 arbitrary 10px and 11px
+   * uses had drifted in before these existed. `scripts/type-scale.test.ts`
+   * refuses an arbitrary font size anywhere in the web app.
+   *
+   * No line heights: the arbitrary sizes these replace set none, so every
+   * element keeps the line height it had.
+   */
+  --text-micro: 9px; /* a badge inside a cell */
+  --text-label: 10px; /* column headers, field labels, units */
+  --text-caption: 11px; /* secondary lines, hints, small controls */
+  --text-body: 13px; /* between xs and sm, for the few places that need it */
 }
 
 /*

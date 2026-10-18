@@ -60,7 +60,7 @@ export function AccountHeader({
         only the first until this existed.
       */}
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Account</p>
+        <p className="text-label uppercase tracking-wider text-terminal-muted">Account</p>
         {accounts.length > 1 ? (
           <select
             className="numeric mt-0.5 w-full truncate bg-transparent text-sm text-terminal-text outline-none"

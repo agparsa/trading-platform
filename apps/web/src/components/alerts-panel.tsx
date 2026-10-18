@@ -78,7 +78,7 @@ export function AlertsPanel({
   return (
     <div className="flex h-full flex-col gap-3" data-testid="alerts-panel">
       <form onSubmit={submit} className="flex flex-wrap items-end gap-2 px-3 pt-2">
-        <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wider text-terminal-muted">
+        <label className="flex flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
           Instrument
           <select
             className={inputClass}
@@ -93,7 +93,7 @@ export function AlertsPanel({
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wider text-terminal-muted">
+        <label className="flex flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
           When
           <select
             className={inputClass}
@@ -105,7 +105,7 @@ export function AlertsPanel({
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wider text-terminal-muted">
+        <label className="flex flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
           Level
           <input
             className={cn(inputClass, 'w-32 text-right tabular-nums')}
@@ -116,7 +116,7 @@ export function AlertsPanel({
           />
         </label>
 
-        <label className="flex flex-1 flex-col gap-1 text-[10px] uppercase tracking-wider text-terminal-muted">
+        <label className="flex flex-1 flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
           Note
           <input
             className={inputClass}
@@ -144,7 +144,7 @@ export function AlertsPanel({
         ) : (
           <table className="w-full min-w-[44rem] border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-terminal-surface">
-              <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+              <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
                 <th className="px-3 py-1.5 font-medium">Symbol</th>
                 <th className="px-2 py-1.5 font-medium">Condition</th>
                 <th className="px-2 py-1.5 text-right font-medium">Level</th>
@@ -170,7 +170,7 @@ export function AlertsPanel({
                     <td className="px-3 py-1.5 font-medium">{row.symbol}</td>
                     <td className="px-2 py-1.5">
                       {row.condition === 'ABOVE' ? 'Rises to' : 'Falls to'}
-                      <span className="ml-1 text-[10px] uppercase text-terminal-muted">
+                      <span className="ml-1 text-label uppercase text-terminal-muted">
                         {row.source}
                       </span>
                     </td>

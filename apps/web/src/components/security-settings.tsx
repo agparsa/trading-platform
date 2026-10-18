@@ -152,19 +152,19 @@ export function SecuritySettings({
    */
   const body = (
     <>
-      <p className="mb-2 text-[10px] uppercase tracking-wider text-terminal-muted">
+      <p className="mb-2 text-label uppercase tracking-wider text-terminal-muted">
         Two-factor authentication
       </p>
 
       {status === null ? (
-        <p className="text-[11px] text-terminal-muted">Loading…</p>
+        <p className="text-caption text-terminal-muted">Loading…</p>
       ) : recoveryCodes !== null ? (
         <div>
-          <p className="text-[11px] text-terminal-text">
+          <p className="text-caption text-terminal-text">
             Two-factor authentication is on. Save these recovery codes now — they are the only way
             back in without your phone, and they cannot be shown again.
           </p>
-          <ul className="my-3 grid grid-cols-2 gap-1 rounded border border-terminal-border bg-terminal-bg p-2 font-mono text-[11px] text-terminal-text">
+          <ul className="my-3 grid grid-cols-2 gap-1 rounded border border-terminal-border bg-terminal-bg p-2 font-mono text-caption text-terminal-text">
             {recoveryCodes.map((value) => (
               <li key={value}>{value}</li>
             ))}
@@ -179,7 +179,7 @@ export function SecuritySettings({
         </div>
       ) : offer !== null ? (
         <div className="space-y-2">
-          <p className="text-[11px] text-terminal-muted">
+          <p className="text-caption text-terminal-muted">
             Scan this with your authenticator app, then enter the code it shows.
           </p>
           {qr === null ? null : (
@@ -194,7 +194,7 @@ export function SecuritySettings({
               height={176}
             />
           )}
-          <p className="break-all rounded border border-terminal-border bg-terminal-bg p-2 font-mono text-[10px] text-terminal-text">
+          <p className="break-all rounded border border-terminal-border bg-terminal-bg p-2 font-mono text-label text-terminal-text">
             {offer.secret}
           </p>
           <Field label="Code from your app">
@@ -216,7 +216,7 @@ export function SecuritySettings({
           </Button>
           <button
             type="button"
-            className="w-full text-center text-[10px] text-terminal-muted hover:text-terminal-text"
+            className="w-full text-center text-label text-terminal-muted hover:text-terminal-text"
             onClick={() => setOffer(null)}
           >
             Cancel
@@ -224,10 +224,10 @@ export function SecuritySettings({
         </div>
       ) : on ? (
         <div className="space-y-2">
-          <p className="text-[11px] text-terminal-text">
+          <p className="text-caption text-terminal-text">
             On since {new Date(status.enabledAt ?? '').toLocaleDateString()}.
           </p>
-          <p className="text-[10px] text-terminal-muted">
+          <p className="text-label text-terminal-muted">
             {status.recoveryCodesRemaining} recovery{' '}
             {status.recoveryCodesRemaining === 1 ? 'code' : 'codes'} left.
           </p>
@@ -259,12 +259,12 @@ export function SecuritySettings({
         </div>
       ) : (
         <div className="space-y-2">
-          <p className="text-[11px] text-terminal-muted">
+          <p className="text-caption text-terminal-muted">
             A password alone is one stolen credential away from your positions. With this on, a
             sign-in also needs the code on your phone.
           </p>
           {status.pending ? (
-            <p className="text-[10px] text-terminal-warning">
+            <p className="text-label text-terminal-warning">
               An enrolment was started and never confirmed. Starting again replaces it.
             </p>
           ) : null}
@@ -279,25 +279,25 @@ export function SecuritySettings({
         </div>
       )}
 
-      {error === null ? null : <p className="mt-2 text-[11px] text-terminal-short">{error}</p>}
+      {error === null ? null : <p className="mt-2 text-caption text-terminal-short">{error}</p>}
 
-      <p className="mb-2 mt-4 border-t border-terminal-border pt-3 text-[10px] uppercase tracking-wider text-terminal-muted">
+      <p className="mb-2 mt-4 border-t border-terminal-border pt-3 text-label uppercase tracking-wider text-terminal-muted">
         Where you are signed in
       </p>
       {sessions === null ? (
-        <p className="text-[11px] text-terminal-muted">Loading…</p>
+        <p className="text-caption text-terminal-muted">Loading…</p>
       ) : (
         <ul className="space-y-1.5">
           {sessions.map((session) => (
             <li key={session.id} className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate text-[11px] text-terminal-text">
+                <p className="truncate text-caption text-terminal-text">
                   {session.device}
                   {session.current ? (
                     <span className="ml-1 text-terminal-muted">· this device</span>
                   ) : null}
                 </p>
-                <p className="truncate text-[10px] text-terminal-muted">
+                <p className="truncate text-label text-terminal-muted">
                   {session.ipAddress ?? 'address unknown'} · since{' '}
                   {new Date(session.signedInAt).toLocaleString()}
                 </p>
@@ -305,7 +305,7 @@ export function SecuritySettings({
               {session.current ? null : (
                 <button
                   type="button"
-                  className="shrink-0 text-[10px] text-terminal-muted transition-colors hover:text-terminal-short"
+                  className="shrink-0 text-label text-terminal-muted transition-colors hover:text-terminal-short"
                   disabled={busy}
                   onClick={() => void endSession(session.id)}
                 >
@@ -316,7 +316,7 @@ export function SecuritySettings({
           ))}
         </ul>
       )}
-      <p className="mt-2 text-[10px] leading-relaxed text-terminal-muted">
+      <p className="mt-2 text-label leading-relaxed text-terminal-muted">
         A device you do not recognise means someone else has your password. End that session, then
         change it.
       </p>
@@ -330,7 +330,7 @@ export function SecuritySettings({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="rounded border border-terminal-border px-2 py-1 text-[10px] uppercase tracking-wider text-terminal-muted transition-colors hover:text-terminal-text"
+        className="rounded border border-terminal-border px-2 py-1 text-label uppercase tracking-wider text-terminal-muted transition-colors hover:text-terminal-text"
         title="Account security"
       >
         Security

@@ -29,7 +29,7 @@ export function AuditPanel() {
     <div className="flex flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-terminal-border px-3 py-2">
         <SearchBox value={action} onChange={setAction} placeholder="Action prefix, e.g. account." />
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {rows.data === undefined ? '' : `${rows.data.length} entries`}
         </span>
         {/*
@@ -89,7 +89,7 @@ export function AuditPanel() {
                 {expanded === row.id ? (
                   <tr key={`${row.id}-detail`} className="border-t border-terminal-border/60">
                     <td colSpan={7} className="bg-terminal-bg px-3 py-2">
-                      <pre className="numeric overflow-x-auto whitespace-pre-wrap text-[10px] leading-relaxed text-terminal-muted">
+                      <pre className="numeric overflow-x-auto whitespace-pre-wrap text-label leading-relaxed text-terminal-muted">
                         {JSON.stringify({ before: row.before, after: row.after }, null, 2)}
                       </pre>
                     </td>

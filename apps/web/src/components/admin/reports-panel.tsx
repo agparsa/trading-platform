@@ -106,7 +106,7 @@ export function ReportsPanel() {
           Ask for a report
         </div>
         <div className="flex flex-wrap items-end gap-3 p-3">
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wider text-terminal-muted">
+          <label className="flex flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
             Report
             <select
               value={chosen?.kind ?? ''}
@@ -120,7 +120,7 @@ export function ReportsPanel() {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wider text-terminal-muted">
+          <label className="flex flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
             From
             <input
               type="date"
@@ -129,7 +129,7 @@ export function ReportsPanel() {
               className="rounded border border-terminal-border bg-terminal-raised px-2 py-1.5 text-xs text-terminal-text"
             />
           </label>
-          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wider text-terminal-muted">
+          <label className="flex flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
             To
             <input
               type="date"
@@ -165,7 +165,7 @@ export function ReportsPanel() {
             {request.isPending ? 'Asking…' : 'Ask for it'}
           </Button>
           {chosen !== undefined ? (
-            <p className="basis-full text-[11px] text-terminal-muted">{chosen.describes}</p>
+            <p className="basis-full text-caption text-terminal-muted">{chosen.describes}</p>
           ) : null}
           {request.error !== null ? <ErrorLine error={request.error} /> : null}
         </div>
@@ -215,7 +215,7 @@ export function ReportsPanel() {
                     <span className={cn('font-medium', STATUS_TEXT[report.status])}>
                       {report.status}
                     </span>
-                    <span className="ml-2 text-[10px] text-terminal-muted">
+                    <span className="ml-2 text-label text-terminal-muted">
                       {report.status === 'FAILED'
                         ? (report.error ?? STATUS_MEANS[report.status])
                         : STATUS_MEANS[report.status]}

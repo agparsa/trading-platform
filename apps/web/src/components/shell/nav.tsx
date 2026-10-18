@@ -39,7 +39,7 @@ export function Nav({
             href={item.href}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'rounded px-2 py-1 text-[11px] transition-colors',
+              'rounded px-2 py-1 text-caption transition-colors',
               active
                 ? 'bg-terminal-raised text-terminal-text'
                 : 'text-terminal-muted hover:text-terminal-text',

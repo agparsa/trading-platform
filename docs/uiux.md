@@ -233,6 +233,16 @@ stored a day at a time — reads as "Sun 22:00 – Fri 21:00", the same session
 the engine opens and closes. Before this screen a trader learned an
 instrument's commission or swap by trading it.
 
+**The type scale.** The sizes below Tailwind's `text-xs` are named by role
+in `globals.css` — `text-micro` (9px, a badge in a cell), `text-label` (10px,
+headers, labels, units), `text-caption` (11px, secondary lines, hints, small
+controls) and `text-body` (13px) — and 460 inline `text-[10px]` /
+`text-[11px]` (plus a few 9, 12 and 13) became them, one for one, at the
+same pixel size and with no line height of their own, as before. The two
+12px uses became Tailwind's `text-xs`. `scripts/type-scale.test.ts` refuses
+an arbitrary font size anywhere in the web app and any size name nothing
+defines — `text-lable` generates no CSS and failed nothing before.
+
 **Categories and Top movers.** The groups are the platform's own — the
 `category` an administrator files an instrument under, sent on `GET /symbols`
 — offered as chips in the order the platform lists its instruments, and only
@@ -298,17 +308,12 @@ Stated rather than stubbed. None of this is built:
   order history (every instruction, rejections included) and the security
   feed on Settings do not is undecided. (Alerts and Finance are built — see
   `price-alerts.md`, and "The Finance tab" above.)
-- **Design tokens beyond colour.** There is no spacing scale and no typography
-  scale; sizes are arbitrary utilities repeated inline. (A light theme now
-  exists — see "Appearance" above.) The colour tokens themselves are now held to their definitions:
-  `scripts/theme-tokens.test.ts` fails on any `terminal-*` colour the theme
-  does not define. Its first run found twenty-six uses of six undefined names
-  — `negative`, `danger`, `loss`, `success`, `panel`, `accent` — which Tailwind
-  silently renders as nothing: wallet and verification errors in ordinary
-  text, the feature switches' ON and OFF in the same colour, an admin "Save"
-  button as dark text on no background. The synonyms became `short`, `long`
-  and `bg`/`raised`; `accent` (blue, for "selected" and the primary action)
-  is now defined.
+- **A spacing scale.** Spacing is still Tailwind's own utilities, used
+  inline; nobody has decided which gaps the terminal's panels share. (Type
+  now has a scale — see "The type scale" above. A light theme exists — see
+  "Appearance". The colour tokens are held to their definitions by
+  `scripts/theme-tokens.test.ts`, whose first run found twenty-six uses of
+  six undefined names that Tailwind silently rendered as nothing.)
 - **Documented screen-reader paths.** An _automated_ accessibility pass now
   runs on every browser suite — nine screens, WCAG 2.1 AA, serious violations
   failing the run — and it found two real defects on its first run (see

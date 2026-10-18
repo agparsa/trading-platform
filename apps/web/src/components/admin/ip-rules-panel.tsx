@@ -47,18 +47,18 @@ function Standing({
   if (loading || view === undefined) return null;
   return (
     <div className="border-b border-terminal-border px-3 py-3">
-      <div className="text-[10px] uppercase tracking-wide text-terminal-muted">
+      <div className="text-label uppercase tracking-wide text-terminal-muted">
         You are calling from
       </div>
       <div className="numeric text-base text-terminal-text" data-testid="your-address">
         {view.yourAddress === '' ? 'unknown' : view.yourAddress}
       </div>
       {view.enforceable ? (
-        <p className="mt-1 text-[11px] text-terminal-muted">
+        <p className="mt-1 text-caption text-terminal-muted">
           Rules are enforced. A rule that would shut you out from this address is refused.
         </p>
       ) : (
-        <p className="mt-1 text-[11px] text-terminal-warning" data-testid="not-enforceable">
+        <p className="mt-1 text-caption text-terminal-warning" data-testid="not-enforceable">
           {view.yourAddressTrusted
             ? 'Rules cannot be added: this deployment has not said how many proxies sit in front of the API. Set TRUSTED_PROXY_HOPS (0 if nothing is in front of it).'
             : 'Rules are NOT being enforced: the API cannot establish the address a request came from, so every rule below is inert. Check TRUSTED_PROXY_HOPS against the proxies actually in front of it.'}
@@ -141,7 +141,7 @@ function Rules({ data }: { data: NonNullable<ReturnType<typeof useIpRules>['data
        * everybody not named is refused. Said here rather than discovered.
        */}
       {kind === 'ALLOW' && data.rules.every((rule) => rule.kind !== 'ALLOW' || !rule.enabled) ? (
-        <p className="border-b border-terminal-border px-3 py-1.5 text-[11px] text-terminal-warning">
+        <p className="border-b border-terminal-border px-3 py-1.5 text-caption text-terminal-warning">
           This would be the first Allow rule. From then on, only addresses named by an Allow rule
           can reach the platform in that scope — everyone else is refused.
         </p>
@@ -171,7 +171,7 @@ function Rules({ data }: { data: NonNullable<ReturnType<typeof useIpRules>['data
                     {rule.kind === 'DENY' ? 'Deny' : 'Allow'}
                   </span>
                   {rule.enabled ? null : (
-                    <span className="ml-1 text-[10px] text-terminal-muted">(off)</span>
+                    <span className="ml-1 text-label text-terminal-muted">(off)</span>
                   )}
                 </td>
                 <td className="px-3 py-1.5 text-terminal-muted">

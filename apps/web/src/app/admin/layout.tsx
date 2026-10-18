@@ -57,22 +57,22 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <span className="text-sm font-semibold tracking-tight text-terminal-text">
               Administration
             </span>
-            <span className="rounded bg-terminal-raised px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-terminal-muted">
+            <span className="rounded bg-terminal-raised px-1.5 py-0.5 text-label uppercase tracking-wider text-terminal-muted">
               {user?.role ?? '—'}
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Link
               href="/terminal"
-              className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+              className="text-caption text-terminal-muted transition-colors hover:text-terminal-text"
             >
               Terminal
             </Link>
-            <span className="text-[11px] text-terminal-muted">{user?.email ?? ''}</span>
+            <span className="text-caption text-terminal-muted">{user?.email ?? ''}</span>
             <button
               type="button"
               onClick={() => void signOut()}
-              className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+              className="text-caption text-terminal-muted transition-colors hover:text-terminal-text"
             >
               Sign out
             </button>

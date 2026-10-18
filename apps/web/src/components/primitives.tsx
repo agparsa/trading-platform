@@ -63,7 +63,7 @@ export function Tabs<T extends string>({
         >
           {tab.label}
           {tab.count === undefined ? null : (
-            <span className="numeric ml-1.5 text-[10px] text-terminal-muted">{tab.count}</span>
+            <span className="numeric ml-1.5 text-label text-terminal-muted">{tab.count}</span>
           )}
         </button>
       ))}
@@ -82,7 +82,7 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 flex items-center justify-between text-[11px] uppercase tracking-wider text-terminal-muted">
+      <span className="mb-1 flex items-center justify-between text-caption uppercase tracking-wider text-terminal-muted">
         {label}
         {hint}
       </span>
@@ -152,7 +152,7 @@ export function Stat({
 }) {
   return (
     <div className="min-w-0" title={title}>
-      <p className="text-[10px] uppercase tracking-wider text-terminal-muted">{label}</p>
+      <p className="text-label uppercase tracking-wider text-terminal-muted">{label}</p>
       <p className={cn('numeric mt-0.5 truncate text-sm', tone ?? 'text-terminal-text')}>{value}</p>
     </div>
   );
@@ -170,7 +170,7 @@ export function SideBadge({ side }: { side: 'BUY' | 'SELL' }) {
   return (
     <span
       className={cn(
-        'rounded px-1.5 py-0.5 text-[10px] font-medium',
+        'rounded px-1.5 py-0.5 text-label font-medium',
         side === 'BUY'
           ? 'bg-terminal-long/15 text-terminal-long'
           : 'bg-terminal-short/15 text-terminal-short',

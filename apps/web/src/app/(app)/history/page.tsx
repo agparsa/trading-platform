@@ -48,7 +48,7 @@ export default function HistoryPage() {
             <Tabs<HistoryTab> active={tab} onChange={setTab} tabs={TABS} />
             {rows.length > 1 ? (
               <select
-                className="numeric rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-[11px] text-terminal-text"
+                className="numeric rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-caption text-terminal-text"
                 value={accountId ?? ''}
                 onChange={(event) => setAccountId(event.target.value)}
                 aria-label="Account"

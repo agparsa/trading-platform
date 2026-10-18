@@ -20,7 +20,7 @@ export function ThemeSettings() {
   const { choice, setChoice } = useThemeChoice();
   return (
     <fieldset className="space-y-2">
-      <legend className="mb-1 text-[10px] uppercase tracking-wider text-terminal-muted">
+      <legend className="mb-1 text-label uppercase tracking-wider text-terminal-muted">
         Appearance
       </legend>
       <div role="radiogroup" aria-label="Appearance" className="flex flex-wrap gap-1">
@@ -42,7 +42,7 @@ export function ThemeSettings() {
           </button>
         ))}
       </div>
-      <p className="text-[11px] text-terminal-muted">
+      <p className="text-caption text-terminal-muted">
         For this browser only. The terminal is dark by default: it is looked at for hours.
       </p>
     </fieldset>

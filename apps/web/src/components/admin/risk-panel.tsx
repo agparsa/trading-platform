@@ -59,10 +59,10 @@ function AtRisk() {
   return (
     <>
       <div className="flex items-center gap-2 border-b border-terminal-border px-3 py-2">
-        <label className="flex items-center gap-2 text-[11px] text-terminal-muted">
+        <label className="flex items-center gap-2 text-caption text-terminal-muted">
           Margin level at or below
           <select
-            className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-[11px] text-terminal-text"
+            className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-caption text-terminal-text"
             value={below ?? 'all'}
             onChange={(event) =>
               setBelow(event.target.value === 'all' ? null : Number(event.target.value))
@@ -82,7 +82,7 @@ function AtRisk() {
             <option value="all">any level (every account holding margin)</option>
           </select>
         </label>
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {rows.data === undefined
             ? ''
             : `${rows.data.length} account(s)${rows.data.length === 200 ? ' (capped)' : ''} · refreshed live`}
@@ -152,7 +152,7 @@ function AtRisk() {
                   <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
                     {row.openPositions}
                   </td>
-                  <td className="numeric px-2 py-1.5 text-[10px] text-terminal-muted">
+                  <td className="numeric px-2 py-1.5 text-label text-terminal-muted">
                     {row.marginCallLevelPercent ?? '—'}% / {row.stopOutLevelPercent ?? '—'}%
                   </td>
                 </tr>
@@ -216,7 +216,7 @@ function Exposure() {
           </tbody>
         </Table>
       )}
-      <p className="px-3 py-2 text-[10px] text-terminal-muted">
+      <p className="px-3 py-2 text-label text-terminal-muted">
         Lots, not notional. Converting every position at a live rate would turn a summary into a
         valuation of the whole book; the money figures are on the At risk tab.
       </p>
@@ -232,7 +232,7 @@ function Events() {
     <>
       <div className="flex items-center gap-2 border-b border-terminal-border px-3 py-2">
         <select
-          className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-[11px] text-terminal-text"
+          className="rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-caption text-terminal-text"
           value={severity}
           onChange={(event) => setSeverity(event.target.value)}
           aria-label="Severity"
@@ -327,7 +327,7 @@ function Signals() {
           </tbody>
         </Table>
       )}
-      <p className="px-3 py-2 text-[10px] text-terminal-muted">
+      <p className="px-3 py-2 text-label text-terminal-muted">
         These are observations, not verdicts. A signal says a pattern was seen often enough to be
         worth looking at; what it means is for a person to decide.
       </p>
@@ -360,7 +360,7 @@ function Ceilings() {
 
   return (
     <div className="space-y-3 px-3 py-3" data-testid="risk-ceilings">
-      <p className="text-[11px] text-terminal-muted">
+      <p className="text-caption text-terminal-muted">
         A layer may tighten what the layer above it allows and may never loosen it. A limit no layer
         sets is not enforced — silence is not permission, it is silence.
       </p>
@@ -384,7 +384,7 @@ function Ceilings() {
                 <td className="numeric px-3 py-1.5">{row.maxPositionVolume ?? '—'}</td>
                 <td className="numeric px-3 py-1.5">{row.maxOpenPositions ?? '—'}</td>
                 <td className="numeric px-3 py-1.5">{row.maxGrossNotional ?? '—'}</td>
-                <td className="numeric px-3 py-1.5 text-[10px] text-terminal-muted">
+                <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
                   {row.updatedAt === null ? '—' : utcTime(row.updatedAt)}
                 </td>
               </tr>

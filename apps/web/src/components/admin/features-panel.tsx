@@ -34,7 +34,7 @@ export function FeaturesPanel() {
   return (
     <div className="flex flex-col" data-testid="features">
       {isPlatform ? (
-        <div className="flex flex-wrap items-center gap-2 border-b border-terminal-border px-3 py-2 text-[11px]">
+        <div className="flex flex-wrap items-center gap-2 border-b border-terminal-border px-3 py-2 text-caption">
           <span className="text-terminal-muted">
             Acting as the platform. Set a broker’s platform flags:
           </span>
@@ -108,7 +108,7 @@ function Flags({
                 <tr key={row.key} className="border-t border-terminal-border/60 align-top">
                   <td className="px-3 py-1.5">
                     <div className="text-terminal-text">{row.name}</div>
-                    <div className="font-mono text-[10px] text-terminal-muted">{row.key}</div>
+                    <div className="font-mono text-label text-terminal-muted">{row.key}</div>
                   </td>
                   <td className="max-w-md px-3 py-1.5 text-terminal-muted">{row.description}</td>
                   <td className="px-3 py-1.5 text-terminal-muted">
@@ -131,10 +131,10 @@ function Flags({
                       {row.enabled ? 'on' : 'off'}
                     </span>
                     {row.override === null ? (
-                      <span className="ml-1 text-[10px] text-terminal-muted">(default)</span>
+                      <span className="ml-1 text-label text-terminal-muted">(default)</span>
                     ) : (
                       <div
-                        className="text-[10px] text-terminal-muted"
+                        className="text-label text-terminal-muted"
                         title={utcTime(row.override.updatedAt)}
                       >
                         {row.override.note}
@@ -154,7 +154,7 @@ function Flags({
                         }
                       />
                     ) : (
-                      <span className="text-[10px] text-terminal-muted">
+                      <span className="text-label text-terminal-muted">
                         {row.authority === 'PLATFORM'
                           ? 'set by the platform'
                           : 'the broker’s own choice'}

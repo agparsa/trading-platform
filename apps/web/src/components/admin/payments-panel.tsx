@@ -62,7 +62,7 @@ export function PaymentsPanel() {
             { id: 'all', label: 'All payments' },
           ]}
         />
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {rows.length} {rows.length === 1 ? 'payment' : 'payments'}
         </span>
       </div>
@@ -141,7 +141,7 @@ function PaymentRows({
         <td className={`px-3 py-1.5 ${STATUS_TONE[row.status] ?? 'text-terminal-text'}`}>
           {row.status}
           {row.failureReason === null ? null : (
-            <span className="block text-[10px] text-terminal-muted">{row.failureReason}</span>
+            <span className="block text-label text-terminal-muted">{row.failureReason}</span>
           )}
         </td>
         <td className="numeric px-3 py-1.5 text-terminal-muted">
@@ -178,19 +178,19 @@ function PaymentRows({
       {expanded ? (
         <tr className="border-t border-terminal-border/30 bg-terminal-raised/30">
           <td colSpan={7} className="px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wider text-terminal-muted">
+            <p className="text-label uppercase tracking-wider text-terminal-muted">
               Reference {row.id}
             </p>
             {events.isLoading ? (
               <Loading />
             ) : (events.data?.events ?? []).length === 0 ? (
-              <p className="py-2 text-[11px] text-terminal-muted">
+              <p className="py-2 text-caption text-terminal-muted">
                 Nothing has been reported about this payment.
               </p>
             ) : (
               <ul className="mt-2 space-y-1">
                 {(events.data?.events ?? []).map((one) => (
-                  <li key={one.id} className="flex flex-wrap items-baseline gap-2 text-[11px]">
+                  <li key={one.id} className="flex flex-wrap items-baseline gap-2 text-caption">
                     <span className="numeric text-terminal-muted">{utcTime(one.createdAt)}</span>
                     <span className={OUTCOME_TONE[one.outcome] ?? 'text-terminal-text'}>
                       {one.outcome}

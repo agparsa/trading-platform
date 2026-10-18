@@ -195,7 +195,7 @@ export function Watchlist({
                 onClick={() => setCategory(name)}
                 aria-pressed={on}
                 className={cn(
-                  'shrink-0 rounded px-2 py-0.5 text-[11px] transition-colors',
+                  'shrink-0 rounded px-2 py-0.5 text-caption transition-colors',
                   on
                     ? 'bg-terminal-raised text-terminal-text'
                     : 'text-terminal-muted hover:text-terminal-text',
@@ -214,7 +214,7 @@ export function Watchlist({
         ) : (
           <table className="w-full border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-terminal-surface">
-              <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+              <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
                 <th className="py-1.5 pl-2 pr-1 font-medium">Symbol</th>
                 <th className="px-1 py-1.5 text-right font-medium">Bid</th>
                 <th className="px-1 py-1.5 text-right font-medium">Ask</th>
@@ -282,7 +282,7 @@ function InstrumentBadge({ code }: { code: string }) {
       aria-hidden
       title={mark.label}
       className={cn(
-        'hidden h-4 w-6 shrink-0 items-center xl:inline-flex justify-center rounded-sm text-[10px] font-semibold leading-none ring-1 ring-inset',
+        'hidden h-4 w-6 shrink-0 items-center xl:inline-flex justify-center rounded-sm text-label font-semibold leading-none ring-1 ring-inset',
         markClasses(mark.kind),
       )}
     >
@@ -370,7 +370,7 @@ function WatchlistRow({
                * on hover, warning-coloured when set.
                */
               className={cn(
-                'text-[11px] leading-none transition-colors',
+                'text-caption leading-none transition-colors',
                 starred ? 'text-terminal-warning' : 'text-terminal-muted hover:text-terminal-text',
               )}
             >
@@ -391,7 +391,7 @@ function WatchlistRow({
                 aria-label={`${opened ? 'Close' : 'Open'} the ${symbol.code} row ticket`}
                 title={opened ? 'Close this ticket' : 'Choose a volume and trade from this row'}
                 className={cn(
-                  'text-[10px] leading-none transition-colors',
+                  'text-label leading-none transition-colors',
                   opened ? 'text-terminal-accent' : 'text-terminal-muted hover:text-terminal-text',
                 )}
               >
@@ -402,7 +402,7 @@ function WatchlistRow({
               reason and, where the platform knows it, the opening time. */}
             {symbol.sessionOpen ? null : (
               <span
-                className="rounded bg-terminal-raised px-1 text-[9px] uppercase tracking-wider text-terminal-muted"
+                className="rounded bg-terminal-raised px-1 text-micro uppercase tracking-wider text-terminal-muted"
                 title={
                   symbol.market === undefined
                     ? "Outside this instrument's trading session"
@@ -555,7 +555,7 @@ function RowTicket({
           </button>
         </div>
         {problem === null ? null : (
-          <p id={`${id}-problem`} className="mt-1 text-[11px] text-terminal-short">
+          <p id={`${id}-problem`} className="mt-1 text-caption text-terminal-short">
             {problem}
           </p>
         )}
@@ -579,7 +579,7 @@ function RowTicket({
                 // put the short colour on its own tint at 4.2:1, which the
                 // terminal's accessibility audit refused.
                 className={cn(
-                  'flex-1 rounded px-1 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                  'flex-1 rounded px-1 py-1 text-caption font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
                   side === 'BUY'
                     ? 'bg-terminal-long text-terminal-bg hover:opacity-90'
                     : 'bg-terminal-short text-terminal-bg hover:opacity-90',
@@ -592,7 +592,7 @@ function RowTicket({
           })}
         </div>
         {closedReason === null ? null : (
-          <p className="mt-1 text-[11px] text-terminal-muted">{closedReason}</p>
+          <p className="mt-1 text-caption text-terminal-muted">{closedReason}</p>
         )}
       </td>
     </tr>

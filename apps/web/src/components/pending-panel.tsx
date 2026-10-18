@@ -66,11 +66,13 @@ export function PendingPanel({
 
   return (
     <div>
-      {error === null ? null : <p className="px-3 py-2 text-[11px] text-terminal-short">{error}</p>}
+      {error === null ? null : (
+        <p className="px-3 py-2 text-caption text-terminal-short">{error}</p>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[52rem] border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-terminal-surface">
-            <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+            <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
               <th className="px-3 py-1.5 font-medium" title="Order reference">
                 Ref
               </th>
@@ -113,7 +115,7 @@ export function PendingPanel({
               return (
                 <Fragment key={order.orderId}>
                   <tr className="border-t border-terminal-border/60 hover:bg-terminal-raised/40">
-                    <td className="numeric px-3 py-1.5 text-[10px] tracking-wide text-terminal-muted">
+                    <td className="numeric px-3 py-1.5 text-label tracking-wide text-terminal-muted">
                       <span title={order.orderId}>{refs.get(order.orderId) ?? order.orderId}</span>
                     </td>
                     <td className="numeric px-2 py-1.5 text-terminal-muted">
@@ -124,13 +126,13 @@ export function PendingPanel({
                       <SideBadge side={order.side} />
                     </td>
                     <td className="px-2 py-1.5">
-                      <span className="rounded bg-terminal-raised px-1.5 py-0.5 text-[10px] text-terminal-muted">
+                      <span className="rounded bg-terminal-raised px-1.5 py-0.5 text-label text-terminal-muted">
                         {order.type === 'STOP_LIMIT' ? 'STOP LMT' : order.type}
                       </span>
                       {phase === null ? null : (
                         <span
                           className={cn(
-                            'ml-1 text-[10px]',
+                            'ml-1 text-label',
                             phase === 'resting' ? 'text-terminal-accent' : 'text-terminal-muted',
                           )}
                           title={
@@ -149,7 +151,7 @@ export function PendingPanel({
                     <td className="numeric px-2 py-1.5 text-right text-terminal-text">
                       {formatPrice(order.price, precision)}
                       {order.type === 'STOP_LIMIT' && order.stopPrice != null ? (
-                        <span className="block text-[10px] text-terminal-muted">
+                        <span className="block text-label text-terminal-muted">
                           stop {formatPrice(order.stopPrice, precision)}
                         </span>
                       ) : null}
@@ -219,7 +221,7 @@ export function PendingPanel({
           </tbody>
         </table>
       </div>
-      <p className="px-3 py-2 text-[10px] text-terminal-muted">
+      <p className="px-3 py-2 text-label text-terminal-muted">
         No margin is held while an order rests. It is checked again when the order fires.
       </p>
     </div>
@@ -320,11 +322,11 @@ function PendingEditor({
           Discard
         </Button>
       </div>
-      <p className="text-[10px] text-terminal-muted">
+      <p className="text-label text-terminal-muted">
         Only the fields you change are sent. An empty stop or target clears it.
         {phase === 'resting' ? ' Its stop has been reached, so only the limit price can move.' : ''}
       </p>
-      {error === null ? null : <p className="text-[11px] text-terminal-short">{error}</p>}
+      {error === null ? null : <p className="text-caption text-terminal-short">{error}</p>}
     </div>
   );
 }
@@ -340,7 +342,7 @@ function Labelled({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[10px] uppercase tracking-wider text-terminal-muted">
+      <span className="mb-1 block text-label uppercase tracking-wider text-terminal-muted">
         {label}
       </span>
       <input

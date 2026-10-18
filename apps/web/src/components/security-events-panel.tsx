@@ -61,23 +61,23 @@ export function SecurityEventsPanel() {
   return (
     <div className="space-y-3" data-testid="security-events">
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Recent activity</p>
-        <p className="mt-1 text-[11px] leading-relaxed text-terminal-muted">
+        <p className="text-label uppercase tracking-wider text-terminal-muted">Recent activity</p>
+        <p className="mt-1 text-caption leading-relaxed text-terminal-muted">
           Sign-ins, keys and changes to how you authenticate, as the platform recorded them. If
           something here is not you, end your sessions and change your password now.
         </p>
       </div>
 
       {events.isPending ? (
-        <p className="text-[11px] text-terminal-muted">Loading…</p>
+        <p className="text-caption text-terminal-muted">Loading…</p>
       ) : events.isError ? (
-        <p className="text-[11px] text-terminal-short">Could not load your security activity.</p>
+        <p className="text-caption text-terminal-short">Could not load your security activity.</p>
       ) : rows.length === 0 ? (
-        <p className="text-[11px] text-terminal-muted">Nothing recorded yet.</p>
+        <p className="text-caption text-terminal-muted">Nothing recorded yet.</p>
       ) : (
         <ul className="divide-y divide-terminal-border">
           {rows.map((row) => (
-            <li key={row.id} className="flex items-start gap-3 py-2 text-[11px]">
+            <li key={row.id} className="flex items-start gap-3 py-2 text-caption">
               <span className="w-32 shrink-0 tabular-nums text-terminal-muted">
                 {utcTime(row.at)}
               </span>

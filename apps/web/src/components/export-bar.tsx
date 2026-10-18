@@ -34,7 +34,7 @@ export function ExportBar({
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-terminal-border px-3 py-1.5">
       <div className="flex items-center gap-3">
-        <span className="text-[10px] text-terminal-muted">{label}</span>
+        <span className="text-label text-terminal-muted">{label}</span>
         {children}
       </div>
       <Button

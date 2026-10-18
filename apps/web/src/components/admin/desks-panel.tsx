@@ -46,11 +46,11 @@ export function DesksPanel() {
   return (
     <div className="flex flex-col" data-testid="desks-panel">
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-        <p className="text-[11px] text-terminal-muted">
+        <p className="text-caption text-terminal-muted">
           A desk reaches exactly the accounts it has been delegated, and only for what each
           delegation lists. Creating one grants nothing by itself.
         </p>
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {rows.length} {rows.length === 1 ? 'desk' : 'desks'}
         </span>
       </div>
@@ -76,11 +76,11 @@ export function DesksPanel() {
                   {row.name}
                   {row.status === 'ACTIVE' ? '' : ` · ${row.status.toLowerCase()}`}
                 </td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
                   {row.operatorUserId}
                 </td>
                 <td className="numeric px-3 py-1.5">{row.activeLinks}</td>
-                <td className="numeric px-3 py-1.5 text-[10px] text-terminal-muted">
+                <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
                   {utcTime(row.createdAt)}
                 </td>
                 <td className="px-3 py-1.5 text-right">
@@ -107,7 +107,7 @@ function NewDesk() {
 
   return (
     <div className="space-y-3 border-t border-terminal-border px-3 py-3">
-      <p className="text-[10px] uppercase tracking-wider text-terminal-muted">New desk</p>
+      <p className="text-label uppercase tracking-wider text-terminal-muted">New desk</p>
       <ErrorLine error={create.error} />
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Name" hint="what this desk is called here">
@@ -161,7 +161,7 @@ function DeskDetail({ desk, mayManage }: { desk: MasterAccountRow; mayManage: bo
 
   return (
     <div className="space-y-4 border-t border-terminal-border px-3 py-3" data-testid="desk-detail">
-      <p className="text-[10px] uppercase tracking-wider text-terminal-muted">{desk.name}</p>
+      <p className="text-label uppercase tracking-wider text-terminal-muted">{desk.name}</p>
       <ErrorLine error={links.error ?? book.error ?? grant.error ?? revoke.error} />
 
       {/* The book */}
@@ -169,7 +169,7 @@ function DeskDetail({ desk, mayManage }: { desk: MasterAccountRow; mayManage: bo
         <Loading />
       ) : (
         <div className="space-y-2">
-          <div className="flex flex-wrap gap-4 text-[11px]">
+          <div className="flex flex-wrap gap-4 text-caption">
             <Figure label="Accounts" value={String(totals?.accounts ?? 0)} />
             <Figure label="Equity" value={totals?.equity} currency={book.data?.currency} />
             <Figure label="Balance" value={totals?.balance} currency={book.data?.currency} />
@@ -178,7 +178,7 @@ function DeskDetail({ desk, mayManage }: { desk: MasterAccountRow; mayManage: bo
             <Figure label="Open positions" value={String(totals?.openPositions ?? 0)} />
           </div>
           {book.data !== undefined && book.data.unpriced.length > 0 ? (
-            <p className="text-[11px] text-terminal-warning">
+            <p className="text-caption text-terminal-warning">
               No total is shown: {book.data.unpriced.join(', ')} could not be priced in{' '}
               {book.data.currency}. A total that quietly dropped them would read as a smaller book
               than this desk actually runs.
@@ -216,18 +216,18 @@ function DeskDetail({ desk, mayManage }: { desk: MasterAccountRow; mayManage: bo
         <tbody>
           {(links.data ?? []).map((link) => (
             <tr key={link.id} className="border-t border-terminal-border/60 align-top">
-              <td className="px-3 py-1.5 font-mono text-[11px]">
+              <td className="px-3 py-1.5 font-mono text-caption">
                 {link.accountNumber}
                 {link.status === 'ACTIVE' ? '' : ' · revoked'}
               </td>
-              <td className="px-3 py-1.5 text-[11px]">
+              <td className="px-3 py-1.5 text-caption">
                 {label(link.grantedAsRole) ?? <span className="text-terminal-muted">chosen</span>}
               </td>
-              <td className="px-3 py-1.5 text-[10px] text-terminal-muted">
+              <td className="px-3 py-1.5 text-label text-terminal-muted">
                 {/* The stored list, because the stored list is what is enforced. */}
                 {link.role === null ? link.capabilities.join(', ') : label(link.role)}
               </td>
-              <td className="numeric px-3 py-1.5 text-[10px] text-terminal-muted">
+              <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
                 {utcTime(link.grantedAt)}
               </td>
               <td className="px-3 py-1.5 text-right">
@@ -315,14 +315,14 @@ function DeskCeiling({ masterAccountId }: { masterAccountId: string }) {
 
   return (
     <div className="space-y-2 border-t border-terminal-border/60 pt-3">
-      <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Desk ceiling</p>
-      <p className="text-[11px] text-terminal-muted">
+      <p className="text-label uppercase tracking-wider text-terminal-muted">Desk ceiling</p>
+      <p className="text-caption text-terminal-muted">
         Binds orders this desk&apos;s operators place. It does not bind an account holder trading
         their own account. A ceiling may tighten the layers above it and never loosen them.
       </p>
       <ErrorLine error={limits.error ?? save.error} />
       {above.length > 0 ? (
-        <p className="text-[10px] text-terminal-muted">
+        <p className="text-label text-terminal-muted">
           Above:{' '}
           {above
             .map(
@@ -334,7 +334,7 @@ function DeskCeiling({ masterAccountId }: { masterAccountId: string }) {
             .join(' · ')}
         </p>
       ) : null}
-      <p className="text-[11px]">
+      <p className="text-caption">
         Now: {mine?.maxPositionVolume ?? '—'} lots per position, {mine?.maxOpenPositions ?? '—'}{' '}
         open positions
       </p>
@@ -401,7 +401,7 @@ function Figure({
 }) {
   return (
     <span>
-      <span className="text-[10px] uppercase tracking-wider text-terminal-muted">{name}</span>{' '}
+      <span className="text-label uppercase tracking-wider text-terminal-muted">{name}</span>{' '}
       <span className="numeric">
         {value ?? '—'}
         {value != null && currency !== undefined ? ` ${currency}` : ''}

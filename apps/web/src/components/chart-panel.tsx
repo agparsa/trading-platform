@@ -101,7 +101,7 @@ export function ChartPanel({
               aria-hidden
               title={markFor(symbol.code).label}
               className={cn(
-                'inline-flex h-5 w-7 shrink-0 items-center justify-center rounded text-[11px] font-semibold leading-none ring-1 ring-inset',
+                'inline-flex h-5 w-7 shrink-0 items-center justify-center rounded text-caption font-semibold leading-none ring-1 ring-inset',
                 markClasses(markFor(symbol.code).kind),
               )}
             >
@@ -110,7 +110,7 @@ export function ChartPanel({
           )}
           <span className="text-sm font-medium text-terminal-text">{symbol?.code ?? '—'}</span>
           {symbol === undefined ? null : (
-            <span className="text-[10px] uppercase tracking-wider text-terminal-muted">
+            <span className="text-label uppercase tracking-wider text-terminal-muted">
               {markFor(symbol.code).label}
             </span>
           )}
@@ -127,7 +127,7 @@ export function ChartPanel({
               type="button"
               onClick={() => onResolutionChange(value)}
               className={cn(
-                'rounded px-2 py-0.5 text-[11px] transition-colors',
+                'rounded px-2 py-0.5 text-caption transition-colors',
                 value === resolution
                   ? 'bg-terminal-raised text-terminal-text'
                   : 'text-terminal-muted hover:text-terminal-text',
@@ -165,7 +165,7 @@ export function ChartPanel({
         )}
       </div>
 
-      <p className="shrink-0 border-t border-terminal-border px-3 py-1 text-[10px] text-terminal-muted">
+      <p className="shrink-0 border-t border-terminal-border px-3 py-1 text-label text-terminal-muted">
         Server candles, built from the bid. Drag a stop, a target or a resting order to move it —
         the server decides. Indicators and drawing tools arrive with the licensed charting library.
       </p>
@@ -643,7 +643,7 @@ function Candles({
         <button
           type="button"
           onClick={() => setRefusal(null)}
-          className="absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded border border-terminal-short/50 bg-terminal-surface px-3 py-1 text-[11px] text-terminal-short"
+          className="absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded border border-terminal-short/50 bg-terminal-surface px-3 py-1 text-caption text-terminal-short"
         >
           {refusal} — dismiss
         </button>

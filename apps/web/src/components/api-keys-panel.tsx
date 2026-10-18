@@ -67,8 +67,8 @@ export function ApiKeysPanel() {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">API keys</p>
-        <p className="mt-1 text-[11px] leading-relaxed text-terminal-muted">
+        <p className="text-label uppercase tracking-wider text-terminal-muted">API keys</p>
+        <p className="mt-1 text-caption leading-relaxed text-terminal-muted">
           A key lets a script act as you, with only the capabilities you give it. It can never move
           money in or out, change roles, or make more keys. Revoking one stops it at once.
         </p>
@@ -79,11 +79,11 @@ export function ApiKeysPanel() {
           className="space-y-2 rounded border border-terminal-warning/60 bg-terminal-raised p-3"
           data-testid="api-key-secret"
         >
-          <p className="text-[11px] text-terminal-warning">
+          <p className="text-caption text-terminal-warning">
             This is the only time the key will be shown. Copy it now; the platform does not keep it
             and cannot show it again.
           </p>
-          <pre className="whitespace-pre-wrap break-all rounded bg-terminal-bg px-3 py-2 font-mono text-[11px] text-terminal-text">
+          <pre className="whitespace-pre-wrap break-all rounded bg-terminal-bg px-3 py-2 font-mono text-caption text-terminal-text">
             {shown.token}
           </pre>
           <div className="flex items-center gap-2">
@@ -111,7 +111,7 @@ export function ApiKeysPanel() {
       )}
 
       <div className="space-y-3 rounded border border-terminal-border/60 p-3">
-        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">New key</p>
+        <p className="text-label uppercase tracking-wider text-terminal-muted">New key</p>
         <Field label="Name">
           <input
             className={inputClass}
@@ -122,11 +122,11 @@ export function ApiKeysPanel() {
           />
         </Field>
         <div className="block">
-          <span className="mb-1 flex items-center justify-between text-[11px] uppercase tracking-wider text-terminal-muted">
+          <span className="mb-1 flex items-center justify-between text-caption uppercase tracking-wider text-terminal-muted">
             Capabilities
           </span>
           {offered.length === 0 ? (
-            <p className="text-[11px] text-terminal-muted">
+            <p className="text-caption text-terminal-muted">
               Nothing you hold can be carried by a key.
             </p>
           ) : (
@@ -134,7 +134,7 @@ export function ApiKeysPanel() {
               {offered.map((permission) => (
                 <label
                   key={permission}
-                  className="flex cursor-pointer items-center gap-1.5 text-[11px] text-terminal-text"
+                  className="flex cursor-pointer items-center gap-1.5 text-caption text-terminal-text"
                 >
                   <input
                     type="checkbox"
@@ -167,7 +167,7 @@ export function ApiKeysPanel() {
           </Field>
         </div>
         {mint.error === null ? null : (
-          <p className="text-[11px] text-terminal-short">
+          <p className="text-caption text-terminal-short">
             {mint.error instanceof DomainError ? mint.error.message : 'The key was not created.'}
           </p>
         )}
@@ -199,15 +199,15 @@ export function ApiKeysPanel() {
       </div>
 
       {revoke.error === null ? null : (
-        <p className="text-[11px] text-terminal-short">
+        <p className="text-caption text-terminal-short">
           {revoke.error instanceof DomainError ? revoke.error.message : 'The key was not revoked.'}
         </p>
       )}
 
       {keys.isLoading ? (
-        <p className="text-[11px] text-terminal-muted">Loading…</p>
+        <p className="text-caption text-terminal-muted">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="text-[11px] text-terminal-muted">You have no keys.</p>
+        <p className="text-caption text-terminal-muted">You have no keys.</p>
       ) : (
         <div className="space-y-2">
           {[...live, ...ended].map((row) => (
@@ -218,13 +218,13 @@ export function ApiKeysPanel() {
               <div className="min-w-0 space-y-0.5">
                 <p className="text-sm text-terminal-text">
                   {row.name}{' '}
-                  <span className={cn('text-[10px] uppercase', STATUS_TONE[row.status])}>
+                  <span className={cn('text-label uppercase', STATUS_TONE[row.status])}>
                     {row.status}
                   </span>
                 </p>
-                <p className="font-mono text-[11px] text-terminal-muted">{row.fingerprint}</p>
-                <p className="text-[10px] text-terminal-muted">{row.permissions.join(', ')}</p>
-                <p className="text-[10px] text-terminal-muted">
+                <p className="font-mono text-caption text-terminal-muted">{row.fingerprint}</p>
+                <p className="text-label text-terminal-muted">{row.permissions.join(', ')}</p>
+                <p className="text-label text-terminal-muted">
                   {row.status === 'REVOKED'
                     ? `Revoked ${utcTime(row.revokedAt ?? row.createdAt)}${row.revokedReason === null ? '' : ` — ${row.revokedReason}`}`
                     : `Expires ${utcTime(row.expiresAt)}`}

@@ -32,7 +32,7 @@ export function ConnectionBadge() {
 
   return (
     <span
-      className={cn('numeric rounded border px-2 py-0.5 text-[11px]', STYLE[status])}
+      className={cn('numeric rounded border px-2 py-0.5 text-caption', STYLE[status])}
       title={`${frames} frames received on this connection`}
     >
       <span

@@ -94,8 +94,8 @@ export default function WalletPage() {
                   aria-pressed={row.id === walletId}
                   className={
                     row.id === walletId
-                      ? 'rounded bg-terminal-raised px-2 py-1 text-[11px] text-terminal-text'
-                      : 'rounded px-2 py-1 text-[11px] text-terminal-muted hover:text-terminal-text'
+                      ? 'rounded bg-terminal-raised px-2 py-1 text-caption text-terminal-text'
+                      : 'rounded px-2 py-1 text-caption text-terminal-muted hover:text-terminal-text'
                   }
                 >
                   {row.currency}
@@ -107,14 +107,14 @@ export default function WalletPage() {
           {wallet === undefined ? null : (
             <>
               <Panel className="p-4">
-                <p className="text-[10px] uppercase tracking-wider text-terminal-muted">
+                <p className="text-label uppercase tracking-wider text-terminal-muted">
                   {wallet.currency} wallet
                 </p>
                 <p className="numeric mt-1 text-2xl text-terminal-text">
                   {money(wallet.balance, wallet.currency)}
                 </p>
                 {wallet.status === 'FROZEN' ? (
-                  <p className="mt-2 text-[11px] text-terminal-warning">
+                  <p className="mt-2 text-caption text-terminal-warning">
                     This wallet is frozen while it is reviewed. The money is held, not taken, and it
                     moves again when the hold is lifted.
                   </p>
@@ -157,9 +157,9 @@ export default function WalletPage() {
               />
 
               <Panel className="overflow-auto">
-                <table className="w-full text-[11px]">
+                <table className="w-full text-caption">
                   <thead>
-                    <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+                    <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
                       <th className="px-3 py-2">When</th>
                       <th className="px-3 py-2">What</th>
                       <th className="px-3 py-2 text-right">Amount</th>
@@ -264,7 +264,7 @@ function TransferForm({
 
   return (
     <Panel className="max-w-lg space-y-3 p-4">
-      <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Move money</p>
+      <p className="text-label uppercase tracking-wider text-terminal-muted">Move money</p>
 
       <Field label="Direction">
         <select
@@ -302,7 +302,7 @@ function TransferForm({
       </Field>
 
       {error === null || error === undefined ? null : (
-        <p className="text-[11px] text-terminal-short">
+        <p className="text-caption text-terminal-short">
           {error instanceof DomainError ? error.message : 'The transfer did not go through.'}
         </p>
       )}
@@ -315,12 +315,12 @@ function TransferForm({
           {busy ? 'Moving…' : 'Move'}
         </Button>
         {blocked === null ? null : (
-          <span className="text-[11px] text-terminal-muted">{blocked}</span>
+          <span className="text-caption text-terminal-muted">{blocked}</span>
         )}
       </div>
 
       {direction === 'to-wallet' ? (
-        <p className="text-[10px] leading-relaxed text-terminal-muted">
+        <p className="text-label leading-relaxed text-terminal-muted">
           Only free margin can leave a trading account. Money committed to an open position stays
           where it is — taking it would close the position, from here, at a price nobody chose.
         </p>
@@ -381,8 +381,8 @@ function DepositForm({
   if (providers.length === 0) {
     return (
       <Panel className="max-w-lg p-4">
-        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Add money</p>
-        <p className="mt-2 text-[11px] leading-relaxed text-terminal-muted">
+        <p className="text-label uppercase tracking-wider text-terminal-muted">Add money</p>
+        <p className="mt-2 text-caption leading-relaxed text-terminal-muted">
           No payment method is configured on this deployment yet. Ask support how to send funds —
           they can record a transfer against your account once it arrives.
         </p>
@@ -392,7 +392,7 @@ function DepositForm({
 
   return (
     <Panel className="max-w-lg space-y-3 p-4">
-      <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Add money</p>
+      <p className="text-label uppercase tracking-wider text-terminal-muted">Add money</p>
 
       <Field label="How">
         <select
@@ -419,7 +419,7 @@ function DepositForm({
       </Field>
 
       {error === null || error === undefined ? null : (
-        <p className="text-[11px] text-terminal-short">
+        <p className="text-caption text-terminal-short">
           {error instanceof DomainError ? error.message : 'The deposit could not be started.'}
         </p>
       )}
@@ -432,11 +432,11 @@ function DepositForm({
           {busy ? 'Starting…' : 'Continue'}
         </Button>
         {blocked === null || blocked === 'no-providers' ? null : (
-          <span className="text-[11px] text-terminal-muted">{blocked}</span>
+          <span className="text-caption text-terminal-muted">{blocked}</span>
         )}
       </div>
 
-      <p className="text-[10px] leading-relaxed text-terminal-muted">
+      <p className="text-label leading-relaxed text-terminal-muted">
         This does not move any money. You will be shown what to do next, and your balance changes
         once the transfer has actually arrived.
       </p>
@@ -462,10 +462,10 @@ function PaymentHistory({ payments }: { payments: readonly PaymentRow[] }) {
       {awaiting.map((row) =>
         row.instructions === null ? null : (
           <Panel key={row.id} className="max-w-lg p-4">
-            <p className="text-[10px] uppercase tracking-wider text-terminal-muted">
+            <p className="text-label uppercase tracking-wider text-terminal-muted">
               Awaiting your transfer — {money(row.amount, row.currency)}
             </p>
-            <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-terminal-text">
+            <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-caption leading-relaxed text-terminal-text">
               {row.instructions}
             </pre>
           </Panel>
@@ -473,9 +473,9 @@ function PaymentHistory({ payments }: { payments: readonly PaymentRow[] }) {
       )}
 
       <Panel className="overflow-auto">
-        <table className="w-full text-[11px]">
+        <table className="w-full text-caption">
           <thead>
-            <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+            <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
               <th className="px-3 py-2">Started</th>
               <th className="px-3 py-2">How</th>
               <th className="px-3 py-2 text-right">Amount</th>
@@ -566,10 +566,10 @@ function WithdrawSection({
   return (
     <div className="space-y-4">
       <Panel className="max-w-lg space-y-3 p-4">
-        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Withdraw</p>
+        <p className="text-label uppercase tracking-wider text-terminal-muted">Withdraw</p>
 
         {terms.data === undefined ? null : (
-          <p className="text-[11px] leading-relaxed text-terminal-muted">
+          <p className="text-caption leading-relaxed text-terminal-muted">
             Between {money(terms.data.minimum, wallet.currency)} and{' '}
             {money(terms.data.maximum, wallet.currency)} per request
             {terms.data.dailyLimit === null
@@ -610,7 +610,7 @@ function WithdrawSection({
         </Field>
 
         {error === null || error === undefined ? null : (
-          <p className="text-[11px] text-terminal-short">
+          <p className="text-caption text-terminal-short">
             {error instanceof DomainError ? error.message : 'The request did not go through.'}
           </p>
         )}
@@ -631,11 +631,11 @@ function WithdrawSection({
             {busy ? 'Working…' : 'Request withdrawal'}
           </Button>
           {blocked === null ? null : (
-            <span className="text-[11px] text-terminal-muted">{blocked}</span>
+            <span className="text-caption text-terminal-muted">{blocked}</span>
           )}
         </div>
 
-        <p className="text-[10px] leading-relaxed text-terminal-muted">
+        <p className="text-label leading-relaxed text-terminal-muted">
           The amount leaves your wallet balance the moment you ask, and comes back only if the
           request is refused, cancelled, or the transfer fails. Somebody reviews every request and a
           person sends the money; you will be told when it is paid.
@@ -644,9 +644,9 @@ function WithdrawSection({
 
       {withdrawals.length === 0 ? null : (
         <Panel className="overflow-auto">
-          <table className="w-full text-[11px]">
+          <table className="w-full text-caption">
             <thead>
-              <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+              <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
                 <th className="px-3 py-2">Requested</th>
                 <th className="px-3 py-2 text-right">Amount</th>
                 <th className="px-3 py-2">To</th>

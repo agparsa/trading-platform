@@ -67,7 +67,7 @@ export function LevelField({
     <div className="flex flex-col gap-1">
       <div className="flex items-end gap-1">
         <label className="block">
-          <span className="mb-1 block text-[10px] uppercase tracking-wider text-terminal-muted">
+          <span className="mb-1 block text-label uppercase tracking-wider text-terminal-muted">
             {label}
           </span>
           <input
@@ -100,7 +100,7 @@ export function LevelField({
         </select>
       </div>
       <p
-        className="numeric min-h-[14px] text-[10px] text-terminal-muted"
+        className="numeric min-h-[14px] text-label text-terminal-muted"
         aria-live="polite"
         data-testid={`${label.toLowerCase().replace(/\s+/g, '-')}-readout`}
       >

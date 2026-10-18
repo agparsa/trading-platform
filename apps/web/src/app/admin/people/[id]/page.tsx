@@ -22,7 +22,7 @@ export default function Page() {
       <div className="border-b border-terminal-border px-3 py-1.5">
         <Link
           href="/admin/people"
-          className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+          className="text-caption text-terminal-muted transition-colors hover:text-terminal-text"
         >
           ← All people
         </Link>

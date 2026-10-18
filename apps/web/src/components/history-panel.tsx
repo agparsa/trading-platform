@@ -176,7 +176,7 @@ export function HistoryPanel({
             <td className="px-2 py-1.5">
               <span
                 className={cn(
-                  'rounded px-1.5 py-0.5 text-[10px]',
+                  'rounded px-1.5 py-0.5 text-label',
                   order.status === 'FILLED'
                     ? 'bg-terminal-long/15 text-terminal-long'
                     : order.status === 'REJECTED' || order.status === 'CANCELLED'
@@ -294,7 +294,7 @@ function Table({ head, children }: { head: readonly string[]; children: React.Re
   return (
     <table className="w-full border-collapse text-xs">
       <thead className="sticky top-0 z-10 bg-terminal-surface">
-        <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+        <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
           {head.map((label, index) => (
             <th
               key={label}

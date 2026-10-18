@@ -51,8 +51,8 @@ export default function AccountPage() {
                   aria-pressed={row.id === accountId}
                   className={
                     row.id === accountId
-                      ? 'rounded bg-terminal-raised px-2 py-1 text-[11px] text-terminal-text'
-                      : 'rounded px-2 py-1 text-[11px] text-terminal-muted hover:text-terminal-text'
+                      ? 'rounded bg-terminal-raised px-2 py-1 text-caption text-terminal-text'
+                      : 'rounded px-2 py-1 text-caption text-terminal-muted hover:text-terminal-text'
                   }
                 >
                   #{row.number}
@@ -98,7 +98,7 @@ export default function AccountPage() {
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[10px] uppercase tracking-wider text-terminal-muted">{label}</dt>
+      <dt className="text-label uppercase tracking-wider text-terminal-muted">{label}</dt>
       <dd className="numeric mt-0.5 truncate text-sm text-terminal-text">{value}</dd>
     </div>
   );

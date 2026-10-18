@@ -40,7 +40,7 @@ export function AccountsPanel() {
     <div className="flex flex-col">
       <div className="flex items-center gap-2 border-b border-terminal-border px-3 py-2">
         <SearchBox value={search} onChange={setSearch} placeholder="Account number or email" />
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {accounts.data === undefined ? '' : `${accounts.data.length} shown`}
         </span>
       </div>
@@ -123,7 +123,7 @@ export function AccountRow({
         <td className="px-2 py-1.5">
           <div className="flex flex-wrap items-center justify-end gap-1">
             <select
-              className={cn(inputClass, 'w-32 py-0.5 text-[11px]')}
+              className={cn(inputClass, 'w-32 py-0.5 text-caption')}
               value={status}
               onChange={(event) => setStatus(event.target.value)}
               aria-label={`Status for ${account.number}`}
@@ -184,7 +184,7 @@ function AdjustmentForm({ account }: { account: AdminAccountRow }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[11px] text-terminal-muted">
+      <p className="text-caption text-terminal-muted">
         This appends an entry to {account.number}&rsquo;s ledger. Nothing anywhere sets a balance —
         the balance moves because the ledger moved, and the entry stays readable beside the trades
         either side of it. A positive amount credits; a negative amount debits.
@@ -192,7 +192,7 @@ function AdjustmentForm({ account }: { account: AdminAccountRow }) {
 
       <div className="flex flex-wrap items-end gap-2">
         <label className="block">
-          <span className="mb-1 block text-[10px] uppercase tracking-wider text-terminal-muted">
+          <span className="mb-1 block text-label uppercase tracking-wider text-terminal-muted">
             Amount ({account.currency})
           </span>
           <input
@@ -205,7 +205,7 @@ function AdjustmentForm({ account }: { account: AdminAccountRow }) {
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-[10px] uppercase tracking-wider text-terminal-muted">
+          <span className="mb-1 block text-label uppercase tracking-wider text-terminal-muted">
             Kind
           </span>
           <select
@@ -221,7 +221,7 @@ function AdjustmentForm({ account }: { account: AdminAccountRow }) {
         </label>
 
         <label className="block flex-1">
-          <span className="mb-1 block text-[10px] uppercase tracking-wider text-terminal-muted">
+          <span className="mb-1 block text-label uppercase tracking-wider text-terminal-muted">
             Reason (stored on the entry)
           </span>
           <input
@@ -233,7 +233,7 @@ function AdjustmentForm({ account }: { account: AdminAccountRow }) {
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-[10px] uppercase tracking-wider text-terminal-muted">
+          <span className="mb-1 block text-label uppercase tracking-wider text-terminal-muted">
             Your 2FA code
           </span>
           <input
@@ -275,7 +275,7 @@ function AdjustmentForm({ account }: { account: AdminAccountRow }) {
 
       <ErrorLine error={adjust.error} />
       {adjust.data === undefined ? null : (
-        <p className="text-[11px] text-terminal-long">
+        <p className="text-caption text-terminal-long">
           Posted {signedMoney(adjust.data.amount, account.currency)} — balance is now{' '}
           {money(adjust.data.balanceAfter, account.currency)}. Entry {adjust.data.entryId}.
         </p>

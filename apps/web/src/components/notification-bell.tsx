@@ -40,13 +40,13 @@ export function NotificationBell() {
         aria-expanded={open}
         aria-label={unread === 0 ? 'Notifications' : `Notifications, ${unread} unread`}
         className={cn(
-          'relative rounded px-1.5 py-0.5 text-[13px] leading-none transition-colors',
+          'relative rounded px-1.5 py-0.5 text-body leading-none transition-colors',
           unread > 0 ? 'text-terminal-warning' : 'text-terminal-muted hover:text-terminal-text',
         )}
       >
         ●
         {unread === 0 ? null : (
-          <span className="numeric absolute -right-1 -top-1 rounded-full bg-terminal-warning px-1 text-[9px] font-medium text-terminal-bg">
+          <span className="numeric absolute -right-1 -top-1 rounded-full bg-terminal-warning px-1 text-micro font-medium text-terminal-bg">
             {unread > 9 ? '9+' : unread}
           </span>
         )}
@@ -55,7 +55,7 @@ export function NotificationBell() {
       {!open ? null : (
         <div className="absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded border border-terminal-border bg-terminal-surface shadow-lg shadow-black/40">
           <div className="flex items-center justify-between border-b border-terminal-border px-3 py-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-terminal-muted">
+            <span className="text-label uppercase tracking-wider text-terminal-muted">
               Notifications
             </span>
             <Button
@@ -70,9 +70,9 @@ export function NotificationBell() {
 
           <div className="max-h-80 overflow-auto">
             {notifications.isLoading ? (
-              <p className="px-3 py-3 text-[11px] text-terminal-muted">Loading…</p>
+              <p className="px-3 py-3 text-caption text-terminal-muted">Loading…</p>
             ) : (notifications.data ?? []).length === 0 ? (
-              <p className="px-3 py-3 text-[11px] text-terminal-muted">Nothing yet.</p>
+              <p className="px-3 py-3 text-caption text-terminal-muted">Nothing yet.</p>
             ) : (
               (notifications.data ?? []).map((row) => (
                 <button
@@ -89,7 +89,7 @@ export function NotificationBell() {
                   <div className="flex items-baseline justify-between gap-2">
                     <span
                       className={cn(
-                        'text-[11px] font-medium',
+                        'text-caption font-medium',
                         row.severity === 'CRITICAL'
                           ? 'text-terminal-short'
                           : row.severity === 'WARNING'
@@ -99,11 +99,11 @@ export function NotificationBell() {
                     >
                       {row.title}
                     </span>
-                    <span className="shrink-0 text-[9px] text-terminal-muted">
+                    <span className="shrink-0 text-micro text-terminal-muted">
                       {relativeTime(row.createdAt)}
                     </span>
                   </div>
-                  <p className="mt-0.5 text-[10px] leading-relaxed text-terminal-muted">
+                  <p className="mt-0.5 text-label leading-relaxed text-terminal-muted">
                     {row.body}
                   </p>
                 </button>

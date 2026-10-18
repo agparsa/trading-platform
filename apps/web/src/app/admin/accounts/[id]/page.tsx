@@ -25,14 +25,14 @@ export default function Page() {
       <div className="flex items-center justify-between gap-2 border-b border-terminal-border px-3 py-1.5">
         <Link
           href="/admin/accounts"
-          className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+          className="text-caption text-terminal-muted transition-colors hover:text-terminal-text"
         >
           ← All accounts
         </Link>
         {account.data === undefined ? null : (
           <Link
             href={`/admin/people/${account.data.userId}`}
-            className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+            className="text-caption text-terminal-muted transition-colors hover:text-terminal-text"
           >
             Owner: {account.data.email} →
           </Link>

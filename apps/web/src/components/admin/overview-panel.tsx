@@ -43,7 +43,7 @@ export function OverviewPanel() {
         )}
       >
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Trading</p>
+          <p className="text-label uppercase tracking-wider text-terminal-muted">Trading</p>
           <p
             className={cn(
               'mt-0.5 text-sm font-medium',
@@ -53,7 +53,7 @@ export function OverviewPanel() {
             {halted ? 'Halted' : 'Open'}
           </p>
           {halted && data.trading.reason != null ? (
-            <p className="mt-0.5 text-[11px] text-terminal-muted">{data.trading.reason}</p>
+            <p className="mt-0.5 text-caption text-terminal-muted">{data.trading.reason}</p>
           ) : null}
         </div>
         <ReasonedAction
@@ -104,7 +104,7 @@ export function OverviewPanel() {
       */}
       {data.money.byCurrency.length === 0 ? null : (
         <section className="space-y-2">
-          <p className="text-[10px] uppercase tracking-wider text-terminal-muted">
+          <p className="text-label uppercase tracking-wider text-terminal-muted">
             Money · last 24 hours
           </p>
           <Table>
@@ -149,7 +149,7 @@ export function OverviewPanel() {
         </section>
       )}
 
-      <p className="text-[10px] text-terminal-muted">
+      <p className="text-label text-terminal-muted">
         Taken {utcTime(data.takenAt)} UTC · reconciliation findings in the last day{' '}
         {data.reconciliation.openFindings}
         {data.reconciliation.lastRunAt === null

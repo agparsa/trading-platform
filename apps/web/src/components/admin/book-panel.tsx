@@ -174,7 +174,7 @@ export function BookPanel() {
       )}
 
       <div className="flex items-center justify-between px-3 py-2">
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {active.data?.rows.length ?? 0} shown
           {active.data?.nextCursor === null ? '' : ' · more'}
         </span>
@@ -221,12 +221,12 @@ function OrdersTable({
       <tbody>
         {rows.map((row) => (
           <tr key={row.id} className="border-t border-terminal-border/60">
-            <td className="numeric px-3 py-1.5 text-[10px] text-terminal-muted">
+            <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
               {utcTime(row.createdAt)}
             </td>
             <td className="px-3 py-1.5">
-              <p className="font-mono text-[11px]">{row.accountNumber}</p>
-              <p className="text-[10px] text-terminal-muted">{row.ownerEmail}</p>
+              <p className="font-mono text-caption">{row.accountNumber}</p>
+              <p className="text-label text-terminal-muted">{row.ownerEmail}</p>
             </td>
             <td className="px-3 py-1.5 text-terminal-text">{row.symbol}</td>
             <td
@@ -237,15 +237,15 @@ function OrdersTable({
             >
               {row.side}
             </td>
-            <td className="px-3 py-1.5 text-[10px] text-terminal-muted">{row.type}</td>
+            <td className="px-3 py-1.5 text-label text-terminal-muted">{row.type}</td>
             <td className="numeric px-3 py-1.5">
               {row.filledVolume === row.volume ? row.volume : `${row.filledVolume}/${row.volume}`}
             </td>
             <td className="numeric px-3 py-1.5">{row.price ?? '—'}</td>
-            <td className="px-3 py-1.5 text-[11px]">
+            <td className="px-3 py-1.5 text-caption">
               {row.status}
               {row.rejectionCode === null ? null : (
-                <p className="text-[10px] text-terminal-short">{row.rejectionCode}</p>
+                <p className="text-label text-terminal-short">{row.rejectionCode}</p>
               )}
             </td>
             <td className="px-3 py-1.5 text-right">
@@ -269,12 +269,12 @@ function PositionsTable({ rows }: { rows: readonly BlotterPositionRow[] }) {
       <tbody>
         {rows.map((row) => (
           <tr key={row.id} className="border-t border-terminal-border/60">
-            <td className="numeric px-3 py-1.5 text-[10px] text-terminal-muted">
+            <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
               {utcTime(row.openedAt)}
             </td>
             <td className="px-3 py-1.5">
-              <p className="font-mono text-[11px]">{row.accountNumber}</p>
-              <p className="text-[10px] text-terminal-muted">{row.ownerEmail}</p>
+              <p className="font-mono text-caption">{row.accountNumber}</p>
+              <p className="text-label text-terminal-muted">{row.ownerEmail}</p>
             </td>
             <td className="px-3 py-1.5 text-terminal-text">{row.symbol}</td>
             <td
@@ -288,7 +288,7 @@ function PositionsTable({ rows }: { rows: readonly BlotterPositionRow[] }) {
             <td className="numeric px-3 py-1.5">{row.volume}</td>
             <td className="numeric px-3 py-1.5">{row.entryPrice}</td>
             <td className="numeric px-3 py-1.5">{row.margin}</td>
-            <td className="px-3 py-1.5 text-[11px]">{row.status}</td>
+            <td className="px-3 py-1.5 text-caption">{row.status}</td>
           </tr>
         ))}
       </tbody>
@@ -315,12 +315,12 @@ function TradesTable({ rows }: { rows: readonly BlotterTradeRow[] }) {
       <tbody>
         {rows.map((row) => (
           <tr key={row.id} className="border-t border-terminal-border/60">
-            <td className="numeric px-3 py-1.5 text-[10px] text-terminal-muted">
+            <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
               {utcTime(row.exitTime)}
             </td>
             <td className="px-3 py-1.5">
-              <p className="font-mono text-[11px]">{row.accountNumber}</p>
-              <p className="text-[10px] text-terminal-muted">{row.ownerEmail}</p>
+              <p className="font-mono text-caption">{row.accountNumber}</p>
+              <p className="text-label text-terminal-muted">{row.ownerEmail}</p>
             </td>
             <td className="px-3 py-1.5 text-terminal-text">{row.symbol}</td>
             <td
@@ -332,7 +332,7 @@ function TradesTable({ rows }: { rows: readonly BlotterTradeRow[] }) {
               {row.side}
             </td>
             <td className="numeric px-3 py-1.5">{row.volume}</td>
-            <td className="numeric px-3 py-1.5 text-[10px]">
+            <td className="numeric px-3 py-1.5 text-label">
               {row.entryPrice} → {row.exitPrice}
             </td>
             <td className="numeric px-3 py-1.5">{row.grossPnl}</td>
@@ -367,7 +367,7 @@ function OrderHistory({ orderId, onClose }: { orderId: string; onClose: () => vo
   return (
     <div className="border-t border-terminal-border px-3 py-3" data-testid="order-history">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Order history</p>
+        <p className="text-label uppercase tracking-wider text-terminal-muted">Order history</p>
         <Button variant="ghost" onClick={onClose}>
           Close
         </Button>
@@ -381,15 +381,15 @@ function OrderHistory({ orderId, onClose }: { orderId: string; onClose: () => vo
           <tbody>
             {(history.data?.events ?? []).map((event) => (
               <tr key={event.id} className="border-t border-terminal-border/60 align-top">
-                <td className="numeric px-3 py-1.5 text-[10px] text-terminal-muted">
+                <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
                   {utcTime(event.createdAt)}
                 </td>
                 <td className="px-3 py-1.5 text-terminal-text">{event.type}</td>
-                <td className="px-3 py-1.5 text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 text-label text-terminal-muted">
                   {event.fromStatus ?? '—'}
                 </td>
-                <td className="px-3 py-1.5 text-[10px]">{event.toStatus ?? '—'}</td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 text-label">{event.toStatus ?? '—'}</td>
+                <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
                   {event.payload === null ? '—' : JSON.stringify(event.payload)}
                 </td>
               </tr>

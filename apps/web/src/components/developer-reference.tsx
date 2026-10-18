@@ -103,13 +103,13 @@ export function DeveloperReference() {
   return (
     <div className="grid gap-4 lg:grid-cols-3" data-testid="developer-reference">
       <Panel className="p-4 lg:col-span-1">
-        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Conventions</p>
+        <p className="text-label uppercase tracking-wider text-terminal-muted">Conventions</p>
         {conventions.isPending ? (
-          <p className="mt-2 text-[11px] text-terminal-muted">Loading…</p>
+          <p className="mt-2 text-caption text-terminal-muted">Loading…</p>
         ) : conventions.isError || conventions.data === undefined ? (
-          <p className="mt-2 text-[11px] text-terminal-short">Could not load the conventions.</p>
+          <p className="mt-2 text-caption text-terminal-short">Could not load the conventions.</p>
         ) : (
-          <dl className="mt-2 space-y-3 text-[11px]">
+          <dl className="mt-2 space-y-3 text-caption">
             <div>
               <dt className="text-terminal-muted">Authentication</dt>
               <dd className="text-terminal-text">
@@ -154,13 +154,13 @@ export function DeveloperReference() {
             </div>
             <div>
               <dt className="text-terminal-muted">What an API key may hold</dt>
-              <dd className="font-mono text-[10px] leading-relaxed text-terminal-text">
+              <dd className="font-mono text-label leading-relaxed text-terminal-text">
                 {conventions.data.keyablePermissions.join(' · ')}
               </dd>
             </div>
             <div>
               <dt className="text-terminal-muted">What a service token may hold</dt>
-              <dd className="font-mono text-[10px] leading-relaxed text-terminal-text">
+              <dd className="font-mono text-label leading-relaxed text-terminal-text">
                 {conventions.data.serviceGrantablePermissions.join(' · ')}
               </dd>
             </div>
@@ -171,11 +171,11 @@ export function DeveloperReference() {
       <Panel className="p-4 lg:col-span-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-terminal-muted">
+            <p className="text-label uppercase tracking-wider text-terminal-muted">
               {document.data?.info?.title ?? 'Routes'}
               {document.data?.info?.version ? ` · ${document.data.info.version}` : ''}
             </p>
-            <p className="mt-1 text-[11px] text-terminal-muted">
+            <p className="mt-1 text-caption text-terminal-muted">
               {operations.length} routes, from the document the server built at boot. Which of them
               your credential may call is decided by the server on every request.
             </p>
@@ -189,21 +189,21 @@ export function DeveloperReference() {
         </div>
 
         {document.isPending ? (
-          <p className="mt-3 text-[11px] text-terminal-muted">Loading…</p>
+          <p className="mt-3 text-caption text-terminal-muted">Loading…</p>
         ) : document.isError ? (
-          <p className="mt-3 text-[11px] text-terminal-short">Could not load the API document.</p>
+          <p className="mt-3 text-caption text-terminal-short">Could not load the API document.</p>
         ) : (
           <div className="mt-3 space-y-4">
             {tags.map((tag) => (
               <section key={tag}>
-                <h3 className="text-[10px] uppercase tracking-wider text-terminal-muted">{tag}</h3>
+                <h3 className="text-label uppercase tracking-wider text-terminal-muted">{tag}</h3>
                 <ul className="mt-1 divide-y divide-terminal-border">
                   {shown
                     .filter((op) => op.tag === tag)
                     .map((op) => (
                       <li
                         key={`${op.method} ${op.path}`}
-                        className="flex items-start gap-3 py-1.5 text-[11px]"
+                        className="flex items-start gap-3 py-1.5 text-caption"
                       >
                         <span
                           className={cn(

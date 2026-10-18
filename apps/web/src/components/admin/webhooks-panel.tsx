@@ -42,11 +42,11 @@ export function WebhooksPanel() {
           className="m-3 space-y-2 rounded border border-terminal-warning/60 bg-terminal-raised p-3"
           data-testid="webhook-secret"
         >
-          <p className="text-[11px] text-terminal-warning">
+          <p className="text-caption text-terminal-warning">
             This is the only time the signing secret for {shown.url} will be shown. Put it in the
             receiver now; the platform keeps it sealed and cannot show it again. {shown.note}
           </p>
-          <pre className="whitespace-pre-wrap break-all rounded bg-terminal-bg px-3 py-2 font-mono text-[11px] text-terminal-text">
+          <pre className="whitespace-pre-wrap break-all rounded bg-terminal-bg px-3 py-2 font-mono text-caption text-terminal-text">
             {shown.secret}
           </pre>
           <Button variant="ghost" className="px-2 py-0.5" onClick={() => setShown(null)}>
@@ -125,7 +125,7 @@ function Register({ onSecret }: { onSecret: (url: string, secret: string) => voi
           {create.isPending ? 'Registering…' : 'Register endpoint'}
         </Button>
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-terminal-muted">
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-terminal-muted">
         <span>Events:</span>
         <label className="flex items-center gap-1">
           <input type="checkbox" checked={events.length === 0} onChange={() => setEvents([])} />
@@ -199,7 +199,7 @@ function Endpoints({
                   </span>
                 )}
                 {row.consecutiveFailures > 0 ? (
-                  <span className="ml-1 text-[10px] text-terminal-warning">
+                  <span className="ml-1 text-label text-terminal-warning">
                     {row.consecutiveFailures} failed in a row
                   </span>
                 ) : null}
@@ -265,7 +265,7 @@ function Deliveries({ endpointId }: { endpointId: string }) {
   const rows = deliveries.data ?? [];
   return (
     <div className="border-t border-terminal-border" data-testid="webhook-deliveries">
-      <div className="flex items-center justify-between px-3 py-1.5 text-[10px] uppercase tracking-wide text-terminal-muted">
+      <div className="flex items-center justify-between px-3 py-1.5 text-label uppercase tracking-wide text-terminal-muted">
         <span>Deliveries, newest first</span>
         <span>{rows.length}</span>
       </div>
@@ -286,13 +286,13 @@ function Deliveries({ endpointId }: { endpointId: string }) {
                 <td className="px-3 py-1.5 font-mono">
                   {row.eventType}
                   {row.replayOfId !== null ? (
-                    <span className="ml-1 text-[10px] text-terminal-muted">(replay)</span>
+                    <span className="ml-1 text-label text-terminal-muted">(replay)</span>
                   ) : null}
                 </td>
                 <td className={cn('px-3 py-1.5', STATUS_TONE[row.status])}>
                   {row.status.toLowerCase()}
                   {row.status === 'FAILED' && row.nextAttemptAt !== null ? (
-                    <span className="ml-1 text-[10px] text-terminal-muted">
+                    <span className="ml-1 text-label text-terminal-muted">
                       next {utcTime(row.nextAttemptAt)}
                     </span>
                   ) : null}

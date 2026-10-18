@@ -258,7 +258,7 @@ export function Terminal() {
           {/* The watchlist is a desktop panel; on a narrow screen this is how a
               trader changes instrument. */}
           <select
-            className="numeric rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-[11px] text-terminal-text lg:hidden"
+            className="numeric rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-caption text-terminal-text lg:hidden"
             value={selectedSymbol ?? ''}
             onChange={(event) => setSelectedSymbol(event.target.value)}
             aria-label="Instrument"
@@ -291,7 +291,7 @@ export function Terminal() {
           {user !== null && user.role !== 'USER' ? (
             <Link
               href="/admin"
-              className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+              className="text-caption text-terminal-muted transition-colors hover:text-terminal-text"
             >
               Administration
             </Link>
@@ -301,17 +301,17 @@ export function Terminal() {
             onClick={() => setHelpOpen(true)}
             title="Keyboard shortcuts"
             aria-label="Keyboard shortcuts"
-            className="rounded border border-terminal-border px-1.5 py-0.5 text-[10px] leading-none text-terminal-muted transition-colors hover:text-terminal-text"
+            className="rounded border border-terminal-border px-1.5 py-0.5 text-label leading-none text-terminal-muted transition-colors hover:text-terminal-text"
           >
             ?
           </button>
           <Link
             href="/status"
-            className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+            className="text-caption text-terminal-muted transition-colors hover:text-terminal-text"
           >
             Build status
           </Link>
-          <span className="text-[11px] text-terminal-muted">{user?.email ?? ''}</span>
+          <span className="text-caption text-terminal-muted">{user?.email ?? ''}</span>
           <Button variant="ghost" onClick={() => void signOut()}>
             Sign out
           </Button>

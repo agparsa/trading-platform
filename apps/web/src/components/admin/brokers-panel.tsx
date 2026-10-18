@@ -64,11 +64,11 @@ export function BrokersPanel() {
   return (
     <div className="flex flex-col" data-testid="brokers-panel">
       <div className="flex items-center justify-between gap-2 px-3 py-2">
-        <p className="text-[11px] text-terminal-muted">
+        <p className="text-caption text-terminal-muted">
           A broker is a tenant of its own: its people, accounts, roles and audit trail are separate
           from every other firm&apos;s and from the platform&apos;s.
         </p>
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {rows.length} {rows.length === 1 ? 'broker' : 'brokers'}
         </span>
       </div>
@@ -79,13 +79,13 @@ export function BrokersPanel() {
           className="mx-3 mb-3 space-y-2 rounded border border-terminal-warning/60 bg-terminal-raised p-3"
           data-testid="broker-owner-invite"
         >
-          <p className="text-[11px] text-terminal-text">
+          <p className="text-caption text-terminal-text">
             <span className="font-medium">{created.broker.name}</span> is created. Give this
             invitation code to its owner. It is shown once: the platform keeps only a fingerprint (
             {created.ownerInvite.fingerprint}), and it expires{' '}
             {utcTime(created.ownerInvite.expiresAt)}.
           </p>
-          <pre className="whitespace-pre-wrap break-all rounded bg-terminal-bg px-3 py-2 font-mono text-[12px] text-terminal-text">
+          <pre className="whitespace-pre-wrap break-all rounded bg-terminal-bg px-3 py-2 font-mono text-xs text-terminal-text">
             {created.ownerInvite.code}
           </pre>
           <div className="flex gap-2">
@@ -118,15 +118,15 @@ export function BrokersPanel() {
               <tr key={row.id} className="border-t border-terminal-border/60 align-top">
                 <td className="px-3 py-1.5">
                   <p className="text-terminal-text">{row.name}</p>
-                  <p className="font-mono text-[10px] text-terminal-muted">
+                  <p className="font-mono text-label text-terminal-muted">
                     {row.slug}
                     {row.legalName === null ? '' : ` · ${row.legalName}`}
                   </p>
                 </td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
                   {row.primaryHost ?? '—'}
                 </td>
-                <td className="px-3 py-1.5 text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 text-label text-terminal-muted">
                   {row.defaultExecutionMode === 'INTERNAL' ? 'Internal engine' : 'External broker'}
                 </td>
                 <td className="numeric px-3 py-1.5 text-terminal-muted">{row.users}</td>
@@ -168,9 +168,7 @@ export function BrokersPanel() {
 
       {mayManage ? (
         <div className="border-t border-terminal-border px-3 py-3">
-          <p className="mb-2 text-[10px] uppercase tracking-wider text-terminal-muted">
-            New broker
-          </p>
+          <p className="mb-2 text-label uppercase tracking-wider text-terminal-muted">New broker</p>
           <ErrorLine error={create.error} />
           <div className="grid gap-3 md:grid-cols-2">
             <Field label="Slug" hint="lowercase, letters, digits and hyphens">

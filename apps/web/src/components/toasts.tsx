@@ -51,18 +51,18 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-medium">{toast.title}</p>
+        <p className="text-caption font-medium">{toast.title}</p>
         <button
           type="button"
           onClick={onDismiss}
           aria-label="Dismiss"
-          className="shrink-0 text-[11px] leading-none text-terminal-muted transition-colors hover:text-terminal-text"
+          className="shrink-0 text-caption leading-none text-terminal-muted transition-colors hover:text-terminal-text"
         >
           ×
         </button>
       </div>
       {toast.body === undefined ? null : (
-        <p className="mt-1 text-[10px] leading-relaxed text-terminal-muted">{toast.body}</p>
+        <p className="mt-1 text-label leading-relaxed text-terminal-muted">{toast.body}</p>
       )}
     </div>
   );

@@ -65,7 +65,7 @@ export function WithdrawalsPanel() {
             { id: 'CANCELLED', label: 'Cancelled' },
           ]}
         />
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {rows.length} {rows.length === 1 ? 'withdrawal' : 'withdrawals'}
         </span>
       </div>
@@ -111,7 +111,7 @@ export function WithdrawalsPanel() {
                 <td className={cn('px-3 py-1.5', STATUS_TONE[row.status] ?? 'text-terminal-text')}>
                   {row.status}
                   {row.autoApproved ? (
-                    <span className="ml-1 text-[10px] text-terminal-muted">(auto)</span>
+                    <span className="ml-1 text-label text-terminal-muted">(auto)</span>
                   ) : null}
                 </td>
                 <td className="px-3 py-1.5 text-right">
@@ -155,14 +155,14 @@ function WorkRow({ row, onDone }: { row: AdminWithdrawalRow | undefined; onDone:
     <div className="space-y-3 border-t border-terminal-border bg-terminal-raised/30 px-3 py-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-terminal-muted">
+          <p className="text-label uppercase tracking-wider text-terminal-muted">
             Withdrawal {row.id.slice(0, 8)} · {row.email}
           </p>
           <p className={cn('text-sm', STATUS_TONE[row.status] ?? 'text-terminal-text')}>
             {money(row.amount, row.currency)} · {row.status}
             {row.reason === null ? '' : ` — ${row.reason}`}
           </p>
-          <p className="text-[10px] text-terminal-muted">
+          <p className="text-label text-terminal-muted">
             {row.approvedAt === null ? '' : `Approved ${utcTime(row.approvedAt)}. `}
             {row.providerReference === null ? '' : `Reference ${row.providerReference}. `}
             {!row.identityVerified ? 'This person is not currently verified.' : ''}
@@ -226,7 +226,7 @@ function WorkRow({ row, onDone }: { row: AdminWithdrawalRow | undefined; onDone:
 
       {row.status === 'APPROVED' || row.status === 'PROCESSING' ? (
         <div className="space-y-2 rounded border border-terminal-border/60 bg-terminal-bg p-3">
-          <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Pay it</p>
+          <p className="text-label uppercase tracking-wider text-terminal-muted">Pay it</p>
           {destination === null ? (
             <Button
               gate={open}
@@ -243,7 +243,7 @@ function WorkRow({ row, onDone }: { row: AdminWithdrawalRow | undefined; onDone:
               {open.isPending ? 'Opening…' : 'Show destination'}
             </Button>
           ) : (
-            <pre className="whitespace-pre-wrap break-words rounded bg-terminal-raised px-3 py-2 font-mono text-[11px] text-terminal-text">
+            <pre className="whitespace-pre-wrap break-words rounded bg-terminal-raised px-3 py-2 font-mono text-caption text-terminal-text">
               {destination}
             </pre>
           )}

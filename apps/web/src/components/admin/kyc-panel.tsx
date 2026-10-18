@@ -70,7 +70,7 @@ export function KycPanel() {
             { id: 'EXPIRED', label: 'Expired' },
           ]}
         />
-        <span className="text-[10px] text-terminal-muted">
+        <span className="text-label text-terminal-muted">
           {rows.length} {rows.length === 1 ? 'record' : 'records'}
         </span>
       </div>
@@ -138,7 +138,7 @@ function RecordReview({ id, onDone }: { id: string; onDone: () => void }) {
         <div className="space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-terminal-muted">
+              <p className="text-label uppercase tracking-wider text-terminal-muted">
                 Verification {detail.id.slice(0, 8)} · {detail.email}
               </p>
               <p className={`text-sm ${STATUS_TONE[detail.status] ?? 'text-terminal-text'}`}>
@@ -146,7 +146,7 @@ function RecordReview({ id, onDone }: { id: string; onDone: () => void }) {
                 {detail.reason === null ? '' : ` — ${detail.reason}`}
               </p>
               {detail.verifiedAt === null ? null : (
-                <p className="text-[10px] text-terminal-muted">
+                <p className="text-label text-terminal-muted">
                   Verified {utcTime(detail.verifiedAt)}
                   {detail.expiresAt === null ? '' : `, valid until ${utcTime(detail.expiresAt)}`}
                 </p>
@@ -217,7 +217,7 @@ function RecordReview({ id, onDone }: { id: string; onDone: () => void }) {
               <DocumentCard key={document.id} recordId={id} document={document} />
             ))}
             {detail.documents.length === 0 ? (
-              <p className="text-[11px] text-terminal-muted">No documents on this record.</p>
+              <p className="text-caption text-terminal-muted">No documents on this record.</p>
             ) : null}
           </div>
         </div>
@@ -242,21 +242,21 @@ function DocumentCard({ recordId, document }: { recordId: string; document: Admi
     <div className="rounded border border-terminal-border/60 bg-terminal-bg p-2">
       <div className="flex flex-wrap items-center justify-between gap-1">
         <div>
-          <p className="text-[11px] text-terminal-text">
+          <p className="text-caption text-terminal-text">
             {KIND_LABELS[document.kind] ?? document.kind}
             {document.current ? (
               ''
             ) : (
-              <span className="ml-1 text-[10px] text-terminal-muted">(earlier attempt)</span>
+              <span className="ml-1 text-label text-terminal-muted">(earlier attempt)</span>
             )}
           </p>
-          <p className="text-[10px] text-terminal-muted">
+          <p className="text-label text-terminal-muted">
             {document.filename ?? 'unnamed'} · {(document.sizeBytes / 1024).toFixed(0)} KB ·{' '}
             {utcTime(document.uploadedAt)}
           </p>
         </div>
         {document.purged ? (
-          <span className="text-[10px] text-terminal-muted">Purged under retention</span>
+          <span className="text-label text-terminal-muted">Purged under retention</span>
         ) : url === null ? (
           <Button
             gate={open}

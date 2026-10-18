@@ -53,8 +53,8 @@ export function RolesPanel() {
   return (
     <div className="flex flex-col">
       <div className="border-b border-terminal-border px-3 py-2">
-        <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Roles</p>
-        <p className="mt-0.5 text-[11px] text-terminal-muted">
+        <p className="text-label uppercase tracking-wider text-terminal-muted">Roles</p>
+        <p className="mt-0.5 text-caption text-terminal-muted">
           Capabilities are part of this build. What each role carries is not — change it here and it
           applies to every session immediately.
         </p>
@@ -72,14 +72,14 @@ export function RolesPanel() {
             <div key={role.key} className="px-3 py-2">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-[12px] text-terminal-text">
+                  <p className="text-xs text-terminal-text">
                     {role.name}
-                    <span className="ml-2 text-[10px] uppercase tracking-wider text-terminal-muted">
+                    <span className="ml-2 text-label uppercase tracking-wider text-terminal-muted">
                       {role.key}
                     </span>
                     {role.isSystem ? (
                       <span
-                        className="ml-2 text-[9px] uppercase tracking-wider text-terminal-muted"
+                        className="ml-2 text-micro uppercase tracking-wider text-terminal-muted"
                         title="Seeded with the platform. Its grants are editable; the role itself cannot be removed."
                       >
                         built in
@@ -87,11 +87,11 @@ export function RolesPanel() {
                     ) : null}
                   </p>
                   {role.description === null ? null : (
-                    <p className="mt-0.5 text-[11px] text-terminal-muted">{role.description}</p>
+                    <p className="mt-0.5 text-caption text-terminal-muted">{role.description}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="numeric text-[11px] text-terminal-muted">
+                  <span className="numeric text-caption text-terminal-muted">
                     {role.permissions.length} capabilities
                   </span>
                   <Button
@@ -108,14 +108,14 @@ export function RolesPanel() {
               </div>
 
               {editing !== role.key ? (
-                <p className="mt-1 break-words font-mono text-[10px] leading-relaxed text-terminal-muted">
+                <p className="mt-1 break-words font-mono text-label leading-relaxed text-terminal-muted">
                   {role.permissions.join('  ')}
                 </p>
               ) : (
                 <div className="mt-3 space-y-3">
                   {grouped.map(([resource, verbs]) => (
                     <div key={resource}>
-                      <p className="mb-1 text-[10px] uppercase tracking-wider text-terminal-muted">
+                      <p className="mb-1 text-label uppercase tracking-wider text-terminal-muted">
                         {resource}
                       </p>
                       <div className="flex flex-wrap gap-1">
@@ -135,7 +135,7 @@ export function RolesPanel() {
                                 })
                               }
                               className={cn(
-                                'rounded border px-1.5 py-0.5 font-mono text-[10px] transition-colors',
+                                'rounded border px-1.5 py-0.5 font-mono text-label transition-colors',
                                 on
                                   ? 'border-terminal-accent bg-terminal-accent/15 text-terminal-text'
                                   : 'border-terminal-border text-terminal-muted hover:text-terminal-text',
@@ -175,7 +175,7 @@ export function RolesPanel() {
                         {reset.isPending ? 'Restoring…' : 'Restore defaults'}
                       </Button>
                     ) : null}
-                    <span className="numeric text-[11px] text-terminal-muted">
+                    <span className="numeric text-caption text-terminal-muted">
                       {draft.size} selected
                       {current === undefined
                         ? ''

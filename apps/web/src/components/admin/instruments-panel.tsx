@@ -68,7 +68,7 @@ export function InstrumentsPanel() {
           ))}
         </tbody>
       </Table>
-      <p className="mt-3 text-[11px] leading-relaxed text-terminal-muted">
+      <p className="mt-3 text-caption leading-relaxed text-terminal-muted">
         Tick size, contract size and precision describe the instrument rather than the firm&apos;s
         terms, so they are shown here and changed by migration. Suspending an instrument stops new
         orders and closes nothing — the positions already open stay open, and stay the
@@ -96,7 +96,7 @@ function InstrumentRow({
             <span
               aria-hidden
               className={cn(
-                'inline-flex h-4 w-6 shrink-0 items-center justify-center rounded-sm text-[10px] font-semibold leading-none ring-1 ring-inset',
+                'inline-flex h-4 w-6 shrink-0 items-center justify-center rounded-sm text-label font-semibold leading-none ring-1 ring-inset',
                 markClasses(mark.kind),
               )}
             >
@@ -118,7 +118,7 @@ function InstrumentRow({
         <td className="px-2 py-1.5">
           <span
             className={cn(
-              'rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider',
+              'rounded px-1.5 py-0.5 text-label uppercase tracking-wider',
               row.enabled
                 ? 'bg-terminal-long/15 text-terminal-long'
                 : 'bg-terminal-short/15 text-terminal-short',
@@ -131,7 +131,7 @@ function InstrumentRow({
           <button
             type="button"
             onClick={onEdit}
-            className="rounded border border-terminal-border px-2 py-0.5 text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+            className="rounded border border-terminal-border px-2 py-0.5 text-caption text-terminal-muted transition-colors hover:text-terminal-text"
           >
             {editing ? 'Close' : 'Edit'}
           </button>
@@ -198,7 +198,7 @@ function InstrumentEditor({ row }: { row: AdminInstrumentRow }) {
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-[10px] uppercase tracking-wider text-terminal-muted">
+        <span className="text-label uppercase tracking-wider text-terminal-muted">
           Reason — goes in the audit trail
         </span>
         <input
@@ -216,7 +216,7 @@ function InstrumentEditor({ row }: { row: AdminInstrumentRow }) {
         cheaper than finding out afterwards.
       */}
       {changed.includes('marginRate') && row.openPositions > 0 ? (
-        <p className="text-[11px] text-terminal-warning">
+        <p className="text-caption text-terminal-warning">
           {row.openPositions} position{row.openPositions === 1 ? '' : 's'} open in {row.code}. A
           higher margin rate applies to {row.openPositions === 1 ? 'it' : 'them'} immediately and
           can put an account into margin call.
@@ -267,7 +267,7 @@ function InstrumentEditor({ row }: { row: AdminInstrumentRow }) {
         </button>
 
         {reasonOk ? null : (
-          <span className="text-[11px] text-terminal-muted">
+          <span className="text-caption text-terminal-muted">
             A reason of at least 8 characters is required.
           </span>
         )}
@@ -290,7 +290,7 @@ function Field({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] uppercase tracking-wider text-terminal-muted">{label}</span>
+      <span className="text-label uppercase tracking-wider text-terminal-muted">{label}</span>
       <input
         value={value}
         inputMode="decimal"
@@ -379,8 +379,8 @@ function SessionEditor({ code }: { code: string }) {
 
   return (
     <div className="space-y-3 border-t border-terminal-border/60 pt-3" data-testid="session-editor">
-      <p className="text-[10px] uppercase tracking-wider text-terminal-muted">Trading week</p>
-      <p className="text-[11px] text-terminal-muted">
+      <p className="text-label uppercase tracking-wider text-terminal-muted">Trading week</p>
+      <p className="text-caption text-terminal-muted">
         A day left blank is a day this instrument does not open. Times are in the session&apos;s own
         timezone. Saved whole: a half-saved week is a market that is open when it should be shut.
       </p>
@@ -392,7 +392,7 @@ function SessionEditor({ code }: { code: string }) {
           <div className="grid gap-2 md:grid-cols-4 lg:grid-cols-7">
             {DAYS.map((name, day) => (
               <label key={name} className="space-y-1">
-                <span className="block text-[10px] uppercase tracking-wider text-terminal-muted">
+                <span className="block text-label uppercase tracking-wider text-terminal-muted">
                   {name.slice(0, 3)}
                 </span>
                 <input
@@ -414,7 +414,7 @@ function SessionEditor({ code }: { code: string }) {
           </div>
           <div className="grid gap-3 md:grid-cols-3">
             <label className="space-y-1">
-              <span className="block text-[10px] uppercase tracking-wider text-terminal-muted">
+              <span className="block text-label uppercase tracking-wider text-terminal-muted">
                 Timezone
               </span>
               <input
@@ -425,7 +425,7 @@ function SessionEditor({ code }: { code: string }) {
               />
             </label>
             <label className="space-y-1 md:col-span-2">
-              <span className="block text-[10px] uppercase tracking-wider text-terminal-muted">
+              <span className="block text-label uppercase tracking-wider text-terminal-muted">
                 Why
               </span>
               <input
@@ -437,7 +437,7 @@ function SessionEditor({ code }: { code: string }) {
             </label>
           </div>
           {malformed ? (
-            <p className="text-[11px] text-terminal-warning">
+            <p className="text-caption text-terminal-warning">
               Give each open day both an opening and a closing time, as HH:MM. A window that crosses
               midnight is two days: one ending 24:00, one starting 00:00.
             </p>

@@ -50,7 +50,7 @@ export function FinancePanel({ accountId }: { accountId: string | null }) {
       />
       <table className="w-full border-collapse text-xs" data-testid="balance-history">
         <thead className="sticky top-0 z-10 bg-terminal-surface">
-          <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+          <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
             <th className="py-1.5 pl-3 pr-2 font-medium">Time (UTC)</th>
             <th className="px-2 py-1.5 font-medium">Type</th>
             <th className="px-2 py-1.5 font-medium">Detail</th>
@@ -92,7 +92,7 @@ export function FinancePanel({ accountId }: { accountId: string | null }) {
             variant="neutral"
             disabled={ledger.isFetchingNextPage}
             onClick={() => void ledger.fetchNextPage()}
-            className="px-3 py-1 text-[11px]"
+            className="px-3 py-1 text-caption"
           >
             {ledger.isFetchingNextPage ? 'Loading…' : 'Load older movements'}
           </Button>

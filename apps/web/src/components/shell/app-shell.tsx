@@ -46,12 +46,12 @@ export function AppShell({
           {user !== null && user.role !== 'USER' ? (
             <Link
               href="/admin"
-              className="text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+              className="text-caption text-terminal-muted transition-colors hover:text-terminal-text"
             >
               Administration
             </Link>
           ) : null}
-          <span className="text-[11px] text-terminal-muted">{user?.email ?? ''}</span>
+          <span className="text-caption text-terminal-muted">{user?.email ?? ''}</span>
           <Button variant="ghost" onClick={() => void signOut()}>
             Sign out
           </Button>
@@ -62,7 +62,7 @@ export function AppShell({
         <div className="mb-5">
           <h1 className="text-base font-semibold tracking-tight text-terminal-text">{title}</h1>
           {description === undefined ? null : (
-            <p className="mt-1 text-[11px] text-terminal-muted">{description}</p>
+            <p className="mt-1 text-caption text-terminal-muted">{description}</p>
           )}
         </div>
         {children}

@@ -41,7 +41,7 @@ export function SecurityPanel() {
           placeholder="Kind, e.g. SIGN_IN_FAILED"
           onChange={(event) => setKind(event.target.value)}
         />
-        <span className="ml-auto text-[10px] text-terminal-muted">
+        <span className="ml-auto text-label text-terminal-muted">
           {rows.length} {rows.length === 1 ? 'event' : 'events'}
         </span>
       </div>
@@ -60,17 +60,17 @@ export function SecurityPanel() {
                 <td className="px-3 py-1.5">
                   <SeverityPill severity={row.severity} />
                 </td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-text">{row.kind}</td>
+                <td className="px-3 py-1.5 font-mono text-label text-terminal-text">{row.kind}</td>
                 <td className="px-3 py-1.5 text-terminal-text">
                   {row.userEmail ?? <span className="text-terminal-muted">—</span>}
                 </td>
-                <td className="px-3 py-1.5 text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 text-label text-terminal-muted">
                   {row.byOther ? row.actorType.toLowerCase() : 'themselves'}
                 </td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
                   {row.ipAddress ?? '—'}
                 </td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
                   {row.requestId ?? '—'}
                 </td>
               </tr>

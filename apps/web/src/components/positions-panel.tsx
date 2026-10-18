@@ -272,7 +272,7 @@ export function PositionsPanel({
         rows={exportRows}
       >
         <input
-          className={cn(inputClass, 'w-40 py-0.5 text-[11px]')}
+          className={cn(inputClass, 'w-40 py-0.5 text-caption')}
           placeholder="Filter: symbol, side, ref"
           aria-label="Filter positions"
           value={filter}
@@ -287,7 +287,7 @@ export function PositionsPanel({
           className="flex items-center gap-3 border-b border-terminal-border bg-terminal-raised/40 px-3 py-1.5"
           data-testid="selection-bar"
         >
-          <span className="text-[11px] text-terminal-muted">
+          <span className="text-caption text-terminal-muted">
             {selected.length} of {positions.length} selected
           </span>
           <Button
@@ -309,7 +309,7 @@ export function PositionsPanel({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[52rem] border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-terminal-surface">
-            <tr className="text-left text-[10px] uppercase tracking-wider text-terminal-muted">
+            <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
               <th className="px-2 py-1.5 font-medium">
                 <input
                   type="checkbox"
@@ -359,7 +359,7 @@ export function PositionsPanel({
           <tbody>
             {shown.length === 0 ? (
               <tr>
-                <td colSpan={16} className="px-3 py-3 text-[11px] text-terminal-muted">
+                <td colSpan={16} className="px-3 py-3 text-caption text-terminal-muted">
                   Nothing matches “{filter.trim()}”. Esc clears the filter.
                 </td>
               </tr>
@@ -416,7 +416,7 @@ export function PositionsPanel({
                       {position.stopLoss === null ? '—' : formatPrice(position.stopLoss, precision)}
                       {position.trailingStopDistance === null ? null : (
                         <span
-                          className="ml-1 text-[9px] uppercase text-terminal-warning"
+                          className="ml-1 text-micro uppercase text-terminal-warning"
                           title="Trailing"
                         >
                           trl
@@ -485,7 +485,7 @@ export function PositionsPanel({
         </table>
       </div>
       {snapshot === undefined ? null : (
-        <p className="border-t border-terminal-border/60 px-3 py-1.5 text-[10px] text-terminal-muted">
+        <p className="border-t border-terminal-border/60 px-3 py-1.5 text-label text-terminal-muted">
           Account floating P&amp;L{' '}
           <span className={cn('numeric', toneClass[toneOf(snapshot.floatingPnl)])}>
             {signedMoney(snapshot.floatingPnl, currency)}
@@ -518,7 +518,7 @@ function CopyRef({ full, label }: { full: string; label: string }) {
     <button
       type="button"
       title={`${full} — click to copy`}
-      className="rounded px-1 py-0.5 text-[10px] tracking-wide text-terminal-muted transition-colors hover:bg-terminal-raised hover:text-terminal-text"
+      className="rounded px-1 py-0.5 text-label tracking-wide text-terminal-muted transition-colors hover:bg-terminal-raised hover:text-terminal-text"
       onClick={() => {
         // Clipboard access is refused in insecure contexts and by some
         // policies. A reference that cannot be copied is still readable in the
@@ -545,7 +545,7 @@ function Notice({ text, onDismiss }: { text: string; onDismiss: () => void }) {
     <button
       type="button"
       onClick={onDismiss}
-      className="w-full border-b border-terminal-border bg-terminal-raised/60 px-3 py-1 text-left text-[11px] text-terminal-warning"
+      className="w-full border-b border-terminal-border bg-terminal-raised/60 px-3 py-1 text-left text-caption text-terminal-warning"
     >
       {text} — dismiss
     </button>
@@ -570,7 +570,7 @@ function ConfirmClose({
 }) {
   return (
     <div className="flex items-center gap-3 border-b border-terminal-warning/50 bg-terminal-warning/10 px-3 py-2">
-      <span className="text-[11px] text-terminal-text">
+      <span className="text-caption text-terminal-text">
         {prompt.kind === 'ALL'
           ? `Close all ${prompt.count} position${prompt.count === 1 ? '' : 's'} at market?`
           : prompt.kind === 'SOME'
@@ -751,13 +751,13 @@ function PositionEditor({
         </Button>
       </div>
 
-      <p className="text-[10px] text-terminal-muted">
+      <p className="text-label text-terminal-muted">
         Opened {new Date(position.openedAt).toISOString().replace('T', ' ').slice(0, 19)} UTC ·
         margin {position.margin} · commission {position.commission}
         {spec === undefined ? '' : ` · tick ${spec.tickSize}`}
       </p>
 
-      {error === null ? null : <p className="text-[11px] text-terminal-short">{error}</p>}
+      {error === null ? null : <p className="text-caption text-terminal-short">{error}</p>}
     </div>
   );
 }
@@ -782,7 +782,7 @@ function LabelledInput({
 }) {
   return (
     <label className="block" title={title}>
-      <span className="mb-1 block text-[10px] uppercase tracking-wider text-terminal-muted">
+      <span className="mb-1 block text-label uppercase tracking-wider text-terminal-muted">
         {label}
       </span>
       <input

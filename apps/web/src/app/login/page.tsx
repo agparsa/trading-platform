@@ -111,7 +111,7 @@ export default function LoginPage() {
                   required
                 />
               </Field>
-              <p className="text-[10px] leading-relaxed text-terminal-muted">
+              <p className="text-label leading-relaxed text-terminal-muted">
                 Six digits from your authenticator app, or one of the recovery codes you saved.
               </p>
             </>
@@ -153,7 +153,7 @@ export default function LoginPage() {
             </>
           )}
 
-          {error === null ? null : <p className="text-[11px] text-terminal-short">{error}</p>}
+          {error === null ? null : <p className="text-caption text-terminal-short">{error}</p>}
 
           <Button type="submit" variant="neutral" disabled={busy} className="w-full py-2">
             {busy
@@ -179,7 +179,7 @@ export default function LoginPage() {
               }
               setError(null);
             }}
-            className="w-full text-center text-[11px] text-terminal-muted transition-colors hover:text-terminal-text"
+            className="w-full text-center text-caption text-terminal-muted transition-colors hover:text-terminal-text"
           >
             {challengeToken !== null
               ? 'Start again'
@@ -189,7 +189,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-4 text-center text-[10px] leading-relaxed text-terminal-muted">
+        <p className="mt-4 text-center text-label leading-relaxed text-terminal-muted">
           Your session is kept in a cookie this page cannot read.
         </p>
       </div>

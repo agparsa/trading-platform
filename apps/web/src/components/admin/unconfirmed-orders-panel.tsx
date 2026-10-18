@@ -43,11 +43,11 @@ export function UnconfirmedOrdersPanel() {
   return (
     <div className="flex flex-col" data-testid="unconfirmed-orders-panel">
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-        <p className="text-[11px] text-terminal-muted">
+        <p className="text-caption text-terminal-muted">
           Sent to a venue, with no answer back. The platform asks again on its own; this is where
           you can ask now. Nothing here decides an order&apos;s outcome — only the venue can.
         </p>
-        <span className="text-[10px] text-terminal-muted">{rows.length} waiting</span>
+        <span className="text-label text-terminal-muted">{rows.length} waiting</span>
       </div>
       <ErrorLine error={orders.error ?? resolve.error} />
 
@@ -61,14 +61,14 @@ export function UnconfirmedOrdersPanel() {
           <tbody>
             {rows.map((row: UnconfirmedOrderRow) => (
               <tr key={row.id} className="border-t border-terminal-border/60">
-                <td className="numeric px-3 py-1.5 text-[10px] text-terminal-muted">
+                <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
                   {utcTime(row.createdAt)}
                 </td>
-                <td className="px-3 py-1.5 font-mono text-[10px]">{row.id}</td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 font-mono text-label">{row.id}</td>
+                <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
                   {row.clientOrderId ?? '—'}
                 </td>
-                <td className="px-3 py-1.5 font-mono text-[10px] text-terminal-muted">
+                <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
                   {row.accountId}
                 </td>
                 <td className="px-3 py-1.5 text-right">

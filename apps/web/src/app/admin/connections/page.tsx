@@ -8,7 +8,7 @@ export default function Page() {
     <div className="space-y-4">
       <ConnectionsPanel />
       <section className="border-t border-terminal-border pt-2">
-        <h2 className="px-3 text-[10px] uppercase tracking-wider text-terminal-muted">
+        <h2 className="px-3 text-label uppercase tracking-wider text-terminal-muted">
           Waiting on a venue
         </h2>
         <UnconfirmedOrdersPanel />

@@ -39,12 +39,12 @@ export function TradingSettings({
    */
   const body = (
     <>
-      <p className="mb-2 text-[10px] uppercase tracking-wider text-terminal-muted">
+      <p className="mb-2 text-label uppercase tracking-wider text-terminal-muted">
         One-click trading
       </p>
 
       {oneClickAllowed ? null : (
-        <p className="mb-2 text-[11px] text-terminal-warning" data-testid="one-click-off">
+        <p className="mb-2 text-caption text-terminal-warning" data-testid="one-click-off">
           Your firm has switched one-click trading off. Every order is confirmed; the setting below
           is kept for when it is switched back on.
         </p>
@@ -91,7 +91,7 @@ export function TradingSettings({
         </Field>
       </div>
 
-      <p className="mb-2 mt-4 text-[10px] uppercase tracking-wider text-terminal-muted">
+      <p className="mb-2 mt-4 text-label uppercase tracking-wider text-terminal-muted">
         Keyboard trading
       </p>
       <Toggle
@@ -139,7 +139,7 @@ export function TradingSettings({
         type="button"
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          'rounded border px-2 py-1 text-[10px] uppercase tracking-wider transition-colors',
+          'rounded border px-2 py-1 text-label uppercase tracking-wider transition-colors',
           armed
             ? 'border-terminal-warning bg-terminal-warning/15 text-terminal-warning'
             : 'border-terminal-border text-terminal-muted hover:text-terminal-text',
@@ -189,7 +189,7 @@ function Toggle({
       <span>
         {label}
         {hint === undefined ? null : (
-          <span className="block text-[10px] text-terminal-muted">{hint}</span>
+          <span className="block text-label text-terminal-muted">{hint}</span>
         )}
       </span>
     </label>
@@ -210,7 +210,7 @@ function Toggle({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-0.5 block text-[10px] uppercase tracking-wider text-terminal-muted">
+      <span className="mb-0.5 block text-label uppercase tracking-wider text-terminal-muted">
         {label}
       </span>
       {children}
