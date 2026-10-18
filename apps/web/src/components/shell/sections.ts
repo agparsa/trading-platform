@@ -19,6 +19,7 @@ export const TRADER_SECTIONS: readonly NavItem[] = [
   { href: '/wallet', label: 'Wallet' },
   { href: '/verification', label: 'Verification' },
   { href: '/history', label: 'History' },
+  { href: '/instruments', label: 'Instruments' },
   { href: '/security', label: 'Security' },
   { href: '/developer', label: 'Developer' },
   { href: '/settings', label: 'Settings' },

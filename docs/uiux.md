@@ -219,6 +219,20 @@ of a long ledger read the ledger. It now orders by `(created_at, id)`, which
 becomes a bounded keyset query; `scripts/cursor-order.test.ts` holds every
 cursor query in the API to that.
 
+**Instruments.** `/instruments` lists every enabled instrument on the terms
+this firm trades it — contract size and quote currency, tick size and the
+value of one tick on one lot (`tickValue`), volume minimum, maximum and step,
+margin, commission per lot (charged on opening and again on closing) and swap
+long and short per lot per night — with each one's trading hours opening on
+request from `GET /symbols/:code`. Margin is the rate this account is
+charged, the engine's `effectiveMarginRate`: where the account's leverage
+asks for more than the instrument does, both are shown. The hours are read
+with the engine's own rule for joining windows, now in `@tp/shared-types`
+(`mergedSessionRanges`) rather than private to the API, so the metals week —
+stored a day at a time — reads as "Sun 22:00 – Fri 21:00", the same session
+the engine opens and closes. Before this screen a trader learned an
+instrument's commission or swap by trading it.
+
 **Categories and Top movers.** The groups are the platform's own — the
 `category` an administrator files an instrument under, sent on `GET /symbols`
 — offered as chips in the order the platform lists its instruments, and only

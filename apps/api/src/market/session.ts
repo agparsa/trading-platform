@@ -1,5 +1,5 @@
-import type { SessionWindow, TradingSession } from '@tp/market-core';
-import type { MarketState } from '@tp/shared-types';
+import type { TradingSession } from '@tp/market-core';
+import { MINUTES_PER_WEEK, mergedSessionRanges, type MarketState } from '@tp/shared-types';
 
 /**
  * What the market is doing for this instrument, right now (§36).
@@ -50,8 +50,6 @@ export interface MarketStatusOptions {
   readonly postCloseMinutes?: number;
 }
 
-const MINUTES_PER_WEEK = 7 * 1440;
-
 export function marketStatus(
   session: TradingSession,
   atMs: number,
@@ -67,7 +65,7 @@ export function marketStatus(
   if (options.halted === true) return shut('HALTED');
   if (session.windows.length === 0) return shut('UNKNOWN');
 
-  const ranges = mergedRanges(session.windows);
+  const ranges = mergedSessionRanges(session.windows);
   const { day, minute } = zonedDayAndMinute(atMs, session.timezone);
   const now = day * 1440 + minute;
 
@@ -128,53 +126,6 @@ export function marketStatus(
  */
 export function isSessionOpen(session: TradingSession, atMs: number): boolean {
   return marketStatus(session, atMs).tradeable;
-}
-
-/**
- * The session's windows as minute-of-week ranges, with abutting ones joined.
- *
- * This is what keeps the platform from announcing a close every midnight. The
- * metals week is stored as Sunday 22:00–24:00, then Monday 00:00–24:00, and so
- * on: seven rows that are one continuous session. Left unmerged, a trader mid
- * position on a Tuesday evening would be told the market closes in an hour,
- * every night of the week.
- *
- * The wrap is the same fault at the week's seam, so the last range is extended
- * past the end of the week rather than being a separate one.
- */
-function mergedRanges(
-  windows: readonly SessionWindow[],
-): ReadonlyArray<{ start: number; end: number }> {
-  const sorted = windows
-    .map((window) => ({
-      start: window.day * 1440 + window.openMinute,
-      end: window.day * 1440 + window.closeMinute,
-    }))
-    .sort((a, b) => a.start - b.start);
-
-  const merged: Array<{ start: number; end: number }> = [];
-  for (const range of sorted) {
-    const last = merged[merged.length - 1];
-    if (last !== undefined && range.start <= last.end) {
-      last.end = Math.max(last.end, range.end);
-      continue;
-    }
-    merged.push({ ...range });
-  }
-
-  const first = merged[0];
-  const last = merged[merged.length - 1];
-  if (
-    merged.length > 1 &&
-    first !== undefined &&
-    last !== undefined &&
-    last.end >= MINUTES_PER_WEEK &&
-    first.start === 0
-  ) {
-    last.end = MINUTES_PER_WEEK + first.end;
-    merged.shift();
-  }
-  return merged;
 }
 
 /**

@@ -10,43 +10,44 @@ Every screen has an address now. The terminal did not change.
 
 ## The map
 
-| Route                   | What it is                                                                                        |
-| ----------------------- | ------------------------------------------------------------------------------------------------- |
-| `/`                     | redirects to `/terminal`                                                                          |
-| `/terminal`             | the trading terminal, full height                                                                 |
-| `/account`              | balances, margin, the terms an account trades on                                                  |
-| `/wallet`               | money held for you, and moving it to and from an account                                          |
-| `/verification`         | prove who you are, once, so withdrawals can be paid to you                                        |
-| `/history`              | trades, closed positions, orders — including refused ones                                         |
-| `/security`             | two-factor, recovery codes, active sessions, your API keys, and what has happened to your account |
-| `/developer`            | the API as it describes itself: every route, authentication, idempotency, verifying a webhook     |
-| `/settings`             | one-click trading, confirmations, default size                                                    |
-| `/login`                | sign in and register                                                                              |
-| `/status`               | build and deployment status                                                                       |
-| `/admin`                | redirects to `/admin/overview`                                                                    |
-| `/admin/overview`       | platform figures                                                                                  |
-| `/admin/people`         | search people                                                                                     |
-| `/admin/people/:id`     | one person, their accounts and sessions                                                           |
-| `/admin/accounts`       | search accounts                                                                                   |
-| `/admin/accounts/:id`   | one account, with its owner one click away                                                        |
-| `/admin/book`           | orders, positions and closed trades across the firm, with an order's own event history            |
-| `/admin/instruments`    | what the platform trades, and on what terms                                                       |
-| `/admin/risk`           | accounts at risk, exposure, risk events                                                           |
-| `/admin/desks`          | master accounts and who may act on which account, by delegation preset                            |
-| `/admin/payments`       | deposits waiting for a person, and every one before them                                          |
-| `/admin/kyc`            | verifications waiting for a reviewer                                                              |
-| `/admin/withdrawals`    | withdrawal requests to review, approve and mark paid                                              |
-| `/admin/reconciliation` | runs and findings                                                                                 |
-| `/admin/reports`        | report jobs, and their downloads until they expire                                                |
-| `/admin/roles`          | what each role may do                                                                             |
-| `/admin/credentials`    | everyone's API keys, and the firm's service tokens                                                |
-| `/admin/connections`    | venue connections, instrument mappings, the venue inbox, orders waiting on a venue                |
-| `/admin/security`       | the firm's security feed: sign-ins, credentials, changes                                          |
-| `/admin/notifications`  | push deliveries: what was tried, for whom, what the provider said; figures for the last day       |
-| `/admin/webhooks`       | where this firm's events are sent, and what each delivery got back                                |
-| `/admin/features`       | feature flags, and who may flip each                                                              |
-| `/admin/brokers`        | the platform's brokers; create one and hand its owner the invitation (platform tenant only)       |
-| `/admin/audit`          | the audit trail                                                                                   |
+| Route                   | What it is                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `/`                     | redirects to `/terminal`                                                                                            |
+| `/terminal`             | the trading terminal, full height                                                                                   |
+| `/account`              | balances, margin, the terms an account trades on                                                                    |
+| `/wallet`               | money held for you, and moving it to and from an account                                                            |
+| `/verification`         | prove who you are, once, so withdrawals can be paid to you                                                          |
+| `/history`              | trades, closed positions, orders — including refused ones                                                           |
+| `/instruments`          | contract specifications: size, tick value, volume limits, margin for your leverage, commission, swap, trading hours |
+| `/security`             | two-factor, recovery codes, active sessions, your API keys, and what has happened to your account                   |
+| `/developer`            | the API as it describes itself: every route, authentication, idempotency, verifying a webhook                       |
+| `/settings`             | one-click trading, confirmations, default size                                                                      |
+| `/login`                | sign in and register                                                                                                |
+| `/status`               | build and deployment status                                                                                         |
+| `/admin`                | redirects to `/admin/overview`                                                                                      |
+| `/admin/overview`       | platform figures                                                                                                    |
+| `/admin/people`         | search people                                                                                                       |
+| `/admin/people/:id`     | one person, their accounts and sessions                                                                             |
+| `/admin/accounts`       | search accounts                                                                                                     |
+| `/admin/accounts/:id`   | one account, with its owner one click away                                                                          |
+| `/admin/book`           | orders, positions and closed trades across the firm, with an order's own event history                              |
+| `/admin/instruments`    | what the platform trades, and on what terms                                                                         |
+| `/admin/risk`           | accounts at risk, exposure, risk events                                                                             |
+| `/admin/desks`          | master accounts and who may act on which account, by delegation preset                                              |
+| `/admin/payments`       | deposits waiting for a person, and every one before them                                                            |
+| `/admin/kyc`            | verifications waiting for a reviewer                                                                                |
+| `/admin/withdrawals`    | withdrawal requests to review, approve and mark paid                                                                |
+| `/admin/reconciliation` | runs and findings                                                                                                   |
+| `/admin/reports`        | report jobs, and their downloads until they expire                                                                  |
+| `/admin/roles`          | what each role may do                                                                                               |
+| `/admin/credentials`    | everyone's API keys, and the firm's service tokens                                                                  |
+| `/admin/connections`    | venue connections, instrument mappings, the venue inbox, orders waiting on a venue                                  |
+| `/admin/security`       | the firm's security feed: sign-ins, credentials, changes                                                            |
+| `/admin/notifications`  | push deliveries: what was tried, for whom, what the provider said; figures for the last day                         |
+| `/admin/webhooks`       | where this firm's events are sent, and what each delivery got back                                                  |
+| `/admin/features`       | feature flags, and who may flip each                                                                                |
+| `/admin/brokers`        | the platform's brokers; create one and hand its owner the invitation (platform tenant only)                         |
+| `/admin/audit`          | the audit trail                                                                                                     |
 
 `/wallet` arrived with phase 4 and not before. Until there was a wallet the link
 was deliberately absent — §50 says not to build UI for functionality that does

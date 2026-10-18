@@ -1190,6 +1190,31 @@ async function main(): Promise<void> {
     await visit(page, '/account', { url: '/account', text: /Account/i });
     await checkSectionLinks(page, 'the account page header');
     await auditAccessibility(page, 'the account screen');
+    /**
+     * The contract specifications: a row for every enabled instrument, each
+     * one's hours opening on request, audited like every screen.
+     */
+    await visit(page, '/instruments', { url: '/instruments', text: /Instruments/i });
+    {
+      const table = page.getByTestId('contract-table');
+      await table.waitFor({ timeout: 10_000 }).catch(() => undefined);
+      const enabled = await prisma.symbol.count({ where: { enabled: true } });
+      const shown = (await table.count()) === 0 ? 0 : await table.locator('tbody > tr').count();
+      const hoursButton = page.getByRole('button', { name: /^Hours for / }).first();
+      let hours = '';
+      if ((await hoursButton.count()) > 0) {
+        await hoursButton.click();
+        const line = page.getByText(/Trading hours \(/).first();
+        await line.waitFor({ timeout: 10_000 }).catch(() => undefined);
+        hours = (await line.count()) === 0 ? '' : ((await line.locator('..').innerText()) ?? '');
+      }
+      ok(
+        shown === enabled && /Trading hours \(/.test(hours),
+        'the instruments page lists every enabled instrument and opens its trading hours',
+        `${shown} rows / ${enabled} enabled · ${hours.replace(/\s+/g, ' ').slice(0, 120)}`,
+      );
+      await auditAccessibility(page, 'the instruments screen');
+    }
     await visit(page, '/wallet', { url: '/wallet', text: /Wallet/i });
     await auditAccessibility(page, 'the wallet screen');
     /**

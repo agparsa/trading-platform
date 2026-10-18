@@ -537,9 +537,11 @@ Recorded here rather than implied to be finished.
 
 - **RLS is not forced**, so the application role is exempt. §6 has the reasoning
   and the two ways to finish it.
-- **Nothing surfaces a tenant's terms to its traders yet.** The engine charges
-  them correctly and the admin console shows them; there is no customer-facing
-  contract-specification screen.
+- ~~Nothing surfaces a tenant's terms to its traders yet.~~ **Done 18
+  October:** `/instruments` is the trader's contract-specification screen,
+  reading the same resolved terms the engine charges (`GET /symbols`), with
+  margin measured against the trader's own leverage through the engine's
+  `effectiveMarginRate`.
 - **A platform-wide kill switch cannot be set through the API.** The row is read
   and honoured; nothing writes it, because halting every firm should not sit
   behind the same permission as halting one's own.
