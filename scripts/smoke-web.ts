@@ -1564,6 +1564,44 @@ async function main(): Promise<void> {
     await openMarketToday(people.admin.email);
     await placeOneOrder(people.trader.email);
 
+    /**
+     * An order's trail, opened from the trader's Orders tab once the trader
+     * has an order (the one just placed): the first step is the order being
+     * placed, and the steps shown are the database's events for that order.
+     * Audited open.
+     */
+    {
+      await visit(page, '/history', { url: '/history', text: /Trades/i });
+      await page.getByRole('tab', { name: /^Orders$/ }).click();
+      const toggle = page.getByRole('button', { name: /^Show the trail of the / }).first();
+      await toggle.waitFor({ timeout: 10_000 }).catch(() => undefined);
+      if ((await toggle.count()) === 0) {
+        ok(
+          false,
+          "an order's trail opens from the Orders tab",
+          `no order to open · ${page.url()} · ${(await page.locator('main').innerText()).replace(/\s+/g, ' ').slice(0, 300)}`,
+        );
+      } else {
+        await toggle.click();
+        const trail = page.getByTestId('order-trail');
+        await trail.waitFor({ timeout: 10_000 }).catch(() => undefined);
+        const steps = (await trail.count()) === 0 ? [] : await trail.locator('li').allInnerTexts();
+        const newest = await prisma.order.findFirst({
+          where: { account: { user: { email: people.trader.email } } },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        });
+        const recorded =
+          newest === null ? -1 : await prisma.orderEvent.count({ where: { orderId: newest.id } });
+        ok(
+          steps.length > 0 && steps.length === recorded && /Placed/.test(steps[0] ?? ''),
+          "an order's trail opens from the Orders tab, step for step with the database",
+          `${steps.length} shown / ${recorded} recorded · ${(steps[0] ?? '').replace(/\s+/g, ' ')}`,
+        );
+        await auditAccessibility(page, 'an open order trail');
+      }
+    }
+
     await visit(adminPage, '/admin/book', { url: '/admin/book' });
     await auditAccessibility(adminPage, 'the firm book');
     const book = adminPage.getByTestId('book-panel');

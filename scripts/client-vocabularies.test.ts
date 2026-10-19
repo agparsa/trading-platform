@@ -52,6 +52,7 @@ const MAPS: Readonly<Record<string, Vocabulary | { none: string }>> = {
   'apps/web/src/components/admin/withdrawals-panel.tsx:STATUS_TONE': 'prisma.WithdrawalStatus',
   'apps/web/src/lib/market-state.ts:LABELS': 'shared.MARKET_STATES',
   'apps/web/src/lib/ledger.ts:LEDGER_TYPE_LABEL': 'prisma.LedgerEntryType',
+  'apps/web/src/lib/order-trail.ts:ORDER_EVENT_LABEL': 'prisma.OrderEventType',
   'apps/web/src/components/order-ticket.tsx:ORDER_TYPE_LABEL': 'prisma.OrderType',
   'apps/web/src/components/order-ticket.tsx:ORDER_TYPE_HINT': 'prisma.OrderType',
   'apps/mobile/src/app/(tabs)/history.tsx:REASON_LABEL': 'prisma.CloseReason',

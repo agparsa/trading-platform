@@ -175,7 +175,12 @@ suite('Broker connections (integration)', () => {
     expect(stored.status).toBe('CONNECTED');
     expect(stored.capabilities).toMatchObject({ supportsHedging: true });
     expect(stored.lastHeartbeatAt).not.toBe(null);
-    expect(stored.credentials[0]?.lastUsedAt).not.toBe(null);
+    // Stamped without being awaited — a venue call is not made to wait on a
+    // bookkeeping write — so it is read until it lands, not at one instant.
+    // Read at one instant, this failed under a full parallel run.
+    await expect
+      .poll(async () => (await service.get(connection.id)).credentials[0]?.lastUsedAt ?? null)
+      .not.toBe(null);
     expect(await prisma.auditLog.count({ where: { action: 'broker_connection.tested' } })).toBe(1);
   });
 

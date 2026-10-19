@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { cn } from '@tp/ui';
 import {
   money,
@@ -11,6 +12,7 @@ import {
   volume as formatVolume,
 } from '@/lib/format';
 import {
+  useOrderEvents,
   useOrders,
   usePositions,
   useTrades,
@@ -19,6 +21,7 @@ import {
   type SymbolRow,
   type TradeRow,
 } from '@/lib/queries';
+import { trailLines } from '@/lib/order-trail';
 import { ExportBar } from './export-bar';
 import { EmptyState, SideBadge } from './primitives';
 
@@ -50,8 +53,12 @@ export function HistoryPanel({
   const trades = useTrades(accountId, tab === 'trades');
   const closed = usePositions(accountId, true);
   const orders = useOrders(accountId, tab === 'orders');
+  /** The one order whose trail is open. */
+  const [openOrder, setOpenOrder] = useState<string | null>(null);
 
   if (tab === 'trades') {
+    const unknown = notYetKnown(trades);
+    if (unknown !== null) return unknown;
     const rows = trades.data ?? [];
     if (rows.length === 0) return <EmptyState>No completed trades yet.</EmptyState>;
     return (
@@ -112,6 +119,8 @@ export function HistoryPanel({
   }
 
   if (tab === 'closed') {
+    const unknown = notYetKnown(closed);
+    if (unknown !== null) return unknown;
     const rows = (closed.data ?? []).filter((position) => position.closedAt !== null);
     if (rows.length === 0) return <EmptyState>No closed positions yet.</EmptyState>;
     return (
@@ -150,6 +159,8 @@ export function HistoryPanel({
     );
   }
 
+  const unknown = notYetKnown(orders);
+  if (unknown !== null) return unknown;
   const rows = orders.data ?? [];
   if (rows.length === 0) return <EmptyState>No orders yet.</EmptyState>;
   return (
@@ -160,37 +171,123 @@ export function HistoryPanel({
         columns={ORDER_COLUMNS}
         rows={rows.map(orderToRow)}
       />
-      <Table head={['Created', 'Symbol', 'Side', 'Type', 'Volume', 'Filled', 'Status']}>
+      <Table head={['Created', 'Symbol', 'Side', 'Type', 'Volume', 'Filled', 'Status', 'Trail']}>
         {rows.map((order) => (
-          <tr key={order.id} className="border-t border-terminal-border/60">
-            <Cell muted>{utcTime(order.createdAt)}</Cell>
-            <Cell>{order.symbol}</Cell>
-            <td className="px-2 py-1.5">
-              <SideBadge side={order.side} />
-            </td>
-            <Cell muted>{order.type}</Cell>
-            <Cell right>{formatVolume(order.volume)}</Cell>
-            <Cell right muted>
-              {formatVolume(order.filledVolume)}
-            </Cell>
-            <td className="px-2 py-1.5">
-              <span
-                className={cn(
-                  'rounded px-1.5 py-0.5 text-label',
-                  order.status === 'FILLED'
-                    ? 'bg-terminal-long/15 text-terminal-long'
-                    : order.status === 'REJECTED' || order.status === 'CANCELLED'
-                      ? 'bg-terminal-short/15 text-terminal-short'
-                      : 'bg-terminal-raised text-terminal-muted',
-                )}
-              >
-                {order.status}
-              </span>
-            </td>
-          </tr>
+          <OrderRowWithTrail
+            key={order.id}
+            order={order}
+            open={openOrder === order.id}
+            onToggle={() => setOpenOrder((now) => (now === order.id ? null : order.id))}
+          />
         ))}
       </Table>
     </>
+  );
+}
+
+/**
+ * "No orders yet" is a claim about the account, and it was made while the
+ * list was still loading — and when it had failed to load. Both now say what
+ * they are.
+ */
+function notYetKnown(query: { isError: boolean; data: unknown }): React.ReactElement | null {
+  if (query.isError) return <EmptyState>This could not be loaded. It will retry.</EmptyState>;
+  if (query.data === undefined) return <EmptyState>Loading…</EmptyState>;
+  return null;
+}
+
+/**
+ * One order, and — opened — everything that happened to it, from the
+ * server's own trail (`GET /orders/:id/events`): when it was placed, checked,
+ * triggered, changed, filled, refused or cancelled, and why. The Orders tab
+ * shows where each order ended; the trail answers how it got there, which is
+ * the question a trader asks about the order that did not fill.
+ */
+function OrderRowWithTrail({
+  order,
+  open,
+  onToggle,
+}: {
+  order: OrderRow;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <>
+      <tr className="border-t border-terminal-border/60">
+        <Cell muted>{utcTime(order.createdAt)}</Cell>
+        <Cell>{order.symbol}</Cell>
+        <td className="px-2 py-1.5">
+          <SideBadge side={order.side} />
+        </td>
+        <Cell muted>{order.type}</Cell>
+        <Cell right>{formatVolume(order.volume)}</Cell>
+        <Cell right muted>
+          {formatVolume(order.filledVolume)}
+        </Cell>
+        <td className="px-2 py-1.5">
+          <span
+            className={cn(
+              'rounded px-1.5 py-0.5 text-label',
+              order.status === 'FILLED'
+                ? 'bg-terminal-long/15 text-terminal-long'
+                : order.status === 'REJECTED' || order.status === 'CANCELLED'
+                  ? 'bg-terminal-short/15 text-terminal-short'
+                  : 'bg-terminal-raised text-terminal-muted',
+            )}
+          >
+            {order.status}
+          </span>
+        </td>
+        <td className="py-1.5 pl-2 pr-3 text-right">
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={open ? `trail-${order.id}` : undefined}
+            aria-label={`${open ? 'Hide the trail of' : 'Show the trail of'} the ${order.symbol} order from ${utcTime(order.createdAt)}`}
+            onClick={onToggle}
+            className="rounded border border-terminal-border px-2 py-0.5 text-caption text-terminal-text hover:bg-terminal-raised"
+          >
+            {open ? 'Hide' : 'Trail'}
+          </button>
+        </td>
+      </tr>
+      {open ? <TrailRow orderId={order.id} /> : null}
+    </>
+  );
+}
+
+function TrailRow({ orderId }: { orderId: string }) {
+  const events = useOrderEvents(orderId);
+  return (
+    <tr id={`trail-${orderId}`} className="bg-terminal-raised/40">
+      <td colSpan={8} className="px-3 py-2">
+        {events.isError ? (
+          <span className="text-caption text-terminal-muted">The trail could not be loaded.</span>
+        ) : events.data === undefined ? (
+          <span className="text-caption text-terminal-muted">Loading the trail…</span>
+        ) : events.data.length === 0 ? (
+          <span className="text-caption text-terminal-muted">
+            Nothing is recorded for this order.
+          </span>
+        ) : (
+          <ol className="space-y-0.5" data-testid="order-trail">
+            {trailLines(events.data).map((line, index) => (
+              <li key={index} className="flex flex-wrap items-baseline gap-x-3 text-caption">
+                <span className="numeric text-terminal-muted">{utcTime(line.at)}</span>
+                <span className="font-medium text-terminal-text">{line.label}</span>
+                {line.facts === '' ? null : (
+                  <span className="numeric text-terminal-muted">{line.facts}</span>
+                )}
+                {line.reason === null ? null : (
+                  <span className="text-terminal-warning">{line.reason}</span>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </td>
+    </tr>
   );
 }
 

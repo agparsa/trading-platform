@@ -873,6 +873,29 @@ export function useLedger(accountId: string | null) {
   });
 }
 
+/** One recorded state change of an order, as its owner may read it. */
+export interface OrderEventRow {
+  type: string;
+  fromStatus: string | null;
+  toStatus: string;
+  /** The order's own facts only — the server drops the venue's side. */
+  payload: Record<string, unknown>;
+  at: string;
+}
+
+/**
+ * An order's trail, read when somebody opens it: what happened, in the order
+ * it happened, including the reason it was refused or cancelled.
+ */
+export function useOrderEvents(orderId: string | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: ['order-events', orderId ?? 'none'],
+    queryFn: () => api.get<OrderEventRow[]>(`/orders/${orderId ?? ''}/events`),
+    enabled: orderId !== null,
+  });
+}
+
 export interface PaymentRow {
   id: string;
   provider: string;

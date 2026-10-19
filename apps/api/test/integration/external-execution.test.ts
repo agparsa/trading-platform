@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { MockBrokerAdapter, type BrokerCredentials } from '@tp/broker-sdk';
 import { OrderStatus, TradingErrorCode } from '@tp/shared-types';
 import { sumVolume, weightedAverage } from '../../src/trading/external-execution.service';
+import { TradingController } from '../../src/trading/trading.controller';
 import {
   createAccount,
   createTestClient,
@@ -155,6 +156,49 @@ suite('External execution (integration)', () => {
     // No ledger movement from the order: the money is at the venue, and this
     // platform does not invent the venue's commission or margin.
     expect(await prisma.balanceLedger.count({ where: { accountId } })).toBe(ledgerBefore);
+  });
+
+  /**
+   * The trail is the record, and for a venue order the record names the
+   * firm's broker connection and the venue's ids and names. The trader's
+   * `GET /orders/:id/events` returned all of it; it now returns the order's
+   * own facts and nothing of the venue's side.
+   */
+  it("shows the order's owner its trail without the venue's connection, ids or names", async () => {
+    const venue = scriptVenue();
+    venue.script({ kind: 'fill', price: '4600.00' });
+    const { userId, accountId } = await externalAccount();
+    await buy(userId, accountId);
+    const order = await prisma.order.findFirstOrThrow({ where: { accountId } });
+
+    // The record still holds them — the trail is not what was changed.
+    const stored = await prisma.orderEvent.findMany({ where: { orderId: order.id } });
+    expect(JSON.stringify(stored.map((row) => row.payload))).toMatch(/venue|externalSymbol/);
+
+    const controller = new TradingController(
+      stack.access,
+      stack.orders,
+      stack.positions,
+      stack.accountState,
+      undefined as never,
+      stack.metrics as never,
+    );
+    const shown = await controller.events({ id: userId } as never, order.id);
+    expect(shown.length).toBeGreaterThan(1);
+    const text = JSON.stringify(shown);
+    for (const hidden of [
+      'venue',
+      'connectionId',
+      'clientOrderId',
+      'externalOrderId',
+      'externalSymbol',
+      'externalAccountId',
+      order.clientOrderId ?? 'tp-',
+      order.externalOrderId ?? 'MO-',
+    ]) {
+      expect(text, hidden).not.toContain(hidden);
+    }
+    expect(shown.some((event) => event.payload['volume'] !== undefined)).toBe(true);
   });
 
   it('records the order before the request leaves, so a lost answer is recoverable', async () => {

@@ -243,6 +243,25 @@ same pixel size and with no line height of their own, as before. The two
 an arbitrary font size anywhere in the web app and any size name nothing
 defines — `text-lable` generates no CSS and failed nothing before.
 
+**An order's trail.** Each row of the Orders tab (terminal and `/history`)
+opens its trail — `GET /orders/:id/events`, the order's recorded state
+changes in the order they happened: placed, checked, triggered, changed
+(with what it was before), filled, refused, cancelled, expired, and the
+reason where the server gave one. The Orders tab says where an order ended;
+the trail says how, which is the question asked about the order that did
+not fill. Labels cover every `OrderEventType` (a test reads the enum), an
+unknown type is shown as spelled, and the browser walk compares the steps
+shown with the database's count for that order.
+
+Wiring it found that the endpoint returned each event's payload whole — and
+a venue-executed order's payload names the firm's broker connection
+(`venue`), the venue's ids (`clientOrderId`, `externalOrderId`) and the
+venue's names for the instrument and the account (`externalSymbol`,
+`externalAccountId`). The trader's view is now an allowlist
+(`traderEventPayload` in `@tp/trading-core`): a key added to a payload later
+stays hidden until somebody decides a trader should read it. The admin
+console's own route still reads the full record.
+
 **Categories and Top movers.** The groups are the platform's own — the
 `category` an administrator files an instrument under, sent on `GET /symbols`
 — offered as chips in the order the platform lists its instruments, and only
@@ -304,10 +323,9 @@ leg now has its own identity, and a test says so.
 
 Stated rather than stubbed. None of this is built:
 
-- **A Logs tab.** It has no design: what a trader's log would hold that the
-  order history (every instruction, rejections included) and the security
-  feed on Settings do not is undecided. (Alerts and Finance are built — see
-  `price-alerts.md`, and "The Finance tab" above.)
+- **A Logs tab.** It has no design. An order's own trail is now readable
+  (above); what a trader's log would add to it, to the Finance tab and to
+  the security feed on Settings is undecided.
 - **A spacing scale.** Spacing is still Tailwind's own utilities, used
   inline; nobody has decided which gaps the terminal's panels share. (Type
   now has a scale — see "The type scale" above. A light theme exists — see

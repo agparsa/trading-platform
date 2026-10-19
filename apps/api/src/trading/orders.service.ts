@@ -14,6 +14,7 @@ import {
 import {
   activeLeg,
   orderTrail,
+  traderEventPayload,
   shouldTriggerPending,
   transitionOrder,
   validatePendingPrice,
@@ -1957,7 +1958,8 @@ export class OrdersService {
       type: event.type,
       fromStatus: event.fromStatus,
       toStatus: event.toStatus,
-      payload: event.payload,
+      // The owner's view: no venue connection, venue ids or venue names.
+      payload: traderEventPayload(event.payload),
       at: event.createdAt.toISOString(),
     }));
   }

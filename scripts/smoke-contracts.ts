@@ -861,6 +861,7 @@ function pathValues(key: string, world: World): string[] | undefined {
     'GET /admin/brokers/*/features': [world.ids['broker']!],
     'GET /admin/webhooks/*/deliveries': [world.ids['webhook']!],
     'GET /admin/orders/*/history': [world.ids['order']!],
+    'GET /orders/*/events': [world.ids['order']!],
     'GET /wallet/*/transactions': [world.ids['wallet']!],
     'GET /master-accounts/*/links': [world.ids['master']!],
     'GET /master-accounts/*/desk': [world.ids['master']!],
