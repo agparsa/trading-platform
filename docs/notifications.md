@@ -147,6 +147,21 @@ service that can actually reach it:
 | Web      | FCM (Web Push on our behalf)      | `FCM_SERVICE_ACCOUNT_JSON` |
 | iOS      | APNs directly, HTTP/2             | `APNS_CREDENTIALS_JSON`    |
 
+### The Android app's half
+
+The server's credential lets it _send_; an Android phone can only be given an
+FCM token to send _to_ if the app was built with the same Firebase project's
+client config, `google-services.json`. Until 21 October nothing could build
+the app with one, so this table's Android row reached no phone — and the first
+test APK was handed out that way. `apps/mobile/app.config.js` now adds the file
+as `android.googleServicesFile` when `GOOGLE_SERVICES_JSON` names it or it sits
+beside `app.json` (git-ignored there: it is the firm's), and
+`build-android.sh` says loudly when a build has none and fails when it was
+given one that did not reach the APK. Both halves come from one Firebase
+project: its Android app (package `ir.devopss.trading`) for the client file,
+and a service account with the Firebase Messaging role for
+`FCM_SERVICE_ACCOUNT_JSON`.
+
 A platform is served if — and only if — its credentials are present. There is no
 per-platform on/off switch that could get out of step with the credentials
 themselves.

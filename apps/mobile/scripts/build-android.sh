@@ -35,6 +35,18 @@ fi
 # install this.
 ABIS="${ABIS:-arm64-v8a}"
 
+# Push needs the Firebase project's client config at build time; without it the
+# app runs but no phone it is installed on can receive a notification.
+# The same rule as app.config.js: the variable when it is set, the file beside
+# app.json when it is not.
+if [ -f "${GOOGLE_SERVICES_JSON:-google-services.json}" ]; then
+  PUSH=yes
+else
+  PUSH=no
+  echo "WARNING: no google-services.json (GOOGLE_SERVICES_JSON or apps/mobile/google-services.json)." >&2
+  echo "         This APK will run, and will not be able to receive push notifications." >&2
+fi
+
 echo "==> Generating the native project"
 npx expo prebuild --platform android --no-install
 
@@ -116,6 +128,18 @@ esac
 # The list is every TradingSound; `src/lib/bundled-sounds.test.ts` fails when
 # it is not. `price_alert` was missing from it and from app.json for as long as
 # price alerts existed, so the check passed on a build that could not play one.
+# With a Firebase config, the Google services plugin must have turned it into
+# resources; an APK that was given the file and does not contain them would
+# fail push exactly as one built without it, and be believed to work.
+if [ "$PUSH" = yes ]; then
+  case "$RESOURCES" in
+    *"string/google_app_id"*) echo "  Firebase config: present" ;;
+    *) echo "google-services.json was given but google_app_id is not in the APK." >&2; exit 1 ;;
+  esac
+else
+  echo "  Firebase config: absent — this build cannot receive push"
+fi
+
 for name in trade_opened trade_closed trade_modified order_filled order_cancelled stop_loss take_profit risk_warning price_alert; do
   case "$RESOURCES" in
     *"raw/${name}"$'\n'*) ;;

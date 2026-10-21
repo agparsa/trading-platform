@@ -39,3 +39,6 @@ _to_delete/
 
 # Local database dumps written by the backup service (docker/backup/backup.sh).
 backups/
+
+# A Firebase project's Android client config: the firm's, not the repository's.
+apps/mobile/google-services.json

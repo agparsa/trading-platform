@@ -13,6 +13,10 @@ whatever `expo.extra.apiBaseUrl` says.
 produce one — not this repository, not a Linux machine, not EAS without an
 Apple developer account.
 
+**A test APK was handed out on 19 October**, built from `e86b821` without a
+Firebase config (so without push), with a test checklist. Until results come
+back, what follows still holds.
+
 **No screen has been opened on a device.** Compiling and running are different
 claims. What is verified is that it typechecks under the same strict
 configuration as the rest of the repository, that it lints, that the logic
@@ -70,6 +74,12 @@ Gradle's heap is a third of the machine, capped. The first hand-run of this
 build gave the JVM 4 GB on a 7 GB box with parallel execution on; the daemon was
 OOM-killed mid-C++-compile, and the error Gradle reports for that — "daemon
 disappeared unexpectedly" — says nothing about memory.
+
+Push needs the firm's Firebase client config at build time —
+`GOOGLE_SERVICES_JSON=/path/to/google-services.json pnpm --filter @tp/mobile
+build:android`, or a `google-services.json` beside `app.json` in `apps/mobile/` (git-ignored).
+Without it the build succeeds, warns, and produces an app that works and can
+never receive a notification; see notifications.md, "The Android app's half".
 
 The APK is signed with the React Native template's **debug keystore**, which is
 public. It installs and runs; it is not a store build. A release to Play needs

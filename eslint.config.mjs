@@ -149,4 +149,18 @@ export default tseslint.config(
       'no-restricted-imports': 'off',
     },
   },
+  {
+    // Expo's config hook runs in Node as CommonJS; it is the one such file.
+    files: ['apps/mobile/app.config.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        require: 'readonly',
+        module: 'writable',
+        process: 'readonly',
+        __dirname: 'readonly',
+      },
+    },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
 );
