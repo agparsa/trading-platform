@@ -62,6 +62,8 @@ export const MAY_BE_EMPTY: Readonly<Record<string, string>> = {
     'an order a real venue accepted and never confirmed; the mock venue confirms everything',
   'GET /reconciliation/items':
     'items are where a real venue disagrees with the book; there is no real venue here',
+  'GET /reconciliation/findings':
+    'a finding is the book disagreeing with its ledger; this book agrees, and making it disagree would mean corrupting it',
 };
 
 /**
@@ -396,6 +398,16 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
     await as.guarded('POST', '/positions/close-all', { accountId: guardedAccount }),
   );
 
+  // An order the risk engine refuses, for the risk console's event list: the
+  // largest volume the instrument allows, on a demo balance that cannot carry
+  // its margin. Refused is the expected answer; anything else is a broken world.
+  const largest = ((await as.trader('GET', `/symbols/${MAIN}`)) as { maxVolume: string }).maxVolume;
+  const refusal = await as
+    .trader('POST', '/orders', { ...order, volume: largest })
+    .then(() => null)
+    .catch((error: unknown) => (error instanceof Refused ? error.message : Promise.reject(error)));
+  if (refusal === null) throw new Error(`setup: ${largest} lots of ${MAIN} were not refused`);
+
   // A resting order withdrawn, for `order.cancelled`.
   const withdrawn = (await as.trader('POST', '/orders/pending', {
     accountId,
@@ -542,12 +554,43 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
     'POST /admin/withdrawals/*/settle',
     await as.finance('POST', `${w}/settle`, { outcome: 'PAID', reason: 'contracts: paid' }),
   );
+  // And one left waiting, so the queue the desk works from has this run's row
+  // in it rather than whatever an earlier run left behind.
+  await as.trader('POST', '/withdrawals', {
+    walletId: ids['wallet'],
+    amount: '10.00',
+    destination: 'IBAN GB00 CONT RACT 0000 0000 00',
+  });
+  // A second verification, the guarded trader's: verified, revoked, and
+  // submitted again. The trader's stays verified for `?status=VERIFIED`, and
+  // the guarded trader's waits in the queue — both this run's own rows, not
+  // whatever an earlier run left behind.
+  const uploadDocuments = async (token: string) => {
+    for (const kind of ['passport', 'selfie']) {
+      await request(token, 'PUT', `/kyc/documents/${kind}`, {
+        raw: PNG,
+        headers: { 'Content-Type': 'image/png', 'X-Filename': `${kind}.png` },
+      });
+    }
+  };
+  await uploadDocuments(guardedToken);
+  await as.guarded('POST', '/kyc/submit', {});
+  const revokedCase = await prisma.kycRecord.findFirstOrThrow({
+    where: { userId: guarded.userId },
+  });
+  await as.admin('POST', `/admin/kyc/${revokedCase.id}/claim`, {});
+  await as.admin('POST', `/admin/kyc/${revokedCase.id}/decide`, {
+    outcome: 'VERIFIED',
+    reason: 'contracts: documents match',
+  });
   answers.record(
     'POST /admin/kyc/*/revoke',
-    await as.admin('POST', `/admin/kyc/${kycCase.id}/revoke`, {
+    await as.admin('POST', `/admin/kyc/${revokedCase.id}/revoke`, {
       reason: 'contracts: revoked to exercise the route',
     }),
   );
+  await uploadDocuments(guardedToken);
+  await as.guarded('POST', '/kyc/submit', {});
 
   // --- The desk.
   const hook = answers.record(
