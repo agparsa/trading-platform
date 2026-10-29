@@ -14,6 +14,7 @@
   "dependencies": {
     "@tp/api-client": "workspace:*",
     "@tp/chart-core": "workspace:*",
+    "@tp/kyc-core": "workspace:*",
     "@tp/push-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
     "expo": "~57.0.24",
@@ -22,6 +23,7 @@
     "expo-build-properties": "~57.0.21",
     "expo-constants": "~57.0.19",
     "expo-device": "~57.0.2",
+    "expo-image-picker": "~57.0.20",
     "expo-localization": "~57.0.2",
     "expo-notifications": "~57.0.20",
     "expo-router": "~57.0.22",

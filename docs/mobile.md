@@ -377,11 +377,17 @@ the platform. That stopped being true when the record, the review queue and the
 decisions were built (see [kyc.md](kyc.md)); the screen was changed and this
 page was not.
 
-What it does not do is take documents. A photograph of a passport needs the
-camera and the file picker, native modules this build does not carry, and a
-button that opened nothing would be worse than the sentence that sends people to
-the web. When they are added the endpoint is the same one the web uses,
-`PUT /kyc/documents/:kind`.
+It takes documents too, since 29 October (`components/kyc-card.tsx`). While
+the record is accepting them, each kind has "Take photo" and "Choose photo"
+(`expo-image-picker`; the camera permission is asked for only when the trader
+taps it), and the photo goes to the endpoint the web uses,
+`PUT /kyc/documents/:kind`, as its own bytes. Then "Submit for review", which
+is enabled only when the server's own list of what is missing is empty. After
+every step the card is redrawn from `GET /kyc`, so "Sent" means the server holds
+a current copy. A file the server would refuse — an iPhone HEIC, anything over
+the 10 MB limit — is refused on the phone first, with the reason, using the
+same constants from `@tp/kyc-core` that the server enforces. This has not yet
+been tried on a phone.
 
 Two-factor _enrolment_ is also absent, for a different reason: it displays a
 shared secret once and never again, and a screen that can show a secret is a
@@ -391,8 +397,7 @@ never finished, and warns when no recovery codes remain.
 
 ## What is not built yet
 
-Uploading identity documents from the phone (above), and support, which the
-platform does not have on any surface. Phase 13 of `IMPLEMENTATION_PLAN.md` is
+Support, which the platform does not have on any surface. Phase 13 of `IMPLEMENTATION_PLAN.md` is
 otherwise done: account, market, the chart, positions with closing and SL/TP
 editing, the order ticket, resting orders with modification and cancellation,
 trade history, profile with verification status, sessions and devices, the
