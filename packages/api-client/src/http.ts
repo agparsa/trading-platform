@@ -281,7 +281,37 @@ export class ApiClient {
     const token = this.options.getAccessToken?.() ?? null;
     if (token !== null) headers['Authorization'] = `Bearer ${token}`;
     if (idempotencyKey !== undefined) headers[IDEMPOTENCY_HEADER] = idempotencyKey;
-    headers[REQUEST_ID_HEADER] = crypto.randomUUID();
+    headers[REQUEST_ID_HEADER] = requestId();
     return headers;
   }
+}
+
+/**
+ * A request id, wherever this client runs.
+ *
+ * `crypto.randomUUID()` is a browser and Node global; React Native's Hermes
+ * does not promise it. Called unguarded while the headers were built — before
+ * the request's own error handling — a missing one would throw a TypeError
+ * that no caller expects, and the phone's sign-in screen turned every
+ * unexpected error into "Could not reach the server". The id is for tracing
+ * a request through the logs, not a secret, so any unique-enough value will
+ * do when the global is absent.
+ */
+export function requestId(
+  source:
+    | { randomUUID?: () => string; getRandomValues?: (array: Uint8Array) => Uint8Array }
+    | undefined = (
+    globalThis as {
+      crypto?: { randomUUID?: () => string; getRandomValues?: (array: Uint8Array) => Uint8Array };
+    }
+  ).crypto,
+): string {
+  if (typeof source?.randomUUID === 'function') return source.randomUUID();
+  const bytes = new Uint8Array(16);
+  if (typeof source?.getRandomValues === 'function') source.getRandomValues(bytes);
+  else for (let i = 0; i < 16; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

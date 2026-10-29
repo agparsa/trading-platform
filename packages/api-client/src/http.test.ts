@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DomainError, IDEMPOTENCY_HEADER, TradingErrorCode } from '@tp/shared-types';
-import { ApiClient, isWorthRetrying } from './http';
+import { ApiClient, isWorthRetrying, requestId } from './http';
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -158,5 +158,44 @@ describe('isWorthRetrying', () => {
   it('retries something that is not a domain error at all', () => {
     // Nothing in this client produces one, so it is a bug rather than an answer.
     expect(isWorthRetrying(new Error('unexpected'))).toBe(true);
+  });
+});
+
+describe('requestId, where crypto.randomUUID is missing', () => {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+  it('uses randomUUID when the runtime has it', () => {
+    expect(requestId({ randomUUID: () => 'from-the-runtime' })).toBe('from-the-runtime');
+  });
+
+  it('builds a v4 id from getRandomValues, and from nothing at all', () => {
+    const fromBytes = requestId({ getRandomValues: (array) => array.fill(0xab) });
+    expect(fromBytes).toMatch(UUID);
+    expect(requestId(undefined)).toMatch(UUID);
+    expect(requestId(undefined)).not.toBe(requestId(undefined));
+  });
+
+  /**
+   * React Native's Hermes does not promise `crypto`. With it absent the
+   * headers used to throw a TypeError before the request's own error
+   * handling ran.
+   */
+  it('lets a request be sent on a runtime without a crypto global', async () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
+    try {
+      const seen: Record<string, string>[] = [];
+      const client = new ApiClient({
+        baseUrl: 'https://example.test/api/v1',
+        fetchImpl: (async (_url: string, init: { headers: Record<string, string> }) => {
+          seen.push(init.headers);
+          return new Response(JSON.stringify({ ok: true, data: { fine: true } }), { status: 200 });
+        }) as never,
+      });
+      await expect(client.get<{ fine: boolean }>('/health')).resolves.toEqual({ fine: true });
+      expect(Object.values(seen[0] ?? {}).some((value) => UUID.test(value))).toBe(true);
+    } finally {
+      if (original !== undefined) Object.defineProperty(globalThis, 'crypto', original);
+    }
   });
 });

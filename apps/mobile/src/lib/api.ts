@@ -2,6 +2,7 @@ import { ApiClient } from '@tp/api-client';
 import Constants from 'expo-constants';
 import { TokenStore, type Tokens } from './token-store';
 import { secureStore } from './secure-store';
+import { apiRoot } from './api-root';
 
 /**
  * Where this build talks to.
@@ -36,7 +37,8 @@ export function createApi(tokens: TokenStore): ApiClient {
   let cached: string | null = null;
 
   return new ApiClient({
-    baseUrl: apiBaseUrl(),
+    // The REST root, not the origin: see api-root.ts.
+    baseUrl: apiRoot(apiBaseUrl()),
     getAccessToken: () => cached,
     onTokenExpired: async () => {
       const renewed = await tokens.current();

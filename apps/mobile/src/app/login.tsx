@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { DomainError } from '@tp/shared-types';
 import { useSession } from '../lib/session';
+import { signInErrorText } from '../lib/sign-in-error';
 import { Button, ErrorNote, Screen } from '../components/ui';
 import { theme } from '../lib/theme';
 
@@ -23,16 +23,9 @@ export default function Login(): React.ReactElement {
     try {
       await run();
     } catch (caught) {
-      /**
-       * The server's message, not a generic one.
-       *
-       * "Too many attempts, try again in 15 minutes" is actionable; "Sign-in
-       * failed" is not, and a trader locked out of a moving position deserves
-       * to know which of the two is happening.
-       */
-      setError(
-        caught instanceof DomainError ? caught.message : 'Could not reach the server. Try again.',
-      );
+      // The server's message when it answered; otherwise what went wrong. See
+      // lib/sign-in-error.ts.
+      setError(signInErrorText(caught));
     } finally {
       setBusy(false);
     }

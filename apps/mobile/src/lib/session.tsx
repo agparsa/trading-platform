@@ -19,6 +19,7 @@ import {
   type SignInResponse,
 } from '@tp/shared-types';
 import { apiBaseUrl, createApi, toTokens, tokenStore } from './api';
+import { apiRoot } from './api-root';
 import type { TokenStore } from './token-store';
 import {
   configureChannels,
@@ -81,7 +82,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
         // Deliberately a bare fetch and not `api`: using the client here would
         // recurse through its own onTokenExpired hook the moment a refresh
         // itself returned 401.
-        const response = await fetch(`${apiBaseUrl()}/api/v1/auth/refresh`, {
+        const response = await fetch(`${apiRoot(apiBaseUrl())}/auth/refresh`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ refreshToken }),
