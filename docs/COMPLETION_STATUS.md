@@ -394,8 +394,10 @@ was a real gap — nothing tested the case the cursor's id half exists for, so a
 test now pages through six orders sharing one timestamp and fails without it.
 
 **Not built, named rather than stubbed:** Fees as a section, Alerts (admin
-threshold rules), Branding, and API documentation in production. Each is
-listed in [broker-panel.md](./broker-panel.md) with where it belongs.
+threshold rules) and Branding. Each is listed in
+[broker-panel.md](./broker-panel.md) with where it belongs. (The OpenAPI
+reference was on this list; it has since been served behind a session in every
+environment.)
 
 Reports, IP rules, outbound webhooks and the admin device view were on that
 list long after they shipped; `panel-claims.test.ts` reads the paragraph

@@ -225,8 +225,10 @@ reads this paragraph and fails it when it names a feature the code has.
 edited per instrument; there is no schedule, override or rebate model, and
 spread comes from the feed); Alerts (price alerts are Phase 8; admin threshold
 rules are not designed); Branding (the `Tenant` model has no visual field;
-Phase 14 flags a feature nobody has written); and API documentation, which is
-mounted only outside production, on purpose.
+Phase 14 flags a feature nobody has written). The OpenAPI reference, once on
+this list, is built: served behind a session in every environment
+(`/developer/openapi.json`); only Swagger's own UI stays development-only, on
+purpose.
 [broker-panel.md](./broker-panel.md).
 
 ## Phase 6 — Trading terminal UX upgrade · **partly done**

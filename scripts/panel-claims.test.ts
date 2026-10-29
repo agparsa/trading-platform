@@ -78,14 +78,16 @@ const FEATURES: readonly Feature[] = [
   {
     name: 'API documentation in production',
     pattern: /API documentation/,
-    built: () => {
-      const main = read('apps/api/src/main.ts');
-      const setup = main.indexOf('SwaggerModule.setup(');
-      // Mounted only outside production: the guard sits within a few lines above.
-      return (
-        setup !== -1 && !/if \(!isProduction\)/.test(main.slice(Math.max(0, setup - 200), setup))
-      );
-    },
+    /**
+     * The OpenAPI document served behind a session in every environment
+     * (`GET /developer/openapi.json`). Swagger's own UI stays development-only
+     * on purpose — it mounts outside Nest's guards — and is not what this
+     * claim is about; checking for it is how this row stayed "not built" for
+     * a month after the document shipped.
+     */
+    built: () =>
+      exists('apps/api/src/developer/developer.controller.ts') &&
+      /@Get\('openapi\.json'\)/.test(read('apps/api/src/developer/developer.controller.ts')),
   },
 ];
 
