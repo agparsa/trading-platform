@@ -1602,6 +1602,41 @@ async function main(): Promise<void> {
       }
     }
 
+    /**
+     * The Logs tab is the account's order events, compared with the database:
+     * as many lines as the first page of stored events, and the top line is
+     * the newest event's order. Read once the trader has an order (the one
+     * placed above) — on the terminal, the only screen with the tab.
+     */
+    {
+      await visit(page, '/terminal', { url: '/terminal' });
+      await page.getByRole('tab', { name: /^Logs$/ }).click();
+      const log = page.getByTestId('order-log');
+      await log.waitFor({ timeout: 10_000 }).catch(() => undefined);
+      const account = await prisma.account.findFirst({
+        where: { user: { email: people.trader.email } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      const events =
+        account === null
+          ? []
+          : await prisma.orderEvent.findMany({
+              where: { order: { accountId: account.id } },
+              orderBy: [{ createdAt: 'desc' }, { seq: 'desc' }, { id: 'desc' }],
+              take: 50,
+              select: { order: { select: { symbol: { select: { code: true } } } } },
+            });
+      const shown = (await log.count()) === 0 ? 0 : await log.locator('tbody tr').count();
+      const top = shown === 0 ? '' : ((await log.locator('tbody tr').first().textContent()) ?? '');
+      ok(
+        events.length > 0 && shown === events.length && top.includes(events[0]!.order.symbol.code),
+        "the Logs tab lists the account's order events, newest first",
+        `${shown} shown / ${events.length} stored · top "${top.slice(0, 80)}"`,
+      );
+      await auditAccessibility(page, 'the Logs tab');
+    }
+
     await visit(adminPage, '/admin/book', { url: '/admin/book' });
     await auditAccessibility(adminPage, 'the firm book');
     const book = adminPage.getByTestId('book-panel');

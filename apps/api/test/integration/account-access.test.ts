@@ -105,6 +105,9 @@ suite('Account isolation (integration)', () => {
       TradingErrorCode.RESOURCE_NOT_FOUND,
     );
     expect(
+      await codeOf(() => stack.orders.accountOrderLog(mallory.userId, alice.accountId, 50)),
+    ).toBe(TradingErrorCode.RESOURCE_NOT_FOUND);
+    expect(
       await codeOf(() =>
         stack.access.resolve(mallory.userId, alice.accountId, Permission.ACCOUNTS_READ),
       ),
@@ -211,6 +214,9 @@ suite('Account isolation (integration)', () => {
     ).resolves.toHaveLength(1);
     await expect(stack.orders.listPending(alice.userId, alice.accountId)).resolves.toHaveLength(1);
     await expect(stack.orders.orderEvents(alice.userId, orderId)).resolves.not.toHaveLength(0);
+    expect(
+      (await stack.orders.accountOrderLog(alice.userId, alice.accountId, 50)).events,
+    ).not.toHaveLength(0);
     await expect(
       stack.positions.modify(alice.userId, { positionId, stopLoss: '4000.00' }),
     ).resolves.toBeDefined();

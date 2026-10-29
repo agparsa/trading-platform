@@ -1964,6 +1964,50 @@ export class OrdersService {
     }));
   }
 
+  /**
+   * The account's order log: every recorded state change of every order on
+   * it, newest first — the terminal's Logs tab.
+   *
+   * The same rows as an order's own trail and the same owner's view of their
+   * payload (`traderEventPayload`), with the order each belongs to named, so
+   * a line reads "EURUSD buy market — Filled" without a second request.
+   *
+   * Newest first by `createdAt`, then `seq`: every row one transaction writes
+   * shares its `createdAt`, and `seq` is the order they were written in, so a
+   * market order's Filled sits above its Placed. `id` last, because a cursor
+   * needs a total order and rows written before `seq` existed can share it.
+   * A refusal by the risk engine is not here: it rolls the order back, so
+   * there is no order for it to belong to.
+   */
+  async accountOrderLog(userId: string, accountId: string, limit: number, cursor?: string) {
+    await this.assertOwnership(userId, accountId);
+    const rows = await this.prisma.orderEvent.findMany({
+      where: { order: { accountId } },
+      include: {
+        order: { select: { id: true, side: true, type: true, symbol: { select: { code: true } } } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { seq: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 }),
+    });
+    const page = rows.slice(0, limit);
+    return {
+      events: page.map((event) => ({
+        id: event.id,
+        orderId: event.order.id,
+        symbol: event.order.symbol.code,
+        side: event.order.side,
+        orderType: event.order.type,
+        type: event.type,
+        fromStatus: event.fromStatus,
+        toStatus: event.toStatus,
+        payload: traderEventPayload(event.payload),
+        at: event.createdAt.toISOString(),
+      })),
+      nextCursor: rows.length > limit ? page[page.length - 1]?.id : undefined,
+    };
+  }
+
   private async assertOwnership(userId: string, accountId: string): Promise<void> {
     await this.access.resolve(userId, accountId, Permission.ORDERS_READ);
   }

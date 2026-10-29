@@ -849,6 +849,7 @@ function pathValues(key: string, world: World): string[] | undefined {
     'GET /accounts/*/state': [world.accountId],
     'GET /accounts/*/settings': [world.accountId],
     'GET /accounts/*/ledger': [world.accountId],
+    'GET /accounts/*/order-events': [world.accountId],
     'GET /symbols/*': [world.ids['symbol'] ?? 'EURUSD'],
     'GET /admin/users/*': [world.traderId],
     'GET /admin/users/*/devices': [world.traderId],

@@ -37,6 +37,7 @@ import {
   ModifyPendingDto,
   ModifyPositionDto,
   OpenPositionDto,
+  OrderLogQueryDto,
   PlacePendingDto,
 } from './dto/trading.dto';
 import type { CloseAllResult, CloseResult, OrderPreview, OrderResult } from './trading.types';
@@ -265,6 +266,17 @@ export class TradingController {
   @ApiOperation({ summary: 'Every recorded state change for one order' })
   events(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.orders.orderEvents(subjectOf(user), id);
+  }
+
+  @RequirePermissions(Permission.ORDERS_READ)
+  @Get('accounts/:id/order-events')
+  @ApiOperation({ summary: 'Every recorded order state change on an account, newest first' })
+  orderLog(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: OrderLogQueryDto,
+  ) {
+    return this.orders.accountOrderLog(subjectOf(user), id, query.limit, query.cursor);
   }
 
   @RequirePermissions(Permission.POSITIONS_READ)

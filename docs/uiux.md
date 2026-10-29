@@ -16,7 +16,7 @@ order ticket — collapsing to one scrolling column below `lg`. The account stri
 sits under the header; toasts and the shortcut card float.
 
 The activity panel's tabs today are **Positions (n) · Pending (n) · Trades ·
-Closed · Orders · Alerts · Finance**. `scripts/uiux-doc.test.ts` reads this line against
+Closed · Orders · Alerts · Finance · Logs**. `scripts/uiux-doc.test.ts` reads this line against
 the tabs `terminal.tsx` renders; it had stopped at Orders for as long as the
 Alerts tab had existed.
 
@@ -219,6 +219,22 @@ of a long ledger read the ledger. It now orders by `(created_at, id)`, which
 becomes a bounded keyset query; `scripts/cursor-order.test.ts` holds every
 cursor query in the API to that.
 
+**The Logs tab.** The account's order log: every event the engine recorded
+for every order on the account — placed, checked, accepted, triggered,
+filled, changed, cancelled, expired, refused — newest first, each in the same
+words as an order's own trail in the Orders tab, with the order's symbol,
+side and type in front. Orders shows one trail at a time when it is opened,
+Finance what reached the balance, Settings the sign-ins; this is the one list
+of what happened to the account's orders, in order. It reads `GET
+/accounts/:id/order-events` — the stored rows, with the venue's side dropped
+as on the trail — fifty at a time with "Load older events", and exports the
+loaded lines. Within one transaction the rows share a timestamp, so they are
+ordered by the sequence they were written in (`seq`), newest first: a market
+order's Filled sits above its Placed. Not in it: an order the risk engine
+refused before it existed, because the refusal rolls the order back — the
+ticket shows that refusal at the time. The browser walk compares the tab with
+the stored events and audits it.
+
 **Instruments.** `/instruments` lists every enabled instrument on the terms
 this firm trades it — contract size and quote currency, tick size and the
 value of one tick on one lot (`tickValue`), volume minimum, maximum and step,
@@ -323,9 +339,6 @@ leg now has its own identity, and a test says so.
 
 Stated rather than stubbed. None of this is built:
 
-- **A Logs tab.** It has no design. An order's own trail is now readable
-  (above); what a trader's log would add to it, to the Finance tab and to
-  the security feed on Settings is undecided.
 - **A spacing scale.** Spacing is still Tailwind's own utilities, used
   inline; nobody has decided which gaps the terminal's panels share. (Type
   now has a scale — see "The type scale" above. A light theme exists — see

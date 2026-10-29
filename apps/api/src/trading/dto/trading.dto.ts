@@ -158,3 +158,13 @@ export const accountQuerySchema = z.object({ accountId: z.string().uuid() }).str
 export class PlacePendingDto extends createZodDto(placePendingSchema) {}
 export class ModifyPendingDto extends createZodDto(modifyPendingSchema) {}
 export class AccountQueryDto extends createZodDto(accountQuerySchema) {}
+
+/** A page of an account's order log (`GET /accounts/:id/order-events`). */
+export const orderLogQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+    cursor: z.string().uuid().optional(),
+  })
+  .strict();
+
+export class OrderLogQueryDto extends createZodDto(orderLogQuerySchema) {}

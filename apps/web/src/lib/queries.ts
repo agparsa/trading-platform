@@ -221,6 +221,7 @@ export const queryKeys = {
   addresses: ['addresses'] as const,
   features: ['features'] as const,
   ledger: (accountId: string) => ['ledger', accountId] as const,
+  orderLog: (accountId: string) => ['order-log', accountId] as const,
 };
 
 /** Everything a trading event can invalidate, in one place. */
@@ -231,6 +232,7 @@ export function invalidateTradingState(client: QueryClient, accountId: string): 
   void client.invalidateQueries({ queryKey: queryKeys.pending(accountId) });
   void client.invalidateQueries({ queryKey: queryKeys.accountState(accountId) });
   void client.invalidateQueries({ queryKey: queryKeys.ledger(accountId) });
+  void client.invalidateQueries({ queryKey: queryKeys.orderLog(accountId) });
   void client.invalidateQueries({ queryKey: queryKeys.accounts });
 }
 
@@ -1359,5 +1361,42 @@ export function useCancelPriceAlert() {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ['alerts'] });
     },
+  });
+}
+
+/** One line of an account's order log: an order event, with its order named. */
+export interface OrderLogRow extends OrderEventRow {
+  id: string;
+  orderId: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  orderType: string;
+}
+
+/** The size of one page of the order log. */
+export const ORDER_LOG_PAGE = 50;
+
+/**
+ * Every recorded state change of every order on the account, newest first,
+ * a page at a time — the terminal's Logs tab. Paged for the ledger's reason:
+ * the record only grows.
+ */
+export function useOrderLog(accountId: string | null) {
+  const { api } = useSession();
+  return useInfiniteQuery({
+    queryKey: queryKeys.orderLog(accountId ?? 'none'),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      api.get<{ events: OrderLogRow[]; nextCursor?: string }>(
+        `/accounts/${accountId ?? ''}/order-events`,
+        {
+          query: {
+            limit: ORDER_LOG_PAGE,
+            ...(pageParam === undefined ? {} : { cursor: pageParam }),
+          },
+        },
+      ),
+    getNextPageParam: (page) => page.nextCursor,
+    enabled: accountId !== null,
   });
 }
