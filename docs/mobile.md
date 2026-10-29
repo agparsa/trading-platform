@@ -14,11 +14,15 @@ produce one — not this repository, not a Linux machine, not EAS without an
 Apple developer account.
 
 **A test APK was handed out on 19 October**, built from `e86b821` without a
-Firebase config (so without push), with a test checklist. Until results come
-back, what follows still holds.
+Firebase config (so without push), with a test checklist. **One screen has been
+seen on a phone:** sign-in, failing with "Could not reach the server". The
+client was sending every request to the site's root instead of `/api/v1`; a
+second APK, from `f5e5d0f` on 29 October, fixes that and shows the cause of a
+failure rather than one sentence for all of them. Nothing past sign-in has been
+seen yet.
 
-**No screen has been opened on a device.** Compiling and running are different
-claims. What is verified is that it typechecks under the same strict
+**Nothing past the sign-in screen has been verified on a device.** Compiling
+and running are different claims. What is verified is that it typechecks under the same strict
 configuration as the rest of the repository, that it lints, that the logic
 which does not need a device is covered by tests, and that the package Android
 produces is complete and correctly signed. Layout, navigation, whether a push
@@ -193,6 +197,13 @@ EncryptedSharedPreferences — with `AFTER_FIRST_UNLOCK`, which is the weakest
 setting that still lets a background push read the token to fetch what it refers
 to. Never `AsyncStorage`, which is a plaintext file readable by anything with
 access to the app's sandbox, including a backup of it.
+
+The account the trader chose is kept there too, under its own key
+(`remembered-account.ts`), so it survives a relaunch. It is read back as a
+request, not an answer: the account list the server returns still decides, and
+an id that is no longer in it falls back to the first account. A keychain that
+fails reads as nothing remembered rather than stopping the app, and sign-out
+forgets it with the tokens.
 
 `TokenStore.current()` refreshes 30 seconds before expiry and deduplicates
 concurrent refreshes. The second part matters more than it looks: refresh tokens

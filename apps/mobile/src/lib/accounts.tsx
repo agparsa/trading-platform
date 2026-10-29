@@ -1,6 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useSession } from './session';
 import { resolveSelection, type SelectableAccount } from './account-selection';
+import { rememberedAccount } from './remembered-account';
+import { secureStore } from './secure-store';
+
+const remembered = rememberedAccount(secureStore);
 
 /**
  * The account every screen acts on, in one place.
@@ -11,12 +15,11 @@ import { resolveSelection, type SelectableAccount } from './account-selection';
  * Loading it once and sharing the choice is what makes "the account" a thing
  * the app has rather than a thing each screen decides.
  *
- * The choice is **not persisted across launches**. It could be: the only store
- * this app has is `expo-secure-store`, which is for secrets, and a preference
- * does not belong in it. Adding a storage module to an app that has never run
- * on a device (§105) would be a change nobody could verify, so the honest
- * version is a choice that lasts as long as the app does, and this note so the
- * next person knows it was a decision rather than an oversight.
+ * The choice survives a relaunch (`remembered-account.ts`): it is read back
+ * as a *request*, which `resolveSelection` still checks against the list the
+ * server returns, and forgotten at sign-out. Until 29 October it lasted only
+ * as long as the app did, because the app had never run on a phone to prove
+ * a stored one worked.
  */
 export interface Account extends SelectableAccount {
   readonly id: string;
@@ -46,6 +49,7 @@ export function AccountsProvider({ children }: { children: React.ReactNode }): R
   const reload = useCallback(async () => {
     if (!signedIn) {
       setAccounts([]);
+      setRequestedId(null);
       setLoading(false);
       return;
     }
@@ -65,6 +69,24 @@ export function AccountsProvider({ children }: { children: React.ReactNode }): R
     void reload();
   }, [reload]);
 
+  // The last launch's choice, as a request. A choice made on this launch
+  // before the keychain answers is newer, and wins.
+  useEffect(() => {
+    if (!signedIn) return;
+    let current = true;
+    void remembered.load().then((id) => {
+      if (current && id !== null) setRequestedId((chosen) => chosen ?? id);
+    });
+    return () => {
+      current = false;
+    };
+  }, [signedIn]);
+
+  const select = useCallback((id: string) => {
+    setRequestedId(id);
+    void remembered.save(id);
+  }, []);
+
   const value = useMemo<AccountsValue>(
     () => ({
       accounts,
@@ -73,10 +95,10 @@ export function AccountsProvider({ children }: { children: React.ReactNode }): R
       selected: resolveSelection(accounts, requestedId),
       loading,
       error,
-      select: setRequestedId,
+      select,
       reload,
     }),
-    [accounts, requestedId, loading, error, reload],
+    [accounts, requestedId, loading, error, select, reload],
   );
 
   return <AccountsContext.Provider value={value}>{children}</AccountsContext.Provider>;

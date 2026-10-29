@@ -19,6 +19,8 @@ import {
   type SignInResponse,
 } from '@tp/shared-types';
 import { apiBaseUrl, createApi, toTokens, tokenStore } from './api';
+import { rememberedAccount } from './remembered-account';
+import { secureStore } from './secure-store';
 import { apiRoot } from './api-root';
 import type { TokenStore } from './token-store';
 import {
@@ -258,6 +260,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
 
   const signOut = useCallback(async () => {
     await tokens.clear();
+    // Nor the last person's chosen account.
+    await rememberedAccount(secureStore).forget();
     // The next person on this phone must not inherit a memory of the last
     // one's fills.
     eventsRef.current.reset();
