@@ -162,6 +162,23 @@ export const workerEnvSchema = z.object({
         .transform((urls) => urls.join(',')),
     ])
     .default('https://dl-cdn.alpinelinux.org/alpine/'),
+  /**
+   * Notification email (§24's email channel). The API's settings, read here
+   * too: the same `.env` serves both. `none` sends nothing and marks nothing
+   * as sent; `log` says a mail would have gone (development); `smtp` sends
+   * through EMAIL_SMTP_HOST under the same TLS rule as the API's mail.
+   */
+  EMAIL_PROVIDER: z.enum(['log', 'none', 'smtp']).default('none'),
+  EMAIL_FROM: z.string().default('no-reply@trading-platform.local'),
+  EMAIL_SMTP_HOST: z
+    .string()
+    .regex(/^[^\s:]+:\d{1,5}$/, { message: 'must be host:port, e.g. smtp.example.com:587' })
+    .optional(),
+  EMAIL_SMTP_USER: z.string().optional(),
+  /** A secret: give it as EMAIL_SMTP_PASSWORD_FILE where the platform can mount one. */
+  EMAIL_SMTP_PASSWORD: z.string().optional(),
+  /** Where the link in a notification email points. The API's value. */
+  APP_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
   /** Comma-separated queue names a processor takes. Unset means every queue. */
   WORKER_QUEUES: z.string().optional(),
 
@@ -189,6 +206,22 @@ export function validateEnv(raw: Record<string, unknown>): WorkerEnv {
    * mistakes whose symptom is silence, which is the hardest kind to notice.
    */
   const env = result.data;
+  if (env.EMAIL_PROVIDER === 'smtp') {
+    if (env.EMAIL_SMTP_HOST === undefined) {
+      throw new Error('EMAIL_PROVIDER=smtp needs EMAIL_SMTP_HOST.');
+    }
+    if ((env.EMAIL_SMTP_USER === undefined) !== (env.EMAIL_SMTP_PASSWORD === undefined)) {
+      throw new Error(
+        'EMAIL_SMTP_USER and EMAIL_SMTP_PASSWORD go together: both for a login, neither for a relay.',
+      );
+    }
+  }
+  if (env.EMAIL_PROVIDER === 'log' && env.NODE_ENV === 'production') {
+    throw new Error(
+      'EMAIL_PROVIDER=log only says a notification mail would have gone. Refusing it in production: ' +
+        'set smtp to send, or none to send nothing.',
+    );
+  }
   if (env.PUSH_ENABLED) {
     if (env.SECRET_ENCRYPTION_KEYS === undefined) {
       throw new Error(

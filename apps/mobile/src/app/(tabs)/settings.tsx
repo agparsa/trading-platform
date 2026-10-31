@@ -121,6 +121,24 @@ export default function Settings(): React.ReactElement {
           ))}
         </Card>
 
+        {/*
+          Email reaches a trader with the app closed — the channel risk alerts
+          use when push cannot, which on Android without Firebase is always.
+          Every category has a switch; risk alerts start on.
+        */}
+        <Card title="By email">
+          {preferences.categories
+            .filter((category) => category.category !== 'SYSTEM')
+            .map((category) => (
+              <Row
+                key={`email-${category.category}`}
+                label={LABELS[category.category] ?? category.category}
+                value={category.email}
+                onChange={(value) => void patchCategory(category.category, { email: value })}
+              />
+            ))}
+        </Card>
+
         <Card title="Sounds">
           {preferences.categories
             .filter((category) => category.category !== 'SYSTEM')

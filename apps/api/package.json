@@ -25,6 +25,7 @@
     "@tp/api-client": "workspace:*",
     "@tp/broker-sdk": "workspace:*",
     "@tp/crypto-core": "workspace:*",
+    "@tp/email-core": "workspace:*",
     "@tp/financial-core": "workspace:*",
     "@tp/integrity-core": "workspace:*",
     "@tp/kyc-core": "workspace:*",

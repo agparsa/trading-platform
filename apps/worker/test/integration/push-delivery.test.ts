@@ -5,6 +5,7 @@ import { SecretBox, generateEncryptionKey, parseEncryptionKeys } from '@tp/crypt
 import { DevicePlatform, NotificationCategory } from '@tp/shared-types';
 import { NotificationsService } from '../../src/jobs/notifications.service';
 import { PushService } from '../../src/push/push.service';
+import { DisabledNotificationMailer } from '../../src/email/notification-mailer';
 import { PushProvider, type PushEnvelope, type PushResult } from '../../src/push/push.port';
 import type { PrismaService } from '../../src/prisma.service';
 import { DEFAULT_TENANT_ID, createTestClient, hasTestDatabase, resetDatabase } from './harness';
@@ -70,6 +71,7 @@ suite('Push delivery (integration)', () => {
     notifications = new NotificationsService(
       prisma as unknown as PrismaService,
       new PushService(prisma as unknown as PrismaService, provider, secrets),
+      new DisabledNotificationMailer(),
     );
   });
 
@@ -229,6 +231,7 @@ suite('Push delivery (integration)', () => {
     const fragile = new NotificationsService(
       prisma as unknown as PrismaService,
       new PushService(prisma as unknown as PrismaService, new ExplodingProvider(), secrets),
+      new DisabledNotificationMailer(),
     );
 
     // The row is already committed at this point. Throwing would retry the job,

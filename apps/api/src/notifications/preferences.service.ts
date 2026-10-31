@@ -8,6 +8,7 @@ import {
 } from '@tp/shared-types';
 import {
   DEFAULT_SETTINGS,
+  defaultPreference,
   describePreferences,
   resolveDelivery,
   type ResolvedDelivery,
@@ -97,9 +98,22 @@ export class PreferencesService {
     }
 
     const tenantId = requireTenantId();
+    const defaults = defaultPreference(category);
     await this.prisma.notificationPreference.upsert({
       where: { tenantId_userId_category: { tenantId, userId, category } },
-      create: { tenantId, userId, category, ...patch },
+      // The row starts from the category's defaults, not the column's: a
+      // trader who turns a risk alert's sound off has not asked to stop
+      // receiving it by email, and `email` defaults to false in the schema.
+      create: {
+        tenantId,
+        userId,
+        category,
+        inApp: defaults.inApp,
+        push: defaults.push,
+        sound: defaults.sound,
+        email: defaults.email,
+        ...patch,
+      },
       update: patch,
     });
     return this.get(userId);

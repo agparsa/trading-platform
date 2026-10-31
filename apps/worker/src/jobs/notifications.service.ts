@@ -3,6 +3,8 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { PushService } from '../push/push.service';
 import { withTenant } from '@tp/tenancy';
+import { categoryForKind } from '@tp/shared-types';
+import { NotificationMailer, composeNotificationEmail } from '../email/notification-mailer';
 
 /**
  * Turns a queued event into something a person will see.
@@ -17,11 +19,13 @@ import { withTenant } from '@tp/tenancy';
  *
  * ## Delivery today
  *
- * **In-app and push.** The row is written first; `GET /notifications` serves
- * it, the terminal shows it, and `PushService` sends it to the person's
- * registered devices. `emailedAt` exists and stays null: there is no email
- * transport in this process, and marking a row as emailed when nothing was sent
- * would be worse than not having the column.
+ * **In-app, push and email.** The row is written first; `GET /notifications`
+ * serves it, the terminal shows it, `PushService` sends it to the person's
+ * registered devices, and — when the person's preferences say so (risk
+ * alerts, by default) and the deployment has a mail server — it is emailed to
+ * their verified address. `emailedAt` is written only after the mail server
+ * has taken the message; until 29 October there was no email transport and it
+ * stayed null.
  *
  * ## Push happens only for a row this call created
  *
@@ -87,6 +91,7 @@ export class NotificationsService {
         });
 
         await this.pushQuietly(job, created.id);
+        await this.emailQuietly(job, created.id);
         return { created: true, id: created.id };
       } catch (error) {
         // The unique constraint losing a race is the *expected* outcome when two
@@ -138,9 +143,63 @@ export class NotificationsService {
     }
   }
 
+  /**
+   * Emails, when the person's preferences and the deployment both allow it,
+   * and never lets a mail failure fail the job — for the push path's reason:
+   * a retry would find the row and send nothing.
+   *
+   * Only to a verified address of an active user. An unverified address is
+   * one nobody has shown they read, and possibly somebody else's.
+   */
+  private async emailQuietly(job: NotificationJob, notificationId: string): Promise<void> {
+    if (!this.mailer.configured) return;
+    let domain = 'unknown';
+    try {
+      const decision = await this.push.deliveryFor(
+        job.userId,
+        categoryForKind(job.kind),
+        new Date(),
+      );
+      if (!decision.email) return;
+      const user = await this.prisma.user.findFirst({
+        where: { id: job.userId },
+        select: { email: true, emailVerified: true, isActive: true },
+      });
+      if (user === null || !user.emailVerified || !user.isActive) return;
+      domain = user.email.slice(user.email.lastIndexOf('@') + 1);
+      const account =
+        job.accountId === null
+          ? null
+          : await this.prisma.account.findFirst({
+              where: { id: job.accountId },
+              select: { number: true },
+            });
+      const message = composeNotificationEmail({
+        title: job.title,
+        body: job.body,
+        severity: job.severity,
+        accountNumber: account?.number ?? null,
+        appUrl: this.appUrl,
+      });
+      await this.mailer.send({ to: user.email, ...message });
+      await this.prisma.notification.update({
+        where: { id: notificationId },
+        data: { emailedAt: new Date() },
+      });
+    } catch (error) {
+      // The domain, never the address; the message, never the body.
+      this.logger.error(
+        { notificationId, domain, error: error instanceof Error ? error.message : String(error) },
+        'A notification could not be emailed',
+      );
+    }
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly push: PushService,
+    private readonly mailer: NotificationMailer,
+    private readonly appUrl: string = 'http://localhost:3000',
   ) {}
 }
 

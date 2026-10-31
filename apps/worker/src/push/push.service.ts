@@ -158,6 +158,11 @@ export class PushService {
     return summary;
   }
 
+  /** What the user's settings say about this category: push, email, sound. */
+  async deliveryFor(userId: string, category: NotificationCategory, at: Date) {
+    return this.decide(userId, category, at);
+  }
+
   /** What the user's settings say about this category. */
   private async decide(userId: string, category: NotificationCategory, at: Date) {
     const [settingsRow, preferenceRows] = await Promise.all([

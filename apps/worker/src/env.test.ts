@@ -11,6 +11,31 @@ describe('worker env', () => {
     expect(validateEnv(base).TRADING_SERVER_TIMEZONE).toBe('UTC');
   });
 
+  /**
+   * Notification email reads the API's settings from the same file. A worker
+   * that accepted half of them would boot and send nothing, which is the
+   * failure nobody notices until the margin call that did not arrive.
+   */
+  it('sends no notification email unless told to, and refuses half an SMTP setting', () => {
+    expect(validateEnv(base).EMAIL_PROVIDER).toBe('none');
+    expect(() => validateEnv({ ...base, EMAIL_PROVIDER: 'smtp' })).toThrow(/EMAIL_SMTP_HOST/);
+    expect(() =>
+      validateEnv({
+        ...base,
+        EMAIL_PROVIDER: 'smtp',
+        EMAIL_SMTP_HOST: 'smtp.example.com:587',
+        EMAIL_SMTP_USER: 'mailer',
+      }),
+    ).toThrow(/go together/);
+    expect(
+      validateEnv({ ...base, EMAIL_PROVIDER: 'smtp', EMAIL_SMTP_HOST: 'smtp.example.com:587' })
+        .EMAIL_SMTP_HOST,
+    ).toBe('smtp.example.com:587');
+    expect(() => validateEnv({ ...base, NODE_ENV: 'production', EMAIL_PROVIDER: 'log' })).toThrow(
+      /Refusing it in production/,
+    );
+  });
+
   it('refuses to start without Redis', () => {
     const { REDIS_URL: _omitted, ...withoutRedis } = base;
     expect(() => validateEnv(withoutRedis)).toThrow(/REDIS_URL/);

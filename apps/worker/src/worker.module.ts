@@ -16,6 +16,10 @@ import { WebhookDeliveryService } from './jobs/webhook-delivery.service';
 import { ReportsService } from './jobs/reports.service';
 import { BrokerAdapterRegistry } from '@tp/broker-sdk';
 import { PushModule } from './push/push.module';
+import { PushService } from './push/push.service';
+import { NotificationMailer } from './email/notification-mailer';
+import { notificationMailerFrom } from './email/notification-mailer.provider';
+import type { WorkerEnv } from './env';
 
 @Module({
   imports: [
@@ -52,7 +56,27 @@ import { PushModule } from './push/push.module';
     ReconciliationService,
     ScheduleLogService,
     MaintenanceService,
-    NotificationsService,
+    {
+      provide: NotificationMailer,
+      inject: [ConfigService],
+      useFactory: notificationMailerFrom,
+    },
+    {
+      provide: NotificationsService,
+      inject: [PrismaService, PushService, NotificationMailer, ConfigService],
+      useFactory: (
+        prisma: PrismaService,
+        push: PushService,
+        mailer: NotificationMailer,
+        config: ConfigService<WorkerEnv, true>,
+      ) =>
+        new NotificationsService(
+          prisma,
+          push,
+          mailer,
+          config.get('APP_PUBLIC_URL', { infer: true }),
+        ),
+    },
     BrokerHealthService,
     OutboxRelayService,
     WebhookDeliveryService,

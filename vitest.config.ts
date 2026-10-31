@@ -55,6 +55,7 @@ export default defineConfig({
       '@tp/payments-core': pkg('payments-core'),
       '@tp/withdrawals-core': pkg('withdrawals-core'),
       '@tp/kyc-core': pkg('kyc-core'),
+      '@tp/email-core': pkg('email-core'),
       '@tp/broker-sdk': pkg('broker-sdk'),
       '@tp/scheduling-core': pkg('scheduling-core'),
       '@tp/ui': pkg('ui'),

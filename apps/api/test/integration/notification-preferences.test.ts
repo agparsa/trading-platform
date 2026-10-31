@@ -44,6 +44,35 @@ suite('Notification preferences (integration)', () => {
     expect(resolved).toEqual({ inApp: true, push: true, email: false, sound: true });
   });
 
+  /**
+   * Risk alerts are emailed unless the trader says otherwise — the one notice
+   * that must reach somebody with no screen open, on a phone that may have no
+   * push. Changing anything else about the category must not quietly turn that
+   * off: the row it creates starts from the category's defaults, and the
+   * schema's own default for `email` is false.
+   */
+  it('emails a risk alert by default, and keeps doing so when its sound is turned off', async () => {
+    expect(await preferences.resolve(userId, NotificationCategory.RISK_ALERT)).toMatchObject({
+      email: true,
+    });
+    expect(
+      (await preferences.get(userId)).categories.find(
+        (category) => category.category === NotificationCategory.RISK_ALERT,
+      )?.email,
+    ).toBe(true);
+
+    await preferences.updateCategory(userId, NotificationCategory.RISK_ALERT, { sound: false });
+    expect(await preferences.resolve(userId, NotificationCategory.RISK_ALERT)).toMatchObject({
+      email: true,
+      sound: false,
+    });
+
+    await preferences.updateCategory(userId, NotificationCategory.RISK_ALERT, { email: false });
+    expect(await preferences.resolve(userId, NotificationCategory.RISK_ALERT)).toMatchObject({
+      email: false,
+    });
+  });
+
   it('honours a category the user turned off', async () => {
     await preferences.updateCategory(userId, NotificationCategory.TRADE_OPENED, {
       push: false,

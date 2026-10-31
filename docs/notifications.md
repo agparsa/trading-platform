@@ -28,10 +28,9 @@ called from the risk path, and a queue that is briefly unreachable must not fail
 a stop-out: the trade is the thing that matters and the notice is about it. This
 is the same rule `EventsService.publish` follows, for the same reason.
 
-The worker's processor writes the row, then pushes it to the person's
-registered devices. `emailedAt` exists and stays null, because there is no email
-transport in that process and marking a row as emailed when nothing was sent
-would be worse than not having the column.
+The worker's processor writes the row, pushes it to the person's registered
+devices, and emails it when their preferences say so. `emailedAt` is written
+only after the mail server has taken the message — see "Email" below.
 
 ## Duplicates
 
@@ -136,6 +135,37 @@ Every route on `NotificationsController` is scoped to the caller in its own
 query. There is no notion of reading somebody else's notifications, so there is
 no permission that could grant it and no code path that could be talked into it.
 
+## Email
+
+The channel for a trader with no screen open. Push needs a Firebase project
+on Android, and Google withholds Firebase from accounts in some countries —
+including the one this platform's first firm operates from, as found on 30
+October. Email needs only the mail server the platform already uses for
+verification.
+
+- **What is emailed:** risk alerts (margin call, stop-out) by default; any
+  other category only if the trader turns its email switch on (the mobile
+  app's Settings → By email; the web has no notification settings yet). A mail for
+  every fill would be noise, and noise teaches people to filter the address.
+  The default lives in `@tp/push-core` (`EMAILED_BY_DEFAULT`), so the settings
+  screen and the worker agree on it, and a preference row created for any
+  other reason — turning a risk alert's sound off — starts from the
+  category's defaults, not the column's.
+- **To whom:** the user's address, only when it is verified and the user is
+  active. An unverified address is one nobody has shown they read.
+- **What it says:** the notification's own title and body, the account
+  number, and a plain link to the terminal. No token and no sign-in link.
+  CRITICAL notices are prefixed "Action needed:".
+- **When it fails:** the notice is kept, `emailedAt` stays null, and the error
+  is logged with the recipient's domain only. The job does not fail, for the
+  push path's reason: a retry would find the row and send nothing.
+- **Configuration:** the worker reads the API's `EMAIL_PROVIDER`,
+  `EMAIL_FROM`, `EMAIL_SMTP_HOST`, `EMAIL_SMTP_USER`, `EMAIL_SMTP_PASSWORD`
+  and `APP_PUBLIC_URL` from the same file. `none` (the worker's default)
+  sends nothing; `log` is refused in production; `smtp` uses the API's TLS
+  rule, from `@tp/email-core`. Mail from a domain without SPF, DKIM and DMARC
+  is likely to land in spam.
+
 ## Push
 
 `PushProvider` is a port. `PlatformPushProvider` routes each device to the
@@ -161,6 +191,15 @@ given one that did not reach the APK. Both halves come from one Firebase
 project: its Android app (package `ir.devopss.trading`) for the client file,
 and a service account with the Firebase Messaging role for
 `FCM_SERVICE_ACCOUNT_JSON`.
+
+**Not available to the first firm, as of 30 October.** Opening the Firebase
+console with the firm's Google account lands on Google's service-restriction
+page: the account is tied to a country where Google does not offer Firebase.
+Nothing here works around that. The choices are a Firebase project owned by a
+party Google does serve, or an Android push service that operates there
+(which would be a new `PushProvider`, built from that service's documentation
+and not before). Until one is chosen, risk alerts reach a trader with the app
+closed by email (above).
 
 A platform is served if — and only if — its credentials are present. There is no
 per-platform on/off switch that could get out of step with the credentials

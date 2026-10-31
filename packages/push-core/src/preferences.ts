@@ -53,8 +53,26 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   quietHoursTimezone: null,
 };
 
+/**
+ * A category nobody has set: everything on, and email only for risk.
+ *
+ * A margin call or a stop-out is the one notice a trader must get when no
+ * screen is open — and on Android, push needs a Firebase project that not
+ * every firm can have (Google withholds it in some countries). Email is the
+ * channel the platform already has. Everything else is off by email unless
+ * the trader turns it on, because a mail for every fill is noise and noise
+ * teaches people to filter the address.
+ */
+export const EMAILED_BY_DEFAULT: readonly NotificationCategory[] = ['RISK_ALERT'];
+
 export function defaultPreference(category: NotificationCategory): StoredPreference {
-  return { category, inApp: true, push: true, sound: true, email: false };
+  return {
+    category,
+    inApp: true,
+    push: true,
+    sound: true,
+    email: EMAILED_BY_DEFAULT.includes(category),
+  };
 }
 
 /**
@@ -115,7 +133,7 @@ export function describePreferences(
       inApp: unmutable ? true : (row?.inApp ?? true),
       push: unmutable ? true : (row?.push ?? true),
       sound: row?.sound ?? true,
-      email: row?.email ?? false,
+      email: row?.email ?? defaultPreference(category).email,
       unmutable,
     };
   });
