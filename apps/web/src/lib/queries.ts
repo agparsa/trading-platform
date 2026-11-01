@@ -8,7 +8,11 @@ import {
   type QueryClient,
 } from '@tanstack/react-query';
 import type { ApiClient } from '@tp/api-client';
-import type { MarketStatusDto } from '@tp/shared-types';
+import type {
+  MarketStatusDto,
+  NotificationPreferenceDto,
+  NotificationSettingsDto,
+} from '@tp/shared-types';
 import { barWindow, RESOLUTION_MINUTES, type Resolution } from '@tp/chart-core';
 import { useSession } from './session';
 
@@ -1398,5 +1402,41 @@ export function useOrderLog(accountId: string | null) {
       ),
     getNextPageParam: (page) => page.nextCursor,
     enabled: accountId !== null,
+  });
+}
+
+/**
+ * What this trader wants to be told, and how — the same settings the phone's
+ * Settings screen edits (`GET /notifications/preferences`).
+ */
+export function useNotificationPreferences() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['notification-preferences'],
+    queryFn: () => api.get<NotificationSettingsDto>('/notifications/preferences'),
+    enabled: accessToken !== null,
+  });
+}
+
+/**
+ * Changes one category's switches. The server refuses to mute a risk or
+ * security category rather than accepting and ignoring it; the screen shows
+ * the refusal and re-reads, so a switch never sits "off" while the notices
+ * keep arriving.
+ */
+export function useUpdateNotificationCategory() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      category: string;
+      patch: Partial<Pick<NotificationPreferenceDto, 'inApp' | 'push' | 'sound' | 'email'>>;
+    }) =>
+      api.patch<NotificationSettingsDto>(
+        `/notifications/preferences/${input.category}`,
+        input.patch,
+        { idempotencyKey: crypto.randomUUID() },
+      ),
+    onSettled: () => void client.invalidateQueries({ queryKey: ['notification-preferences'] }),
   });
 }

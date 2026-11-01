@@ -144,8 +144,9 @@ October. Email needs only the mail server the platform already uses for
 verification.
 
 - **What is emailed:** risk alerts (margin call, stop-out) by default; any
-  other category only if the trader turns its email switch on (the mobile
-  app's Settings → By email; the web has no notification settings yet). A mail for
+  other category only if the trader turns its email switch on — on the
+  phone (Settings → By email) or the web (Settings → Notifications), which
+  edit the same record. A mail for
   every fill would be noise, and noise teaches people to filter the address.
   The default lives in `@tp/push-core` (`EMAILED_BY_DEFAULT`), so the settings
   screen and the worker agree on it, and a preference row created for any

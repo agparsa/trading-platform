@@ -420,6 +420,10 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
   await as.trader('DELETE', `/orders/${withdrawn.orderId}`);
 
   // --- The trader's other things.
+  answers.record(
+    'PATCH /notifications/preferences/*',
+    await as.trader('PATCH', '/notifications/preferences/ORDER_FILLED', { email: true }),
+  );
   const alertBody = {
     symbol: MAIN,
     condition: 'ABOVE',

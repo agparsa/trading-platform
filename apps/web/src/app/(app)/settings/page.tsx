@@ -2,6 +2,7 @@
 
 import { AppShell } from '@/components/shell/app-shell';
 import { Panel } from '@/components/primitives';
+import { NotificationSettings } from '@/components/notification-settings';
 import { ThemeSettings } from '@/components/theme-settings';
 import { TradingSettings } from '@/components/trading-settings';
 import { useTradingPreferences } from '@/lib/use-trading-preferences';
@@ -20,18 +21,21 @@ export default function SettingsPage() {
   return (
     <AppShell
       title="Settings"
-      description="One-click trading, confirmations, default order size, and appearance."
+      description="One-click trading, confirmations, default order size, appearance and notifications."
     >
       <Panel className="mb-3 max-w-md p-4">
         <ThemeSettings />
       </Panel>
-      <Panel className="max-w-md p-4">
+      <Panel className="mb-3 max-w-md p-4">
         <TradingSettings
           preferences={preferences}
           onChange={update}
           presentation="page"
           oneClickAllowed={oneClickAllowed}
         />
+      </Panel>
+      <Panel className="max-w-md p-4">
+        <NotificationSettings />
       </Panel>
     </AppShell>
   );

@@ -60,6 +60,8 @@ const MAPS: Readonly<Record<string, Vocabulary | { none: string }>> = {
   'apps/mobile/src/components/kyc-card.tsx:KYC_LABELS': 'prisma.KycStatus',
   'apps/mobile/src/lib/kyc-upload.ts:LABELS': 'prisma.KycDocumentKind',
   'apps/mobile/src/app/(tabs)/settings.tsx:LABELS': 'prisma.NotificationCategory',
+  'apps/web/src/components/notification-settings.tsx:NOTIFICATION_CATEGORY_LABEL':
+    'prisma.NotificationCategory',
 };
 
 function vocabularies(): Map<Vocabulary, Set<string>> {
