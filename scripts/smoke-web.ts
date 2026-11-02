@@ -1637,6 +1637,44 @@ async function main(): Promise<void> {
       await auditAccessibility(page, 'the Logs tab');
     }
 
+    /**
+     * Analytics: the trader's closed trades in the last three months, as the
+     * server counts them, against the database's count — and audited.
+     */
+    {
+      await visit(page, '/analytics', { url: '/analytics', text: /Analytics/i });
+      const view = page.getByTestId('performance');
+      await view.waitFor({ timeout: 10_000 }).catch(() => undefined);
+      await page
+        .getByText(/No trades closed in this period|Net result/)
+        .first()
+        .waitFor({ timeout: 10_000 })
+        .catch(() => undefined);
+      const account = await prisma.account.findFirst({
+        where: { user: { email: people.trader.email } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      const since = new Date();
+      since.setUTCMonth(since.getUTCMonth() - 3);
+      const closed =
+        account === null
+          ? -1
+          : await prisma.trade.count({
+              where: { accountId: account.id, exitTime: { gte: since } },
+            });
+      const text = (await view.count()) === 0 ? '' : await view.innerText();
+      const shownTrades = /TRADES\s+(\d+)/i.exec(text)?.[1];
+      ok(
+        closed === 0
+          ? /No trades closed in this period/.test(text)
+          : shownTrades === String(closed),
+        "the Analytics page counts the account's closed trades as the database does",
+        `${closed} closed · shown ${shownTrades ?? (text.replace(/\s+/g, ' ').slice(0, 80) || '—')}`,
+      );
+      await auditAccessibility(page, 'the analytics screen');
+    }
+
     await visit(adminPage, '/admin/book', { url: '/admin/book' });
     await auditAccessibility(adminPage, 'the firm book');
     const book = adminPage.getByTestId('book-panel');

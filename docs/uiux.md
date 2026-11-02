@@ -235,6 +235,19 @@ refused before it existed, because the refusal rolls the order back — the
 ticket shows that refusal at the time. The browser walk compares the tab with
 the stored events and audits it.
 
+**Analytics.** `/analytics` is the account's results from its closed
+trades over three months, a year or all time: net result, return, average
+win and loss, profit factor, gross profit and loss, and the split by side,
+by trading day and by month. Every figure is the server's
+(`GET /accounts/:id/performance`, computed by `performanceOf` in
+`@tp/trading-core` with exact decimals from `Trade.netPnl`); the page only
+lays them out. A trade counts on the day and in the month it closed, in the
+trading server's timezone. A figure that cannot honestly be given is a dash
+with its reason: no profit factor without a losing trade, no return without
+a balance from before the period (read from the ledger, so deposits and
+withdrawals in between are not counted as results). Prop challenges and copy
+trading, which some terminals put beside it, are not this platform's.
+
 **Instruments.** `/instruments` lists every enabled instrument on the terms
 this firm trades it — contract size and quote currency, tick size and the
 value of one tick on one lot (`tickValue`), volume minimum, maximum and step,

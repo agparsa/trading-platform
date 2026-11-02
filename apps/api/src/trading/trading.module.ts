@@ -16,11 +16,14 @@ import { ExternalExecutionService } from './external-execution.service';
 import { SnapshotService } from './snapshot.service';
 import { VenueRecoveryService } from './venue-recovery.service';
 import { VenueRecoveryController } from './venue-recovery.controller';
+import { PerformanceController } from './performance.controller';
+import { PerformanceService } from './performance.service';
 
 @Module({
   imports: [MarketModule, AccountsModule, OutboxModule, BrokerConnectionsModule],
-  controllers: [TradingController, VenueRecoveryController],
+  controllers: [TradingController, VenueRecoveryController, PerformanceController],
   providers: [
+    PerformanceService,
     ConversionService,
     AccountStateService,
     RiskContextBuilder,

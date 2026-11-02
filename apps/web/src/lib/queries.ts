@@ -1440,3 +1440,38 @@ export function useUpdateNotificationCategory() {
     onSettled: () => void client.invalidateQueries({ queryKey: ['notification-preferences'] }),
   });
 }
+
+/** What `GET /accounts/:id/performance` returns. Figures are the server's decimal strings. */
+export interface PerformanceRow {
+  period: '3M' | '1Y' | 'ALL';
+  from: string | null;
+  to: string;
+  timeZone: string;
+  currency: string;
+  trades: {
+    total: number;
+    buys: { total: number; profitable: number; losing: number };
+    sells: { total: number; profitable: number; losing: number };
+  };
+  netPnl: string;
+  grossProfit: string;
+  grossLoss: string;
+  averageWin: string | null;
+  averageLoss: string | null;
+  profitFactor: string | null;
+  startingBalance: string | null;
+  returnPercent: string | null;
+  days: { total: number; profitable: number; losing: number };
+  months: Array<{ month: string; netPnl: string; trades: number }>;
+}
+
+/** An account's trading performance over a period, computed by the server. */
+export function usePerformance(accountId: string | null, period: PerformanceRow['period']) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: ['performance', accountId ?? 'none', period],
+    queryFn: () =>
+      api.get<PerformanceRow>(`/accounts/${accountId ?? ''}/performance`, { query: { period } }),
+    enabled: accountId !== null,
+  });
+}

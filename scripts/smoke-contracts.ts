@@ -865,6 +865,7 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
 /** Query values that depend on which list is asked: each queue's own statuses. */
 const QUERY_BY_CALL: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   'GET /admin/kyc': { status: 'VERIFIED' },
+  'GET /accounts/*/performance': { period: 'ALL' },
   'GET /admin/payments': { status: 'SUCCEEDED' },
   'GET /admin/withdrawals': { status: 'PAID' },
 };
@@ -897,6 +898,7 @@ function pathValues(key: string, world: World): string[] | undefined {
     'GET /accounts/*/settings': [world.accountId],
     'GET /accounts/*/ledger': [world.accountId],
     'GET /accounts/*/order-events': [world.accountId],
+    'GET /accounts/*/performance': [world.accountId],
     'GET /symbols/*': [world.ids['symbol'] ?? 'EURUSD'],
     'GET /admin/users/*': [world.traderId],
     'GET /admin/users/*/devices': [world.traderId],

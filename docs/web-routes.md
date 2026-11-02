@@ -18,6 +18,7 @@ Every screen has an address now. The terminal did not change.
 | `/wallet`               | money held for you, and moving it to and from an account                                                            |
 | `/verification`         | prove who you are, once, so withdrawals can be paid to you                                                          |
 | `/history`              | trades, closed positions, orders — including refused ones                                                           |
+| `/analytics`            | your results from closed trades: return, averages, profit factor, by side, day and month                            |
 | `/instruments`          | contract specifications: size, tick value, volume limits, margin for your leverage, commission, swap, trading hours |
 | `/security`             | two-factor, recovery codes, active sessions, your API keys, and what has happened to your account                   |
 | `/developer`            | the API as it describes itself: every route, authentication, idempotency, verifying a webhook                       |
