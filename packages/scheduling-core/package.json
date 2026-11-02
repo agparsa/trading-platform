@@ -2,7 +2,7 @@
   "name": "@tp/scheduling-core",
   "version": "0.1.0",
   "private": true,
-  "description": "Which jobs are supposed to run, how often, and when one has gone quiet. Pure domain logic — no database, no queue.",
+  "description": "Which jobs are supposed to run, how often, and when one has gone quiet. Pure domain logic \u2014 no database, no queue.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
