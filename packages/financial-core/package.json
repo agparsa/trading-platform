@@ -21,8 +21,8 @@
     "clean": "rimraf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "decimal.js": "catalog:",
-    "@tp/shared-types": "workspace:*"
+    "@tp/shared-types": "workspace:*",
+    "decimal.js": "catalog:"
   },
   "devDependencies": {
     "rimraf": "catalog:",

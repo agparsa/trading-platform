@@ -21,8 +21,8 @@
     "clean": "rimraf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@tp/shared-types": "workspace:*",
-    "@tp/financial-core": "workspace:*"
+    "@tp/financial-core": "workspace:*",
+    "@tp/shared-types": "workspace:*"
   },
   "devDependencies": {
     "rimraf": "catalog:",

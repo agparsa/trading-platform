@@ -2,7 +2,7 @@
   "name": "@tp/reports-core",
   "version": "0.1.0",
   "private": true,
-  "description": "What a report contains: the kinds, their columns, their filters, and CSV assembly. Pure domain logic — no database, no queue.",
+  "description": "What a report contains: the kinds, their columns, their filters, and CSV assembly. Pure domain logic \u2014 no database, no queue.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
