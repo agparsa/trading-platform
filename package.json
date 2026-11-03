@@ -84,7 +84,11 @@
     "overrides": {
       "multer": "^2.3.0",
       "postcss": "^8.5.26",
-      "deepmerge-ts": "^8.0.0"
+      "deepmerge-ts": "^8.0.0",
+      "tinypool": "2.1.2",
+      "shell-quote": "1.11.0",
+      "source-map-js": "1.2.2",
+      "sharp": "0.35.5"
     }
   }
 }

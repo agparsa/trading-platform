@@ -36,6 +36,11 @@ route short of waiting for upstream.
 | `postcss`      | `^8.5.26` | `next@15.5.25` pins `8.4.31`                   | Two high advisories. Build-time only, and the workspace root already resolved `8.5.26`, so both versions were installed side by side before this.                                                                                                                                     |
 | `deepmerge-ts` | `^8.0.0`  | `@prisma/config@6.19.3` pins `7.1.5`           | A major bump, taken rather than reasoned around: the merge it performs is over `prisma.config.ts`, a file this repository owns, so the advisory is not reachable from untrusted input — but "not reachable today" is an argument that expires, and the build gate proves the upgrade. |
 
+| `tinypool` | `2.1.2` | Vitest 3.2.7 resolves 1.1.1 | Clears GHSA-5gmw-xhrv-c9v3 and GHSA-85c8-ppgw-ccpr. This is a major transitive bump; all 900 workspace-package tests pass with the updated worker pool. Independent compatibility CI runs even while the audit gate is blocked by other findings. |
+| `shell-quote` | `1.11.0` | React Native / Expo tooling | Clears GHSA-pqg4-j6r4-53mv command injection. Patched within the same major. Native mobile builds still require separate EAS validation. |
+| `source-map-js` | `1.2.2` | Build and styling toolchain | Clears GHSA-68fv-2mgg-jv7q within the same major. |
+| `sharp` | `0.35.5` | Next.js image tooling | Clears GHSA-wq5f-xc86-pv6w. Native WebP encode/decode smoke check passed; Docker builds verify Linux installation. |
+
 An override changes a dependency for every package in the workspace, including
 ones that asked for something else. That is why each needs a row here: a silent
 override is a dependency decision nobody reviewed.
@@ -54,3 +59,7 @@ are recorded so that "moderate" does not quietly become "ignored".
 Each of these is a reason to look again, not a reason to stop looking. The gate
 is set at high because that is the line this repository can hold today; lowering
 the threshold is a decision to be taken along with the work it creates.
+
+## Unresolved high advisories (2026-10-11)
+
+`node-forge` (GHSA-86w9-cpqp-85rv) and `braces` (GHSA-vfj7-8cjw-p6xm) have no patched versions listed in the current audit. They are not ignored and the high-or-worse CI gate still fails. The security-update branch reduces critical findings from three to zero and high findings from four to two; it is not a claim that the application is ready for production release.
