@@ -571,9 +571,13 @@ function RowTicket({
                 type="button"
                 disabled={!ready}
                 onClick={() => onTrade(symbol.code, side, lots)}
-                aria-label={`${side === 'BUY' ? 'Buy' : 'Sell'} ${lots} lots of ${symbol.code}${
-                  at === null ? '' : ` at ${at}`
-                }`}
+                // The name starts with exactly what the button shows — "Sell
+                // 0.71580" — and then says what it is for. A name that put the
+                // lots first did not contain the visible text, which a person
+                // using voice control reads off the screen to say.
+                aria-label={`${side === 'BUY' ? 'Buy' : 'Sell'}${
+                  at === null ? '' : ` ${at}`
+                }, ${lots} lots of ${symbol.code}`}
                 title="Stages the order in the ticket, which asks before sending"
                 // Solid, as the main ticket's buttons are: the tinted version
                 // put the short colour on its own tint at 4.2:1, which the
@@ -586,7 +590,12 @@ function RowTicket({
                 )}
               >
                 {side === 'BUY' ? 'Buy' : 'Sell'}
-                {at === null ? null : <span className="numeric ml-1">{at}</span>}
+                {at === null ? null : (
+                  <>
+                    {' '}
+                    <span className="numeric">{at}</span>
+                  </>
+                )}
               </button>
             );
           })}

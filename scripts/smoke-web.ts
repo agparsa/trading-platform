@@ -1040,7 +1040,7 @@ async function main(): Promise<void> {
         const chosen = await field.inputValue();
         await page
           .getByRole('button', {
-            name: new RegExp(`^Buy ${chosen.replace('.', '\\.')} lots of ${rowTicketCode}`),
+            name: new RegExp(`^Buy .*${chosen.replace('.', '\\.')} lots of ${rowTicketCode}`),
           })
           .click();
         const question = await page.getByTestId('ticket-confirm').innerText();

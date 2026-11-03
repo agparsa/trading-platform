@@ -89,10 +89,16 @@ describe('a watchlist row ticket', () => {
     expect(screen.getByLabelText('XAUUSD volume in lots')).toHaveProperty('value', '0.10');
 
     fireEvent.click(screen.getByRole('button', { name: 'Increase the XAUUSD volume' }));
-    fireEvent.click(
-      screen.getByRole('button', { name: /^Sell 0\.11 lots of XAUUSD at 4583\.58$/ }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Sell 4583\.58, 0\.11 lots of XAUUSD$/ }));
     expect(onTrade).toHaveBeenCalledWith('XAUUSD', 'SELL', '0.11');
+    // What the button shows is how its name starts: voice control says what
+    // it sees, and axe's label-content-name-mismatch refused the old order.
+    for (const side of ['Sell', 'Buy']) {
+      const button = screen.getByRole('button', {
+        name: new RegExp(`^${side} \\d.*lots of XAUUSD$`),
+      });
+      expect(button.getAttribute('aria-label')!.startsWith(button.textContent!)).toBe(true);
+    }
     // Opening a ticket is not choosing the chart's instrument; staging does
     // that, in the terminal.
     expect(onSelect).not.toHaveBeenCalled();
@@ -102,7 +108,7 @@ describe('a watchlist row ticket', () => {
     const { onTrade } = renderList();
     open('USIDX');
     expect(screen.getByLabelText('USIDX volume in lots')).toHaveProperty('value', '1');
-    fireEvent.click(screen.getByRole('button', { name: /^Buy 1 lots of USIDX at 6500\.60$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Buy 6500\.60, 1 lots of USIDX$/ }));
     expect(onTrade).toHaveBeenCalledWith('USIDX', 'BUY', '1');
   });
 
@@ -114,13 +120,13 @@ describe('a watchlist row ticket', () => {
 
     expect(screen.getByText('Volume must be a multiple of 1.')).toBeTruthy();
     expect(field.getAttribute('aria-invalid')).toBe('true');
-    const buy = screen.getByRole('button', { name: /^Buy 1\.5 lots of USIDX/ });
+    const buy = screen.getByRole('button', { name: /^Buy .*1\.5 lots of USIDX/ });
     expect(buy).toHaveProperty('disabled', true);
     fireEvent.click(buy);
     expect(onTrade).not.toHaveBeenCalled();
 
     fireEvent.change(field, { target: { value: '2' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Buy 2 lots of USIDX/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Buy .*2 lots of USIDX/ }));
     expect(onTrade).toHaveBeenCalledWith('USIDX', 'BUY', '2');
   });
 
