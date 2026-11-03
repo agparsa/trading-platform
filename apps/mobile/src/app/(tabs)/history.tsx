@@ -7,6 +7,7 @@ import { useSession } from '../../lib/session';
 import { Empty, ErrorNote, Screen } from '../../components/ui';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
 import { formatSigned, signColor, theme } from '../../lib/theme';
+import { performanceSummary, type PerformanceSummaryInput } from '../../lib/performance-summary';
 
 interface Trade {
   id: string;
@@ -50,6 +51,7 @@ export default function History(): React.ReactElement {
   // Moves when a position closes — which is what adds a row here.
   const { versions } = useLiveBook();
   const [trades, setTrades] = useState<Trade[] | null>(null);
+  const [performance, setPerformance] = useState<PerformanceSummaryInput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -61,6 +63,14 @@ export default function History(): React.ReactElement {
       }
       setTrades(
         await api.get<Trade[]>('/trades', { query: { accountId: account.id, limit: 100 } }),
+      );
+      // Its own catch: the list is worth showing without the summary.
+      setPerformance(
+        await api
+          .get<PerformanceSummaryInput>(`/accounts/${account.id}/performance`, {
+            query: { period: '3M' },
+          })
+          .catch(() => null),
       );
       setError(null);
     } catch {
@@ -87,6 +97,11 @@ export default function History(): React.ReactElement {
               void load().finally(() => setRefreshing(false));
             }}
           />
+        }
+        ListHeaderComponent={
+          performance === null || performance.trades.total === 0 ? null : (
+            <Summary input={performance} />
+          )
         }
         ListEmptyComponent={<Empty message={trades === null ? 'Loading…' : 'No closed trades.'} />}
         renderItem={({ item }) => (
@@ -121,7 +136,49 @@ export default function History(): React.ReactElement {
   );
 }
 
+/** The last three months, as the server counts them. */
+function Summary({ input }: { input: PerformanceSummaryInput }): React.ReactElement {
+  const { lines, notes } = performanceSummary(input);
+  return (
+    <View style={styles.summary}>
+      <Text style={styles.summaryTitle}>Last 3 months</Text>
+      {lines.map((line) => (
+        <View key={line.label} style={styles.top}>
+          <Text style={styles.detail}>{line.label}</Text>
+          <Text
+            style={[
+              styles.summaryValue,
+              {
+                color: line.signOf === null ? theme.colors.text : signColor(line.signOf),
+                writingDirection: NUMERIC_DIRECTION,
+              },
+            ]}
+          >
+            {line.value}
+          </Text>
+        </View>
+      ))}
+      {notes.map((note) => (
+        <Text key={note} style={styles.when}>
+          {note}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  summary: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+    padding: theme.spacing(1.5),
+    marginBottom: theme.spacing(1.5),
+    gap: theme.spacing(0.5),
+  },
+  summaryTitle: { color: theme.colors.text, fontSize: 15, fontWeight: '600' },
+  summaryValue: { fontSize: 14, fontFamily: theme.font.mono },
   row: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.md,

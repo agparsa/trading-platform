@@ -395,6 +395,14 @@ screen that can be shoulder-surfed. It belongs on the web terminal, where it can
 be printed. The screen shows the status, warns when an enrolment was started and
 never finished, and warns when no recovery codes remain.
 
+## History's summary
+
+The History tab opens with the last three months as the server counts them —
+net result, return, trades won and lost, profit factor, average win and loss —
+from `GET /accounts/:id/performance`, the endpoint behind the web's Analytics
+page. Nothing is computed on the phone; a figure the server withholds is a dash
+with the reason, and the trade list still shows if the summary cannot be read.
+
 ## What is not built yet
 
 Support, which the platform does not have on any surface. Phase 13 of `IMPLEMENTATION_PLAN.md` is
