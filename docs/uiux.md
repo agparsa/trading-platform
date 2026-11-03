@@ -219,6 +219,17 @@ of a long ledger read the ledger. It now orders by `(created_at, id)`, which
 becomes a bounded keyset query; `scripts/cursor-order.test.ts` holds every
 cursor query in the API to that.
 
+**The pre-trade check.** A market order complete enough to send is shown to
+the risk engine before it is sent: `POST /orders/preview`, asked once the
+ticket's fields have been still for half a second (a quote tick asks
+nothing). When the engine would refuse it, the ticket lists **every** rule
+it would break — the per-position limit _and_ the margin, not the first of
+them — above the estimates, and its warnings below. It decides nothing: the
+order is checked again, under the account lock, when it is sent, and a
+preview that fails to answer leaves the ticket as it was. Until 3 November
+only the phone asked; the web showed its own arithmetic and learned the
+rules from a refusal.
+
 **The Logs tab.** The account's order log: every event the engine recorded
 for every order on the account — placed, checked, accepted, triggered,
 filled, changed, cancelled, expired, refused — newest first, each in the same

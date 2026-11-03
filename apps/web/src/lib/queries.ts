@@ -1475,3 +1475,38 @@ export function usePerformance(accountId: string | null, period: PerformanceRow[
     enabled: accountId !== null,
   });
 }
+
+/** What `POST /orders/preview` answers: the server's view of an order not yet placed. */
+export interface OrderPreviewRow {
+  requiredMargin: string;
+  estimatedCommission: string;
+  accountCurrency: string;
+  freeMarginAfter: string;
+  marginLevelAfter: string | null;
+  wouldBeAccepted: boolean;
+  violations: string[];
+  warnings: string[];
+}
+
+/**
+ * The risk engine's answer for a market order, asked before it is placed.
+ *
+ * The ticket's own estimate is arithmetic on the instrument's terms; this is
+ * the server evaluating every rule it would evaluate at submission — position
+ * limits, exposure, margin — and returning all that fail. It does not decide
+ * anything: the order is checked again, under the account lock, when it is
+ * sent. `null` asks nothing (an incomplete ticket, or not a market order).
+ */
+export function useOrderPreview(request: Omit<OpenPositionInput, 'commandId'> | null) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: ['order-preview', request],
+    queryFn: () =>
+      api.post<OrderPreviewRow>('/orders/preview', request, {
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    enabled: request !== null,
+    staleTime: 2_000,
+    retry: false,
+  });
+}

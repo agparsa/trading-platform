@@ -26,11 +26,18 @@ import { DomainError, Permission } from '@tp/shared-types';
 const mutateAsync = vi.fn();
 const placeMutateAsync = vi.fn();
 
+const previewAsked: unknown[] = [];
+const previewAnswer: { current: unknown } = { current: undefined };
+
 vi.mock('@/lib/queries', () => ({
   useAccountState: () => ({ data: undefined }),
   useOpenPosition: () => ({ mutateAsync, isPending: false }),
   usePlacePending: () => ({ mutateAsync: placeMutateAsync, isPending: false }),
   usePermissions: () => ({ data: { role: 'TRADER', permissions: [Permission.ORDERS_CREATE] } }),
+  useOrderPreview: (request: unknown) => {
+    previewAsked.push(request);
+    return { data: previewAnswer.current };
+  },
 }));
 
 vi.mock('@/lib/session', () => ({
@@ -93,6 +100,48 @@ afterEach(() => {
 });
 
 describe('the order ticket, rendered', () => {
+  /**
+   * The pre-trade check: asked once the fields are still, for a market order,
+   * and every rule the server says the order would break is listed before
+   * the trader sends it.
+   */
+  it("lists every rule the server's pre-trade check says the order would break", async () => {
+    previewAsked.length = 0;
+    previewAnswer.current = {
+      requiredMargin: '920.00',
+      estimatedCommission: '3.50',
+      accountCurrency: 'USD',
+      freeMarginAfter: '-120.00',
+      marginLevelAfter: '89.10',
+      wouldBeAccepted: false,
+      violations: [
+        'Order volume 5.00 exceeds the per-position limit of 2 lots',
+        'Insufficient free margin',
+      ],
+      warnings: [],
+    };
+    quote();
+    render(
+      <OrderTicket
+        symbol={SYMBOL}
+        account={ACCOUNT}
+        accountId="acc-1"
+        preferences={PREFERENCES}
+        shortcut={null}
+        onShortcutHandled={() => undefined}
+      />,
+    );
+    const box = await screen.findByTestId('order-preview-refusal');
+    expect(box.querySelectorAll('li')).toHaveLength(2);
+    expect(box.textContent).toContain('Insufficient free margin');
+    await waitFor(() => {
+      expect(previewAsked.some((request) => request !== null)).toBe(true);
+    });
+    const asked = previewAsked.find((request) => request !== null) as Record<string, unknown>;
+    expect(asked).toMatchObject({ accountId: 'acc-1', symbol: 'XAUUSD', side: 'BUY' });
+    previewAnswer.current = undefined;
+  });
+
   it('shows every violation the server sent, not only the first', async () => {
     mutateAsync.mockRejectedValue(
       new DomainError(

@@ -25,11 +25,14 @@ import {
 import {
   useAccountState,
   useOpenPosition,
+  useOrderPreview,
   usePermissions,
   usePlacePending,
   type AccountSummary,
+  type OpenPositionInput,
   type SymbolRow,
 } from '@/lib/queries';
+import { useDebounced } from '@/lib/use-debounced';
 import { useRealtime } from '@/lib/realtime-store';
 import { ShortcutAction } from '@/lib/shortcuts';
 import { needsConfirmation } from '@/lib/shortcuts';
@@ -137,6 +140,44 @@ export function OrderTicket({
           : validateRestingPrice(symbol, orderType, side, restingPrice, quote),
     [symbol, orderType, side, stopTrigger, restingPrice, quote],
   );
+
+  /**
+   * The server's pre-trade check, for a market order that is complete enough
+   * to ask about. Keyed by the order's fields as a string, so a quote tick —
+   * which re-renders this ticket many times a second — asks nothing; asked
+   * once the fields have been still for half a second.
+   */
+  const previewKey = useMemo(() => {
+    if (orderType !== 'MARKET' || accountId === null || symbol === undefined) return null;
+    if (!validation.volumeOk || validation.error !== null) return null;
+    return JSON.stringify({
+      accountId,
+      symbol: symbol.code,
+      side,
+      volume: volume.trim(),
+      stopLoss: stopLoss.trim() === '' ? null : stopLoss.trim(),
+      takeProfit: takeProfit.trim() === '' ? null : takeProfit.trim(),
+      ...(trailing.trim() === '' ? {} : { trailingStopDistance: trailing.trim() }),
+    });
+  }, [
+    orderType,
+    accountId,
+    symbol,
+    validation.volumeOk,
+    validation.error,
+    side,
+    volume,
+    stopLoss,
+    takeProfit,
+    trailing,
+  ]);
+  const settledPreviewKey = useDebounced(previewKey, 500);
+  const preview = useOrderPreview(
+    settledPreviewKey === null || settledPreviewKey !== previewKey
+      ? null
+      : (JSON.parse(settledPreviewKey) as Omit<OpenPositionInput, 'commandId'>),
+  );
+  const refusal = preview.data !== undefined && !preview.data.wouldBeAccepted ? preview.data : null;
 
   const estimate = useMemo(
     () => estimateCosts(symbol, account, side, volume, executable, validation.volumeOk),
@@ -687,6 +728,35 @@ export function OrderTicket({
           onChange={(event) => setTrailing(event.target.value)}
         />
       </Field>
+
+      {/*
+        Every rule the order would break, as the server sees it now — not the
+        first one. Shown, not enforced: the order is checked again when sent.
+      */}
+      {refusal === null ? null : (
+        <div
+          role="status"
+          data-testid="order-preview-refusal"
+          className="rounded border border-terminal-short/50 bg-terminal-short/10 px-2.5 py-2 text-caption text-terminal-text"
+        >
+          <p className="font-medium">This order would be refused now:</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            {refusal.violations.map((violation) => (
+              <li key={violation}>{violation}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {preview.data === undefined || preview.data.warnings.length === 0 ? null : (
+        <ul
+          className="space-y-0.5 text-caption text-terminal-warning"
+          data-testid="order-preview-warnings"
+        >
+          {preview.data.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      )}
 
       <dl className="space-y-1 rounded border border-terminal-border bg-terminal-bg px-2.5 py-2 text-caption">
         <EstimateRow label="Est. margin" value={estimate.margin} />
