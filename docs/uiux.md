@@ -359,18 +359,21 @@ two lines shared one identity, so the chart kept only the limit line's handle
 and added a new, never-removed stop line on every redraw — every quote. Each
 leg now has its own identity, and a test says so.
 
+**The spacing scale.** Measured before it was written down: no arbitrary
+spacing value anywhere in the web app, and nearly every gap one of six
+Tailwind steps — 0.5, 1, 1.5, 2, 3 and 4 (2px to 16px) — with a few larger
+ones on the pages that are not the terminal. That is the scale, now listed in
+`scripts/spacing-scale.test.ts` with what each step is for; a step not on it,
+or an arbitrary `p-[13px]`, fails there, so a new gap is a decision made in
+that file rather than a value typed into a component. Type has the same
+arrangement (`--text-*`, above).
+
 ## 5. What Phase 6 does not deliver
 
 Stated rather than stubbed. None of this is built:
 
-- **A spacing scale.** Spacing is still Tailwind's own utilities, used
-  inline; nobody has decided which gaps the terminal's panels share. (Type
-  now has a scale — see "The type scale" above. A light theme exists — see
-  "Appearance". The colour tokens are held to their definitions by
-  `scripts/theme-tokens.test.ts`, whose first run found twenty-six uses of
-  six undefined names that Tailwind silently rendered as nothing.)
 - **Documented screen-reader paths.** An _automated_ accessibility pass now
-  runs on every browser suite — nine screens, WCAG 2.1 AA, serious violations
+  runs on every browser suite — forty-one views, WCAG 2.1 AA, serious violations
   failing the run — and it found two real defects on its first run (see
   [accessibility.md](./accessibility.md)). What it cannot check is still
   unchecked: whether a screen reader's path through the order ticket makes
