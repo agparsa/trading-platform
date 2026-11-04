@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { isWorthRetrying } from '@tp/api-client';
 import { SessionProvider } from '@/lib/session';
 import { ThemeSync } from '@/lib/use-theme';
+import { LocaleSync } from '@/lib/use-locale';
 
 /**
  * Client-side providers.
@@ -49,6 +50,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeSync />
+      <LocaleSync />
       <SessionProvider>{children}</SessionProvider>
     </QueryClientProvider>
   );

@@ -3,11 +3,13 @@
 import { cn } from '@tp/ui';
 import { THEME_CHOICES, type ThemeChoice } from '@/lib/theme';
 import { useThemeChoice } from '@/lib/use-theme';
+import { useT } from '@/lib/use-locale';
+import type { MessageKey } from '@/lib/messages';
 
-const LABEL: Readonly<Record<ThemeChoice, string>> = {
-  dark: 'Dark',
-  light: 'Light',
-  system: 'Same as this device',
+const LABEL: Readonly<Record<ThemeChoice, MessageKey>> = {
+  dark: 'settings.appearance.dark',
+  light: 'settings.appearance.light',
+  system: 'settings.appearance.system',
 };
 
 /**
@@ -18,12 +20,13 @@ const LABEL: Readonly<Record<ThemeChoice, string>> = {
  */
 export function ThemeSettings() {
   const { choice, setChoice } = useThemeChoice();
+  const t = useT();
   return (
     <fieldset className="space-y-2">
       <legend className="mb-1 text-label uppercase tracking-wider text-terminal-muted">
-        Appearance
+        {t('settings.appearance')}
       </legend>
-      <div role="radiogroup" aria-label="Appearance" className="flex flex-wrap gap-1">
+      <div role="radiogroup" aria-label={t('settings.appearance')} className="flex flex-wrap gap-1">
         {THEME_CHOICES.map((value) => (
           <button
             key={value}
@@ -38,13 +41,11 @@ export function ThemeSettings() {
                 : 'border-terminal-border text-terminal-muted hover:text-terminal-text',
             )}
           >
-            {LABEL[value]}
+            {t(LABEL[value])}
           </button>
         ))}
       </div>
-      <p className="text-caption text-terminal-muted">
-        For this browser only. The terminal is dark by default: it is looked at for hours.
-      </p>
+      <p className="text-caption text-terminal-muted">{t('settings.appearance.note')}</p>
     </fieldset>
   );
 }

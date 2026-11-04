@@ -14,14 +14,14 @@ import type { NavItem } from './nav';
  * exist, and a page reading "Balance: —" is a promise the platform cannot keep.
  */
 export const TRADER_SECTIONS: readonly NavItem[] = [
-  { href: '/terminal', label: 'Terminal' },
-  { href: '/account', label: 'Account' },
-  { href: '/wallet', label: 'Wallet' },
-  { href: '/verification', label: 'Verification' },
-  { href: '/history', label: 'History' },
-  { href: '/analytics', label: 'Analytics' },
-  { href: '/instruments', label: 'Instruments' },
-  { href: '/security', label: 'Security' },
-  { href: '/developer', label: 'Developer' },
-  { href: '/settings', label: 'Settings' },
+  { href: '/terminal', label: 'Terminal', key: 'nav.terminal' },
+  { href: '/account', label: 'Account', key: 'nav.account' },
+  { href: '/wallet', label: 'Wallet', key: 'nav.wallet' },
+  { href: '/verification', label: 'Verification', key: 'nav.verification' },
+  { href: '/history', label: 'History', key: 'nav.history' },
+  { href: '/analytics', label: 'Analytics', key: 'nav.analytics' },
+  { href: '/instruments', label: 'Instruments', key: 'nav.instruments' },
+  { href: '/security', label: 'Security', key: 'nav.security' },
+  { href: '/developer', label: 'Developer', key: 'nav.developer' },
+  { href: '/settings', label: 'Settings', key: 'nav.settings' },
 ];

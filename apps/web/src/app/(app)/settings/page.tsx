@@ -2,10 +2,12 @@
 
 import { AppShell } from '@/components/shell/app-shell';
 import { Panel } from '@/components/primitives';
+import { LanguageSettings } from '@/components/language-settings';
 import { NotificationSettings } from '@/components/notification-settings';
 import { ThemeSettings } from '@/components/theme-settings';
 import { TradingSettings } from '@/components/trading-settings';
 import { useTradingPreferences } from '@/lib/use-trading-preferences';
+import { useT } from '@/lib/use-locale';
 
 /**
  * How the terminal responds to a click and a keystroke.
@@ -17,12 +19,13 @@ import { useTradingPreferences } from '@/lib/use-trading-preferences';
  */
 export default function SettingsPage() {
   const { preferences, update, oneClickAllowed } = useTradingPreferences();
+  const t = useT();
 
   return (
-    <AppShell
-      title="Settings"
-      description="One-click trading, confirmations, default order size, appearance and notifications."
-    >
+    <AppShell title={t('settings.title')} description={t('settings.description')}>
+      <Panel className="mb-3 max-w-md p-4">
+        <LanguageSettings />
+      </Panel>
       <Panel className="mb-3 max-w-md p-4">
         <ThemeSettings />
       </Panel>

@@ -119,3 +119,16 @@ textarea,
 summary {
   touch-action: manipulation;
 }
+
+/*
+ * A figure stays left-to-right in a right-to-left page.
+ *
+ * Persian is laid out right to left; `-1,204.50`, a price, a time and an
+ * account number are not. Mirrored, a negative P&L reads as positive with a
+ * trailing dash. Every changing figure already carries `numeric`, so this is
+ * the one place the rule needs to live.
+ */
+[dir='rtl'] .numeric {
+  direction: ltr;
+  unicode-bidi: isolate;
+}

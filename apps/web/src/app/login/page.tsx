@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { DomainError } from '@tp/shared-types';
 import { useSession } from '@/lib/session';
 import { Button, Field, inputClass } from '@/components/primitives';
+import { LanguageSettings } from '@/components/language-settings';
+import { useLocale, useT } from '@/lib/use-locale';
 
 /**
  * Sign in and registration.
@@ -16,6 +18,8 @@ import { Button, Field, inputClass } from '@/components/primitives';
 export default function LoginPage() {
   const router = useRouter();
   const { signIn, completeTwoFactor, register, ready, user } = useSession();
+  const t = useT();
+  const { locale } = useLocale();
 
   const [mode, setMode] = useState<'sign-in' | 'register'>('sign-in');
   /**
@@ -70,11 +74,7 @@ export default function LoginPage() {
       }
       // No navigation here — see the effect above.
     } catch (caught) {
-      setError(
-        caught instanceof DomainError
-          ? caught.message
-          : 'Could not reach the API. Check that it is running.',
-      );
+      setError(caught instanceof DomainError ? caught.message : t('login.unreachable'));
     } finally {
       setBusy(false);
     }
@@ -83,13 +83,13 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-lg font-semibold text-terminal-text">Trading Platform</h1>
+        <h1 className="text-lg font-semibold text-terminal-text">{t('shell.brand')}</h1>
         <p className="mt-1 text-xs text-terminal-muted">
           {challengeToken !== null
-            ? 'Enter the code from your authenticator app.'
+            ? t('login.lead.code')
             : mode === 'sign-in'
-              ? 'Sign in to your terminal.'
-              : 'Create an account.'}
+              ? t('login.lead.signIn')
+              : t('login.lead.register')}
         </p>
 
         <form
@@ -98,7 +98,7 @@ export default function LoginPage() {
         >
           {challengeToken !== null ? (
             <>
-              <Field label="Authentication code">
+              <Field label={t('login.code')}>
                 <input
                   className={inputClass}
                   // `one-time-code` is what lets a phone offer the code from
@@ -112,11 +112,11 @@ export default function LoginPage() {
                 />
               </Field>
               <p className="text-label leading-relaxed text-terminal-muted">
-                Six digits from your authenticator app, or one of the recovery codes you saved.
+                {t('login.codeHint')}
               </p>
             </>
           ) : mode === 'register' ? (
-            <Field label="Display name">
+            <Field label={t('login.displayName')}>
               <input
                 className={inputClass}
                 value={displayName}
@@ -129,7 +129,7 @@ export default function LoginPage() {
 
           {challengeToken !== null ? null : (
             <>
-              <Field label="Email">
+              <Field label={t('login.email')}>
                 <input
                   className={inputClass}
                   type="email"
@@ -140,7 +140,7 @@ export default function LoginPage() {
                 />
               </Field>
 
-              <Field label="Password">
+              <Field label={t('login.password')}>
                 <input
                   className={inputClass}
                   type="password"
@@ -153,16 +153,24 @@ export default function LoginPage() {
             </>
           )}
 
-          {error === null ? null : <p className="text-caption text-terminal-short">{error}</p>}
+          {error === null ? null : (
+            <p className="text-caption text-terminal-short">
+              {error}
+              {/* The server's own words are English; say so rather than leave a reader guessing. */}
+              {locale === 'fa' ? (
+                <span className="mt-1 block text-terminal-muted">{t('login.serverWords')}</span>
+              ) : null}
+            </p>
+          )}
 
           <Button type="submit" variant="neutral" disabled={busy} className="w-full py-2">
             {busy
-              ? 'Working…'
+              ? t('login.working')
               : challengeToken !== null
-                ? 'Verify'
+                ? t('login.verify')
                 : mode === 'sign-in'
-                  ? 'Sign in'
-                  : 'Create account'}
+                  ? t('login.signIn')
+                  : t('login.createAccount')}
           </Button>
 
           <button
@@ -182,16 +190,20 @@ export default function LoginPage() {
             className="w-full text-center text-caption text-terminal-muted transition-colors hover:text-terminal-text"
           >
             {challengeToken !== null
-              ? 'Start again'
+              ? t('login.startAgain')
               : mode === 'sign-in'
-                ? 'Need an account? Register'
-                : 'Already registered? Sign in'}
+                ? t('login.toRegister')
+                : t('login.toSignIn')}
           </button>
         </form>
 
         <p className="mt-4 text-center text-label leading-relaxed text-terminal-muted">
-          Your session is kept in a cookie this page cannot read.
+          {t('login.cookieNote')}
         </p>
+        {/* Before signing in, so a Persian reader need not find Settings in English first. */}
+        <div className="mt-4 flex justify-center">
+          <LanguageSettings showNote={false} />
+        </div>
       </div>
     </main>
   );

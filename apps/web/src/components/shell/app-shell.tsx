@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSession } from '@/lib/session';
 import { Button } from '@/components/primitives';
 import { NotificationBell } from '@/components/notification-bell';
+import { useT } from '@/lib/use-locale';
 import { Nav } from './nav';
 import { TRADER_SECTIONS } from './sections';
 
@@ -28,6 +29,7 @@ export function AppShell({
   children: ReactNode;
 }) {
   const { user, signOut } = useSession();
+  const t = useT();
 
   return (
     <div className="flex min-h-screen flex-col bg-terminal-bg">
@@ -37,7 +39,7 @@ export function AppShell({
             href="/terminal"
             className="text-sm font-semibold tracking-tight text-terminal-text"
           >
-            Trading Platform
+            {t('shell.brand')}
           </Link>
           <Nav items={TRADER_SECTIONS} />
         </div>
@@ -48,12 +50,12 @@ export function AppShell({
               href="/admin"
               className="text-caption text-terminal-muted transition-colors hover:text-terminal-text"
             >
-              Administration
+              {t('shell.administration')}
             </Link>
           ) : null}
           <span className="text-caption text-terminal-muted">{user?.email ?? ''}</span>
           <Button variant="ghost" onClick={() => void signOut()}>
-            Sign out
+            {t('shell.signOut')}
           </Button>
         </div>
       </header>

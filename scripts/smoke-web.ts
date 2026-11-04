@@ -1393,6 +1393,43 @@ async function main(): Promise<void> {
       await page.getByRole('radio', { name: 'Dark' }).click();
     }
 
+    /**
+     * Persian, chosen in settings the way a trader chooses it: the page is
+     * right-to-left from its first paint after a reload, the section links are
+     * Persian, a figure stays left-to-right inside it, and the settings screen
+     * and the terminal are audited in it. Put back to English afterwards.
+     */
+    {
+      await page.getByRole('radio', { name: 'فارسی' }).click();
+      await page.reload();
+      const dir = await page.locator('html').getAttribute('dir');
+      const lang = await page.locator('html').getAttribute('lang');
+      await page
+        .getByRole('link', { name: 'تنظیمات' })
+        .first()
+        .waitFor({ timeout: 10_000 })
+        .catch(() => undefined);
+      const settingsLink = await page.getByRole('link', { name: 'تنظیمات' }).count();
+      ok(
+        dir === 'rtl' && lang === 'fa' && settingsLink > 0,
+        'Persian is chosen in settings, survives a reload, and lays the page out right to left',
+        `dir ${dir} · lang ${lang} · Persian settings link ${settingsLink}`,
+      );
+      await auditAccessibility(page, 'the settings screen, Persian');
+      await visit(page, '/terminal', { url: '/terminal' });
+      const figure = await page.evaluate<string>(
+        "(() => { const n = document.querySelector('.numeric'); return n === null ? 'none' : getComputedStyle(n).direction; })()",
+      );
+      ok(
+        figure === 'ltr',
+        'a figure stays left-to-right on a right-to-left page',
+        `computed direction of the first .numeric: ${figure}`,
+      );
+      await auditAccessibility(page, 'the terminal, Persian');
+      await visit(page, '/settings', { url: '/settings' });
+      await page.getByRole('radio', { name: 'English' }).click();
+    }
+
     console.log('\n  As an administrator\n');
     const adminContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const adminPage = await adminContext.newPage();

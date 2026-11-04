@@ -219,6 +219,24 @@ of a long ledger read the ledger. It now orders by `(created_at, id)`, which
 becomes a bounded keyset query; `scripts/cursor-order.test.ts` holds every
 cursor query in the API to that.
 
+**Language: English or Persian.** Settings (and the sign-in page, so a
+Persian reader need not find Settings in English first) offers English and
+فارسی, per browser like the theme. A script in the document head sets
+`lang` and `dir` before the first paint, so a Persian page is right to left
+from the start; `locale.test.ts` runs that script against every stored value
+and compares it with the bundle's own rule. Every changing figure keeps the
+`numeric` class, and in a right-to-left page that class stays left to right
+with its own isolation, so `-1,204.50` is never mirrored; figures stay in Latin
+digits, as on the charts and statements they are compared with. The words are
+in `lib/messages.ts`: English is the source, the Persian table is typed against
+its keys, so an untranslated key fails the build, and both must use the same
+placeholders. Translated so far: the section navigation, the page frame,
+sign-in and Settings. The terminal's panels, the other pages, the server's own
+messages and the phone are still English, and the language note says so on
+screen. The browser walk chooses فارسی, reloads, checks the page is right to
+left with Persian links and a left-to-right figure, and audits Settings and the
+terminal in it.
+
 **The pre-trade check.** A market order complete enough to send is shown to
 the risk engine before it is sent: `POST /orders/preview`, asked once the
 ticket's fields have been still for half a second (a quote tick asks

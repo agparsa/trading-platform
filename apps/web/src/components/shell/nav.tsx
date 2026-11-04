@@ -3,10 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@tp/ui';
+import type { MessageKey } from '@/lib/messages';
+import { useT } from '@/lib/use-locale';
 
 export interface NavItem {
   readonly href: string;
   readonly label: string;
+  /** The label's message, when the row is translated. Without one the label is shown as written. */
+  readonly key?: MessageKey;
 }
 
 /**
@@ -27,9 +31,10 @@ export function Nav({
   exactFirst?: boolean;
 }) {
   const pathname = usePathname();
+  const t = useT();
 
   return (
-    <nav className="flex flex-wrap items-center gap-1" aria-label="Sections">
+    <nav className="flex flex-wrap items-center gap-1" aria-label={t('nav.sections')}>
       {items.map((item, index) => {
         const exact = exactFirst && index === 0;
         const active = exact ? pathname === item.href : pathname.startsWith(item.href);
@@ -45,7 +50,7 @@ export function Nav({
                 : 'text-terminal-muted hover:text-terminal-text',
             )}
           >
-            {item.label}
+            {item.key === undefined ? item.label : t(item.key)}
           </Link>
         );
       })}

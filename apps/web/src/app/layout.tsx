@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Providers } from './providers';
 import { THEME_BOOT_SCRIPT } from '@/lib/theme';
+import { LOCALE_BOOT_SCRIPT } from '@/lib/locale';
 
 export const metadata: Metadata = {
   title: 'Trading Platform',
@@ -37,11 +38,14 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     // `suppressHydrationWarning`: the boot script sets data-theme before React
-    // hydrates, so the attribute differs from the server's markup by design.
-    <html lang="en" data-theme="dark" suppressHydrationWarning>
+    // hydrates, so the attribute differs from the server's markup by design —
+    // as do `lang` and `dir`, which the locale script sets.
+    <html lang="en" dir="ltr" data-theme="dark" suppressHydrationWarning>
       <head>
         {/* Before the first paint, so a light-theme trader never sees a dark flash. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+        {/* And the language: a Persian page is laid out right to left from its first paint. */}
+        <script dangerouslySetInnerHTML={{ __html: LOCALE_BOOT_SCRIPT }} />
       </head>
       <body className="min-h-screen antialiased">
         <Providers>{children}</Providers>
