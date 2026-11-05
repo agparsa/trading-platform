@@ -1,6 +1,7 @@
 'use client';
 
 import { AppShell } from '@/components/shell/app-shell';
+import { useT } from '@/lib/use-locale';
 import { Panel } from '@/components/primitives';
 import { SecuritySettings } from '@/components/security-settings';
 import { ApiKeysPanel } from '@/components/api-keys-panel';
@@ -19,11 +20,9 @@ import { AddressesPanel } from '@/components/addresses-panel';
  * me right now — asked about scripts rather than browsers.
  */
 export default function SecurityPage() {
+  const t = useT();
   return (
-    <AppShell
-      title="Security"
-      description="Two-factor authentication, recovery codes, the sessions signed in as you, the API keys that act as you, where you have signed in from, and everything that has happened to your account."
-    >
+    <AppShell title={t('nav.security')} description={t('security.description')}>
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel className="p-4">
           <SecuritySettings presentation="page" />

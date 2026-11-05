@@ -10,9 +10,9 @@ import type { Locale } from './locale';
  * (`messages.test.ts`).
  *
  * Translated so far: the section navigation, the page frame, sign-in,
- * Settings, the terminal's frame and tabs, the account strip and the order
- * ticket. The tables inside the panels and the other pages are still English
- * — `docs/uiux.md` says which, and the language switch says so too.
+ * Settings, the terminal's frame, tabs, account strip, order ticket and panel
+ * headings, Analytics, and the frame of the other pages. `docs/uiux.md` says
+ * what is still English, and the language switch says so too.
  */
 export const en = {
   'nav.sections': 'Sections',
@@ -36,7 +36,7 @@ export const en = {
     'One-click trading, confirmations, default order size, appearance, language and notifications.',
   'settings.language': 'Language',
   'settings.language.note':
-    "For this browser only. Persian covers navigation, sign-in, Settings, the terminal's frame, the account strip and the order ticket so far; tables, other pages and server messages are still in English.",
+    "For this browser only. Persian covers navigation, sign-in, Settings, the terminal (frame, account strip, order ticket, panel headings and empty states), Analytics, and the headings of Account, History, Instruments, Security and Developer so far; the panels' other labels, Wallet, Verification and server messages are still in English.",
   'settings.appearance': 'Appearance',
   'settings.appearance.dark': 'Dark',
   'settings.appearance.light': 'Light',
@@ -156,6 +156,53 @@ export const en = {
   'col.now': 'Now',
   'col.status': 'Status',
   'col.note': 'Note',
+  'perf.description':
+    'Results from your closed trades: return, averages, and how they split by side, day and month.',
+  'perf.period': 'Period',
+  'perf.period.3M': '3 months',
+  'perf.period.1Y': '1 year',
+  'perf.period.ALL': 'All',
+  'perf.error': 'The figures could not be loaded. They will retry.',
+  'perf.loading': 'Working out the figures…',
+  'perf.empty': 'No trades closed in this period.',
+  'perf.netResult': 'Net result',
+  'perf.return': 'Return',
+  'perf.trades': 'Trades',
+  'perf.profitFactor': 'Profit factor',
+  'perf.averageWin': 'Average win',
+  'perf.averageLoss': 'Average loss',
+  'perf.grossProfit': 'Gross profit',
+  'perf.grossLoss': 'Gross loss',
+  'perf.noReturn': 'No return is given: the account had no balance before this period began.',
+  'perf.noProfitFactor': 'No profit factor: no trade in this period lost money.',
+  'perf.bySide': 'By side',
+  'perf.byDay': 'By day ({zone})',
+  'perf.byMonth': 'By month',
+  'perf.month': 'Month',
+  'perf.split.buys': '{total} buys · {profitable} profitable · {losing} losing',
+  'perf.split.sells': '{total} sells · {profitable} profitable · {losing} losing',
+  'perf.split.days': '{total} trading days · {profitable} profitable · {losing} losing',
+  'perf.won': '{share} won',
+  'common.noAccounts': 'No accounts on this login.',
+  'account.description': 'Balances, margin, and the terms this account trades on.',
+  'account.number': 'Number',
+  'account.type': 'Type',
+  'account.currency': 'Currency',
+  'account.leverage': 'Leverage',
+  'account.opened': 'Opened',
+  'account.balanceHistory': 'Balance history',
+  'history.description': 'Trades, closed positions, and every order — including the refused ones.',
+  'history.tab.trades': 'Trades',
+  'history.tab.closed': 'Closed positions',
+  'history.tab.orders': 'Orders',
+  'instruments.description': 'Contract specifications: the terms each instrument trades on here.',
+  'instruments.error': 'The instruments could not be loaded. It will retry.',
+  'instruments.marginFor': 'Margin measured for',
+  'instruments.marginForOne': 'Margin measured for #{number} at 1:{leverage}.',
+  'security.description':
+    'Two-factor authentication, recovery codes, the sessions signed in as you, the API keys that act as you, where you have signed in from, and everything that has happened to your account.',
+  'developer.description':
+    'The API this platform serves, as it describes itself: every route, how to authenticate, how to make a mutation idempotent, and how to verify a webhook.',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -182,7 +229,7 @@ export const fa: Messages = {
   'settings.description': 'معامله با یک کلیک، تأییدها، حجم پیش‌فرض سفارش، ظاهر، زبان و اعلان‌ها.',
   'settings.language': 'زبان',
   'settings.language.note':
-    'فقط برای همین مرورگر. فارسی منو، ورود، تنظیمات و ترمینال را پوشش می‌دهد — قاب، نوار حساب، فرم سفارش و عنوان ستون‌ها و پیام‌های خالی پنل‌ها؛ بقیهٔ برچسب‌ها، صفحه‌های دیگر و پیام‌های سرور هنوز انگلیسی هستند.',
+    'فقط برای همین مرورگر. فارسی تا اینجا منو، ورود، تنظیمات، ترمینال (قاب، نوار حساب، فرم سفارش، عنوان‌ها و پیام‌های خالی پنل‌ها)، تحلیل عملکرد، و عنوان صفحه‌های حساب، تاریخچه، نمادها، امنیت و توسعه‌دهنده را پوشش می‌دهد؛ بقیهٔ برچسب‌های پنل‌ها، کیف پول، احراز هویت و پیام‌های سرور هنوز انگلیسی هستند.',
   'settings.appearance': 'ظاهر',
   'settings.appearance.dark': 'تیره',
   'settings.appearance.light': 'روشن',
@@ -301,6 +348,53 @@ export const fa: Messages = {
   'col.now': 'اکنون',
   'col.status': 'وضعیت',
   'col.note': 'یادداشت',
+  'perf.description':
+    'نتیجهٔ معامله‌های بسته‌شده: بازده، میانگین‌ها، و تفکیک آن‌ها بر اساس جهت، روز و ماه.',
+  'perf.period': 'بازه',
+  'perf.period.3M': '3 ماه',
+  'perf.period.1Y': '1 سال',
+  'perf.period.ALL': 'همه',
+  'perf.error': 'ارقام بارگذاری نشد. دوباره تلاش می‌شود.',
+  'perf.loading': 'در حال محاسبهٔ ارقام…',
+  'perf.empty': 'در این بازه معامله‌ای بسته نشده است.',
+  'perf.netResult': 'نتیجهٔ خالص',
+  'perf.return': 'بازده',
+  'perf.trades': 'معامله‌ها',
+  'perf.profitFactor': 'ضریب سود',
+  'perf.averageWin': 'میانگین سود',
+  'perf.averageLoss': 'میانگین زیان',
+  'perf.grossProfit': 'سود ناخالص',
+  'perf.grossLoss': 'زیان ناخالص',
+  'perf.noReturn': 'بازده نشان داده نمی‌شود: حساب پیش از شروع این بازه موجودی نداشت.',
+  'perf.noProfitFactor': 'ضریب سود ندارد: هیچ معامله‌ای در این بازه زیان نداده است.',
+  'perf.bySide': 'بر اساس جهت',
+  'perf.byDay': 'بر اساس روز ({zone})',
+  'perf.byMonth': 'بر اساس ماه',
+  'perf.month': 'ماه',
+  'perf.split.buys': '{total} خرید · {profitable} سودده · {losing} زیان‌ده',
+  'perf.split.sells': '{total} فروش · {profitable} سودده · {losing} زیان‌ده',
+  'perf.split.days': '{total} روز معاملاتی · {profitable} سودده · {losing} زیان‌ده',
+  'perf.won': '{share} برنده',
+  'common.noAccounts': 'این ورود هیچ حسابی ندارد.',
+  'account.description': 'موجودی‌ها، مارجین، و شرایطی که این حساب با آن معامله می‌کند.',
+  'account.number': 'شماره',
+  'account.type': 'نوع',
+  'account.currency': 'ارز',
+  'account.leverage': 'اهرم',
+  'account.opened': 'تاریخ افتتاح',
+  'account.balanceHistory': 'تاریخچهٔ موجودی',
+  'history.description': 'معامله‌ها، پوزیشن‌های بسته‌شده، و همهٔ سفارش‌ها — از جمله ردشده‌ها.',
+  'history.tab.trades': 'معامله‌ها',
+  'history.tab.closed': 'پوزیشن‌های بسته',
+  'history.tab.orders': 'سفارش‌ها',
+  'instruments.description': 'مشخصات قرارداد: شرایط معاملهٔ هر نماد در این پلتفرم.',
+  'instruments.error': 'نمادها بارگذاری نشد. دوباره تلاش می‌شود.',
+  'instruments.marginFor': 'مارجین محاسبه‌شده برای',
+  'instruments.marginForOne': 'مارجین برای حساب #{number} با اهرم 1:{leverage} محاسبه شده است.',
+  'security.description':
+    'تأیید دومرحله‌ای، کدهای بازیابی، نشست‌هایی که با حساب شما وارد شده‌اند، کلیدهای API که از طرف شما عمل می‌کنند، جاهایی که از آن وارد شده‌اید، و هر رویدادی که برای حسابتان رخ داده است.',
+  'developer.description':
+    'API این پلتفرم، همان‌طور که خودش را توصیف می‌کند: همهٔ مسیرها، روش احراز هویت، چگونگی ایدمپوتنت کردن یک درخواست تغییر، و راستی‌آزمایی وب‌هوک.',
 };
 
 const TABLES: Record<Locale, Messages> = { en, fa };

@@ -4,12 +4,14 @@ import { useState } from 'react';
 import { cn } from '@tp/ui';
 import { signedMoney, toneClass, toneOf } from '@/lib/format';
 import { usePerformance, type PerformanceRow } from '@/lib/queries';
+import type { MessageKey } from '@/lib/messages';
+import { useT } from '@/lib/use-locale';
 import { EmptyState, Panel } from './primitives';
 
-const PERIODS: ReadonlyArray<{ id: PerformanceRow['period']; label: string }> = [
-  { id: '3M', label: '3 months' },
-  { id: '1Y', label: '1 year' },
-  { id: 'ALL', label: 'All' },
+const PERIODS: ReadonlyArray<{ id: PerformanceRow['period']; label: MessageKey }> = [
+  { id: '3M', label: 'perf.period.3M' },
+  { id: '1Y', label: 'perf.period.1Y' },
+  { id: 'ALL', label: 'perf.period.ALL' },
 ];
 
 /** `12.50` → `+12.50%`; null stays a dash with its reason beside it. */
@@ -44,18 +46,17 @@ function Split({
   losing,
   total,
 }: {
-  label: string;
+  label: MessageKey;
   profitable: number;
   losing: number;
   total: number;
 }) {
+  const t = useT();
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-caption text-terminal-muted">
-        <span>
-          {total} {label} · {profitable} profitable · {losing} losing
-        </span>
-        <span className="numeric">{share(profitable, total)} won</span>
+        <span>{t(label, { total, profitable, losing })}</span>
+        <span className="numeric">{t('perf.won', { share: share(profitable, total) })}</span>
       </div>
       <div className="flex h-1.5 overflow-hidden rounded bg-terminal-raised" aria-hidden>
         <div className="bg-terminal-long" style={{ width: share(profitable, total) }} />
@@ -76,10 +77,11 @@ export function PerformanceView({ accountId }: { accountId: string | null }) {
   const [period, setPeriod] = useState<PerformanceRow['period']>('3M');
   const result = usePerformance(accountId, period);
   const data = result.data;
+  const t = useT();
 
   return (
     <div className="space-y-3" data-testid="performance">
-      <div role="radiogroup" aria-label="Period" className="flex gap-1">
+      <div role="radiogroup" aria-label={t('perf.period')} className="flex gap-1">
         {PERIODS.map((option) => (
           <button
             key={option.id}
@@ -94,82 +96,84 @@ export function PerformanceView({ accountId }: { accountId: string | null }) {
                 : 'border-terminal-border text-terminal-muted hover:text-terminal-text',
             )}
           >
-            {option.label}
+            {t(option.label)}
           </button>
         ))}
       </div>
 
       {accountId === null ? (
-        <EmptyState>No account selected.</EmptyState>
+        <EmptyState>{t('empty.noAccount')}</EmptyState>
       ) : result.isError ? (
-        <EmptyState>The figures could not be loaded. They will retry.</EmptyState>
+        <EmptyState>{t('perf.error')}</EmptyState>
       ) : data === undefined ? (
-        <EmptyState>Working out the figures…</EmptyState>
+        <EmptyState>{t('perf.loading')}</EmptyState>
       ) : data.trades.total === 0 ? (
-        <EmptyState>No trades closed in this period.</EmptyState>
+        <EmptyState>{t('perf.empty')}</EmptyState>
       ) : (
         <>
           <Panel className="grid grid-cols-2 gap-4 p-4 md:grid-cols-4">
             <Figure
-              label="Net result"
+              label={t('perf.netResult')}
               value={signedMoney(data.netPnl, data.currency)}
               tone={data.netPnl}
             />
-            <Figure label="Return" value={percent(data.returnPercent)} tone={data.returnPercent} />
-            <Figure label="Trades" value={String(data.trades.total)} />
-            <Figure label="Profit factor" value={data.profitFactor ?? '—'} />
             <Figure
-              label="Average win"
+              label={t('perf.return')}
+              value={percent(data.returnPercent)}
+              tone={data.returnPercent}
+            />
+            <Figure label={t('perf.trades')} value={String(data.trades.total)} />
+            <Figure label={t('perf.profitFactor')} value={data.profitFactor ?? '—'} />
+            <Figure
+              label={t('perf.averageWin')}
               value={data.averageWin === null ? '—' : signedMoney(data.averageWin, data.currency)}
               tone={data.averageWin}
             />
             <Figure
-              label="Average loss"
+              label={t('perf.averageLoss')}
               value={data.averageLoss === null ? '—' : signedMoney(data.averageLoss, data.currency)}
               tone={data.averageLoss}
             />
             <Figure
-              label="Gross profit"
+              label={t('perf.grossProfit')}
               value={signedMoney(data.grossProfit, data.currency)}
               tone={data.grossProfit}
             />
             <Figure
-              label="Gross loss"
+              label={t('perf.grossLoss')}
               value={signedMoney(data.grossLoss, data.currency)}
               tone={data.grossLoss}
             />
           </Panel>
           {data.returnPercent === null || data.profitFactor === null ? (
             <p className="text-caption text-terminal-muted">
-              {data.returnPercent === null
-                ? 'No return is given: the account had no balance before this period began. '
-                : ''}
-              {data.profitFactor === null
-                ? 'No profit factor: no trade in this period lost money.'
-                : ''}
+              {data.returnPercent === null ? `${t('perf.noReturn')} ` : ''}
+              {data.profitFactor === null ? t('perf.noProfitFactor') : ''}
             </p>
           ) : null}
 
           <Panel className="space-y-3 p-4">
-            <h2 className="text-label uppercase tracking-wider text-terminal-muted">By side</h2>
-            <Split label="buys" {...data.trades.buys} />
-            <Split label="sells" {...data.trades.sells} />
-            <h2 className="pt-2 text-label uppercase tracking-wider text-terminal-muted">
-              By day ({data.timeZone})
+            <h2 className="text-label uppercase tracking-wider text-terminal-muted">
+              {t('perf.bySide')}
             </h2>
-            <Split label="trading days" {...data.days} />
+            <Split label="perf.split.buys" {...data.trades.buys} />
+            <Split label="perf.split.sells" {...data.trades.sells} />
+            <h2 className="pt-2 text-label uppercase tracking-wider text-terminal-muted">
+              {t('perf.byDay', { zone: data.timeZone })}
+            </h2>
+            <Split label="perf.split.days" {...data.days} />
           </Panel>
 
           <Panel className="p-4">
             <h2 className="mb-2 text-label uppercase tracking-wider text-terminal-muted">
-              By month
+              {t('perf.byMonth')}
             </h2>
             <table className="w-full border-collapse text-xs" data-testid="performance-months">
               <thead>
                 <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
-                  <th className="py-1 pe-2 font-medium">Month</th>
-                  <th className="px-2 py-1 text-end font-medium">Trades</th>
-                  <th className="py-1 ps-2 text-end font-medium">Net result</th>
+                  <th className="py-1 pe-2 font-medium">{t('perf.month')}</th>
+                  <th className="px-2 py-1 text-end font-medium">{t('perf.trades')}</th>
+                  <th className="py-1 ps-2 text-end font-medium">{t('perf.netResult')}</th>
                 </tr>
               </thead>
               <tbody>

@@ -233,8 +233,10 @@ its keys, so an untranslated key fails the build, and both must use the same
 placeholders. Translated so far: the section navigation, the page frame,
 sign-in, Settings, the terminal's header, panel titles and activity tabs, the
 account strip, the order ticket, and the column headings and empty states of
-the activity panels and the watchlist. The panels' remaining labels, the other
-pages, the server's own messages and the phone are still English, and the
+the activity panels and the watchlist, the whole Analytics page, and the
+title, description and details of Account, History, Instruments, Security and
+Developer. The panels' remaining labels, the forms on Wallet, Verification and
+Security, the server's own messages and the phone are still English, and the
 language note says so on screen. The layout mirrors: every margin, padding,
 alignment and offset in the web app is a logical utility (`ms-`, `pe-`,
 `text-end`, `end-`), not a physical one, so start and end swap with the

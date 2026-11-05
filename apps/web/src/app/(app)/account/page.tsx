@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shell/app-shell';
+import { useT } from '@/lib/use-locale';
 import { AccountHeader } from '@/components/account-header';
 import { FinancePanel } from '@/components/finance-panel';
 import { EmptyState, Panel } from '@/components/primitives';
@@ -22,6 +23,7 @@ import { useAccounts, useOrders, usePositions } from '@/lib/queries';
  */
 export default function AccountPage() {
   const accounts = useAccounts();
+  const t = useT();
   const rows = accounts.data ?? [];
   const [accountId, setAccountId] = useState<string | null>(null);
 
@@ -34,11 +36,11 @@ export default function AccountPage() {
   const openOrders = useOrders(accountId);
 
   return (
-    <AppShell title="Account" description="Balances, margin, and the terms this account trades on.">
+    <AppShell title={t('nav.account')} description={t('account.description')}>
       {accounts.isLoading ? (
-        <EmptyState>Loading…</EmptyState>
+        <EmptyState>{t('common.loading')}</EmptyState>
       ) : rows.length === 0 ? (
-        <EmptyState>No accounts on this login.</EmptyState>
+        <EmptyState>{t('common.noAccounts')}</EmptyState>
       ) : (
         <div className="space-y-4">
           {rows.length > 1 ? (
@@ -73,19 +75,19 @@ export default function AccountPage() {
           {account === undefined ? null : (
             <Panel className="p-4">
               <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Detail label="Number" value={`#${account.number}`} />
-                <Detail label="Type" value={account.type} />
-                <Detail label="Status" value={account.status} />
-                <Detail label="Currency" value={account.currency} />
-                <Detail label="Leverage" value={`1:${String(account.leverage)}`} />
-                <Detail label="Balance" value={money(account.balance, account.currency)} />
-                <Detail label="Opened" value={utcTime(account.createdAt)} />
+                <Detail label={t('account.number')} value={`#${account.number}`} />
+                <Detail label={t('account.type')} value={account.type} />
+                <Detail label={t('col.status')} value={account.status} />
+                <Detail label={t('account.currency')} value={account.currency} />
+                <Detail label={t('account.leverage')} value={`1:${String(account.leverage)}`} />
+                <Detail label={t('col.balance')} value={money(account.balance, account.currency)} />
+                <Detail label={t('account.opened')} value={utcTime(account.createdAt)} />
               </dl>
             </Panel>
           )}
 
           {account === undefined ? null : (
-            <Panel title="Balance history" className="max-h-[32rem]">
+            <Panel title={t('account.balanceHistory')} className="max-h-[32rem]">
               <FinancePanel accountId={account.id} />
             </Panel>
           )}

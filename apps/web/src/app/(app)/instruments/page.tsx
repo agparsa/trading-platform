@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shell/app-shell';
+import { useT } from '@/lib/use-locale';
 import { ContractTable } from '@/components/contract-table';
 import { EmptyState, Panel } from '@/components/primitives';
 import { useAccounts, useSymbols } from '@/lib/queries';
@@ -17,6 +18,7 @@ import { useAccounts, useSymbols } from '@/lib/queries';
  */
 export default function InstrumentsPage() {
   const symbols = useSymbols();
+  const t = useT();
   const accounts = useAccounts();
   const rows = accounts.data ?? [];
   const [accountId, setAccountId] = useState<string | null>(null);
@@ -29,19 +31,16 @@ export default function InstrumentsPage() {
   const enabled = (symbols.data ?? []).filter((symbol) => symbol.enabled);
 
   return (
-    <AppShell
-      title="Instruments"
-      description="Contract specifications: the terms each instrument trades on here."
-    >
+    <AppShell title={t('nav.instruments')} description={t('instruments.description')}>
       {symbols.isLoading ? (
-        <EmptyState>Loading…</EmptyState>
+        <EmptyState>{t('common.loading')}</EmptyState>
       ) : symbols.isError ? (
-        <EmptyState>The instruments could not be loaded. It will retry.</EmptyState>
+        <EmptyState>{t('instruments.error')}</EmptyState>
       ) : (
         <div className="space-y-3">
           {rows.length > 1 ? (
             <div className="flex items-center gap-2 text-caption text-terminal-muted">
-              <label htmlFor="margin-account">Margin measured for</label>
+              <label htmlFor="margin-account">{t('instruments.marginFor')}</label>
               <select
                 id="margin-account"
                 className="numeric rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-caption text-terminal-text"
@@ -57,7 +56,10 @@ export default function InstrumentsPage() {
             </div>
           ) : account === undefined ? null : (
             <p className="text-caption text-terminal-muted">
-              Margin measured for #{account.number} at 1:{account.leverage}.
+              {t('instruments.marginForOne', {
+                number: account.number,
+                leverage: account.leverage,
+              })}
             </p>
           )}
           <Panel className="overflow-auto">

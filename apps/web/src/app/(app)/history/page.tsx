@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shell/app-shell';
+import type { MessageKey } from '@/lib/messages';
+import { useT } from '@/lib/use-locale';
 import { HistoryPanel, type HistoryTab } from '@/components/history-panel';
 import { EmptyState, Panel, Tabs } from '@/components/primitives';
 import { useAccounts, useSymbols } from '@/lib/queries';
 
-const TABS: readonly { id: HistoryTab; label: string }[] = [
-  { id: 'trades', label: 'Trades' },
-  { id: 'closed', label: 'Closed positions' },
-  { id: 'orders', label: 'Orders' },
+const TABS: readonly { id: HistoryTab; label: string; labelKey: MessageKey }[] = [
+  { id: 'trades', label: 'Trades', labelKey: 'history.tab.trades' },
+  { id: 'closed', label: 'Closed positions', labelKey: 'history.tab.closed' },
+  { id: 'orders', label: 'Orders', labelKey: 'history.tab.orders' },
 ];
 
 /**
@@ -22,6 +24,7 @@ const TABS: readonly { id: HistoryTab; label: string }[] = [
  */
 export default function HistoryPage() {
   const accounts = useAccounts();
+  const t = useT();
   const symbols = useSymbols();
   const rows = accounts.data ?? [];
   const [accountId, setAccountId] = useState<string | null>(null);
@@ -34,14 +37,11 @@ export default function HistoryPage() {
   const account = rows.find((row) => row.id === accountId);
 
   return (
-    <AppShell
-      title="History"
-      description="Trades, closed positions, and every order — including the refused ones."
-    >
+    <AppShell title={t('nav.history')} description={t('history.description')}>
       {accounts.isLoading ? (
-        <EmptyState>Loading…</EmptyState>
+        <EmptyState>{t('common.loading')}</EmptyState>
       ) : rows.length === 0 ? (
-        <EmptyState>No accounts on this login.</EmptyState>
+        <EmptyState>{t('common.noAccounts')}</EmptyState>
       ) : (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -51,7 +51,7 @@ export default function HistoryPage() {
                 className="numeric rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-caption text-terminal-text"
                 value={accountId ?? ''}
                 onChange={(event) => setAccountId(event.target.value)}
-                aria-label="Account"
+                aria-label={t('nav.account')}
               >
                 {rows.map((row) => (
                   <option key={row.id} value={row.id}>

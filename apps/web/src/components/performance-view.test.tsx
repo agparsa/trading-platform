@@ -93,4 +93,18 @@ describe('the Analytics figures', () => {
     render(<PerformanceView accountId="acc-1" />);
     expect(screen.getByText('No trades closed in this period.')).toBeTruthy();
   });
+
+  it('speaks Persian when chosen, and leaves the figures as the server gave them', async () => {
+    window.localStorage.setItem('tp:locale', 'fa');
+    try {
+      state.data = figures();
+      render(<PerformanceView accountId="acc-1" />);
+      expect(await screen.findAllByText('نتیجهٔ خالص')).toHaveLength(2);
+      expect(screen.getByText('3 خرید · 2 سودده · 1 زیان‌ده')).toBeTruthy();
+      expect(screen.getByText('+0.50%')).toBeTruthy();
+      expect(screen.queryByText('Net result')).toBeNull();
+    } finally {
+      window.localStorage.removeItem('tp:locale');
+    }
+  });
 });

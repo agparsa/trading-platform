@@ -1396,8 +1396,8 @@ async function main(): Promise<void> {
     /**
      * Persian, chosen in settings the way a trader chooses it: the page is
      * right-to-left from its first paint after a reload, the section links are
-     * Persian, a figure stays left-to-right inside it, and the settings screen
-     * and the terminal are audited in it. Put back to English afterwards.
+     * Persian, a figure stays left-to-right inside it, and the settings screen,
+     * the terminal and Analytics are audited in it. Put back to English afterwards.
      */
     {
       await page.getByRole('radio', { name: 'فارسی' }).click();
@@ -1427,6 +1427,26 @@ async function main(): Promise<void> {
       );
       await screenshot(page, 'terminal-persian');
       await auditAccessibility(page, 'the terminal, Persian');
+      await visit(page, '/analytics', { url: '/analytics' });
+      const analyticsHeading = await page
+        .getByRole('heading', { name: 'تحلیل عملکرد' })
+        .first()
+        .waitFor({ timeout: 10_000 })
+        .then(() => true)
+        .catch(() => false);
+      const analyticsWords = await page
+        .getByText(/در این بازه معامله‌ای بسته نشده است|نتیجهٔ خالص/)
+        .first()
+        .waitFor({ timeout: 10_000 })
+        .then(() => true)
+        .catch(() => false);
+      ok(
+        analyticsHeading && analyticsWords,
+        'the Analytics page is Persian: its title and its figures or its empty state',
+        `heading ${analyticsHeading} · figures or empty state ${analyticsWords}`,
+      );
+      await screenshot(page, 'analytics-persian');
+      await auditAccessibility(page, 'Analytics, Persian');
       await visit(page, '/settings', { url: '/settings' });
       await page.getByRole('radio', { name: 'English' }).click();
     }

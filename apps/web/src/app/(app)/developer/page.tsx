@@ -1,6 +1,7 @@
 'use client';
 
 import { AppShell } from '@/components/shell/app-shell';
+import { useT } from '@/lib/use-locale';
 import { DeveloperReference } from '@/components/developer-reference';
 
 /**
@@ -9,11 +10,9 @@ import { DeveloperReference } from '@/components/developer-reference';
  * in — so this page cannot describe a version other than the one answering.
  */
 export default function DeveloperPage() {
+  const t = useT();
   return (
-    <AppShell
-      title="Developer"
-      description="The API this platform serves, as it describes itself: every route, how to authenticate, how to make a mutation idempotent, and how to verify a webhook."
-    >
+    <AppShell title={t('nav.developer')} description={t('developer.description')}>
       <DeveloperReference />
     </AppShell>
   );
