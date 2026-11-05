@@ -74,6 +74,16 @@ describe('the message tables', () => {
     expect(translate('en', 'nav.terminal')).toBe('Terminal');
   });
 
+  it('keep a filled figure left to right inside Persian, and leave English alone', () => {
+    const vars = { minimum: '$10.00', maximum: '$50,000.00' };
+    expect(translate('fa', 'wallet.withdraw.range', vars)).toBe(
+      'هر درخواست بین \u2066$10.00\u2069 و \u2066$50,000.00\u2069',
+    );
+    expect(translate('en', 'wallet.withdraw.range', vars)).toBe(
+      'Between $10.00 and $50,000.00 per request',
+    );
+  });
+
   it('do not translate a figure: Persian copy carries no Persian digits', () => {
     const persianDigits = keys.filter((key) => /[۰-۹٠-٩]/.test(fa[key]));
     expect(persianDigits).toEqual([]);

@@ -1,4 +1,4 @@
-import type { Locale } from './locale';
+import { directionOf, type Locale } from './locale';
 
 /**
  * The interface's words, in English and Persian.
@@ -11,7 +11,7 @@ import type { Locale } from './locale';
  *
  * Translated so far: the section navigation, the page frame, sign-in,
  * Settings, the terminal's frame, tabs, account strip, order ticket and panel
- * headings, Analytics, and the frame of the other pages. `docs/uiux.md` says
+ * headings, Analytics, Wallet, Verification, and the frame of the other pages. `docs/uiux.md` says
  * what is still English, and the language switch says so too.
  */
 export const en = {
@@ -36,7 +36,7 @@ export const en = {
     'One-click trading, confirmations, default order size, appearance, language and notifications.',
   'settings.language': 'Language',
   'settings.language.note':
-    "For this browser only. Persian covers navigation, sign-in, Settings, the terminal (frame, account strip, order ticket, panel headings and empty states), Analytics, and the headings of Account, History, Instruments, Security and Developer so far; the panels' other labels, Wallet, Verification and server messages are still in English.",
+    "For this browser only. Persian covers navigation, sign-in, Settings, the terminal (frame, account strip, order ticket, panel headings and empty states), Analytics, Wallet, Verification, and the headings of Account, History, Instruments, Security and Developer so far; the panels' other labels, the Security forms and server messages are still in English.",
   'settings.appearance': 'Appearance',
   'settings.appearance.dark': 'Dark',
   'settings.appearance.light': 'Light',
@@ -203,6 +203,127 @@ export const en = {
     'Two-factor authentication, recovery codes, the sessions signed in as you, the API keys that act as you, where you have signed in from, and everything that has happened to your account.',
   'developer.description':
     'The API this platform serves, as it describes itself: every route, how to authenticate, how to make a mutation idempotent, and how to verify a webhook.',
+  'kyc.description': 'Prove who you are once, so that withdrawals can be paid to you.',
+  'kyc.kind.PASSPORT': 'Passport',
+  'kyc.kind.NATIONAL_ID': 'National ID card',
+  'kyc.kind.DRIVING_LICENCE': 'Driving licence',
+  'kyc.kind.PROOF_OF_ADDRESS': 'Proof of address',
+  'kyc.kind.SELFIE': 'Photo of you holding the document',
+  'kyc.status.NOT_STARTED': 'Not started',
+  'kyc.detail.NOT_STARTED':
+    'Add an identity document and a photo of yourself holding it, then submit.',
+  'kyc.status.PENDING': 'Submitted, waiting for review',
+  'kyc.detail.PENDING': 'Somebody will look at your documents. You will be told the outcome.',
+  'kyc.status.UNDER_REVIEW': 'Being reviewed',
+  'kyc.detail.UNDER_REVIEW': 'A reviewer has your documents open now.',
+  'kyc.status.VERIFIED': 'Verified',
+  'kyc.detail.VERIFIED': 'Withdrawals are open to you.',
+  'kyc.status.REJECTED': 'Not accepted',
+  'kyc.detail.REJECTED': 'See the reason below, then submit again with new documents.',
+  'kyc.status.EXPIRED': 'Expired',
+  'kyc.detail.EXPIRED': 'Your verification has lapsed. Submit again to renew it.',
+  'kyc.validUntil': 'Valid until {time}.',
+  'kyc.addDocument': 'Add a document',
+  'kyc.addDocument.hint':
+    'A clear photograph or scan — JPEG, PNG, WebP or PDF, up to 10 MB. Every page of a passport or card that carries your name, photo or number.',
+  'kyc.documentType': 'Document type',
+  'kyc.chooseFile': 'Document file',
+  'kyc.uploading': 'Uploading…',
+  'kyc.uploadFailed': 'The file could not be uploaded.',
+  'kyc.submit': 'Submit',
+  'kyc.stillNeeded': 'Still needed: {missing}.',
+  'kyc.readyToSubmit':
+    'Everything required is here. Submitting hands it to a reviewer; nothing more can be added until they decide.',
+  'kyc.submitFailed': 'The submission did not go through.',
+  'kyc.submitting': 'Submitting…',
+  'kyc.submitForReview': 'Submit for review',
+  'kyc.col.document': 'Document',
+  'kyc.col.file': 'File',
+  'kyc.col.size': 'Size',
+  'kyc.col.received': 'Received',
+  'kyc.col.counts': 'Counts',
+  'kyc.counts.purged': 'Purged under retention',
+  'kyc.counts.yes': 'Yes',
+  'kyc.counts.earlier': 'From an earlier attempt',
+  'wallet.description': 'Money held for you, and the trading accounts you can move it between.',
+  'wallet.none':
+    'No wallet yet. One is created the first time money arrives or you move some out of a trading account.',
+  'wallet.ofCurrency': '{currency} wallet',
+  'wallet.frozenNote':
+    'This wallet is frozen while it is reviewed. The money is held, not taken, and it moves again when the hold is lifted.',
+  'wallet.col.when': 'When',
+  'wallet.col.what': 'What',
+  'wallet.col.balanceAfter': 'Balance after',
+  'wallet.noMovements': 'Nothing has moved yet.',
+  'wallet.move.TRANSFER_OUT': 'To trading account',
+  'wallet.move.TRANSFER_IN': 'From trading account',
+  'wallet.move.DEPOSIT': 'Deposit',
+  'wallet.move.WITHDRAWAL': 'Withdrawal',
+  'wallet.move.ADJUSTMENT': 'Correction',
+  'wallet.move.FEE': 'Fee',
+  'wallet.blocked.frozen': 'This wallet is frozen.',
+  'wallet.blocked.noAccount': 'No {currency} trading account to move money between.',
+  'wallet.blocked.chooseAccount': 'Choose an account.',
+  'wallet.blocked.enterAmount': 'Enter an amount.',
+  'wallet.blocked.positive': 'The amount must be more than zero.',
+  'wallet.move': 'Move money',
+  'wallet.direction': 'Direction',
+  'wallet.direction.toAccount': 'Wallet → trading account',
+  'wallet.direction.toWallet': 'Trading account → wallet',
+  'wallet.amountIn': 'Amount ({currency})',
+  'wallet.transferFailed': 'The transfer did not go through.',
+  'wallet.moving': 'Moving…',
+  'wallet.moveButton': 'Move',
+  'wallet.freeMarginNote':
+    'Only free margin can leave a trading account. Money committed to an open position stays where it is — taking it would close the position, from here, at a price nobody chose.',
+  'wallet.provider.bankTransfer': 'Bank transfer',
+  'wallet.payment.REQUIRES_ACTION': 'Awaiting your transfer',
+  'wallet.payment.PROCESSING': 'With the provider',
+  'wallet.payment.SUCCEEDED': 'Received',
+  'wallet.payment.FAILED': 'Failed',
+  'wallet.payment.CANCELLED': 'Cancelled',
+  'wallet.payment.EXPIRED': 'Expired',
+  'wallet.blocked.chooseProvider': 'Choose how you want to pay.',
+  'wallet.addMoney': 'Add money',
+  'wallet.noProviders':
+    'No payment method is configured on this deployment yet. Ask support how to send funds — they can record a transfer against your account once it arrives.',
+  'wallet.how': 'How',
+  'wallet.depositFailed': 'The deposit could not be started.',
+  'wallet.starting': 'Starting…',
+  'wallet.continue': 'Continue',
+  'wallet.depositNote':
+    'This does not move any money. You will be shown what to do next, and your balance changes once the transfer has actually arrived.',
+  'wallet.awaitingTransfer': 'Awaiting your transfer — {amount}',
+  'wallet.col.started': 'Started',
+  'wallet.withdrawal.REQUESTED': 'Requested',
+  'wallet.withdrawal.UNDER_REVIEW': 'Being reviewed',
+  'wallet.withdrawal.APPROVED': 'Approved, awaiting payment',
+  'wallet.withdrawal.PROCESSING': 'Transfer sent',
+  'wallet.withdrawal.PAID': 'Paid',
+  'wallet.withdrawal.REJECTED': 'Not approved',
+  'wallet.withdrawal.CANCELLED': 'Cancelled',
+  'wallet.withdrawal.FAILED': 'Transfer failed',
+  'wallet.blocked.verifyFirst': 'Verify your identity first.',
+  'wallet.blocked.nextFrom': 'Next request from {time}.',
+  'wallet.blocked.destination': 'Say where the money should go.',
+  'wallet.withdraw': 'Withdraw',
+  'wallet.withdraw.range': 'Between {minimum} and {maximum} per request',
+  'wallet.withdraw.daily': "; {remaining} of today's {limit} remains",
+  'wallet.withdraw.end': '.',
+  'wallet.withdraw.identityBefore':
+    'Your identity has to be verified before money can be paid out — see the',
+  'wallet.withdraw.identityAfter': 'page.',
+  'wallet.payTo': 'Pay to',
+  'wallet.payTo.placeholder':
+    'Account name, and the account number or IBAN, as your bank would want it',
+  'wallet.requestFailed': 'The request did not go through.',
+  'wallet.requestWithdrawal': 'Request withdrawal',
+  'wallet.withdrawNote':
+    'The amount leaves your wallet balance the moment you ask, and comes back only if the request is refused, cancelled, or the transfer fails. Somebody reviews every request and a person sends the money; you will be told when it is paid.',
+  'wallet.col.requested': 'Requested',
+  'wallet.col.to': 'To',
+  'wallet.ref': 'ref {reference}',
+  'wallet.cancel': 'Cancel',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -229,7 +350,7 @@ export const fa: Messages = {
   'settings.description': 'معامله با یک کلیک، تأییدها، حجم پیش‌فرض سفارش، ظاهر، زبان و اعلان‌ها.',
   'settings.language': 'زبان',
   'settings.language.note':
-    'فقط برای همین مرورگر. فارسی تا اینجا منو، ورود، تنظیمات، ترمینال (قاب، نوار حساب، فرم سفارش، عنوان‌ها و پیام‌های خالی پنل‌ها)، تحلیل عملکرد، و عنوان صفحه‌های حساب، تاریخچه، نمادها، امنیت و توسعه‌دهنده را پوشش می‌دهد؛ بقیهٔ برچسب‌های پنل‌ها، کیف پول، احراز هویت و پیام‌های سرور هنوز انگلیسی هستند.',
+    'فقط برای همین مرورگر. فارسی تا اینجا منو، ورود، تنظیمات، ترمینال (قاب، نوار حساب، فرم سفارش، عنوان‌ها و پیام‌های خالی پنل‌ها)، تحلیل عملکرد، کیف پول، احراز هویت، و عنوان صفحه‌های حساب، تاریخچه، نمادها، امنیت و توسعه‌دهنده را پوشش می‌دهد؛ بقیهٔ برچسب‌های پنل‌ها، فرم‌های امنیت و پیام‌های سرور هنوز انگلیسی هستند.',
   'settings.appearance': 'ظاهر',
   'settings.appearance.dark': 'تیره',
   'settings.appearance.light': 'روشن',
@@ -395,20 +516,155 @@ export const fa: Messages = {
     'تأیید دومرحله‌ای، کدهای بازیابی، نشست‌هایی که با حساب شما وارد شده‌اند، کلیدهای API که از طرف شما عمل می‌کنند، جاهایی که از آن وارد شده‌اید، و هر رویدادی که برای حسابتان رخ داده است.',
   'developer.description':
     'API این پلتفرم، همان‌طور که خودش را توصیف می‌کند: همهٔ مسیرها، روش احراز هویت، چگونگی ایدمپوتنت کردن یک درخواست تغییر، و راستی‌آزمایی وب‌هوک.',
+  'kyc.description': 'یک بار هویت خود را ثابت کنید تا برداشت\u200cها بتوانند به شما پرداخت شوند.',
+  'kyc.kind.PASSPORT': 'گذرنامه',
+  'kyc.kind.NATIONAL_ID': 'کارت ملی',
+  'kyc.kind.DRIVING_LICENCE': 'گواهینامهٔ رانندگی',
+  'kyc.kind.PROOF_OF_ADDRESS': 'مدرک نشانی',
+  'kyc.kind.SELFIE': 'عکس شما در حال نگه داشتن مدرک',
+  'kyc.status.NOT_STARTED': 'شروع نشده',
+  'kyc.detail.NOT_STARTED':
+    'یک مدرک هویتی و عکسی از خودتان در حال نگه داشتن آن اضافه کنید، سپس ارسال کنید.',
+  'kyc.status.PENDING': 'ارسال شده، در انتظار بررسی',
+  'kyc.detail.PENDING':
+    'یک نفر مدارک شما را بررسی می\u200cکند. نتیجه به شما اطلاع داده می\u200cشود.',
+  'kyc.status.UNDER_REVIEW': 'در حال بررسی',
+  'kyc.detail.UNDER_REVIEW': 'یک بررسی\u200cکننده هم\u200cاکنون مدارک شما را باز کرده است.',
+  'kyc.status.VERIFIED': 'تأیید شده',
+  'kyc.detail.VERIFIED': 'برداشت برای شما باز است.',
+  'kyc.status.REJECTED': 'پذیرفته نشد',
+  'kyc.detail.REJECTED': 'دلیل را در پایین ببینید، سپس با مدارک جدید دوباره ارسال کنید.',
+  'kyc.status.EXPIRED': 'منقضی شده',
+  'kyc.detail.EXPIRED': 'اعتبار احراز هویت شما تمام شده است. برای تمدید دوباره ارسال کنید.',
+  'kyc.validUntil': 'معتبر تا {time}.',
+  'kyc.addDocument': 'افزودن مدرک',
+  'kyc.addDocument.hint':
+    'یک عکس یا اسکن واضح — JPEG، PNG، WebP یا PDF، حداکثر 10 مگابایت. هر صفحه از گذرنامه یا کارت که نام، عکس یا شمارهٔ شما را دارد.',
+  'kyc.documentType': 'نوع مدرک',
+  'kyc.chooseFile': 'فایل مدرک',
+  'kyc.uploading': 'در حال بارگذاری…',
+  'kyc.uploadFailed': 'فایل بارگذاری نشد.',
+  'kyc.submit': 'ارسال',
+  'kyc.stillNeeded': 'هنوز لازم است: {missing}.',
+  'kyc.readyToSubmit':
+    'همهٔ موارد لازم موجود است. با ارسال، مدارک به بررسی\u200cکننده سپرده می\u200cشود و تا تصمیم او چیزی نمی\u200cتوان اضافه کرد.',
+  'kyc.submitFailed': 'ارسال انجام نشد.',
+  'kyc.submitting': 'در حال ارسال…',
+  'kyc.submitForReview': 'ارسال برای بررسی',
+  'kyc.col.document': 'مدرک',
+  'kyc.col.file': 'فایل',
+  'kyc.col.size': 'حجم',
+  'kyc.col.received': 'دریافت',
+  'kyc.col.counts': 'معتبر است',
+  'kyc.counts.purged': 'طبق سیاست نگهداری پاک شد',
+  'kyc.counts.yes': 'بله',
+  'kyc.counts.earlier': 'از تلاش قبلی',
+  'wallet.description':
+    'پولی که برای شما نگهداری می‌شود، و حساب‌های معاملاتی که می‌توانید آن را بینشان جابه‌جا کنید.',
+  'wallet.none':
+    'هنوز کیف پولی ندارید. اولین باری که پولی برسد یا از یک حساب معاملاتی پول خارج کنید، ساخته می‌شود.',
+  'wallet.ofCurrency': 'کیف پول {currency}',
+  'wallet.frozenNote':
+    'این کیف پول در حین بررسی مسدود است. پول نگه داشته شده، نه برداشته شده، و با رفع مسدودی دوباره قابل جابه‌جایی است.',
+  'wallet.col.when': 'زمان',
+  'wallet.col.what': 'شرح',
+  'wallet.col.balanceAfter': 'موجودی پس از آن',
+  'wallet.noMovements': 'هنوز جابه‌جایی‌ای انجام نشده است.',
+  'wallet.move.TRANSFER_OUT': 'به حساب معاملاتی',
+  'wallet.move.TRANSFER_IN': 'از حساب معاملاتی',
+  'wallet.move.DEPOSIT': 'واریز',
+  'wallet.move.WITHDRAWAL': 'برداشت',
+  'wallet.move.ADJUSTMENT': 'اصلاح',
+  'wallet.move.FEE': 'کارمزد',
+  'wallet.blocked.frozen': 'این کیف پول مسدود است.',
+  'wallet.blocked.noAccount': 'حساب معاملاتی {currency} برای جابه‌جایی پول وجود ندارد.',
+  'wallet.blocked.chooseAccount': 'یک حساب انتخاب کنید.',
+  'wallet.blocked.enterAmount': 'مبلغ را وارد کنید.',
+  'wallet.blocked.positive': 'مبلغ باید بیشتر از صفر باشد.',
+  'wallet.move': 'جابه‌جایی پول',
+  'wallet.direction': 'جهت',
+  'wallet.direction.toAccount': 'کیف پول ← حساب معاملاتی',
+  'wallet.direction.toWallet': 'حساب معاملاتی ← کیف پول',
+  'wallet.amountIn': 'مبلغ ({currency})',
+  'wallet.transferFailed': 'انتقال انجام نشد.',
+  'wallet.moving': 'در حال جابه‌جایی…',
+  'wallet.moveButton': 'جابه‌جا کن',
+  'wallet.freeMarginNote':
+    'فقط مارجین آزاد می‌تواند از حساب معاملاتی خارج شود. پولی که درگیر یک پوزیشن باز است سر جایش می‌ماند — برداشتنش یعنی بستن پوزیشن، از همین‌جا، با قیمتی که کسی انتخاب نکرده است.',
+  'wallet.provider.bankTransfer': 'انتقال بانکی',
+  'wallet.payment.REQUIRES_ACTION': 'در انتظار انتقال شما',
+  'wallet.payment.PROCESSING': 'نزد ارائه‌دهنده',
+  'wallet.payment.SUCCEEDED': 'دریافت شد',
+  'wallet.payment.FAILED': 'ناموفق',
+  'wallet.payment.CANCELLED': 'لغو شد',
+  'wallet.payment.EXPIRED': 'منقضی شد',
+  'wallet.blocked.chooseProvider': 'روش پرداخت را انتخاب کنید.',
+  'wallet.addMoney': 'افزودن پول',
+  'wallet.noProviders':
+    'هنوز هیچ روش پرداختی روی این استقرار تنظیم نشده است. از پشتیبانی بپرسید چگونه وجه ارسال کنید — پس از رسیدن انتقال، آن را به نام حساب شما ثبت می‌کنند.',
+  'wallet.how': 'روش',
+  'wallet.depositFailed': 'واریز آغاز نشد.',
+  'wallet.starting': 'در حال آغاز…',
+  'wallet.continue': 'ادامه',
+  'wallet.depositNote':
+    'این کار پولی جابه‌جا نمی‌کند. مرحلهٔ بعد به شما نشان داده می‌شود و موجودی‌تان وقتی تغییر می‌کند که انتقال واقعاً رسیده باشد.',
+  'wallet.awaitingTransfer': 'در انتظار انتقال شما — {amount}',
+  'wallet.col.started': 'آغاز',
+  'wallet.withdrawal.REQUESTED': 'درخواست شد',
+  'wallet.withdrawal.UNDER_REVIEW': 'در حال بررسی',
+  'wallet.withdrawal.APPROVED': 'تأیید شد، در انتظار پرداخت',
+  'wallet.withdrawal.PROCESSING': 'انتقال ارسال شد',
+  'wallet.withdrawal.PAID': 'پرداخت شد',
+  'wallet.withdrawal.REJECTED': 'تأیید نشد',
+  'wallet.withdrawal.CANCELLED': 'لغو شد',
+  'wallet.withdrawal.FAILED': 'انتقال ناموفق بود',
+  'wallet.blocked.verifyFirst': 'ابتدا هویت خود را تأیید کنید.',
+  'wallet.blocked.nextFrom': 'درخواست بعدی از {time}.',
+  'wallet.blocked.destination': 'مشخص کنید پول به کجا برود.',
+  'wallet.withdraw': 'برداشت',
+  'wallet.withdraw.range': 'هر درخواست بین {minimum} و {maximum}',
+  'wallet.withdraw.daily': '؛ از سقف امروز ({limit})، {remaining} باقی مانده',
+  'wallet.withdraw.end': '.',
+  'wallet.withdraw.identityBefore': 'پیش از پرداخت پول، هویت شما باید تأیید شود — به صفحهٔ',
+  'wallet.withdraw.identityAfter': 'مراجعه کنید.',
+  'wallet.payTo': 'پرداخت به',
+  'wallet.payTo.placeholder': 'نام صاحب حساب، و شمارهٔ حساب یا شبا، همان‌طور که بانکتان می‌خواهد',
+  'wallet.requestFailed': 'درخواست انجام نشد.',
+  'wallet.requestWithdrawal': 'درخواست برداشت',
+  'wallet.withdrawNote':
+    'مبلغ همان لحظهٔ درخواست از موجودی کیف پول کم می‌شود و فقط اگر درخواست رد یا لغو شود یا انتقال ناموفق باشد برمی‌گردد. هر درخواست را کسی بررسی می‌کند و یک نفر پول را می‌فرستد؛ هنگام پرداخت به شما خبر داده می‌شود.',
+  'wallet.col.requested': 'زمان درخواست',
+  'wallet.col.to': 'مقصد',
+  'wallet.ref': 'مرجع {reference}',
+  'wallet.cancel': 'لغو',
 };
 
 const TABLES: Record<Locale, Messages> = { en, fa };
 
-/** A message in a locale, with `{name}` placeholders filled from `vars`. */
+/** Left-to-right isolate and its end (Unicode bidi, UAX #9). */
+export const LTR_ISOLATE = '\u2066';
+export const END_ISOLATE = '\u2069';
+
+/**
+ * A message in a locale, with `{name}` placeholders filled from `vars`.
+ *
+ * In Persian every filled value is wrapped in a left-to-right isolate. What
+ * fills a placeholder is a figure, an amount, a time, a code or the server's
+ * English — all left to right — and without the isolate the bidi algorithm
+ * lets the surrounding Persian reorder it: `$10.00` came out as `10.00$`.
+ */
 export function translate(
   locale: Locale,
   key: MessageKey,
   vars: Readonly<Record<string, string | number>> = {},
 ): string {
   const template = TABLES[locale][key] ?? en[key];
-  return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
-    vars[name] === undefined ? whole : String(vars[name]),
-  );
+  const isolate = directionOf(locale) === 'rtl';
+  return template.replace(/\{(\w+)\}/g, (whole, name: string) => {
+    const value = vars[name];
+    if (value === undefined) return whole;
+    return isolate ? `${LTR_ISOLATE}${String(value)}${END_ISOLATE}` : String(value);
+  });
 }
 
 /** The `{name}` placeholders a message uses, for checking that translations keep them. */

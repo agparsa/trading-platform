@@ -95,8 +95,18 @@ export function Field({
   );
 }
 
-export const inputClass =
-  'numeric w-full rounded border border-terminal-border bg-terminal-bg px-2.5 py-1.5 text-sm text-terminal-text outline-none transition-colors focus:border-terminal-muted disabled:opacity-50';
+const inputFrame =
+  'w-full rounded border border-terminal-border bg-terminal-bg px-2.5 py-1.5 text-sm text-terminal-text outline-none transition-colors focus:border-terminal-muted disabled:opacity-50';
+
+/** A field that holds a figure or a code: monospaced, and left to right in every language. */
+export const inputClass = `numeric ${inputFrame}`;
+
+/**
+ * A field that holds words — a choice named in the interface's language, or a
+ * free-text note. It follows the page's direction and font, so Persian in it
+ * reads right to left in the body face rather than spaced out in a monospace.
+ */
+export const wordInputClass = inputFrame;
 
 /**
  * What a control needs the signed-in person to hold. Given, and not held, the

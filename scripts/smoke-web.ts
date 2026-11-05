@@ -1397,7 +1397,7 @@ async function main(): Promise<void> {
      * Persian, chosen in settings the way a trader chooses it: the page is
      * right-to-left from its first paint after a reload, the section links are
      * Persian, a figure stays left-to-right inside it, and the settings screen,
-     * the terminal and Analytics are audited in it. Put back to English afterwards.
+     * the terminal, Analytics, the wallet and verification are audited in it. Put back to English afterwards.
      */
     {
       await page.getByRole('radio', { name: 'فارسی' }).click();
@@ -1447,6 +1447,25 @@ async function main(): Promise<void> {
       );
       await screenshot(page, 'analytics-persian');
       await auditAccessibility(page, 'Analytics, Persian');
+      for (const [path, heading, words, view] of [
+        ['/wallet', 'کیف پول', /افزودن پول/, 'the wallet screen, Persian'],
+        ['/verification', 'احراز هویت', /وضعیت/, 'the verification screen, Persian'],
+      ] as const) {
+        await visit(page, path, { url: path });
+        const seen = await page
+          .getByRole('heading', { name: heading })
+          .first()
+          .waitFor({ timeout: 10_000 })
+          .then(() => page.getByText(words).first().waitFor({ timeout: 10_000 }))
+          .then(() => true)
+          .catch(() => false);
+        ok(
+          seen,
+          `${path} is Persian: its title and its own words`,
+          `heading ${heading} · ${words}`,
+        );
+        await auditAccessibility(page, view);
+      }
       await visit(page, '/settings', { url: '/settings' });
       await page.getByRole('radio', { name: 'English' }).click();
     }

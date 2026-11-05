@@ -227,16 +227,19 @@ from the start; `locale.test.ts` runs that script against every stored value
 and compares it with the bundle's own rule. Every changing figure keeps the
 `numeric` class, and in a right-to-left page that class stays left to right
 with its own isolation, so `-1,204.50` is never mirrored; figures stay in Latin
-digits, as on the charts and statements they are compared with. The words are
+digits, as on the charts and statements they are compared with. A figure set into a
+Persian sentence (`{amount}` in a message) is wrapped in a left-to-right
+isolate by `translate`, so `$10.00` is not reordered into `10.00$` by the
+words around it. Fields that hold words (`wordInputClass`) follow the page's
+direction; fields that hold figures stay `numeric`. The words are
 in `lib/messages.ts`: English is the source, the Persian table is typed against
 its keys, so an untranslated key fails the build, and both must use the same
 placeholders. Translated so far: the section navigation, the page frame,
 sign-in, Settings, the terminal's header, panel titles and activity tabs, the
 account strip, the order ticket, and the column headings and empty states of
-the activity panels and the watchlist, the whole Analytics page, and the
-title, description and details of Account, History, Instruments, Security and
-Developer. The panels' remaining labels, the forms on Wallet, Verification and
-Security, the server's own messages and the phone are still English, and the
+the activity panels and the watchlist, the whole Analytics, Wallet and
+Verification pages, and the title, description and details of Account, History, Instruments, Security and
+Developer. The panels' remaining labels, the Security forms, the server's own messages and the phone are still English, and the
 language note says so on screen. The layout mirrors: every margin, padding,
 alignment and offset in the web app is a logical utility (`ms-`, `pe-`,
 `text-end`, `end-`), not a physical one, so start and end swap with the

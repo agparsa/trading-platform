@@ -100,7 +100,9 @@ describe('the Analytics figures', () => {
       state.data = figures();
       render(<PerformanceView accountId="acc-1" />);
       expect(await screen.findAllByText('نتیجهٔ خالص')).toHaveLength(2);
-      expect(screen.getByText('3 خرید · 2 سودده · 1 زیان‌ده')).toBeTruthy();
+      expect(
+        screen.getByText('\u20663\u2069 خرید · \u20662\u2069 سودده · \u20661\u2069 زیان‌ده'),
+      ).toBeTruthy();
       expect(screen.getByText('+0.50%')).toBeTruthy();
       expect(screen.queryByText('Net result')).toBeNull();
     } finally {

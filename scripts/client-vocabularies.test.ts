@@ -29,6 +29,7 @@ const MAPS: Readonly<Record<string, Vocabulary | { none: string }>> = {
   'apps/web/src/app/(app)/verification/page.tsx:STATUS_TEXT': 'prisma.KycStatus',
   'apps/web/src/app/(app)/wallet/page.tsx:PAYMENT_STATUS_LABELS': 'prisma.PaymentStatus',
   'apps/web/src/app/(app)/wallet/page.tsx:WITHDRAWAL_STATUS_LABELS': 'prisma.WithdrawalStatus',
+  'apps/web/src/app/(app)/wallet/page.tsx:MOVEMENT_LABELS': 'prisma.WalletTransactionType',
   'apps/web/src/components/api-keys-panel.tsx:STATUS_TONE': {
     none: "a key's status is derived (ACTIVE, REVOKED, EXPIRED) and typed as its row's union",
   },
