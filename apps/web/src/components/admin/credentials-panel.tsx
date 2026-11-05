@@ -104,7 +104,7 @@ function KeysTab() {
                 </td>
                 <td className="numeric px-3 py-1.5 text-terminal-muted">{lastUse(row)}</td>
                 <td className="numeric px-3 py-1.5 text-terminal-muted">{usageText(row)}</td>
-                <td className="px-3 py-1.5 text-right">
+                <td className="px-3 py-1.5 text-end">
                   {row.status === 'ACTIVE' && mayRevoke ? (
                     <ReasonedAction
                       gate={revoke}
@@ -280,7 +280,7 @@ function TokensTab() {
                 <td className="px-3 py-1.5 text-terminal-muted">{row.createdBy}</td>
                 <td className="numeric px-3 py-1.5 text-terminal-muted">{lastUse(row)}</td>
                 <td className="numeric px-3 py-1.5 text-terminal-muted">{usageText(row)}</td>
-                <td className="px-3 py-1.5 text-right">
+                <td className="px-3 py-1.5 text-end">
                   {row.status === 'ACTIVE' ? (
                     <ReasonedAction
                       gate={revoke}

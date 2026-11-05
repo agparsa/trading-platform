@@ -199,7 +199,7 @@ function Endpoints({
                   </span>
                 )}
                 {row.consecutiveFailures > 0 ? (
-                  <span className="ml-1 text-label text-terminal-warning">
+                  <span className="ms-1 text-label text-terminal-warning">
                     {row.consecutiveFailures} failed in a row
                   </span>
                 ) : null}
@@ -286,13 +286,13 @@ function Deliveries({ endpointId }: { endpointId: string }) {
                 <td className="px-3 py-1.5 font-mono">
                   {row.eventType}
                   {row.replayOfId !== null ? (
-                    <span className="ml-1 text-label text-terminal-muted">(replay)</span>
+                    <span className="ms-1 text-label text-terminal-muted">(replay)</span>
                   ) : null}
                 </td>
                 <td className={cn('px-3 py-1.5', STATUS_TONE[row.status])}>
                   {row.status.toLowerCase()}
                   {row.status === 'FAILED' && row.nextAttemptAt !== null ? (
-                    <span className="ml-1 text-label text-terminal-muted">
+                    <span className="ms-1 text-label text-terminal-muted">
                       next {utcTime(row.nextAttemptAt)}
                     </span>
                   ) : null}
@@ -307,7 +307,7 @@ function Deliveries({ endpointId }: { endpointId: string }) {
                 <td className="numeric px-3 py-1.5 text-terminal-muted">
                   {row.durationMs !== null ? `${row.durationMs} ms` : '—'}
                 </td>
-                <td className="px-3 py-1.5 text-right">
+                <td className="px-3 py-1.5 text-end">
                   <Button
                     gate={replay}
                     variant="ghost"

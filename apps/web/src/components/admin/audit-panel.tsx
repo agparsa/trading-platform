@@ -76,7 +76,7 @@ export function AuditPanel() {
                   <td className="numeric px-2 py-1.5 text-terminal-muted">
                     {row.ipAddress ?? '—'}
                   </td>
-                  <td className="px-2 py-1.5 text-right">
+                  <td className="px-2 py-1.5 text-end">
                     <Button
                       variant="ghost"
                       className="px-2 py-0.5"

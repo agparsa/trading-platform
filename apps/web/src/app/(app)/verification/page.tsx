@@ -195,10 +195,10 @@ function DocumentList({ documents }: { documents: readonly KycDocumentRow[] }) {
     <Panel className="overflow-auto">
       <table className="w-full text-caption">
         <thead>
-          <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
+          <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
             <th className="px-3 py-2">Document</th>
             <th className="px-3 py-2">File</th>
-            <th className="px-3 py-2 text-right">Size</th>
+            <th className="px-3 py-2 text-end">Size</th>
             <th className="px-3 py-2">Received</th>
             <th className="px-3 py-2">Counts</th>
           </tr>
@@ -210,7 +210,7 @@ function DocumentList({ documents }: { documents: readonly KycDocumentRow[] }) {
                 {KIND_LABELS[row.kind] ?? row.kind}
               </td>
               <td className="px-3 py-1.5 text-terminal-muted">{row.filename ?? '—'}</td>
-              <td className="numeric px-3 py-1.5 text-right text-terminal-muted">
+              <td className="numeric px-3 py-1.5 text-end text-terminal-muted">
                 {(row.sizeBytes / 1024).toFixed(0)} KB
               </td>
               <td className="numeric px-3 py-1.5 text-terminal-muted">{utcTime(row.uploadedAt)}</td>

@@ -294,7 +294,7 @@ export function SecuritySettings({
                 <p className="truncate text-caption text-terminal-text">
                   {session.device}
                   {session.current ? (
-                    <span className="ml-1 text-terminal-muted">· this device</span>
+                    <span className="ms-1 text-terminal-muted">· this device</span>
                   ) : null}
                 </p>
                 <p className="truncate text-label text-terminal-muted">
@@ -337,7 +337,7 @@ export function SecuritySettings({
       </button>
 
       {!open ? null : (
-        <div className="absolute right-0 top-8 z-30 w-80 rounded border border-terminal-border bg-terminal-surface p-3 shadow-xl">
+        <div className="absolute end-0 top-8 z-30 w-80 rounded border border-terminal-border bg-terminal-surface p-3 shadow-xl">
           {body}
         </div>
       )}

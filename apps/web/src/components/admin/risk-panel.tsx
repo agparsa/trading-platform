@@ -129,27 +129,27 @@ function AtRisk() {
                 <tr key={row.accountId} className="border-t border-terminal-border/60">
                   <td className="numeric px-2 py-1.5 text-terminal-text">{row.number}</td>
                   <td className="px-2 py-1.5 text-terminal-muted">{row.email}</td>
-                  <td className={cn('numeric px-2 py-1.5 text-right', tone)}>
+                  <td className={cn('numeric px-2 py-1.5 text-end', tone)}>
                     {percent(row.marginLevel)}
                   </td>
-                  <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                  <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                     {money(row.equity, row.currency)}
                   </td>
-                  <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                  <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                     {money(row.usedMargin, row.currency)}
                   </td>
-                  <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                  <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                     {money(row.freeMargin, row.currency)}
                   </td>
                   <td
                     className={cn(
-                      'numeric px-2 py-1.5 text-right',
+                      'numeric px-2 py-1.5 text-end',
                       toneClass[toneOf(row.floatingPnl)],
                     )}
                   >
                     {signedMoney(row.floatingPnl, row.currency)}
                   </td>
-                  <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                  <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                     {row.openPositions}
                   </td>
                   <td className="numeric px-2 py-1.5 text-label text-terminal-muted">
@@ -197,18 +197,18 @@ function Exposure() {
             {(rows.data ?? []).map((row) => (
               <tr key={row.symbol} className="border-t border-terminal-border/60">
                 <td className="px-2 py-1.5 font-medium text-terminal-text">{row.symbol}</td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-long">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-long">
                   {volume(row.longVolume)}
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-short">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-short">
                   {volume(row.shortVolume)}
                 </td>
                 <td
-                  className={cn('numeric px-2 py-1.5 text-right', toneClass[toneOf(row.netVolume)])}
+                  className={cn('numeric px-2 py-1.5 text-end', toneClass[toneOf(row.netVolume)])}
                 >
                   {volume(row.netVolume)}
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                   {row.positions}
                 </td>
               </tr>
@@ -313,7 +313,7 @@ function Signals() {
                 <td className="numeric px-2 py-1.5 text-terminal-muted">
                   {utcTime(row.lastSeenAt)}
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                   {row.occurrences}
                 </td>
                 <td className="px-2 py-1.5">

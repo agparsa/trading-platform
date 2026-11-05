@@ -50,18 +50,18 @@ export function FinancePanel({ accountId }: { accountId: string | null }) {
       />
       <table className="w-full border-collapse text-xs" data-testid="balance-history">
         <thead className="sticky top-0 z-10 bg-terminal-surface">
-          <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
-            <th className="py-1.5 pl-3 pr-2 font-medium">Time (UTC)</th>
+          <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
+            <th className="py-1.5 ps-3 pe-2 font-medium">Time (UTC)</th>
             <th className="px-2 py-1.5 font-medium">Type</th>
             <th className="px-2 py-1.5 font-medium">Detail</th>
-            <th className="px-2 py-1.5 text-right font-medium">Amount</th>
-            <th className="py-1.5 pl-2 pr-3 text-right font-medium">Balance</th>
+            <th className="px-2 py-1.5 text-end font-medium">Amount</th>
+            <th className="py-1.5 ps-2 pe-3 text-end font-medium">Balance</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.id} className="border-t border-terminal-border/60">
-              <td className="numeric py-1.5 pl-3 pr-2 text-terminal-muted">
+              <td className="numeric py-1.5 ps-3 pe-2 text-terminal-muted">
                 {utcTime(row.createdAt)}
               </td>
               <td className="px-2 py-1.5 text-terminal-text" title={row.type}>
@@ -71,13 +71,13 @@ export function FinancePanel({ accountId }: { accountId: string | null }) {
                 {row.description ?? '—'}
               </td>
               <td
-                className={cn('numeric px-2 py-1.5 text-right', toneClass[toneOf(row.amount)])}
+                className={cn('numeric px-2 py-1.5 text-end', toneClass[toneOf(row.amount)])}
                 title={row.amount}
               >
                 {signedMoney(row.amount, row.currency)}
               </td>
               <td
-                className="numeric py-1.5 pl-2 pr-3 text-right text-terminal-text"
+                className="numeric py-1.5 ps-2 pe-3 text-end text-terminal-text"
                 title={row.balanceAfter}
               >
                 {money(row.balanceAfter, row.currency)}

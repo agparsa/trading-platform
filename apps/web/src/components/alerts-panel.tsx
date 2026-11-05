@@ -108,7 +108,7 @@ export function AlertsPanel({
         <label className="flex flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
           Level
           <input
-            className={cn(inputClass, 'w-32 text-right tabular-nums')}
+            className={cn(inputClass, 'w-32 text-end tabular-nums')}
             inputMode="decimal"
             value={level}
             onChange={(event) => setLevel(event.target.value)}
@@ -144,14 +144,14 @@ export function AlertsPanel({
         ) : (
           <table className="w-full min-w-[44rem] border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-terminal-surface">
-              <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
+              <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
                 <th className="px-3 py-1.5 font-medium">Symbol</th>
                 <th className="px-2 py-1.5 font-medium">Condition</th>
-                <th className="px-2 py-1.5 text-right font-medium">Level</th>
-                <th className="px-2 py-1.5 text-right font-medium">Now</th>
+                <th className="px-2 py-1.5 text-end font-medium">Level</th>
+                <th className="px-2 py-1.5 text-end font-medium">Now</th>
                 <th className="px-2 py-1.5 font-medium">Status</th>
                 <th className="px-2 py-1.5 font-medium">Note</th>
-                <th className="px-3 py-1.5 text-right font-medium">Actions</th>
+                <th className="px-3 py-1.5 text-end font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -170,14 +170,14 @@ export function AlertsPanel({
                     <td className="px-3 py-1.5 font-medium">{row.symbol}</td>
                     <td className="px-2 py-1.5">
                       {row.condition === 'ABOVE' ? 'Rises to' : 'Falls to'}
-                      <span className="ml-1 text-label uppercase text-terminal-muted">
+                      <span className="ms-1 text-label uppercase text-terminal-muted">
                         {row.source}
                       </span>
                     </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">
+                    <td className="px-2 py-1.5 text-end tabular-nums">
                       {formatPrice(row.price, digits(row.symbol))}
                     </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">
+                    <td className="px-2 py-1.5 text-end tabular-nums">
                       {/*
                         The price it fired at, once it has — not the live one.
                         A triggered alert is a record of a moment, and showing
@@ -198,7 +198,7 @@ export function AlertsPanel({
                     <td className="max-w-[16rem] truncate px-2 py-1.5" title={row.note ?? ''}>
                       {row.note ?? ''}
                     </td>
-                    <td className="px-3 py-1.5 text-right">
+                    <td className="px-3 py-1.5 text-end">
                       {row.status === 'ACTIVE' ? (
                         <Button
                           variant="ghost"

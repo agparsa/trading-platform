@@ -114,11 +114,11 @@ export function AccountRow({
         <td className="px-2 py-1.5">
           <StatusPill status={account.status} />
         </td>
-        <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+        <td className="numeric px-2 py-1.5 text-end text-terminal-text">
           {money(account.balance, account.currency)}
         </td>
-        <td className="numeric px-2 py-1.5 text-right text-terminal-muted">1:{account.leverage}</td>
-        <td className="numeric px-2 py-1.5 text-right text-terminal-muted">{account.positions}</td>
+        <td className="numeric px-2 py-1.5 text-end text-terminal-muted">1:{account.leverage}</td>
+        <td className="numeric px-2 py-1.5 text-end text-terminal-muted">{account.positions}</td>
         <td className="numeric px-2 py-1.5 text-terminal-muted">{utcTime(account.createdAt)}</td>
         <td className="px-2 py-1.5">
           <div className="flex flex-wrap items-center justify-end gap-1">

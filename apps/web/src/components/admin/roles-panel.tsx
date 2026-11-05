@@ -74,12 +74,12 @@ export function RolesPanel() {
                 <div className="min-w-0">
                   <p className="text-xs text-terminal-text">
                     {role.name}
-                    <span className="ml-2 text-label uppercase tracking-wider text-terminal-muted">
+                    <span className="ms-2 text-label uppercase tracking-wider text-terminal-muted">
                       {role.key}
                     </span>
                     {role.isSystem ? (
                       <span
-                        className="ml-2 text-micro uppercase tracking-wider text-terminal-muted"
+                        className="ms-2 text-micro uppercase tracking-wider text-terminal-muted"
                         title="Seeded with the platform. Its grants are editable; the role itself cannot be removed."
                       >
                         built in

@@ -96,7 +96,7 @@ export function WithdrawalsPanel() {
                   {utcTime(row.createdAt)}
                 </td>
                 <td className="px-3 py-1.5 text-terminal-text">{row.email}</td>
-                <td className="numeric px-3 py-1.5 text-right text-terminal-text">
+                <td className="numeric px-3 py-1.5 text-end text-terminal-text">
                   {money(row.amount, row.currency)}
                 </td>
                 <td className="px-3 py-1.5 text-terminal-muted">…{row.destinationHint}</td>
@@ -111,10 +111,10 @@ export function WithdrawalsPanel() {
                 <td className={cn('px-3 py-1.5', STATUS_TONE[row.status] ?? 'text-terminal-text')}>
                   {row.status}
                   {row.autoApproved ? (
-                    <span className="ml-1 text-label text-terminal-muted">(auto)</span>
+                    <span className="ms-1 text-label text-terminal-muted">(auto)</span>
                   ) : null}
                 </td>
-                <td className="px-3 py-1.5 text-right">
+                <td className="px-3 py-1.5 text-end">
                   <Button
                     variant="ghost"
                     className="px-2 py-0.5"

@@ -38,6 +38,7 @@ import { ShortcutAction } from '@/lib/shortcuts';
 import { needsConfirmation } from '@/lib/shortcuts';
 import type { TradingPreferences } from '@/lib/trading-preferences';
 import { Button, EmptyState, Field, inputClass } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 /**
  * Market order entry.
@@ -80,6 +81,7 @@ export function OrderTicket({
   staged?: { side: 'BUY' | 'SELL'; at: number; volume?: string } | null;
   onStagedHandled?: () => void;
 }) {
+  const t = useT();
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
   const [orderType, setOrderType] = useState<OrderType>('MARKET');
   const [volume, setVolume] = useState('0.10');
@@ -486,7 +488,7 @@ export function OrderTicket({
   }, [state.data?.freeMargin, estimate.marginAmount, riskShare]);
 
   if (symbol === undefined) {
-    return <EmptyState>Select an instrument to trade.</EmptyState>;
+    return <EmptyState>{t('ticket.selectInstrument')}</EmptyState>;
   }
 
   const canSubmit = blockedReason === null && !busy;
@@ -504,7 +506,7 @@ export function OrderTicket({
 
   return (
     <div className="flex flex-col gap-3 p-3">
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         {ORDER_TYPES.map((value) => (
           <button
             key={value}
@@ -568,7 +570,7 @@ export function OrderTicket({
       </div>
 
       <Field
-        label="Volume (lots)"
+        label={t('ticket.volume')}
         hint={
           <span className="numeric normal-case tracking-normal">
             step {symbol.volumeStep} · min {symbol.minVolume}
@@ -580,7 +582,7 @@ export function OrderTicket({
             type="button"
             variant="neutral"
             onClick={() => setVolume(stepVolume(symbol, volume, -1))}
-            aria-label="Decrease volume"
+            aria-label={t('ticket.decrease')}
           >
             −
           </Button>
@@ -594,7 +596,7 @@ export function OrderTicket({
             type="button"
             variant="neutral"
             onClick={() => setVolume(stepVolume(symbol, volume, 1))}
-            aria-label="Increase volume"
+            aria-label={t('ticket.increase')}
           >
             +
           </Button>
@@ -603,7 +605,7 @@ export function OrderTicket({
 
       {orderType === 'STOP_LIMIT' ? (
         <Field
-          label="Stop price"
+          label={t('ticket.stopPrice')}
           hint={
             <span
               className="normal-case tracking-normal"
@@ -615,7 +617,7 @@ export function OrderTicket({
         >
           <input
             className={inputClass}
-            aria-label="Stop price"
+            aria-label={t('ticket.stopPrice')}
             value={stopTrigger}
             placeholder={executable === null ? '—' : formatPrice(executable, symbol.pricePrecision)}
             inputMode="decimal"
@@ -627,7 +629,7 @@ export function OrderTicket({
       {orderType === 'MARKET' ? null : (
         <div className="grid grid-cols-2 gap-2">
           <Field
-            label={orderType === 'STOP' ? 'Stop price' : 'Limit price'}
+            label={orderType === 'STOP' ? t('ticket.stopPrice') : t('ticket.limitPrice')}
             hint={
               <span
                 className="normal-case tracking-normal"
@@ -653,7 +655,7 @@ export function OrderTicket({
           >
             <input
               className={inputClass}
-              aria-label={orderType === 'STOP' ? 'Stop price' : 'Limit price'}
+              aria-label={orderType === 'STOP' ? t('ticket.stopPrice') : t('ticket.limitPrice')}
               value={restingPrice}
               placeholder={
                 executable === null ? '—' : formatPrice(executable, symbol.pricePrecision)
@@ -663,7 +665,7 @@ export function OrderTicket({
             />
           </Field>
           <Field
-            label="Valid"
+            label={t('ticket.valid')}
             hint={
               <span
                 className="normal-case tracking-normal"
@@ -678,15 +680,15 @@ export function OrderTicket({
               value={timeInForce}
               onChange={(event) => setTimeInForce(event.target.value as 'GTC' | 'DAY')}
             >
-              <option value="GTC">GTC</option>
-              <option value="DAY">Day</option>
+              <option value="GTC">{t('ticket.gtc')}</option>
+              <option value="DAY">{t('ticket.day')}</option>
             </select>
           </Field>
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-2">
-        <Field label="Stop loss">
+        <Field label={t('ticket.stopLoss')}>
           <input
             className={inputClass}
             value={stopLoss}
@@ -695,7 +697,7 @@ export function OrderTicket({
             onChange={(event) => setStopLoss(event.target.value)}
           />
         </Field>
-        <Field label="Take profit">
+        <Field label={t('ticket.takeProfit')}>
           <input
             className={inputClass}
             value={takeProfit}
@@ -712,7 +714,7 @@ export function OrderTicket({
         Whether the firm allows a trail is the server's decision on the order.
       */}
       <Field
-        label="Trailing distance"
+        label={t('ticket.trailing')}
         hint={
           <span title="Distance in price units the stop follows behind the best price seen since the fill. Never moves against you.">
             ?
@@ -724,7 +726,7 @@ export function OrderTicket({
           value={trailing}
           placeholder="—"
           inputMode="decimal"
-          aria-label="Trailing distance"
+          aria-label={t('ticket.trailing')}
           onChange={(event) => setTrailing(event.target.value)}
         />
       </Field>
@@ -739,8 +741,8 @@ export function OrderTicket({
           data-testid="order-preview-refusal"
           className="rounded border border-terminal-short/50 bg-terminal-short/10 px-2.5 py-2 text-caption text-terminal-text"
         >
-          <p className="font-medium">This order would be refused now:</p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+          <p className="font-medium">{t('ticket.refused')}</p>
+          <ul className="mt-1 list-disc space-y-0.5 ps-4">
             {refusal.violations.map((violation) => (
               <li key={violation}>{violation}</li>
             ))}
@@ -759,8 +761,8 @@ export function OrderTicket({
       )}
 
       <dl className="space-y-1 rounded border border-terminal-border bg-terminal-bg px-2.5 py-2 text-caption">
-        <EstimateRow label="Est. margin" value={estimate.margin} />
-        <EstimateRow label="Est. commission" value={estimate.commission} />
+        <EstimateRow label={t('ticket.estMargin')} value={estimate.margin} />
+        <EstimateRow label={t('ticket.estCommission')} value={estimate.commission} />
         {/*
           Per night, never a total: how many nights a position is held is not
           known at entry. The rate is the instrument's for this side, as the
@@ -768,14 +770,14 @@ export function OrderTicket({
         */}
         {estimate.swapPerNight === null ? null : (
           <EstimateRow
-            label="Swap / night"
+            label={t('ticket.swapNight')}
             value={signedMoney(estimate.swapPerNight, account?.currency ?? 'USD')}
             tone={toneClass[toneOf(estimate.swapPerNight)]}
             title="One night's financing for this side and volume, at the instrument's rate. Held over the triple-swap day, three nights are charged at once."
           />
         )}
         <EstimateRow
-          label={orderType === 'MARKET' ? 'Executable' : 'Market now'}
+          label={orderType === 'MARKET' ? t('ticket.executable') : t('ticket.marketNow')}
           value={executable === null ? '—' : formatPrice(executable, symbol.pricePrecision)}
         />
         {/*
@@ -785,7 +787,7 @@ export function OrderTicket({
         */}
         {ifStopped === null ? null : (
           <EstimateRow
-            label="If stopped"
+            label={t('ticket.ifStopped')}
             value={signedMoney(ifStopped, account?.currency ?? 'USD')}
             tone={toneClass[toneOf(ifStopped)]}
             title="Gross, at this stop, from this entry. Commission is above; swap depends on how long it is held."
@@ -793,7 +795,7 @@ export function OrderTicket({
         )}
         {ifTargeted === null ? null : (
           <EstimateRow
-            label="If target hits"
+            label={t('ticket.ifTarget')}
             value={signedMoney(ifTargeted, account?.currency ?? 'USD')}
             tone={toneClass[toneOf(ifTargeted)]}
             title="Gross, at this target, from this entry."
@@ -801,7 +803,7 @@ export function OrderTicket({
         )}
         {riskShare === null ? null : (
           <EstimateRow
-            label="Risk"
+            label={t('ticket.risk')}
             value={`${riskShare}% of equity`}
             tone={Number(riskShare) >= 5 ? 'text-terminal-warning' : undefined}
             title="What this stop would cost, as a share of the account's equity"
@@ -809,7 +811,7 @@ export function OrderTicket({
         )}
         {ratio === null ? null : (
           <EstimateRow
-            label="Reward : risk"
+            label={t('ticket.rewardRisk')}
             value={`${ratio} : 1`}
             title="Projected gain divided by projected loss, both gross"
           />
@@ -1027,7 +1029,7 @@ function SideButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'rounded border px-3 py-2 text-left transition-colors',
+        'rounded border px-3 py-2 text-start transition-colors',
         active
           ? side === 'BUY'
             ? 'border-terminal-long bg-terminal-long/10'

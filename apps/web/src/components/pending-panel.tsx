@@ -72,7 +72,7 @@ export function PendingPanel({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[52rem] border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-terminal-surface">
-            <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
+            <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
               <th className="px-3 py-1.5 font-medium" title="Order reference">
                 Ref
               </th>
@@ -80,18 +80,18 @@ export function PendingPanel({
               <th className="px-2 py-1.5 font-medium">Symbol</th>
               <th className="px-2 py-1.5 font-medium">Side</th>
               <th className="px-2 py-1.5 font-medium">Type</th>
-              <th className="px-2 py-1.5 text-right font-medium">Volume</th>
-              <th className="px-2 py-1.5 text-right font-medium">Price</th>
+              <th className="px-2 py-1.5 text-end font-medium">Volume</th>
+              <th className="px-2 py-1.5 text-end font-medium">Price</th>
               <th
-                className="px-2 py-1.5 text-right font-medium"
+                className="px-2 py-1.5 text-end font-medium"
                 title="How far the market is from the trigger price right now"
               >
                 Distance
               </th>
-              <th className="px-2 py-1.5 text-right font-medium">S/L</th>
-              <th className="px-2 py-1.5 text-right font-medium">T/P</th>
+              <th className="px-2 py-1.5 text-end font-medium">S/L</th>
+              <th className="px-2 py-1.5 text-end font-medium">T/P</th>
               <th className="px-2 py-1.5 font-medium">Valid</th>
-              <th className="px-3 py-1.5 text-right font-medium">Actions</th>
+              <th className="px-3 py-1.5 text-end font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -132,7 +132,7 @@ export function PendingPanel({
                       {phase === null ? null : (
                         <span
                           className={cn(
-                            'ml-1 text-label',
+                            'ms-1 text-label',
                             phase === 'resting' ? 'text-terminal-accent' : 'text-terminal-muted',
                           )}
                           title={
@@ -145,10 +145,10 @@ export function PendingPanel({
                         </span>
                       )}
                     </td>
-                    <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                    <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                       {formatVolume(order.volume)}
                     </td>
-                    <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                    <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                       {formatPrice(order.price, precision)}
                       {order.type === 'STOP_LIMIT' && order.stopPrice != null ? (
                         <span className="block text-label text-terminal-muted">
@@ -157,7 +157,7 @@ export function PendingPanel({
                       ) : null}
                     </td>
                     <td
-                      className="numeric px-2 py-1.5 text-right text-terminal-muted"
+                      className="numeric px-2 py-1.5 text-end text-terminal-muted"
                       title={
                         reference === null
                           ? 'No live quote for this instrument yet'
@@ -166,10 +166,10 @@ export function PendingPanel({
                     >
                       {distance === null ? '—' : `${distance} pt`}
                     </td>
-                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                    <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                       {order.stopLoss === null ? '—' : formatPrice(order.stopLoss, precision)}
                     </td>
-                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                    <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                       {order.takeProfit === null ? '—' : formatPrice(order.takeProfit, precision)}
                     </td>
                     <td
@@ -182,7 +182,7 @@ export function PendingPanel({
                     >
                       {order.timeInForce}
                     </td>
-                    <td className="px-3 py-1.5 text-right">
+                    <td className="px-3 py-1.5 text-end">
                       <div className="flex justify-end gap-1">
                         <Button
                           variant="ghost"

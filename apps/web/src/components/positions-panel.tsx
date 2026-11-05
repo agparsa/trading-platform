@@ -309,7 +309,7 @@ export function PositionsPanel({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[52rem] border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-terminal-surface">
-            <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
+            <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
               <th className="px-2 py-1.5 font-medium">
                 <input
                   type="checkbox"
@@ -332,28 +332,28 @@ export function PositionsPanel({
               </th>
               <th className="px-2 py-1.5 font-medium">Symbol</th>
               <th className="px-2 py-1.5 font-medium">Side</th>
-              <th className="px-2 py-1.5 text-right font-medium">Volume</th>
-              <th className="px-2 py-1.5 text-right font-medium">Entry</th>
-              <th className="px-2 py-1.5 text-right font-medium">Current</th>
-              <th className="px-2 py-1.5 text-right font-medium">S/L</th>
-              <th className="px-2 py-1.5 text-right font-medium">T/P</th>
+              <th className="px-2 py-1.5 text-end font-medium">Volume</th>
+              <th className="px-2 py-1.5 text-end font-medium">Entry</th>
+              <th className="px-2 py-1.5 text-end font-medium">Current</th>
+              <th className="px-2 py-1.5 text-end font-medium">S/L</th>
+              <th className="px-2 py-1.5 text-end font-medium">T/P</th>
               <th
-                className="px-2 py-1.5 text-right font-medium"
+                className="px-2 py-1.5 text-end font-medium"
                 title="Initial margin held for this position, in the account currency"
               >
                 Margin
               </th>
               <th
-                className="px-2 py-1.5 text-right font-medium"
+                className="px-2 py-1.5 text-end font-medium"
                 title="Opening commission already charged"
               >
                 Comm.
               </th>
-              <th className="px-2 py-1.5 text-right font-medium">Swap</th>
-              <th className="px-2 py-1.5 text-right font-medium">P&amp;L</th>
-              <th className="px-2 py-1.5 text-right font-medium">Net P&amp;L</th>
+              <th className="px-2 py-1.5 text-end font-medium">Swap</th>
+              <th className="px-2 py-1.5 text-end font-medium">P&amp;L</th>
+              <th className="px-2 py-1.5 text-end font-medium">Net P&amp;L</th>
               <th className="px-2 py-1.5 font-medium">Opened (UTC)</th>
-              <th className="px-3 py-1.5 text-right font-medium">Actions</th>
+              <th className="px-3 py-1.5 text-end font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -397,56 +397,56 @@ export function PositionsPanel({
                     <td className="px-2 py-1.5">
                       <SideBadge side={position.side} />
                     </td>
-                    <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                    <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                       {formatVolume(position.volume)}
                     </td>
-                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                    <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                       {formatPrice(position.entryPrice, precision)}
                     </td>
                     <td
                       className={cn(
-                        'numeric px-2 py-1.5 text-right',
+                        'numeric px-2 py-1.5 text-end',
                         stale ? 'text-terminal-warning' : 'text-terminal-text',
                       )}
                       title={stale ? 'This price is older than the freshness limit' : undefined}
                     >
                       {formatPrice(current, precision)}
                     </td>
-                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                    <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                       {position.stopLoss === null ? '—' : formatPrice(position.stopLoss, precision)}
                       {position.trailingStopDistance === null ? null : (
                         <span
-                          className="ml-1 text-micro uppercase text-terminal-warning"
+                          className="ms-1 text-micro uppercase text-terminal-warning"
                           title="Trailing"
                         >
                           trl
                         </span>
                       )}
                     </td>
-                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                    <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                       {position.takeProfit === null
                         ? '—'
                         : formatPrice(position.takeProfit, precision)}
                     </td>
-                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                    <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                       {money(position.margin, currency)}
                     </td>
-                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                    <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                       {money(position.commission, currency)}
                     </td>
                     <td
                       className={cn(
-                        'numeric px-2 py-1.5 text-right',
+                        'numeric px-2 py-1.5 text-end',
                         toneClass[toneOf(position.swap)],
                       )}
                     >
                       {money(position.swap, currency)}
                     </td>
-                    <td className={cn('numeric px-2 py-1.5 text-right', toneClass[toneOf(pnl)])}>
+                    <td className={cn('numeric px-2 py-1.5 text-end', toneClass[toneOf(pnl)])}>
                       {signedMoney(pnl, currency)}
                     </td>
                     <td
-                      className={cn('numeric px-2 py-1.5 text-right', toneClass[toneOf(netPnl)])}
+                      className={cn('numeric px-2 py-1.5 text-end', toneClass[toneOf(netPnl)])}
                       title="Mark less the commission and swap already charged. The closing commission has not been charged and is not guessed at."
                     >
                       {signedMoney(netPnl, currency)}
@@ -454,7 +454,7 @@ export function PositionsPanel({
                     <td className="numeric px-2 py-1.5 text-terminal-muted">
                       {utcTime(position.openedAt)}
                     </td>
-                    <td className="px-3 py-1.5 text-right">
+                    <td className="px-3 py-1.5 text-end">
                       <Button
                         variant="ghost"
                         onClick={() => setEditing(editing === position.id ? null : position.id)}
@@ -545,7 +545,7 @@ function Notice({ text, onDismiss }: { text: string; onDismiss: () => void }) {
     <button
       type="button"
       onClick={onDismiss}
-      className="w-full border-b border-terminal-border bg-terminal-raised/60 px-3 py-1 text-left text-caption text-terminal-warning"
+      className="w-full border-b border-terminal-border bg-terminal-raised/60 px-3 py-1 text-start text-caption text-terminal-warning"
     >
       {text} — dismiss
     </button>

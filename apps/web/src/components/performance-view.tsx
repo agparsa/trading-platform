@@ -166,24 +166,21 @@ export function PerformanceView({ accountId }: { accountId: string | null }) {
             </h2>
             <table className="w-full border-collapse text-xs" data-testid="performance-months">
               <thead>
-                <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
-                  <th className="py-1 pr-2 font-medium">Month</th>
-                  <th className="px-2 py-1 text-right font-medium">Trades</th>
-                  <th className="py-1 pl-2 text-right font-medium">Net result</th>
+                <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
+                  <th className="py-1 pe-2 font-medium">Month</th>
+                  <th className="px-2 py-1 text-end font-medium">Trades</th>
+                  <th className="py-1 ps-2 text-end font-medium">Net result</th>
                 </tr>
               </thead>
               <tbody>
                 {data.months.map((row) => (
                   <tr key={row.month} className="border-t border-terminal-border/60">
-                    <td className="numeric py-1.5 pr-2 text-terminal-text">{row.month}</td>
-                    <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                    <td className="numeric py-1.5 pe-2 text-terminal-text">{row.month}</td>
+                    <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                       {row.trades}
                     </td>
                     <td
-                      className={cn(
-                        'numeric py-1.5 pl-2 text-right',
-                        toneClass[toneOf(row.netPnl)],
-                      )}
+                      className={cn('numeric py-1.5 ps-2 text-end', toneClass[toneOf(row.netPnl)])}
                       title={row.netPnl}
                     >
                       {signedMoney(row.netPnl, data.currency)}

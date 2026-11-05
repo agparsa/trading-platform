@@ -83,7 +83,7 @@ export function DesksPanel() {
                 <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
                   {utcTime(row.createdAt)}
                 </td>
-                <td className="px-3 py-1.5 text-right">
+                <td className="px-3 py-1.5 text-end">
                   <Button variant="ghost" onClick={() => setSelected(row.id)}>
                     Open
                   </Button>
@@ -230,7 +230,7 @@ function DeskDetail({ desk, mayManage }: { desk: MasterAccountRow; mayManage: bo
               <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
                 {utcTime(link.grantedAt)}
               </td>
-              <td className="px-3 py-1.5 text-right">
+              <td className="px-3 py-1.5 text-end">
                 {mayManage && link.status === 'ACTIVE' ? (
                   <ReasonedAction
                     gate={revoke}

@@ -135,7 +135,7 @@ function PaymentRows({
         <td className="numeric px-3 py-1.5 text-terminal-muted">{utcTime(row.createdAt)}</td>
         <td className="px-3 py-1.5 text-terminal-text">{row.email}</td>
         <td className="px-3 py-1.5 text-terminal-muted">{row.provider}</td>
-        <td className="numeric px-3 py-1.5 text-right text-terminal-text">
+        <td className="numeric px-3 py-1.5 text-end text-terminal-text">
           {money(row.amount, row.currency)}
         </td>
         <td className={`px-3 py-1.5 ${STATUS_TONE[row.status] ?? 'text-terminal-text'}`}>

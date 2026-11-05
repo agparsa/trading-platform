@@ -46,14 +46,14 @@ export function NotificationBell() {
       >
         ●
         {unread === 0 ? null : (
-          <span className="numeric absolute -right-1 -top-1 rounded-full bg-terminal-warning px-1 text-micro font-medium text-terminal-bg">
+          <span className="numeric absolute -end-1 -top-1 rounded-full bg-terminal-warning px-1 text-micro font-medium text-terminal-bg">
             {unread > 9 ? '9+' : unread}
           </span>
         )}
       </button>
 
       {!open ? null : (
-        <div className="absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded border border-terminal-border bg-terminal-surface shadow-lg shadow-black/40">
+        <div className="absolute end-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded border border-terminal-border bg-terminal-surface shadow-lg shadow-black/40">
           <div className="flex items-center justify-between border-b border-terminal-border px-3 py-1.5">
             <span className="text-label uppercase tracking-wider text-terminal-muted">
               Notifications
@@ -82,7 +82,7 @@ export function NotificationBell() {
                     if (row.readAt === null) markRead.mutate({ id: row.id });
                   }}
                   className={cn(
-                    'block w-full border-t border-terminal-border/60 px-3 py-2 text-left transition-colors first:border-t-0 hover:bg-terminal-raised/40',
+                    'block w-full border-t border-terminal-border/60 px-3 py-2 text-start transition-colors first:border-t-0 hover:bg-terminal-raised/40',
                     row.readAt === null && 'bg-terminal-raised/20',
                   )}
                 >

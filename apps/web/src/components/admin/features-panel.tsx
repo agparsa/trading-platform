@@ -131,7 +131,7 @@ function Flags({
                       {row.enabled ? 'on' : 'off'}
                     </span>
                     {row.override === null ? (
-                      <span className="ml-1 text-label text-terminal-muted">(default)</span>
+                      <span className="ms-1 text-label text-terminal-muted">(default)</span>
                     ) : (
                       <div
                         className="text-label text-terminal-muted"
@@ -141,7 +141,7 @@ function Flags({
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-1.5 text-right">
+                  <td className="px-3 py-1.5 text-end">
                     {writable ? (
                       <ReasonedAction
                         gate={set}

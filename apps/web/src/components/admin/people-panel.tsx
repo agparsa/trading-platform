@@ -97,7 +97,7 @@ export function PeoplePanel({
                 <td className="px-2 py-1.5 text-terminal-text">
                   <button
                     type="button"
-                    className="text-left hover:underline"
+                    className="text-start hover:underline"
                     onClick={() => select(selected === user.id ? null : user.id)}
                   >
                     {user.email}
@@ -117,7 +117,7 @@ export function PeoplePanel({
                   <StatusPill status={user.isActive ? 'ACTIVE' : 'SUSPENDED'} />
                   {user.lockedUntil === null ? null : (
                     <span
-                      className="ml-1 text-micro uppercase text-terminal-warning"
+                      className="ms-1 text-micro uppercase text-terminal-warning"
                       title={`Locked out until ${utcTime(user.lockedUntil)} UTC after ${user.failedLoginAttempts} failed attempts`}
                     >
                       locked
@@ -127,7 +127,7 @@ export function PeoplePanel({
                 <td className="px-2 py-1.5 text-terminal-muted">
                   {user.twoFactorEnabled ? 'on' : '—'}
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                   {user.accounts}
                 </td>
                 <td className="numeric px-2 py-1.5 text-terminal-muted">
@@ -217,13 +217,13 @@ export function UserDetail({ userId }: { userId: string }) {
                   <StatusPill status={account.status} />
                 </td>
                 <td className="px-2 py-1.5 text-terminal-muted">{account.currency}</td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                   {money(account.balance, account.currency)}
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                   1:{account.leverage}
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                   {account.positions}
                 </td>
                 <td className="numeric px-2 py-1.5 text-terminal-muted">
@@ -315,7 +315,7 @@ function DevicesSection({ userId, email }: { userId: string; email: string }) {
                 <tr key={device.id} className="border-t border-terminal-border/60">
                   <td className="px-2 py-1.5 text-terminal-text">
                     {device.model ?? device.platform}
-                    <span className="ml-1 text-terminal-muted">{device.platform}</span>
+                    <span className="ms-1 text-terminal-muted">{device.platform}</span>
                   </td>
                   <td className="numeric px-2 py-1.5 text-terminal-muted">
                     {device.appVersion ?? '—'}
@@ -338,7 +338,7 @@ function DevicesSection({ userId, email }: { userId: string; email: string }) {
                   <td className="numeric px-2 py-1.5 text-terminal-muted">
                     {utcTime(device.createdAt)}
                   </td>
-                  <td className="px-2 py-1.5 text-right">
+                  <td className="px-2 py-1.5 text-end">
                     <button
                       type="button"
                       disabled={revoke.isPending || reason.trim().length === 0 || !revoke.allowed}

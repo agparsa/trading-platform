@@ -61,17 +61,17 @@ export function LogsPanel({ accountId }: { accountId: string | null }) {
       />
       <table className="w-full border-collapse text-xs" data-testid="order-log">
         <thead className="sticky top-0 z-10 bg-terminal-surface">
-          <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
-            <th className="py-1.5 pl-3 pr-2 font-medium">Time (UTC)</th>
+          <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
+            <th className="py-1.5 ps-3 pe-2 font-medium">Time (UTC)</th>
             <th className="px-2 py-1.5 font-medium">Order</th>
             <th className="px-2 py-1.5 font-medium">Event</th>
-            <th className="py-1.5 pl-2 pr-3 font-medium">Detail</th>
+            <th className="py-1.5 ps-2 pe-3 font-medium">Detail</th>
           </tr>
         </thead>
         <tbody>
           {lines.map((line) => (
             <tr key={line.id} className="border-t border-terminal-border/60">
-              <td className="numeric py-1.5 pl-3 pr-2 text-terminal-muted">{utcTime(line.at)}</td>
+              <td className="numeric py-1.5 ps-3 pe-2 text-terminal-muted">{utcTime(line.at)}</td>
               <td className="px-2 py-1.5 text-terminal-text">
                 <span className="inline-flex items-center gap-1.5">
                   {line.symbol}
@@ -80,7 +80,7 @@ export function LogsPanel({ accountId }: { accountId: string | null }) {
                 </span>
               </td>
               <td className="px-2 py-1.5 font-medium text-terminal-text">{line.label}</td>
-              <td className="py-1.5 pl-2 pr-3 text-terminal-muted">
+              <td className="py-1.5 ps-2 pe-3 text-terminal-muted">
                 {[line.facts, line.reason]
                   .filter((part) => part !== null && part !== '')
                   .join(' — ') || '—'}

@@ -100,7 +100,7 @@ export function KycPanel() {
                 <td className="px-3 py-1.5 text-terminal-muted">
                   {row.reviewerId === null ? '—' : row.reviewerId.slice(0, 8)}
                 </td>
-                <td className="px-3 py-1.5 text-right">
+                <td className="px-3 py-1.5 text-end">
                   <Button
                     variant="ghost"
                     className="px-2 py-0.5"
@@ -247,7 +247,7 @@ function DocumentCard({ recordId, document }: { recordId: string; document: Admi
             {document.current ? (
               ''
             ) : (
-              <span className="ml-1 text-label text-terminal-muted">(earlier attempt)</span>
+              <span className="ms-1 text-label text-terminal-muted">(earlier attempt)</span>
             )}
           </p>
           <p className="text-label text-terminal-muted">

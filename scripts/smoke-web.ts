@@ -1425,6 +1425,7 @@ async function main(): Promise<void> {
         'a figure stays left-to-right on a right-to-left page',
         `computed direction of the first .numeric: ${figure}`,
       );
+      await screenshot(page, 'terminal-persian');
       await auditAccessibility(page, 'the terminal, Persian');
       await visit(page, '/settings', { url: '/settings' });
       await page.getByRole('radio', { name: 'English' }).click();

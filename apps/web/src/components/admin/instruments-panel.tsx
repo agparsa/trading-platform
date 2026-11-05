@@ -107,14 +107,14 @@ function InstrumentRow({
           </div>
         </td>
         <td className="px-2 py-1.5 text-terminal-muted">{row.category}</td>
-        <td className="numeric px-2 py-1.5 text-right">{row.marginRate}</td>
-        <td className="numeric px-2 py-1.5 text-right">{row.commissionPerLot}</td>
-        <td className="numeric px-2 py-1.5 text-right">{row.swapLongPerLot}</td>
-        <td className="numeric px-2 py-1.5 text-right">{row.swapShortPerLot}</td>
-        <td className="numeric px-2 py-1.5 text-right">{row.maxVolume}</td>
-        <td className="numeric px-2 py-1.5 text-right text-terminal-muted">{row.tickSize}</td>
-        <td className="numeric px-2 py-1.5 text-right">{row.openPositions}</td>
-        <td className="numeric px-2 py-1.5 text-right">{row.restingOrders}</td>
+        <td className="numeric px-2 py-1.5 text-end">{row.marginRate}</td>
+        <td className="numeric px-2 py-1.5 text-end">{row.commissionPerLot}</td>
+        <td className="numeric px-2 py-1.5 text-end">{row.swapLongPerLot}</td>
+        <td className="numeric px-2 py-1.5 text-end">{row.swapShortPerLot}</td>
+        <td className="numeric px-2 py-1.5 text-end">{row.maxVolume}</td>
+        <td className="numeric px-2 py-1.5 text-end text-terminal-muted">{row.tickSize}</td>
+        <td className="numeric px-2 py-1.5 text-end">{row.openPositions}</td>
+        <td className="numeric px-2 py-1.5 text-end">{row.restingOrders}</td>
         <td className="px-2 py-1.5">
           <span
             className={cn(
@@ -127,7 +127,7 @@ function InstrumentRow({
             {row.enabled ? 'Trading' : 'Suspended'}
           </span>
         </td>
-        <td className="px-2 py-1.5 text-right">
+        <td className="px-2 py-1.5 text-end">
           <button
             type="button"
             onClick={onEdit}

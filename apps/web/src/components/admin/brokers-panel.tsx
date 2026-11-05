@@ -134,7 +134,7 @@ export function BrokersPanel() {
                 <td className="px-3 py-1.5">
                   <StatusPill status={row.status} />
                 </td>
-                <td className="px-3 py-1.5 text-right">
+                <td className="px-3 py-1.5 text-end">
                   {mayManage && row.status === 'ACTIVE' ? (
                     <ReasonedAction
                       gate={setStatus}

@@ -231,9 +231,13 @@ digits, as on the charts and statements they are compared with. The words are
 in `lib/messages.ts`: English is the source, the Persian table is typed against
 its keys, so an untranslated key fails the build, and both must use the same
 placeholders. Translated so far: the section navigation, the page frame,
-sign-in and Settings. The terminal's panels, the other pages, the server's own
-messages and the phone are still English, and the language note says so on
-screen. The browser walk chooses فارسی, reloads, checks the page is right to
+sign-in, Settings, the terminal's header, panel titles and activity tabs, the
+account strip and the order ticket. The tables inside the panels, the other
+pages, the server's own messages and the phone are still English, and the
+language note says so on screen. The layout mirrors: every margin, padding,
+alignment and offset in the web app is a logical utility (`ms-`, `pe-`,
+`text-end`, `end-`), not a physical one, so start and end swap with the
+direction rather than staying pinned to left and right. The browser walk chooses فارسی, reloads, checks the page is right to
 left with Persian links and a left-to-right figure, and audits Settings and the
 terminal in it.
 

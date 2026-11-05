@@ -1,6 +1,8 @@
 'use client';
 
 import { cn } from '@tp/ui';
+import type { MessageKey } from '@/lib/messages';
+import { useT } from '@/lib/use-locale';
 
 /** A bordered surface with an optional header strip. */
 export function Panel({
@@ -41,10 +43,12 @@ export function Tabs<T extends string>({
   active,
   onChange,
 }: {
-  tabs: ReadonlyArray<{ id: T; label: string; count?: number }>;
+  /** `labelKey` translates the label; without one it is shown as written. */
+  tabs: ReadonlyArray<{ id: T; label: string; labelKey?: MessageKey; count?: number }>;
   active: T;
   onChange: (id: T) => void;
 }) {
+  const t = useT();
   return (
     <div role="tablist" className="flex items-center gap-1">
       {tabs.map((tab) => (
@@ -61,9 +65,9 @@ export function Tabs<T extends string>({
               : 'text-terminal-muted hover:text-terminal-text',
           )}
         >
-          {tab.label}
+          {tab.labelKey === undefined ? tab.label : t(tab.labelKey)}
           {tab.count === undefined ? null : (
-            <span className="numeric ml-1.5 text-label text-terminal-muted">{tab.count}</span>
+            <span className="numeric ms-1.5 text-label text-terminal-muted">{tab.count}</span>
           )}
         </button>
       ))}

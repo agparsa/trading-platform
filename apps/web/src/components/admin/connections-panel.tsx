@@ -242,7 +242,7 @@ function ConnectionRow({
           )}
         </td>
         <td className="px-3 py-1.5 text-label text-terminal-muted">{supports}</td>
-        <td className="space-x-2 px-3 py-1.5 text-right">
+        <td className="space-x-2 px-3 py-1.5 text-end">
           <Button variant="ghost" onClick={() => setPane(toggle('instruments'))}>
             Instruments
           </Button>
@@ -386,7 +386,7 @@ function MappingsPane({ connectionId, mayManage }: { connectionId: string; mayMa
                 <td className="numeric px-3 py-1.5 text-label text-terminal-muted">
                   {mapping.syncedAt === null ? 'never' : utcTime(mapping.syncedAt)}
                 </td>
-                <td className="px-3 py-1.5 text-right">
+                <td className="px-3 py-1.5 text-end">
                   {mayManage ? (
                     <Button
                       gate={setEnabled}
@@ -520,7 +520,7 @@ function InboxPane({ connectionId, mayManage }: { connectionId: string; mayManag
                     <p className="text-label text-terminal-muted">{event.skipReason}</p>
                   )}
                 </td>
-                <td className="px-3 py-1.5 text-right">
+                <td className="px-3 py-1.5 text-end">
                   {mayManage && event.status === 'FAILED' ? (
                     <Button
                       gate={replay}

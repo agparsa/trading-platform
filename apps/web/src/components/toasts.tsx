@@ -18,7 +18,7 @@ export function Toasts() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed bottom-3 right-3 z-50 flex w-80 max-w-[calc(100vw-1.5rem)] flex-col gap-2">
+    <div className="pointer-events-none fixed bottom-3 end-3 z-50 flex w-80 max-w-[calc(100vw-1.5rem)] flex-col gap-2">
       {toasts.map((toast) => (
         <ToastCard key={toast.id} toast={toast} onDismiss={() => dismiss(toast.id)} />
       ))}

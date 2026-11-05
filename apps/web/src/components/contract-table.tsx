@@ -33,27 +33,27 @@ export function ContractTable({
   return (
     <table className="w-full border-collapse text-xs" data-testid="contract-table">
       <thead className="sticky top-0 z-10 bg-terminal-surface">
-        <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
-          <th className="py-1.5 pl-3 pr-2 font-medium">Instrument</th>
-          <th className="px-2 py-1.5 text-right font-medium">Contract</th>
+        <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
+          <th className="py-1.5 ps-3 pe-2 font-medium">Instrument</th>
+          <th className="px-2 py-1.5 text-end font-medium">Contract</th>
           <th
-            className="px-2 py-1.5 text-right font-medium"
+            className="px-2 py-1.5 text-end font-medium"
             title="Tick size, and what one tick is worth on one lot"
           >
             Tick
           </th>
-          <th className="px-2 py-1.5 text-right font-medium">Volume</th>
-          <th className="px-2 py-1.5 text-right font-medium">Margin</th>
+          <th className="px-2 py-1.5 text-end font-medium">Volume</th>
+          <th className="px-2 py-1.5 text-end font-medium">Margin</th>
           <th
-            className="px-2 py-1.5 text-right font-medium"
+            className="px-2 py-1.5 text-end font-medium"
             title="Per lot, charged when a position opens and again when it closes"
           >
             Commission
           </th>
-          <th className="px-2 py-1.5 text-right font-medium" title="Per lot, per night held">
+          <th className="px-2 py-1.5 text-end font-medium" title="Per lot, per night held">
             Swap long / short
           </th>
-          <th className="py-1.5 pl-2 pr-3 text-right font-medium">Hours</th>
+          <th className="py-1.5 ps-2 pe-3 text-end font-medium">Hours</th>
         </tr>
       </thead>
       <tbody>
@@ -63,32 +63,32 @@ export function ContractTable({
           return (
             <Fragment key={symbol.code}>
               <tr className="border-t border-terminal-border/60 align-top">
-                <td className="py-1.5 pl-3 pr-2">
+                <td className="py-1.5 ps-3 pe-2">
                   <div className="font-medium text-terminal-text">{symbol.code}</div>
                   <div className="text-caption text-terminal-muted">
                     {symbol.description}
                     {symbol.category ? ` · ${symbol.category}` : ''}
                   </div>
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                   {plain(symbol.contractSize)}
                   <div className="text-caption text-terminal-muted">
                     quoted in {symbol.quoteCurrency}
                   </div>
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                   {plain(symbol.tickSize)}
                   <div className="text-caption text-terminal-muted">
                     {tickValuePerLot(symbol)} {symbol.quoteCurrency} a lot
                   </div>
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                   {plain(symbol.minVolume)} – {plain(symbol.maxVolume)}
                   <div className="text-caption text-terminal-muted">
                     step {plain(symbol.volumeStep)}
                   </div>
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                   {margin.charged ?? margin.instrument}
                   {margin.leverageBinds ? (
                     <div className="text-caption text-terminal-muted">
@@ -96,10 +96,10 @@ export function ContractTable({
                     </div>
                   ) : null}
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                   {plain(symbol.commissionPerLot)} {symbol.quoteCurrency}
                 </td>
-                <td className="numeric px-2 py-1.5 text-right">
+                <td className="numeric px-2 py-1.5 text-end">
                   <span className={toneClass[toneOf(symbol.swapLongPerLot)]}>
                     {plain(symbol.swapLongPerLot)}
                   </span>
@@ -108,7 +108,7 @@ export function ContractTable({
                     {plain(symbol.swapShortPerLot)}
                   </span>
                 </td>
-                <td className="py-1.5 pl-2 pr-3 text-right">
+                <td className="py-1.5 ps-2 pe-3 text-end">
                   <button
                     type="button"
                     aria-expanded={expanded}

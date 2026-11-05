@@ -97,7 +97,7 @@ export function HistoryPanel({
                 {formatPrice(trade.exitPrice, precisionOf(trade.symbol))}
               </Cell>
               <td
-                className="numeric px-2 py-1.5 text-right text-terminal-muted"
+                className="numeric px-2 py-1.5 text-end text-terminal-muted"
                 title={`Entry ${trade.entryCommission} + exit ${trade.exitCommission}`}
               >
                 {money(trade.commission, currency)}
@@ -106,7 +106,7 @@ export function HistoryPanel({
                 {money(trade.swap, currency)}
               </Cell>
               <td
-                className={cn('numeric px-2 py-1.5 text-right', toneClass[toneOf(trade.netPnl)])}
+                className={cn('numeric px-2 py-1.5 text-end', toneClass[toneOf(trade.netPnl)])}
                 title={`Gross ${trade.grossPnl}${trade.closeReason === null ? '' : ` · ${trade.closeReason}`}`}
               >
                 {signedMoney(trade.netPnl, currency)}
@@ -146,7 +146,7 @@ export function HistoryPanel({
               <Cell muted>{position.closeReason ?? '—'}</Cell>
               <td
                 className={cn(
-                  'numeric px-2 py-1.5 text-right',
+                  'numeric px-2 py-1.5 text-end',
                   toneClass[toneOf(position.realizedPnl)],
                 )}
               >
@@ -239,7 +239,7 @@ function OrderRowWithTrail({
             {order.status}
           </span>
         </td>
-        <td className="py-1.5 pl-2 pr-3 text-right">
+        <td className="py-1.5 ps-2 pe-3 text-end">
           <button
             type="button"
             aria-expanded={open}
@@ -391,14 +391,14 @@ function Table({ head, children }: { head: readonly string[]; children: React.Re
   return (
     <table className="w-full border-collapse text-xs">
       <thead className="sticky top-0 z-10 bg-terminal-surface">
-        <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
+        <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
           {head.map((label, index) => (
             <th
               key={label}
               className={cn(
                 'px-2 py-1.5 font-medium',
-                index === 0 && 'pl-3',
-                index === head.length - 1 && 'pr-3 text-right',
+                index === 0 && 'ps-3',
+                index === head.length - 1 && 'pe-3 text-end',
               )}
             >
               {label}
@@ -424,7 +424,7 @@ function Cell({
     <td
       className={cn(
         'numeric px-2 py-1.5',
-        right === true && 'text-right',
+        right === true && 'text-end',
         muted === true ? 'text-terminal-muted' : 'text-terminal-text',
       )}
     >

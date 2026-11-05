@@ -160,12 +160,12 @@ export function Head({
 }) {
   return (
     <thead className="sticky top-0 z-10 bg-terminal-surface">
-      <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
+      <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
         {columns.map((column) => {
           const label = typeof column === 'string' ? column : column.label;
           const right = typeof column === 'string' ? false : column.right === true;
           return (
-            <th key={label} className={cn('px-2 py-1.5 font-medium', right && 'text-right')}>
+            <th key={label} className={cn('px-2 py-1.5 font-medium', right && 'text-end')}>
               {label}
             </th>
           );

@@ -214,19 +214,19 @@ export function Watchlist({
         ) : (
           <table className="w-full border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-terminal-surface">
-              <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
-                <th className="py-1.5 pl-2 pr-1 font-medium">Symbol</th>
-                <th className="px-1 py-1.5 text-right font-medium">Bid</th>
-                <th className="px-1 py-1.5 text-right font-medium">Ask</th>
+              <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
+                <th className="py-1.5 ps-2 pe-1 font-medium">Symbol</th>
+                <th className="px-1 py-1.5 text-end font-medium">Bid</th>
+                <th className="px-1 py-1.5 text-end font-medium">Ask</th>
                 <th
-                  className="py-1.5 pl-1 pr-2 text-right font-medium"
+                  className="py-1.5 ps-1 pe-2 text-end font-medium"
                   title="Change since the previous daily close, computed by the server"
                 >
                   Chg %
                 </th>
                 {/* Reference, and first to yield: the ticket shows the spread too,
                     and only the widest layout has room for a fifth column. */}
-                <th className="hidden px-3 py-1.5 text-right font-medium 2xl:table-cell">Spread</th>
+                <th className="hidden px-3 py-1.5 text-end font-medium 2xl:table-cell">Spread</th>
               </tr>
             </thead>
             <tbody>
@@ -343,7 +343,7 @@ function WatchlistRow({
           the change column is last, and when it was cut off the number
           "Movers" ranks by sat behind a scroll bar. A session label wraps
           under the code rather than widening the column. */}
-        <td className="py-1.5 pl-2 pr-1">
+        <td className="py-1.5 ps-2 pe-1">
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
             <button
               type="button"
@@ -419,7 +419,7 @@ function WatchlistRow({
         </td>
         <td
           className={cn(
-            'numeric px-1 py-1.5 text-right transition-colors duration-300',
+            'numeric px-1 py-1.5 text-end transition-colors duration-300',
             direction === 'up' && 'text-terminal-long',
             direction === 'down' && 'text-terminal-short',
             direction === null && 'text-terminal-text',
@@ -438,7 +438,7 @@ function WatchlistRow({
             formatPrice(quote.bid, symbol.pricePrecision)
           )}
         </td>
-        <td className="numeric px-1 py-1.5 text-right text-terminal-text">
+        <td className="numeric px-1 py-1.5 text-end text-terminal-text">
           {tradeable ? (
             <PriceButton
               side="BUY"
@@ -453,7 +453,7 @@ function WatchlistRow({
           )}
         </td>
         <td
-          className={cn('numeric py-1.5 pl-1 pr-2 text-right', changeTone)}
+          className={cn('numeric py-1.5 ps-1 pe-2 text-end', changeTone)}
           title={
             stats === undefined || stats.reference === null
               ? 'No reference price yet for this instrument'
@@ -470,7 +470,7 @@ function WatchlistRow({
             ? '—'
             : `${Number(changePercent) > 0 ? '+' : ''}${percent(changePercent, 2)}`}
         </td>
-        <td className="numeric hidden px-3 py-1.5 text-right text-terminal-muted 2xl:table-cell">
+        <td className="numeric hidden px-3 py-1.5 text-end text-terminal-muted 2xl:table-cell">
           {quote === undefined ? '—' : formatPrice(quote.spread, symbol.pricePrecision)}
         </td>
       </tr>

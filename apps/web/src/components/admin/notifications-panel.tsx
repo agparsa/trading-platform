@@ -111,7 +111,7 @@ export function NotificationsPanel() {
             </option>
           ))}
         </select>
-        <span className="ml-auto text-label text-terminal-muted">
+        <span className="ms-auto text-label text-terminal-muted">
           {rows.length} {rows.length === 1 ? 'delivery' : 'deliveries'}
         </span>
       </div>

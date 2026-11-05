@@ -41,7 +41,7 @@ export function SecurityPanel() {
           placeholder="Kind, e.g. SIGN_IN_FAILED"
           onChange={(event) => setKind(event.target.value)}
         />
-        <span className="ml-auto text-label text-terminal-muted">
+        <span className="ms-auto text-label text-terminal-muted">
           {rows.length} {rows.length === 1 ? 'event' : 'events'}
         </span>
       </div>

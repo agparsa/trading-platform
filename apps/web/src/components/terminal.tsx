@@ -38,6 +38,7 @@ import { ShortcutHelp } from './shortcut-help';
 import { Toasts } from './toasts';
 import { Button, Panel, Tabs } from './primitives';
 import { Watchlist } from './watchlist';
+import { useT } from '@/lib/use-locale';
 
 type BottomTab = 'open' | 'pending' | 'alerts' | 'finance' | 'logs' | HistoryTab;
 
@@ -58,6 +59,7 @@ type BottomTab = 'open' | 'pending' | 'alerts' | 'finance' | 'logs' | HistoryTab
  */
 export function Terminal() {
   const { user, accountId, signOut, accessToken } = useSession();
+  const t = useT();
   const queryClient = useQueryClient();
 
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
@@ -245,7 +247,7 @@ export function Terminal() {
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-y-2 border-b border-terminal-border px-4 py-2">
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold tracking-tight text-terminal-text">
-            Trading Platform
+            {t('shell.brand')}
           </span>
           <ConnectionBadge />
           {/*
@@ -262,7 +264,7 @@ export function Terminal() {
             className="numeric rounded border border-terminal-border bg-terminal-bg px-2 py-1 text-caption text-terminal-text lg:hidden"
             value={selectedSymbol ?? ''}
             onChange={(event) => setSelectedSymbol(event.target.value)}
-            aria-label="Instrument"
+            aria-label={t('terminal.instrument')}
           >
             {tradeableSymbols.map((symbol) => (
               <option key={symbol.code} value={symbol.code}>
@@ -300,8 +302,8 @@ export function Terminal() {
           <button
             type="button"
             onClick={() => setHelpOpen(true)}
-            title="Keyboard shortcuts"
-            aria-label="Keyboard shortcuts"
+            title={t('terminal.shortcuts')}
+            aria-label={t('terminal.shortcuts')}
             className="rounded border border-terminal-border px-1.5 py-0.5 text-label leading-none text-terminal-muted transition-colors hover:text-terminal-text"
           >
             ?
@@ -310,11 +312,11 @@ export function Terminal() {
             href="/status"
             className="text-caption text-terminal-muted transition-colors hover:text-terminal-text"
           >
-            Build status
+            {t('terminal.buildStatus')}
           </Link>
           <span className="text-caption text-terminal-muted">{user?.email ?? ''}</span>
           <Button variant="ghost" onClick={() => void signOut()}>
-            Sign out
+            {t('shell.signOut')}
           </Button>
         </div>
       </header>
@@ -342,7 +344,10 @@ export function Terminal() {
         to do.
       */}
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto p-2 lg:grid-cols-[280px_minmax(0,1fr)_270px] lg:overflow-hidden xl:grid-cols-[310px_minmax(0,1fr)_280px] 2xl:grid-cols-[400px_minmax(0,1fr)_300px]">
-        <Panel title="Watchlist" className="order-3 max-h-80 lg:order-none lg:max-h-none">
+        <Panel
+          title={t('terminal.watchlist')}
+          className="order-3 max-h-80 lg:order-none lg:max-h-none"
+        >
           <Watchlist
             symbols={tradeableSymbols}
             selected={selectedSymbol}
@@ -370,20 +375,30 @@ export function Terminal() {
 
           <Panel
             className="min-h-[180px] flex-[2]"
-            title="Activity"
+            title={t('terminal.activity')}
             actions={
               <Tabs<BottomTab>
                 active={bottomTab}
                 onChange={setBottomTab}
                 tabs={[
-                  { id: 'open', label: 'Positions', count: positions.length },
-                  { id: 'pending', label: 'Pending', count: pending.length },
-                  { id: 'trades', label: 'Trades' },
-                  { id: 'closed', label: 'Closed' },
-                  { id: 'orders', label: 'Orders' },
-                  { id: 'alerts', label: 'Alerts' },
-                  { id: 'finance', label: 'Finance' },
-                  { id: 'logs', label: 'Logs' },
+                  {
+                    id: 'open',
+                    label: 'Positions',
+                    labelKey: 'tab.positions',
+                    count: positions.length,
+                  },
+                  {
+                    id: 'pending',
+                    label: 'Pending',
+                    labelKey: 'tab.pending',
+                    count: pending.length,
+                  },
+                  { id: 'trades', label: 'Trades', labelKey: 'tab.trades' },
+                  { id: 'closed', label: 'Closed', labelKey: 'tab.closed' },
+                  { id: 'orders', label: 'Orders', labelKey: 'tab.orders' },
+                  { id: 'alerts', label: 'Alerts', labelKey: 'tab.alerts' },
+                  { id: 'finance', label: 'Finance', labelKey: 'tab.finance' },
+                  { id: 'logs', label: 'Logs', labelKey: 'tab.logs' },
                 ]}
               />
             }
@@ -435,7 +450,10 @@ export function Terminal() {
           </Panel>
         </div>
 
-        <Panel title="Order" className="order-2 min-h-[22rem] lg:order-none lg:min-h-0">
+        <Panel
+          title={t('terminal.order')}
+          className="order-2 min-h-[22rem] lg:order-none lg:min-h-0"
+        >
           <OrderTicket
             symbol={activeSymbol}
             account={account}

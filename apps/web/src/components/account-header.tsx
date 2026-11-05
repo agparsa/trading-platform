@@ -12,6 +12,7 @@ import {
 import { useSession } from '@/lib/session';
 import { useRealtime } from '@/lib/realtime-store';
 import { Stat } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 /**
  * The account strip.
@@ -33,6 +34,7 @@ export function AccountHeader({
   openPositions: number | undefined;
   openOrders: number | undefined;
 }) {
+  const t = useT();
   const { selectAccount } = useSession();
   const accounts = useAccounts().data ?? [];
   const snapshot = useAccountState(accountId);
@@ -60,13 +62,15 @@ export function AccountHeader({
         only the first until this existed.
       */}
       <div className="min-w-0">
-        <p className="text-label uppercase tracking-wider text-terminal-muted">Account</p>
+        <p className="text-label uppercase tracking-wider text-terminal-muted">
+          {t('account.account')}
+        </p>
         {accounts.length > 1 ? (
           <select
             className="numeric mt-0.5 w-full truncate bg-transparent text-sm text-terminal-text outline-none"
             value={account?.id ?? ''}
             onChange={(event) => selectAccount(event.target.value)}
-            aria-label="Account"
+            aria-label={t('account.account')}
           >
             {accounts.map((one) => (
               <option key={one.id} value={one.id}>
@@ -80,10 +84,10 @@ export function AccountHeader({
           </p>
         )}
       </div>
-      <Stat label="Balance" value={money(state?.balance, currency)} />
-      <Stat label="Equity" value={money(state?.equity, currency)} />
+      <Stat label={t('account.balance')} value={money(state?.balance, currency)} />
+      <Stat label={t('account.equity')} value={money(state?.equity, currency)} />
       <Stat
-        label="Floating P&L"
+        label={t('account.floating')}
         value={signedMoney(state?.floatingPnl, currency)}
         tone={toneClass[toneOf(state?.floatingPnl)]}
       />
@@ -93,7 +97,7 @@ export function AccountHeader({
         the two are different claims and only one of them is ever true here.
       */}
       <Stat
-        label="Realized today"
+        label={t('account.realizedToday')}
         value={
           state?.realizedPnlToday === undefined
             ? '—'
@@ -106,10 +110,10 @@ export function AccountHeader({
             : `Closed trades since ${new Date(state.realizedSince).toISOString().replace('T', ' ').slice(0, 16)} UTC`
         }
       />
-      <Stat label="Used margin" value={money(state?.usedMargin, currency)} />
-      <Stat label="Free margin" value={money(state?.freeMargin, currency)} />
+      <Stat label={t('account.usedMargin')} value={money(state?.usedMargin, currency)} />
+      <Stat label={t('account.freeMargin')} value={money(state?.freeMargin, currency)} />
       <Stat
-        label="Margin level"
+        label={t('account.marginLevel')}
         value={state?.marginLevel === null ? 'n/a' : percent(state?.marginLevel)}
         tone={marginLevelTone}
         title={
@@ -119,12 +123,12 @@ export function AccountHeader({
         }
       />
       <Stat
-        label="Utilisation"
+        label={t('account.utilisation')}
         value={state?.marginUtilisation == null ? 'n/a' : percent(state.marginUtilisation)}
         title="Margin in use as a share of equity"
       />
       <Stat
-        label="Exposure"
+        label={t('account.exposure')}
         value={money(state?.grossExposure, currency)}
         title="Gross notional across open positions, in account currency"
       />
@@ -135,12 +139,12 @@ export function AccountHeader({
         arguing with the first one.
       */}
       <Stat
-        label="Positions"
+        label={t('account.positions')}
         value={openPositions === undefined ? '—' : String(openPositions)}
         title="Open positions"
       />
       <Stat
-        label="Orders"
+        label={t('account.orders')}
         value={openOrders === undefined ? '—' : String(openOrders)}
         title="Resting orders waiting to trigger"
       />

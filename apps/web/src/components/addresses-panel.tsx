@@ -46,7 +46,7 @@ export function AddressesPanel() {
               <span className="w-36 shrink-0 tabular-nums text-terminal-text">
                 {row.ipAddress}
                 {row.current ? (
-                  <span className="ml-1 text-label text-terminal-long">you, now</span>
+                  <span className="ms-1 text-label text-terminal-long">you, now</span>
                 ) : null}
               </span>
               <span className="min-w-0 flex-1">
@@ -59,7 +59,7 @@ export function AddressesPanel() {
               </span>
               <span
                 className={cn(
-                  'w-44 shrink-0 text-right tabular-nums text-terminal-muted',
+                  'w-44 shrink-0 text-end tabular-nums text-terminal-muted',
                   row.active ? 'text-terminal-text' : '',
                 )}
               >

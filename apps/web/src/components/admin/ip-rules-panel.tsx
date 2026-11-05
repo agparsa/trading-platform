@@ -171,7 +171,7 @@ function Rules({ data }: { data: NonNullable<ReturnType<typeof useIpRules>['data
                     {rule.kind === 'DENY' ? 'Deny' : 'Allow'}
                   </span>
                   {rule.enabled ? null : (
-                    <span className="ml-1 text-label text-terminal-muted">(off)</span>
+                    <span className="ms-1 text-label text-terminal-muted">(off)</span>
                   )}
                 </td>
                 <td className="px-3 py-1.5 text-terminal-muted">

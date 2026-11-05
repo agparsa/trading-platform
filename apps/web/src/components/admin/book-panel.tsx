@@ -248,7 +248,7 @@ function OrdersTable({
                 <p className="text-label text-terminal-short">{row.rejectionCode}</p>
               )}
             </td>
-            <td className="px-3 py-1.5 text-right">
+            <td className="px-3 py-1.5 text-end">
               <Button variant="ghost" onClick={() => onOpen(row.id)}>
                 History
               </Button>

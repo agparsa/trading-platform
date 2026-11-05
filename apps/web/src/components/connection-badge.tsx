@@ -37,7 +37,7 @@ export function ConnectionBadge() {
     >
       <span
         className={cn(
-          'mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle',
+          'me-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle',
           status === 'live' ? 'bg-terminal-long' : 'bg-current',
           status === 'connecting' || status === 'reconnecting' ? 'animate-pulse' : '',
         )}

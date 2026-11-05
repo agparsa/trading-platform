@@ -66,10 +66,10 @@ export function NotificationSettings() {
       ) : (
         <table className="w-full border-collapse text-xs" data-testid="notification-settings">
           <thead>
-            <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
-              <th className="py-1 pr-2 font-medium">About</th>
+            <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
+              <th className="py-1 pe-2 font-medium">About</th>
               <th className="px-2 py-1 text-center font-medium">Shown</th>
-              <th className="py-1 pl-2 text-center font-medium">Email</th>
+              <th className="py-1 ps-2 text-center font-medium">Email</th>
             </tr>
           </thead>
           <tbody>
@@ -79,10 +79,10 @@ export function NotificationSettings() {
                 const label = NOTIFICATION_CATEGORY_LABEL[row.category] ?? row.category;
                 return (
                   <tr key={row.category} className="border-t border-terminal-border/60">
-                    <td className="py-1.5 pr-2 text-terminal-text">
+                    <td className="py-1.5 pe-2 text-terminal-text">
                       {label}
                       {row.unmutable ? (
-                        <span className="ml-1 text-caption text-terminal-muted">
+                        <span className="ms-1 text-caption text-terminal-muted">
                           · always shown
                         </span>
                       ) : null}
@@ -101,7 +101,7 @@ export function NotificationSettings() {
                         }
                       />
                     </td>
-                    <td className="py-1.5 pl-2 text-center">
+                    <td className="py-1.5 ps-2 text-center">
                       <input
                         type="checkbox"
                         aria-label={`Email ${label}`}

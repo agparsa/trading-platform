@@ -159,11 +159,11 @@ export default function WalletPage() {
               <Panel className="overflow-auto">
                 <table className="w-full text-caption">
                   <thead>
-                    <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
+                    <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
                       <th className="px-3 py-2">When</th>
                       <th className="px-3 py-2">What</th>
-                      <th className="px-3 py-2 text-right">Amount</th>
-                      <th className="px-3 py-2 text-right">Balance after</th>
+                      <th className="px-3 py-2 text-end">Amount</th>
+                      <th className="px-3 py-2 text-end">Balance after</th>
                       <th className="px-3 py-2">Note</th>
                     </tr>
                   </thead>
@@ -182,11 +182,11 @@ export default function WalletPage() {
                           </td>
                           <td className="px-3 py-1.5 text-terminal-text">{label(row.type)}</td>
                           <td
-                            className={`numeric px-3 py-1.5 text-right ${toneClass[toneOf(row.amount)]}`}
+                            className={`numeric px-3 py-1.5 text-end ${toneClass[toneOf(row.amount)]}`}
                           >
                             {signedMoney(row.amount, row.currency)}
                           </td>
-                          <td className="numeric px-3 py-1.5 text-right text-terminal-muted">
+                          <td className="numeric px-3 py-1.5 text-end text-terminal-muted">
                             {money(row.balanceAfter, row.currency)}
                           </td>
                           <td className="px-3 py-1.5 text-terminal-muted">
@@ -475,10 +475,10 @@ function PaymentHistory({ payments }: { payments: readonly PaymentRow[] }) {
       <Panel className="overflow-auto">
         <table className="w-full text-caption">
           <thead>
-            <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
+            <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
               <th className="px-3 py-2">Started</th>
               <th className="px-3 py-2">How</th>
-              <th className="px-3 py-2 text-right">Amount</th>
+              <th className="px-3 py-2 text-end">Amount</th>
               <th className="px-3 py-2">Status</th>
             </tr>
           </thead>
@@ -491,7 +491,7 @@ function PaymentHistory({ payments }: { payments: readonly PaymentRow[] }) {
                 <td className="px-3 py-1.5 text-terminal-text">
                   {PROVIDER_LABELS[row.provider] ?? row.provider}
                 </td>
-                <td className="numeric px-3 py-1.5 text-right text-terminal-text">
+                <td className="numeric px-3 py-1.5 text-end text-terminal-text">
                   {money(row.amount, row.currency)}
                 </td>
                 <td className="px-3 py-1.5 text-terminal-muted">
@@ -646,9 +646,9 @@ function WithdrawSection({
         <Panel className="overflow-auto">
           <table className="w-full text-caption">
             <thead>
-              <tr className="text-left text-label uppercase tracking-wider text-terminal-muted">
+              <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
                 <th className="px-3 py-2">Requested</th>
-                <th className="px-3 py-2 text-right">Amount</th>
+                <th className="px-3 py-2 text-end">Amount</th>
                 <th className="px-3 py-2">To</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2"></th>
@@ -660,7 +660,7 @@ function WithdrawSection({
                   <td className="numeric px-3 py-1.5 text-terminal-muted">
                     {utcTime(row.createdAt)}
                   </td>
-                  <td className="numeric px-3 py-1.5 text-right text-terminal-text">
+                  <td className="numeric px-3 py-1.5 text-end text-terminal-text">
                     {money(row.amount, row.currency)}
                   </td>
                   <td className="px-3 py-1.5 text-terminal-muted">…{row.destinationHint}</td>
@@ -669,7 +669,7 @@ function WithdrawSection({
                     {row.reason === null ? '' : ` — ${row.reason}`}
                     {row.providerReference === null ? '' : ` (ref ${row.providerReference})`}
                   </td>
-                  <td className="px-3 py-1.5 text-right">
+                  <td className="px-3 py-1.5 text-end">
                     {row.canCancel ? (
                       <Button
                         variant="ghost"

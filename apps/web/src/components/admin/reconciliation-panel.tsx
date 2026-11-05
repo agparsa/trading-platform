@@ -134,7 +134,7 @@ function Findings() {
                   <td className="px-2 py-1.5 text-terminal-muted">
                     <button
                       type="button"
-                      className="text-left hover:underline"
+                      className="text-start hover:underline"
                       onClick={() => setExpanded(expanded === row.id ? null : row.id)}
                     >
                       {row.code}
@@ -145,7 +145,7 @@ function Findings() {
                     has been sitting there since last month, which is a different
                     conversation.
                   */}
-                  <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                  <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                     {row.occurrences}
                   </td>
                   <td className="numeric px-2 py-1.5 text-terminal-muted">
@@ -279,29 +279,29 @@ function Runs() {
                   {run.status}
                 </td>
                 <td className="px-2 py-1.5 text-terminal-muted">{run.trigger}</td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-text">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
                   {run.accountsChecked}
                 </td>
                 <td
                   className={cn(
-                    'numeric px-2 py-1.5 text-right',
+                    'numeric px-2 py-1.5 text-end',
                     run.findingsRaised > 0 ? 'text-terminal-warning' : 'text-terminal-muted',
                   )}
                 >
                   {run.findingsRaised}
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                   {run.findingsRecurred}
                 </td>
                 <td
                   className={cn(
-                    'numeric px-2 py-1.5 text-right',
+                    'numeric px-2 py-1.5 text-end',
                     run.criticalCount > 0 ? 'text-terminal-short' : 'text-terminal-muted',
                   )}
                 >
                   {run.criticalCount}
                 </td>
-                <td className="numeric px-2 py-1.5 text-right text-terminal-muted">
+                <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                   {run.durationMs === null ? '—' : `${(run.durationMs / 1000).toFixed(1)}s`}
                 </td>
               </tr>
@@ -422,7 +422,7 @@ function VenueItems() {
                   <td className="px-2 py-1.5 text-terminal-muted">
                     <button
                       type="button"
-                      className="text-left hover:underline"
+                      className="text-start hover:underline"
                       onClick={() => setExpanded(expanded === row.id ? null : row.id)}
                     >
                       {row.subject.toLowerCase()}
@@ -439,7 +439,7 @@ function VenueItems() {
                   </td>
                   <td className="numeric px-2 py-1.5">{row.internal ?? '—'}</td>
                   <td className="numeric px-2 py-1.5">{row.external ?? '—'}</td>
-                  <td className="numeric px-2 py-1.5 text-right">
+                  <td className="numeric px-2 py-1.5 text-end">
                     {row.difference ?? '—'}
                     {/*
                       A tolerance is shown wherever one was applied, so a reader
@@ -447,11 +447,11 @@ function VenueItems() {
                       rule somebody set".
                     */}
                     {row.tolerance === null ? null : (
-                      <span className="ml-1 text-label text-terminal-muted">±{row.tolerance}</span>
+                      <span className="ms-1 text-label text-terminal-muted">±{row.tolerance}</span>
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-terminal-muted">{utcTime(row.createdAt)}</td>
-                  <td className="px-3 py-1.5 text-right">
+                  <td className="px-3 py-1.5 text-end">
                     <ReasonedAction
                       gate={record}
                       label={row.resolutionCount === 0 ? 'Record a decision' : 'Add a decision'}
@@ -511,7 +511,7 @@ function Decisions({ itemId }: { itemId: string }) {
           <span className="text-terminal-text">
             {DECISIONS.find(([value]) => value === row.decision)?.[1] ?? row.decision}
           </span>
-          <span className="ml-2 text-label text-terminal-muted">
+          <span className="ms-2 text-label text-terminal-muted">
             {row.decidedBy.displayName ?? row.decidedBy.email} · {utcTime(row.decidedAt)}
           </span>
           <p className="text-terminal-muted">{row.note}</p>

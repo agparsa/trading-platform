@@ -215,15 +215,15 @@ export function ReportsPanel() {
                     <span className={cn('font-medium', STATUS_TEXT[report.status])}>
                       {report.status}
                     </span>
-                    <span className="ml-2 text-label text-terminal-muted">
+                    <span className="ms-2 text-label text-terminal-muted">
                       {report.status === 'FAILED'
                         ? (report.error ?? STATUS_MEANS[report.status])
                         : STATUS_MEANS[report.status]}
                     </span>
                   </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{report.rowCount ?? '—'}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{bytes(report.sizeBytes)}</td>
-                  <td className="px-2 py-1.5 text-right">
+                  <td className="px-2 py-1.5 text-end tabular-nums">{report.rowCount ?? '—'}</td>
+                  <td className="px-2 py-1.5 text-end tabular-nums">{bytes(report.sizeBytes)}</td>
+                  <td className="px-2 py-1.5 text-end">
                     <Button
                       variant="ghost"
                       disabled={report.status !== 'READY' || downloading === report.id}

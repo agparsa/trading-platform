@@ -71,7 +71,7 @@ export function UnconfirmedOrdersPanel() {
                 <td className="px-3 py-1.5 font-mono text-label text-terminal-muted">
                   {row.accountId}
                 </td>
-                <td className="px-3 py-1.5 text-right">
+                <td className="px-3 py-1.5 text-end">
                   {mayAsk ? (
                     <Button
                       gate={resolve}

@@ -117,7 +117,7 @@ export function DeveloperReference() {
                   {conventions.data.authentication.header}: {conventions.data.authentication.scheme}{' '}
                   …
                 </code>
-                <ul className="mt-1 list-disc pl-4 text-terminal-muted">
+                <ul className="mt-1 list-disc ps-4 text-terminal-muted">
                   {conventions.data.authentication.credentials.map((line) => (
                     <li key={line}>{line}</li>
                   ))}
