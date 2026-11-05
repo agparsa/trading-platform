@@ -24,6 +24,8 @@ import {
 import { trailLines } from '@/lib/order-trail';
 import { ExportBar } from './export-bar';
 import { EmptyState, SideBadge } from './primitives';
+import { useT } from '@/lib/use-locale';
+import type { MessageKey } from '@/lib/messages';
 
 export type HistoryTab = 'trades' | 'closed' | 'orders';
 
@@ -47,6 +49,7 @@ export function HistoryPanel({
   symbols: readonly SymbolRow[];
   currency: string;
 }) {
+  const t = useT();
   const precisionOf = (code: string) =>
     symbols.find((symbol) => symbol.code === code)?.pricePrecision ?? 2;
 
@@ -57,10 +60,10 @@ export function HistoryPanel({
   const [openOrder, setOpenOrder] = useState<string | null>(null);
 
   if (tab === 'trades') {
-    const unknown = notYetKnown(trades);
+    const unknown = notYetKnown(trades, t);
     if (unknown !== null) return unknown;
     const rows = trades.data ?? [];
-    if (rows.length === 0) return <EmptyState>No completed trades yet.</EmptyState>;
+    if (rows.length === 0) return <EmptyState>{t('empty.trades')}</EmptyState>;
     return (
       <>
         <ExportBar
@@ -119,10 +122,10 @@ export function HistoryPanel({
   }
 
   if (tab === 'closed') {
-    const unknown = notYetKnown(closed);
+    const unknown = notYetKnown(closed, t);
     if (unknown !== null) return unknown;
     const rows = (closed.data ?? []).filter((position) => position.closedAt !== null);
-    if (rows.length === 0) return <EmptyState>No closed positions yet.</EmptyState>;
+    if (rows.length === 0) return <EmptyState>{t('empty.closed')}</EmptyState>;
     return (
       <>
         <ExportBar
@@ -159,10 +162,10 @@ export function HistoryPanel({
     );
   }
 
-  const unknown = notYetKnown(orders);
+  const unknown = notYetKnown(orders, t);
   if (unknown !== null) return unknown;
   const rows = orders.data ?? [];
-  if (rows.length === 0) return <EmptyState>No orders yet.</EmptyState>;
+  if (rows.length === 0) return <EmptyState>{t('empty.orders')}</EmptyState>;
   return (
     <>
       <ExportBar
@@ -190,9 +193,12 @@ export function HistoryPanel({
  * list was still loading — and when it had failed to load. Both now say what
  * they are.
  */
-function notYetKnown(query: { isError: boolean; data: unknown }): React.ReactElement | null {
-  if (query.isError) return <EmptyState>This could not be loaded. It will retry.</EmptyState>;
-  if (query.data === undefined) return <EmptyState>Loading…</EmptyState>;
+function notYetKnown(
+  query: { isError: boolean; data: unknown },
+  t: (key: MessageKey) => string,
+): React.ReactElement | null {
+  if (query.isError) return <EmptyState>{t('common.retry')}</EmptyState>;
+  if (query.data === undefined) return <EmptyState>{t('common.loading')}</EmptyState>;
   return null;
 }
 

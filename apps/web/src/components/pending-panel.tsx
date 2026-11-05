@@ -15,6 +15,7 @@ import {
 } from '@/lib/queries';
 import { useRealtime } from '@/lib/realtime-store';
 import { Button, EmptyState, SideBadge, inputClass } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 /**
  * Resting LIMIT, STOP and STOP_LIMIT orders.
@@ -33,6 +34,7 @@ export function PendingPanel({
   symbols: readonly SymbolRow[];
   accountId: string | null;
 }) {
+  const t = useT();
   const cancel = useCancelPending(accountId);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export function PendingPanel({
   };
 
   if (orders.length === 0) {
-    return <EmptyState>No resting orders.</EmptyState>;
+    return <EmptyState>{t('empty.pending')}</EmptyState>;
   }
 
   return (
@@ -76,22 +78,22 @@ export function PendingPanel({
               <th className="px-3 py-1.5 font-medium" title="Order reference">
                 Ref
               </th>
-              <th className="px-2 py-1.5 font-medium">Placed (UTC)</th>
-              <th className="px-2 py-1.5 font-medium">Symbol</th>
-              <th className="px-2 py-1.5 font-medium">Side</th>
-              <th className="px-2 py-1.5 font-medium">Type</th>
-              <th className="px-2 py-1.5 text-end font-medium">Volume</th>
-              <th className="px-2 py-1.5 text-end font-medium">Price</th>
+              <th className="px-2 py-1.5 font-medium">{t('col.placedUtc')}</th>
+              <th className="px-2 py-1.5 font-medium">{t('col.symbol')}</th>
+              <th className="px-2 py-1.5 font-medium">{t('col.side')}</th>
+              <th className="px-2 py-1.5 font-medium">{t('col.type')}</th>
+              <th className="px-2 py-1.5 text-end font-medium">{t('col.volume')}</th>
+              <th className="px-2 py-1.5 text-end font-medium">{t('col.price')}</th>
               <th
                 className="px-2 py-1.5 text-end font-medium"
                 title="How far the market is from the trigger price right now"
               >
                 Distance
               </th>
-              <th className="px-2 py-1.5 text-end font-medium">S/L</th>
-              <th className="px-2 py-1.5 text-end font-medium">T/P</th>
-              <th className="px-2 py-1.5 font-medium">Valid</th>
-              <th className="px-3 py-1.5 text-end font-medium">Actions</th>
+              <th className="px-2 py-1.5 text-end font-medium">{t('col.sl')}</th>
+              <th className="px-2 py-1.5 text-end font-medium">{t('col.tp')}</th>
+              <th className="px-2 py-1.5 font-medium">{t('col.valid')}</th>
+              <th className="px-3 py-1.5 text-end font-medium">{t('col.actions')}</th>
             </tr>
           </thead>
           <tbody>

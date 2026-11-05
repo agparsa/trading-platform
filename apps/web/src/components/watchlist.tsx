@@ -19,6 +19,7 @@ import {
 } from '@/lib/watchlist-prefs';
 import { inlineStartVolume, stepVolume, volumeProblem } from '@/lib/ticket';
 import { EmptyState, inputClass } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 /**
  * Live instrument list.
@@ -62,6 +63,7 @@ export function Watchlist({
   /** The trader's default volume, which a row's ticket opens on where it can. */
   defaultVolume?: string;
 }) {
+  const t = useT();
   const snapshot = useQuoteSnapshot();
   const stats = useMarketStats();
   const quotes = useRealtime((state) => state.quotes);
@@ -123,7 +125,7 @@ export function Watchlist({
   }, [movers, view, symbols, changes]);
 
   if (symbols.length === 0) {
-    return <EmptyState>No instruments are enabled.</EmptyState>;
+    return <EmptyState>{t('empty.instruments')}</EmptyState>;
   }
 
   const emptyMessage = movers
@@ -215,9 +217,9 @@ export function Watchlist({
           <table className="w-full border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-terminal-surface">
               <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
-                <th className="py-1.5 ps-2 pe-1 font-medium">Symbol</th>
-                <th className="px-1 py-1.5 text-end font-medium">Bid</th>
-                <th className="px-1 py-1.5 text-end font-medium">Ask</th>
+                <th className="py-1.5 ps-2 pe-1 font-medium">{t('col.symbol')}</th>
+                <th className="px-1 py-1.5 text-end font-medium">{t('col.bid')}</th>
+                <th className="px-1 py-1.5 text-end font-medium">{t('col.ask')}</th>
                 <th
                   className="py-1.5 ps-1 pe-2 text-end font-medium"
                   title="Change since the previous daily close, computed by the server"
@@ -226,7 +228,9 @@ export function Watchlist({
                 </th>
                 {/* Reference, and first to yield: the ticket shows the spread too,
                     and only the widest layout has room for a fifth column. */}
-                <th className="hidden px-3 py-1.5 text-end font-medium 2xl:table-cell">Spread</th>
+                <th className="hidden px-3 py-1.5 text-end font-medium 2xl:table-cell">
+                  {t('col.spread')}
+                </th>
               </tr>
             </thead>
             <tbody>

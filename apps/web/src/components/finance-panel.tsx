@@ -6,6 +6,7 @@ import { money, signedMoney, toneClass, toneOf, utcTime } from '@/lib/format';
 import { useLedger } from '@/lib/queries';
 import { ExportBar } from './export-bar';
 import { Button, EmptyState } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 const COLUMNS = ['time_utc', 'type', 'description', 'amount', 'balance_after', 'currency'];
 
@@ -23,15 +24,16 @@ const COLUMNS = ['time_utc', 'type', 'description', 'amount', 'balance_after', '
  * with the server's own decimal strings.
  */
 export function FinancePanel({ accountId }: { accountId: string | null }) {
+  const t = useT();
   const ledger = useLedger(accountId);
   const rows = ledgerEntries(ledger.data?.pages);
 
-  if (accountId === null) return <EmptyState>No account selected.</EmptyState>;
+  if (accountId === null) return <EmptyState>{t('empty.noAccount')}</EmptyState>;
   if (ledger.isError) {
-    return <EmptyState>The balance history could not be loaded. It will retry.</EmptyState>;
+    return <EmptyState>{t('finance.error')}</EmptyState>;
   }
-  if (ledger.isLoading) return <EmptyState>Loading the balance history…</EmptyState>;
-  if (rows.length === 0) return <EmptyState>No balance movements on this account yet.</EmptyState>;
+  if (ledger.isLoading) return <EmptyState>{t('finance.loading')}</EmptyState>;
+  if (rows.length === 0) return <EmptyState>{t('finance.empty')}</EmptyState>;
 
   return (
     <>
@@ -51,11 +53,11 @@ export function FinancePanel({ accountId }: { accountId: string | null }) {
       <table className="w-full border-collapse text-xs" data-testid="balance-history">
         <thead className="sticky top-0 z-10 bg-terminal-surface">
           <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
-            <th className="py-1.5 ps-3 pe-2 font-medium">Time (UTC)</th>
-            <th className="px-2 py-1.5 font-medium">Type</th>
-            <th className="px-2 py-1.5 font-medium">Detail</th>
-            <th className="px-2 py-1.5 text-end font-medium">Amount</th>
-            <th className="py-1.5 ps-2 pe-3 text-end font-medium">Balance</th>
+            <th className="py-1.5 ps-3 pe-2 font-medium">{t('col.timeUtc')}</th>
+            <th className="px-2 py-1.5 font-medium">{t('col.type')}</th>
+            <th className="px-2 py-1.5 font-medium">{t('col.detail')}</th>
+            <th className="px-2 py-1.5 text-end font-medium">{t('col.amount')}</th>
+            <th className="py-1.5 ps-2 pe-3 text-end font-medium">{t('col.balance')}</th>
           </tr>
         </thead>
         <tbody>

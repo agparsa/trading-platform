@@ -12,6 +12,7 @@ import {
 } from '@/lib/queries';
 import { useRealtime } from '@/lib/realtime-store';
 import { Button, EmptyState, inputClass } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 /**
  * Levels the trader asked to be told about.
@@ -29,6 +30,7 @@ export function AlertsPanel({
   symbols: readonly SymbolRow[];
   activeSymbol: string | null;
 }) {
+  const t = useT();
   const alerts = usePriceAlerts();
   const create = useCreatePriceAlert();
   const cancel = useCancelPriceAlert();
@@ -140,18 +142,18 @@ export function AlertsPanel({
 
       <div className="min-h-0 flex-1 overflow-auto">
         {ordered.length === 0 ? (
-          <EmptyState>No alerts. Set a level above and the platform will tell you.</EmptyState>
+          <EmptyState>{t('alerts.empty')}</EmptyState>
         ) : (
           <table className="w-full min-w-[44rem] border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-terminal-surface">
               <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
-                <th className="px-3 py-1.5 font-medium">Symbol</th>
-                <th className="px-2 py-1.5 font-medium">Condition</th>
-                <th className="px-2 py-1.5 text-end font-medium">Level</th>
-                <th className="px-2 py-1.5 text-end font-medium">Now</th>
-                <th className="px-2 py-1.5 font-medium">Status</th>
-                <th className="px-2 py-1.5 font-medium">Note</th>
-                <th className="px-3 py-1.5 text-end font-medium">Actions</th>
+                <th className="px-3 py-1.5 font-medium">{t('col.symbol')}</th>
+                <th className="px-2 py-1.5 font-medium">{t('col.condition')}</th>
+                <th className="px-2 py-1.5 text-end font-medium">{t('col.level')}</th>
+                <th className="px-2 py-1.5 text-end font-medium">{t('col.now')}</th>
+                <th className="px-2 py-1.5 font-medium">{t('col.status')}</th>
+                <th className="px-2 py-1.5 font-medium">{t('col.note')}</th>
+                <th className="px-3 py-1.5 text-end font-medium">{t('col.actions')}</th>
               </tr>
             </thead>
             <tbody>

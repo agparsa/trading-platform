@@ -232,7 +232,8 @@ in `lib/messages.ts`: English is the source, the Persian table is typed against
 its keys, so an untranslated key fails the build, and both must use the same
 placeholders. Translated so far: the section navigation, the page frame,
 sign-in, Settings, the terminal's header, panel titles and activity tabs, the
-account strip and the order ticket. The tables inside the panels, the other
+account strip, the order ticket, and the column headings and empty states of
+the activity panels and the watchlist. The panels' remaining labels, the other
 pages, the server's own messages and the phone are still English, and the
 language note says so on screen. The layout mirrors: every margin, padding,
 alignment and offset in the web app is a logical utility (`ms-`, `pe-`,

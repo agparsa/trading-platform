@@ -5,6 +5,7 @@ import { utcTime } from '@/lib/format';
 import { useOrderLog } from '@/lib/queries';
 import { ExportBar } from './export-bar';
 import { Button, EmptyState, SideBadge } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 const COLUMNS = [
   'time_utc',
@@ -34,13 +35,14 @@ const COLUMNS = [
  * ticket shows that refusal when it happens.
  */
 export function LogsPanel({ accountId }: { accountId: string | null }) {
+  const t = useT();
   const log = useOrderLog(accountId);
   const lines = orderLogLines(log.data?.pages);
 
-  if (accountId === null) return <EmptyState>No account selected.</EmptyState>;
-  if (log.isError) return <EmptyState>The log could not be loaded. It will retry.</EmptyState>;
-  if (log.isLoading) return <EmptyState>Loading the log…</EmptyState>;
-  if (lines.length === 0) return <EmptyState>No orders on this account yet.</EmptyState>;
+  if (accountId === null) return <EmptyState>{t('empty.noAccount')}</EmptyState>;
+  if (log.isError) return <EmptyState>{t('logs.error')}</EmptyState>;
+  if (log.isLoading) return <EmptyState>{t('logs.loading')}</EmptyState>;
+  if (lines.length === 0) return <EmptyState>{t('logs.empty')}</EmptyState>;
 
   return (
     <>
@@ -62,10 +64,10 @@ export function LogsPanel({ accountId }: { accountId: string | null }) {
       <table className="w-full border-collapse text-xs" data-testid="order-log">
         <thead className="sticky top-0 z-10 bg-terminal-surface">
           <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
-            <th className="py-1.5 ps-3 pe-2 font-medium">Time (UTC)</th>
-            <th className="px-2 py-1.5 font-medium">Order</th>
-            <th className="px-2 py-1.5 font-medium">Event</th>
-            <th className="py-1.5 ps-2 pe-3 font-medium">Detail</th>
+            <th className="py-1.5 ps-3 pe-2 font-medium">{t('col.timeUtc')}</th>
+            <th className="px-2 py-1.5 font-medium">{t('col.order')}</th>
+            <th className="px-2 py-1.5 font-medium">{t('col.event')}</th>
+            <th className="py-1.5 ps-2 pe-3 font-medium">{t('col.detail')}</th>
           </tr>
         </thead>
         <tbody>

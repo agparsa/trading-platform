@@ -30,6 +30,7 @@ import { ExportBar } from './export-bar';
 import { LevelField, levelEntryFromPrice, type LevelEntry } from './level-field';
 import { priceFromEntry, type LevelContext } from '@/lib/level-entry';
 import { Button, EmptyState, SideBadge, inputClass } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 /**
  * Open positions.
@@ -57,6 +58,7 @@ export function PositionsPanel({
   shortcut: { action: ShortcutAction; at: number } | null;
   onShortcutHandled: () => void;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState<string | null>(null);
   const livePnl = useRealtime((state) => state.pnl);
   const closeOne = useClosePosition(accountId);
@@ -246,7 +248,7 @@ export function PositionsPanel({
     return (
       <>
         {notice === null ? null : <Notice text={notice} onDismiss={() => setNotice(null)} />}
-        <EmptyState>No open positions.</EmptyState>
+        <EmptyState>{t('empty.positions')}</EmptyState>
       </>
     );
   }
@@ -330,13 +332,13 @@ export function PositionsPanel({
               <th className="px-3 py-1.5 font-medium" title="Position reference">
                 Ref
               </th>
-              <th className="px-2 py-1.5 font-medium">Symbol</th>
-              <th className="px-2 py-1.5 font-medium">Side</th>
-              <th className="px-2 py-1.5 text-end font-medium">Volume</th>
-              <th className="px-2 py-1.5 text-end font-medium">Entry</th>
-              <th className="px-2 py-1.5 text-end font-medium">Current</th>
-              <th className="px-2 py-1.5 text-end font-medium">S/L</th>
-              <th className="px-2 py-1.5 text-end font-medium">T/P</th>
+              <th className="px-2 py-1.5 font-medium">{t('col.symbol')}</th>
+              <th className="px-2 py-1.5 font-medium">{t('col.side')}</th>
+              <th className="px-2 py-1.5 text-end font-medium">{t('col.volume')}</th>
+              <th className="px-2 py-1.5 text-end font-medium">{t('col.entry')}</th>
+              <th className="px-2 py-1.5 text-end font-medium">{t('col.current')}</th>
+              <th className="px-2 py-1.5 text-end font-medium">{t('col.sl')}</th>
+              <th className="px-2 py-1.5 text-end font-medium">{t('col.tp')}</th>
               <th
                 className="px-2 py-1.5 text-end font-medium"
                 title="Initial margin held for this position, in the account currency"
@@ -349,11 +351,11 @@ export function PositionsPanel({
               >
                 Comm.
               </th>
-              <th className="px-2 py-1.5 text-end font-medium">Swap</th>
+              <th className="px-2 py-1.5 text-end font-medium">{t('col.swap')}</th>
               <th className="px-2 py-1.5 text-end font-medium">P&amp;L</th>
               <th className="px-2 py-1.5 text-end font-medium">Net P&amp;L</th>
-              <th className="px-2 py-1.5 font-medium">Opened (UTC)</th>
-              <th className="px-3 py-1.5 text-end font-medium">Actions</th>
+              <th className="px-2 py-1.5 font-medium">{t('col.openedUtc')}</th>
+              <th className="px-3 py-1.5 text-end font-medium">{t('col.actions')}</th>
             </tr>
           </thead>
           <tbody>
