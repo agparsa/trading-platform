@@ -186,7 +186,10 @@ add_if_missing EGRESS_PROBE_URL "$EGRESS_PROBES" \
 # The value this script itself wrote before the list existed — the mirror
 # alone — is widened. Anything an operator chose is left exactly as it is.
 if grep -qxF "EGRESS_PROBE_URL=$EGRESS_TARGET" "$ENV_FILE" && [ "$EGRESS_PROBES" != "$EGRESS_TARGET" ]; then
-  sed -i "s|^EGRESS_PROBE_URL=$EGRESS_TARGET\$|EGRESS_PROBE_URL=$EGRESS_PROBES|" "$ENV_FILE"
+  ENV_TMP="$ENV_FILE.tmp"
+  sed "s|^EGRESS_PROBE_URL=$EGRESS_TARGET\$|EGRESS_PROBE_URL=$EGRESS_PROBES|" "$ENV_FILE" > "$ENV_TMP"
+  cat "$ENV_TMP" > "$ENV_FILE"
+  rm -f "$ENV_TMP"
   warn "EGRESS_PROBE_URL widened to '$EGRESS_PROBES'"
 fi
 

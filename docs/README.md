@@ -4,6 +4,8 @@ Phase 0 deliverables — the design the implementation is held to.
 
 **The audit against the multi-broker specification (3 September 2026)**
 
+- [PRODUCT_STRATEGY.md](./PRODUCT_STRATEGY.md) — owner-approved independent-platform direction, official MetaTrader/cTrader/TradeLocker benchmark, current product gaps and authoritative replacement roadmap
+
 - [architecture-audit.md](./architecture-audit.md) — the repository against the multi-broker specification as it stood on 3 September, before that plan was built: the extension point for each gap. A snapshot; the current matrix is final-audit.md
 - [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) — sixteen phases numbered as the specification numbers them, dependencies, honest estimates, and where the work is blocked on a broker's API
 - [COMPLETION_STATUS.md](./COMPLETION_STATUS.md) — what is built, tested and running, measured rather than remembered; its figures are generated

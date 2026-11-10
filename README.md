@@ -1,39 +1,40 @@
 # Trading Platform
 
-A standalone, production-oriented trading platform: its own order engine,
-position engine, P&L engine, risk engine, market-data layer, API, terminal and
-administration console. No architectural dependency on TradingLocker, MetaTrader,
-or any other trading platform.
+A multi-tenant trading platform with an internal order engine, position and
+P&L engines, risk controls, market-data layer, API, web and mobile clients, and
+an administration console. The design has no architectural dependency on
+TradingLocker, MetaTrader, or another trading platform.
 
-**Status: Phases 0–15 complete; deployable.** A trader can register, verify their
-email, enrol a second factor, fund an account, place market and resting orders
-against a live price feed, watch positions marked to market over a WebSocket,
-modify levels by dragging them on the chart, and close — or have the platform
-close, when a stop-loss, take-profit, trailing stop, expiry or stop-out fires.
-Every outcome lands in an immutable ledger. An administrator can search users and
-accounts, suspend either, see live risk exposure, read the audit trail, run a
-reconciliation, and post a balance adjustment — which requires a second factor, a
-written reason, and produces a ledger entry rather than an edited number.
+**Delivery status:** the standalone platform is deployed at `devopss.ir`; the
+follow-on multi-broker plan is still in progress. Internal execution is built;
+external execution is implemented against a mock adapter, while a real broker
+connector waits on that broker's API documentation and sandbox credentials.
+Market data defaults to the internal simulator; the external provider is not
+implemented, so this repository does not currently provide a licensed live
+market feed. The chart drawing and indicator set waits on a TradingView licence
+or a product decision to accept the open-source alternative. Mobile acceptance
+on a physical device and the 1,000-trader / 5,000-socket load run are also open.
+See [the implementation plan](docs/IMPLEMENTATION_PLAN.md) and
+[the final audit](docs/final-audit.md) for phase status and dependencies.
 
-One thing is genuinely unfinished, and the build-status page says so on screen:
-the TradingView Advanced Charts _widget_ needs a licensed bundle this repository
-does not contain. The datafeed and trading-command adapters it plugs into are
-written and driven end to end by tests; the terminal ships on `lightweight-charts`
-until the bundle is dropped in.
+### Last recorded verification
 
----
+The repository's [final audit](docs/final-audit.md) records the following gates
+at its 10 September 2026 audit baseline. They are historical results, not a
+claim that these commands have been rerun against the current checkout.
 
-## What exists today
+| Gate                         | Recorded result                                          |
+| ---------------------------- | -------------------------------------------------------- |
+| `pnpm verify`                | 185 files / 2,480 tests                                  |
+| API, worker, WebSocket smoke | 22, 7, and 9 checks                                      |
+| Browser smoke                | 177 Playwright checks                                    |
+| Pentest                      | 62 attacks refused                                       |
+| Chaos and load               | 7 failure scenarios; load at 500 traders / 1,000 sockets |
 
-|                   |                                                                                     |
-| ----------------- | ----------------------------------------------------------------------------------- |
-| Tests             | **1058** across 83 files, all passing                                               |
-| Database          | 30 tables, **59 NUMERIC columns, 0 floating-point columns** (CI-enforced)           |
-| Verified          | `lint → typecheck → test → build` green, plus smoke, WebSocket smoke, pentest, load |
-| Deployed          | Run against a live deployment: 9/9 WebSocket checks, 9/9 applicable API checks      |
-| Security          | **25** attacks attempted against a running instance, all refused                    |
-| Load              | 100 traders · 200 sockets · 1000 orders; newest price stays ~200ms old under it     |
-| Reference vectors | 8 P&L / margin / equity figures reproduced exactly from a live broker terminal      |
+Repository structure counts are separately recorded in
+[completion status](docs/COMPLETION_STATUS.md), measured at commit `f8f4901f`
+on 19 October 2026. Re-run the relevant gates before using either snapshot for
+a release decision.
 
 ### Engine
 
@@ -58,8 +59,10 @@ until the bundle is dropped in.
   SL/TP modification, reverse. Every mutation requires an `Idempotency-Key`; closes
   are serialised by an `OPEN → CLOSING` database guard.
 - **Trigger engine** — closes positions from price movement, and works resting
-  orders. Verified against the live feed, not only in tests. Its stop-out sweep runs
-  off the tick path, so a large book cannot back-pressure the market feed.
+  orders. Verified against the running configured provider; the default provider
+  is the deterministic internal simulator, not a licensed external feed. Its
+  stop-out sweep runs off the tick path, so a large book cannot back-pressure
+  the market feed.
 
 ### Market data
 
@@ -285,23 +288,23 @@ no Prisma, no Redis, no Node I/O. **Enforced by ESLint**, not by convention.
 
 ## Scripts
 
-| Command                                                                        | Does                                             |
-| ------------------------------------------------------------------------------ | ------------------------------------------------ |
-| `pnpm verify`                                                                  | build packages → lint → typecheck → test → build |
-| `pnpm test` / `test:watch` / `test:coverage`                                   | Vitest                                           |
-| `pnpm dev`                                                                     | Every app in watch mode                          |
-| `pnpm build`                                                                   | Packages, then apps                              |
-| `pnpm db:migrate` / `db:migrate:deploy` / `db:seed` / `db:studio` / `db:reset` | Prisma                                           |
-| `pnpm check:schema`                                                            | Fails if any floating-point column exists        |
-| `pnpm smoke`                                                                   | Boots the built API and probes it                |
-| `pnpm smoke:ws`                                                                | Connects a real socket and checks the contract   |
-| `pnpm smoke:contracts`                                                         | Checks every client's reading of every answer    |
-| `pnpm pentest`                                                                 | Boots it again and attacks it                    |
-| `pnpm load`                                                                    | 100 traders, 200 sockets, three phases           |
-| `pnpm soak`                                                                    | Boots it again and leaves it running             |
-| `pnpm restore:rehearse`                                                        | Dumps, restores, compares, reconciles            |
-| `pnpm keygen <id>`                                                             | Prints a secret-encryption key                   |
-| `pnpm lint:fix` / `pnpm format`                                                | Fixers                                           |
+| Command                                                                        | Does                                                                          |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `pnpm verify`                                                                  | build packages → lint → typecheck → test → build                              |
+| `pnpm test` / `test:watch` / `test:coverage`                                   | Vitest                                                                        |
+| `pnpm dev`                                                                     | Every app in watch mode                                                       |
+| `pnpm build`                                                                   | Packages, then apps                                                           |
+| `pnpm db:migrate` / `db:migrate:deploy` / `db:seed` / `db:studio` / `db:reset` | Prisma                                                                        |
+| `pnpm check:schema`                                                            | Fails if any floating-point column exists                                     |
+| `pnpm smoke`                                                                   | Boots the built API and probes it                                             |
+| `pnpm smoke:ws`                                                                | Connects a real socket and checks the contract                                |
+| `pnpm smoke:contracts`                                                         | Checks every client's reading of every answer                                 |
+| `pnpm pentest`                                                                 | Boots it again and attacks it                                                 |
+| `pnpm load`                                                                    | Configurable load scenario; measurements and limits are in `docs/capacity.md` |
+| `pnpm soak`                                                                    | Boots it again and leaves it running                                          |
+| `pnpm restore:rehearse`                                                        | Dumps, restores, compares, reconciles                                         |
+| `pnpm keygen <id>`                                                             | Prints a secret-encryption key                                                |
+| `pnpm lint:fix` / `pnpm format`                                                | Fixers                                                                        |
 
 ---
 
@@ -346,31 +349,35 @@ The ones worth knowing:
 
 ---
 
-## Build status
+## Current build status
 
-| Phase |                            |              |
-| ----- | -------------------------- | ------------ |
-| 0     | Product definition         | **Complete** |
-| 1     | Project foundation         | **Complete** |
-| 2     | Account system             | **Complete** |
-| 3     | Market core (persisted)    | **Complete** |
-| 4     | Trading core               | **Complete** |
-| 5     | Financial engine (wired)   | **Complete** |
-| 6     | SL/TP engine               | **Complete** |
-| 7     | Realtime                   | **Complete** |
-| 8     | Trading terminal           | **Complete** |
-| 9     | Charting                   | In progress  |
-| 10    | Advanced trading UX        | **Complete** |
-| 11    | Security hardening         | **Complete** |
-| 12    | Performance under load     | **Complete** |
-| 13    | Production readiness       | **Complete** |
-| 14    | Market data integrity      | **Complete** |
-| 15    | Administration & oversight | **Complete** |
+The table below follows the current multi-tenant, multi-broker plan. The older
+standalone-platform phases are historical; see
+[`docs/COMPLETION_STATUS.md`](./docs/COMPLETION_STATUS.md). Detailed phase
+evidence and dependencies are in the
+[implementation plan](./docs/IMPLEMENTATION_PLAN.md) and
+[final audit](./docs/final-audit.md).
 
-Phase 9 is in progress for one reason, stated plainly on `/status` as well: the
-TradingView Advanced Charts widget needs a licensed bundle. The seam it attaches
-to — `buildChartDatafeed` and `TradingCommandAdapter` — is complete and tested,
-and chart trading works today on `lightweight-charts`.
+| Phase | Status                           | Open item                                                                                                                   |
+| ----- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 0–1   | **Done**                         | —                                                                                                                           |
+| 2     | **Done, except connector**       | Real venue API documentation and sandbox credentials                                                                        |
+| 3–4   | **Done**                         | —                                                                                                                           |
+| 5     | **Partial**                      | Fees, admin threshold alerts, Branding, production API documentation                                                        |
+| 6     | **Partial**                      | Logs decision, spacing scale, manual screen-reader acceptance, visual reference                                             |
+| 7     | **Partial / blocked**            | Chart persistence is done; remaining indicator/drawing scope needs a TradingView licence or an open-source product decision |
+| 8     | **Done**                         | —                                                                                                                           |
+| 9     | **Partial**                      | External reconciliation comparisons depend on a real venue adapter                                                          |
+| 10    | **Done**                         | —                                                                                                                           |
+| 11    | **Partial / acceptance blocked** | Physical-device acceptance; iOS also needs macOS, Xcode and signing credentials                                             |
+| 12    | **Done**                         | —                                                                                                                           |
+| 13    | **In progress**                  | 1,000-trader / 5,000-socket run needs a separate host                                                                       |
+| 14–15 | **Done**                         | —                                                                                                                           |
+
+The terminal currently ships on `lightweight-charts`. The licensed TradingView
+bundle is not in this repository; Phase 7's remaining indicators and drawing
+tools depend on a licence or the product owner's decision to accept the
+open-source charting target.
 
 The path that had to work before anything else does:
 

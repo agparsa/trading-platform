@@ -1,5 +1,12 @@
 # Completion status against the MASTER PROMPT
 
+> **Current product direction:** on 29 October 2026 the owner clarified an
+> independent trading software platform with its own authoritative engine;
+> broker execution-server integration is not the product target. This file
+> retains historical phase evidence. Use
+> [PRODUCT_STRATEGY.md](./PRODUCT_STRATEGY.md) for the current definition,
+> benchmark and roadmap. Estimates in this file refer to prior scopes.
+
 > This document tracks the **earlier** standalone-platform specification. The
 > repository is now planned against the multi-broker specification of
 > 3 September 2026 — see [architecture-audit.md](./architecture-audit.md) and

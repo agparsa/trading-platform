@@ -1,5 +1,14 @@
 # The final audit
 
+> **Historical scope notice — 29 October 2026:** this audit records the
+> earlier multi-broker/external-execution interpretation. The owner has since
+> clarified an independent trading software platform with its own engine;
+> broker onboarding and tenant integrations remain in scope, while venue
+> execution connectors are not a current requirement. See
+> [PRODUCT_STRATEGY.md](./PRODUCT_STRATEGY.md) for current scope, benchmark,
+> product gaps and delivery order. The gate results below retain their original
+> dates and do not describe a re-run against the current candidate.
+
 Two plans have run against this repository. The second — the multi-tenant,
 multi-broker specification of 3 September 2026 — ends here, with the §107
 matrix: one line per area of the specification, PASS / PARTIAL / BLOCKED, and

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hasTestDatabase, TEST_DATABASE_URL } from '../apps/api/test/integration/harness';
 
 const suite = hasTestDatabase ? describe : describe.skip;
@@ -37,8 +37,12 @@ const suite = hasTestDatabase ? describe : describe.skip;
  * each with its reason, so skipping one is a decision somebody wrote down.
  */
 suite('the restore rehearsal covers the money', () => {
-  const prisma = new PrismaClient({ datasources: { db: { url: TEST_DATABASE_URL as string } } });
+  let prisma: PrismaClient;
   const script = readFileSync(join(import.meta.dirname, 'restore-rehearsal.ts'), 'utf8');
+
+  beforeAll(() => {
+    prisma = new PrismaClient({ datasources: { db: { url: TEST_DATABASE_URL as string } } });
+  });
 
   afterAll(async () => {
     await prisma.$disconnect();

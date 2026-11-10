@@ -1,5 +1,12 @@
 # Architecture audit — the repository against the multi-broker specification
 
+> **Historical product interpretation:** on 29 October 2026 the owner clarified
+> that this is an independent trading software product with an in-house
+> execution engine. Broker execution-server connectors described by this
+> September audit are not the current target. See
+> [PRODUCT_STRATEGY.md](./PRODUCT_STRATEGY.md) for the current product contract
+> and roadmap.
+
 > **A snapshot, not the current state.** Every status below is the repository
 > at the baseline named underneath, on 3 September 2026, before any of the
 > multi-broker plan was built. Webhooks, break-glass, the server-side

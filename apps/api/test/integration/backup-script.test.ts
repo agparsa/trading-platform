@@ -32,8 +32,7 @@ const suite = hasTestDatabase ? describe : describe.skip;
 suite('the backup script', () => {
   let prisma: PrismaClient;
   let backups: string;
-
-  const url = new URL(TEST_DATABASE_URL ?? '');
+  let url: URL;
   const script = join(process.cwd(), 'docker', 'backup', 'backup.sh');
 
   const env = (over: Record<string, string> = {}) => ({
@@ -65,6 +64,7 @@ suite('the backup script', () => {
   const row = () => prisma.scheduledJobRun.findFirstOrThrow({ where: { name: 'backup' } });
 
   beforeEach(async () => {
+    url = new URL(TEST_DATABASE_URL as string);
     prisma = createTestClient();
     await resetDatabase(prisma);
     backups = mkdtempSync(join(tmpdir(), 'backup-test-'));

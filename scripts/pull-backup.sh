@@ -71,7 +71,13 @@ else
   echo "pull-backup: copied $file ($bytes bytes, sha256 $remote_sum) to $slot"
 fi
 
-taken=$(date -u -d "$(echo "$stamp" | sed -E 's/^(....)(..)(..)T(..)(..)(..)Z$/\1-\2-\3 \4:\5:\6/')" +%s)
+stamp_date=$(echo "$stamp" | sed -E 's/^(....)(..)(..)T(..)(..)(..)Z$/\1-\2-\3 \4:\5:\6/')
+if taken=$(date -u -d "$stamp_date" +%s 2>/dev/null); then
+  :
+else
+  # macOS/BSD date has no -d; parse the same UTC timestamp with its -j -f form.
+  taken=$(date -u -j -f '%Y-%m-%d %H:%M:%S' "$stamp_date" +%s)
+fi
 age=$(($(date -u +%s) - taken))
 if [ "$age" -gt 43200 ]; then
   echo "pull-backup: the newest backup is $((age / 3600)) hours old; the backup job has stopped" >&2

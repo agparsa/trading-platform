@@ -30,7 +30,10 @@ ROOT=${APK_ROOT:-/etc/apk}
 found=0
 for f in "$ROOT/repositories" "$ROOT"/repositories.d/*; do
   if [ -f "$f" ]; then
-    sed -i "s|https://dl-cdn.alpinelinux.org/alpine|$MIRROR|g" "$f"
+    tmp="$f.tmp"
+    sed "s|https://dl-cdn.alpinelinux.org/alpine|$MIRROR|g" "$f" > "$tmp"
+    cat "$tmp" > "$f"
+    rm -f "$tmp"
     found=1
   fi
 done

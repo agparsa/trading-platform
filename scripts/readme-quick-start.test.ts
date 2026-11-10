@@ -59,13 +59,14 @@ describe('the README quick start', () => {
     const dir = mkdtempSync(resolve(tmpdir(), 'quick-start-'));
     try {
       copyFileSync(resolve(ROOT, '.env.example'), resolve(dir, '.env.example'));
-      const script = blocks
-        .join('\n')
-        // The README is written for macOS `sed -i ''`; the note beneath it says
-        // to drop the `''` on Linux, which is what this runner does.
-        .replace(/sed -i ''/g, 'sed -i')
-        // And the `cd` into a checkout, which here is the temporary directory.
-        .replace(/^cd .*$/gm, '');
+      const readmeScript = blocks.join('\n');
+      // Keep the README's native macOS form on macOS. GNU sed on Linux needs
+      // the empty backup suffix removed, as the note beneath the example says.
+      const platformScript =
+        process.platform === 'darwin' ? readmeScript : readmeScript.replace(/sed -i ''/g, 'sed -i');
+      // The `cd` into a checkout is unnecessary because the runner already
+      // starts in the temporary directory.
+      const script = platformScript.replace(/^cd .*$/gm, '');
       execFileSync('bash', ['-euo', 'pipefail', '-c', script], { cwd: dir, stdio: 'pipe' });
 
       const env = parseEnvFile(resolve(dir, '.env'));
