@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { cn } from '@tp/ui';
 import { TOAST_TTL_MS, useToasts, type Toast } from '@/lib/toasts';
+import { useT } from '@/lib/use-locale';
 
 /**
  * The toast strip.
@@ -34,6 +35,7 @@ const TONE: Record<Toast['tone'], string> = {
 };
 
 function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
+  const t = useT();
   useEffect(() => {
     // A sticky toast is one the trader must actually acknowledge — a stop-out,
     // not a fill. Fading it away would be the platform deciding they had read it.
@@ -55,7 +57,7 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
         <button
           type="button"
           onClick={onDismiss}
-          aria-label="Dismiss"
+          aria-label={t('toast.dismiss')}
           className="shrink-0 text-caption leading-none text-terminal-muted transition-colors hover:text-terminal-text"
         >
           ×

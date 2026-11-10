@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { cn } from '@tp/ui';
 import type { TradingPreferences } from '@/lib/trading-preferences';
 import { Button, inputClass } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 /**
  * One-click and keyboard trading settings, and the badge that says they are on.
@@ -27,6 +28,7 @@ export function TradingSettings({
   oneClickAllowed?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const t = useT();
   const armed = preferences.oneClick && !preferences.confirm;
 
   /**
@@ -40,30 +42,29 @@ export function TradingSettings({
   const body = (
     <>
       <p className="mb-2 text-label uppercase tracking-wider text-terminal-muted">
-        One-click trading
+        {t('trade.oneClick')}
       </p>
 
       {oneClickAllowed ? null : (
         <p className="mb-2 text-caption text-terminal-warning" data-testid="one-click-off">
-          Your firm has switched one-click trading off. Every order is confirmed; the setting below
-          is kept for when it is switched back on.
+          {t('trade.oneClickOff')}
         </p>
       )}
       <Toggle
-        label="Send on one click"
+        label={t('trade.sendOnClick')}
         checked={preferences.oneClick}
         onChange={(value) => onChange({ oneClick: value })}
         disabled={!oneClickAllowed}
       />
       <Toggle
-        label="Ask before sending"
+        label={t('trade.askBefore')}
         checked={preferences.confirm}
         onChange={(value) => onChange({ confirm: value })}
-        hint="Closing every position always asks, whatever this says."
+        hint={t('trade.askBeforeHint')}
       />
 
       <div className="mt-2 grid grid-cols-3 gap-2">
-        <Field label="Volume">
+        <Field label={t('col.volume')}>
           <input
             className={inputClass}
             value={preferences.defaultVolume}
@@ -71,7 +72,7 @@ export function TradingSettings({
             inputMode="decimal"
           />
         </Field>
-        <Field label="Default SL">
+        <Field label={t('trade.defaultSl')}>
           <input
             className={inputClass}
             value={preferences.defaultStopLoss}
@@ -80,7 +81,7 @@ export function TradingSettings({
             placeholder="—"
           />
         </Field>
-        <Field label="Default TP">
+        <Field label={t('trade.defaultTp')}>
           <input
             className={inputClass}
             value={preferences.defaultTakeProfit}
@@ -92,25 +93,25 @@ export function TradingSettings({
       </div>
 
       <p className="mb-2 mt-4 text-label uppercase tracking-wider text-terminal-muted">
-        Keyboard trading
+        {t('trade.keyboard')}
       </p>
       <Toggle
-        label="Enable shortcuts"
+        label={t('trade.enableShortcuts')}
         checked={preferences.keyboard}
         onChange={(value) => onChange({ keyboard: value })}
-        hint="Never fires while you are typing in a field."
+        hint={t('trade.shortcutsHint')}
       />
 
       <div className="mt-2 grid grid-cols-4 gap-2">
         {(
           [
-            ['buy', 'Buy'],
-            ['sell', 'Sell'],
-            ['close', 'Close'],
-            ['closeAll', 'Close all'],
+            ['buy', 'wl.buy'],
+            ['sell', 'wl.sell'],
+            ['close', 'pos.close'],
+            ['closeAll', 'trade.closeAll'],
           ] as const
         ).map(([key, label]) => (
-          <Field key={key} label={label}>
+          <Field key={key} label={t(label)}>
             <input
               className={cn(inputClass, 'text-center')}
               value={preferences.keys[key]}
@@ -125,7 +126,7 @@ export function TradingSettings({
 
       <div className="mt-3 flex justify-end">
         <Button variant="ghost" onClick={() => setOpen(false)}>
-          Done
+          {t('trade.done')}
         </Button>
       </div>
     </>
@@ -144,13 +145,9 @@ export function TradingSettings({
             ? 'border-terminal-warning bg-terminal-warning/15 text-terminal-warning'
             : 'border-terminal-border text-terminal-muted hover:text-terminal-text',
         )}
-        title={
-          armed
-            ? 'One-click trading is armed: orders send immediately, without confirmation'
-            : 'Trading input settings'
-        }
+        title={armed ? t('trade.armedTitle') : t('trade.inputTitle')}
       >
-        {armed ? '⚡ One-click armed' : 'Trading input'}
+        {armed ? `⚡ ${t('trade.armed')}` : t('trade.input')}
       </button>
 
       {!open ? null : (

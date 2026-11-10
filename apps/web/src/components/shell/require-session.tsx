@@ -3,6 +3,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@/lib/session';
+import { useT } from '@/lib/use-locale';
 
 /**
  * Nothing renders until a session is known to exist.
@@ -19,6 +20,7 @@ import { useSession } from '@/lib/session';
 export function RequireSession({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { ready, user } = useSession();
+  const t = useT();
 
   useEffect(() => {
     if (ready && user === null) router.replace('/login');
@@ -28,7 +30,7 @@ export function RequireSession({ children }: { children: ReactNode }) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         <p className="text-xs text-terminal-muted">
-          {ready ? 'Redirecting to sign in…' : 'Restoring session…'}
+          {ready ? t('session.redirecting') : t('session.restoring')}
         </p>
       </main>
     );

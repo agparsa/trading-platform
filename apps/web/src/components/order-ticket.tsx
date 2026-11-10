@@ -16,7 +16,6 @@ import {
 } from '@/lib/ticket';
 import { validateRestingPrice, validateStopLimitPrices } from '@/lib/ticket';
 import {
-  COMMAND_STATE_LABEL,
   CommandState,
   rejectionLines,
   settlementFromResponse,
@@ -38,6 +37,7 @@ import { ShortcutAction } from '@/lib/shortcuts';
 import { needsConfirmation } from '@/lib/shortcuts';
 import type { TradingPreferences } from '@/lib/trading-preferences';
 import { Button, EmptyState, Field, inputClass } from './primitives';
+import type { MessageKey } from '@/lib/messages';
 import { useT } from '@/lib/use-locale';
 
 /**
@@ -259,16 +259,16 @@ export function OrderTicket({
      * fault rather than a rule.
      */
     if (!mayTrade) {
-      return `Signed in as ${permissions?.role ?? 'this role'}, which cannot place orders. Trading needs a trader login.`;
+      return t('ticket.cannotTrade', { role: permissions?.role ?? t('ticket.thisRole') });
     }
-    if (accountId === null) return 'No account selected.';
-    if (symbol === undefined) return 'Select an instrument.';
-    if (!symbol.enabled) return `${symbol.code} is not tradeable right now.`;
+    if (accountId === null) return t('empty.noAccount');
+    if (symbol === undefined) return t('ticket.selectOne');
+    if (!symbol.enabled) return t('ticket.notTradeable', { code: symbol.code });
     if (validation.error !== null) return validation.error;
     if (priceError !== null) return priceError;
-    if (executable === null) return 'No price yet for this instrument.';
+    if (executable === null) return t('wl.noPrice');
     return null;
-  }, [mayTrade, permissions, accountId, symbol, validation.error, priceError, executable]);
+  }, [mayTrade, permissions, accountId, symbol, validation.error, priceError, executable, t]);
 
   /**
    * Sends one order. The only path that does.
@@ -355,7 +355,7 @@ export function OrderTicket({
           state: CommandState.REJECTED,
           // The command log is one row per attempt, so it keeps the primary
           // reason; the ticket below shows all of them.
-          reason: lines[0] ?? 'The order was rejected.',
+          reason: lines[0] ?? t('ticket.rejected'),
           at: Date.now(),
         });
         setSubmitError(lines);
@@ -476,16 +476,16 @@ export function OrderTicket({
     const marginNeeded = estimate.marginAmount;
     if (freeMargin != null && marginNeeded !== null && Number(freeMargin) > 0) {
       if (Number(marginNeeded) / Number(freeMargin) >= LARGE_ORDER_MARGIN_SHARE) {
-        return `This order commits about ${Math.round(
-          (Number(marginNeeded) / Number(freeMargin)) * 100,
-        )}% of your free margin.`;
+        return t('ticket.largeMargin', {
+          share: Math.round((Number(marginNeeded) / Number(freeMargin)) * 100),
+        });
       }
     }
     if (riskShare !== null && Number(riskShare) >= LARGE_ORDER_RISK_SHARE * 100) {
-      return `This order risks ${riskShare}% of your equity at its stop.`;
+      return t('ticket.largeRisk', { share: riskShare });
     }
     return null;
-  }, [state.data?.freeMargin, estimate.marginAmount, riskShare]);
+  }, [state.data?.freeMargin, estimate.marginAmount, riskShare, t]);
 
   if (symbol === undefined) {
     return <EmptyState>{t('ticket.selectInstrument')}</EmptyState>;
@@ -513,7 +513,7 @@ export function OrderTicket({
             type="button"
             onClick={() => setOrderType(value)}
             aria-pressed={value === orderType}
-            title={ORDER_TYPE_HINT[value]}
+            title={t(ORDER_TYPE_HINT[value])}
             className={cn(
               'flex-1 whitespace-nowrap rounded px-1 py-1 text-caption transition-colors',
               value === orderType
@@ -521,7 +521,7 @@ export function OrderTicket({
                 : 'text-terminal-muted hover:text-terminal-text',
             )}
           >
-            {ORDER_TYPE_LABEL[value]}
+            {t(ORDER_TYPE_LABEL[value])}
           </button>
         ))}
       </div>
@@ -550,19 +550,19 @@ export function OrderTicket({
       */}
       <div className="flex items-baseline justify-between rounded border border-terminal-border/60 bg-terminal-raised/30 px-2 py-1 text-label uppercase tracking-wider text-terminal-muted">
         <span>
-          Bid{' '}
+          {t('col.bid')}{' '}
           <span className="numeric normal-case tracking-normal text-terminal-text">
             {quote === undefined ? '—' : formatPrice(quote.bid, symbol.pricePrecision)}
           </span>
         </span>
         <span>
-          Ask{' '}
+          {t('col.ask')}{' '}
           <span className="numeric normal-case tracking-normal text-terminal-text">
             {quote === undefined ? '—' : formatPrice(quote.ask, symbol.pricePrecision)}
           </span>
         </span>
-        <span title="Ask less bid, as quoted by the server">
-          Spread{' '}
+        <span title={t('ticket.spreadTitle')}>
+          {t('col.spread')}{' '}
           <span className="numeric normal-case tracking-normal text-terminal-text">
             {quote === undefined ? '—' : formatPrice(quote.spread, symbol.pricePrecision)}
           </span>
@@ -572,8 +572,8 @@ export function OrderTicket({
       <Field
         label={t('ticket.volume')}
         hint={
-          <span className="numeric normal-case tracking-normal">
-            step {symbol.volumeStep} · min {symbol.minVolume}
+          <span className="normal-case tracking-normal">
+            {t('ticket.stepMin', { step: symbol.volumeStep, min: symbol.minVolume })}
           </span>
         }
       >
@@ -607,11 +607,8 @@ export function OrderTicket({
         <Field
           label={t('ticket.stopPrice')}
           hint={
-            <span
-              className="normal-case tracking-normal"
-              title="Reaching the stop activates the order; it then rests as a limit at the limit price and never fills beyond it."
-            >
-              {side === 'BUY' ? 'above' : 'below'} · activates
+            <span className="normal-case tracking-normal" title={t('ticket.stopLimitTitle')}>
+              {t(side === 'BUY' ? 'ticket.above' : 'ticket.below')} · {t('ticket.activates')}
             </span>
           }
         >
@@ -635,21 +632,17 @@ export function OrderTicket({
                 className="normal-case tracking-normal"
                 title={
                   orderType === 'LIMIT'
-                    ? 'A limit rests on the favourable side: buy below the market, sell above.'
+                    ? t('ticket.limitTitle')
                     : orderType === 'STOP_LIMIT'
-                      ? 'Once the stop is reached the order fills at this price or better, or rests here until it can. Above the stop caps a breakout; below it waits for the pull-back.'
-                      : 'A stop rests on the far side: buy above the market, sell below.'
+                      ? t('ticket.stopLimitPriceTitle')
+                      : t('ticket.stopTitle')
                 }
               >
                 {orderType === 'STOP_LIMIT'
-                  ? 'or better'
-                  : side === 'BUY'
-                    ? orderType === 'LIMIT'
-                      ? 'below'
-                      : 'above'
-                    : orderType === 'LIMIT'
-                      ? 'above'
-                      : 'below'}
+                  ? t('ticket.orBetter')
+                  : (side === 'BUY') === (orderType === 'LIMIT')
+                    ? t('ticket.below')
+                    : t('ticket.above')}
               </span>
             }
           >
@@ -667,10 +660,7 @@ export function OrderTicket({
           <Field
             label={t('ticket.valid')}
             hint={
-              <span
-                className="normal-case tracking-normal"
-                title="GTC rests until you cancel it. Day expires at the next trading-server midnight."
-              >
+              <span className="normal-case tracking-normal" title={t('ticket.validTitle')}>
                 ?
               </span>
             }
@@ -713,14 +703,7 @@ export function OrderTicket({
         the exit price at the fill — for a resting order, whenever that is.
         Whether the firm allows a trail is the server's decision on the order.
       */}
-      <Field
-        label={t('ticket.trailing')}
-        hint={
-          <span title="Distance in price units the stop follows behind the best price seen since the fill. Never moves against you.">
-            ?
-          </span>
-        }
-      >
+      <Field label={t('ticket.trailing')} hint={<span title={t('ticket.trailingTitle')}>?</span>}>
         <input
           className={inputClass}
           value={trailing}
@@ -773,7 +756,7 @@ export function OrderTicket({
             label={t('ticket.swapNight')}
             value={signedMoney(estimate.swapPerNight, account?.currency ?? 'USD')}
             tone={toneClass[toneOf(estimate.swapPerNight)]}
-            title="One night's financing for this side and volume, at the instrument's rate. Held over the triple-swap day, three nights are charged at once."
+            title={t('ticket.swapTitle')}
           />
         )}
         <EstimateRow
@@ -790,7 +773,7 @@ export function OrderTicket({
             label={t('ticket.ifStopped')}
             value={signedMoney(ifStopped, account?.currency ?? 'USD')}
             tone={toneClass[toneOf(ifStopped)]}
-            title="Gross, at this stop, from this entry. Commission is above; swap depends on how long it is held."
+            title={t('ticket.ifStoppedTitle')}
           />
         )}
         {ifTargeted === null ? null : (
@@ -798,39 +781,36 @@ export function OrderTicket({
             label={t('ticket.ifTarget')}
             value={signedMoney(ifTargeted, account?.currency ?? 'USD')}
             tone={toneClass[toneOf(ifTargeted)]}
-            title="Gross, at this target, from this entry."
+            title={t('ticket.ifTargetTitle')}
           />
         )}
         {riskShare === null ? null : (
           <EstimateRow
             label={t('ticket.risk')}
-            value={`${riskShare}% of equity`}
+            value={t('ticket.ofEquity', { share: riskShare })}
             tone={Number(riskShare) >= 5 ? 'text-terminal-warning' : undefined}
-            title="What this stop would cost, as a share of the account's equity"
+            title={t('ticket.riskTitle')}
           />
         )}
         {ratio === null ? null : (
           <EstimateRow
             label={t('ticket.rewardRisk')}
             value={`${ratio} : 1`}
-            title="Projected gain divided by projected loss, both gross"
+            title={t('ticket.ratioTitle')}
           />
         )}
       </dl>
 
       {orderType === 'MARKET' ? null : (
-        <p className="text-label leading-relaxed text-terminal-muted">
-          No margin is held while the order rests. It is checked again when the order fires, and
-          rejected if the account cannot carry it then.
-        </p>
+        <p className="text-label leading-relaxed text-terminal-muted">{t('ticket.noMarginNote')}</p>
       )}
 
       {symbol.sessionOpen ? null : (
         <p className="text-caption text-terminal-warning">
           {symbol.market === undefined
-            ? `${symbol.code} is outside its trading session.`
+            ? t('ticket.outsideSession', { code: symbol.code })
             : marketNotice(symbol.market, symbol.code).detail}{' '}
-          The server will reject the order.
+          {t('ticket.willReject')}
         </p>
       )}
 
@@ -858,8 +838,10 @@ export function OrderTicket({
           className="py-2 text-sm"
         >
           {busy
-            ? 'Submitting…'
-            : `${side} ${symbol.code}${orderType === 'MARKET' ? '' : ` ${ORDER_TYPE_LABEL[orderType]}`}`}
+            ? t('ticket.submitting')
+            : `${t(SIDE_WORD[side])} ${symbol.code}${
+                orderType === 'MARKET' ? '' : ` ${t(ORDER_TYPE_LABEL[orderType])}`
+              }`}
         </Button>
       ) : (
         /*
@@ -872,11 +854,12 @@ export function OrderTicket({
          */
         <div className="rounded border border-terminal-warning/60 bg-terminal-warning/10 p-2">
           <p className="mb-2 text-caption text-terminal-text" data-testid="ticket-confirm">
-            Send{' '}
-            <span className="numeric font-medium">
-              {pendingConfirm} {volume} {symbol.code}
+            {t('ticket.confirm.send')}{' '}
+            <span className="font-medium">
+              {t(SIDE_WORD[pendingConfirm])} <span className="numeric">{volume}</span> {symbol.code}
             </span>
-            {stagedMarket ? ' at market' : ''}?
+            {stagedMarket ? t('ticket.confirm.atMarket') : ''}
+            {t('ticket.confirm.end')}
           </p>
           {largeOrder === null ? null : (
             <p className="mb-2 text-caption text-terminal-warning">{largeOrder}</p>
@@ -892,26 +875,23 @@ export function OrderTicket({
               }}
               className="flex-1 py-1.5 text-xs"
             >
-              Send
+              {t('ticket.confirm.send')}
             </Button>
             <Button
               variant="neutral"
               onClick={() => setPendingConfirm(null)}
               className="flex-1 py-1.5 text-xs"
             >
-              Cancel
+              {t('wallet.cancel')}
             </Button>
           </div>
         </div>
       )}
 
       <p className="text-label leading-relaxed text-terminal-muted">
-        Costs are estimates from the last quote received here. The server prices the fill against
-        the quote current at execution.
+        {t('ticket.costsNote')}
         {preferences.oneClick && !preferences.confirm ? (
-          <span className="mt-1 block text-terminal-warning">
-            One-click is armed: keyboard orders send immediately, with no confirmation.
-          </span>
+          <span className="mt-1 block text-terminal-warning">{t('ticket.oneClickArmed')}</span>
         ) : null}
       </p>
     </div>
@@ -931,19 +911,32 @@ const LARGE_ORDER_RISK_SHARE = 0.1;
 const ORDER_TYPES: readonly OrderType[] = ['MARKET', 'LIMIT', 'STOP', 'STOP_LIMIT'];
 
 /** What each tab says. "STOP LMT" because four tabs share a 270px panel. */
-const ORDER_TYPE_LABEL: Readonly<Record<OrderType, string>> = {
-  MARKET: 'MARKET',
-  LIMIT: 'LIMIT',
-  STOP: 'STOP',
-  STOP_LIMIT: 'STOP LMT',
+const ORDER_TYPE_LABEL: Readonly<Record<OrderType, MessageKey>> = {
+  MARKET: 'ticket.type.MARKET',
+  LIMIT: 'ticket.type.LIMIT',
+  STOP: 'ticket.type.STOP',
+  STOP_LIMIT: 'ticket.type.STOP_LIMIT',
 };
 
-const ORDER_TYPE_HINT: Readonly<Record<OrderType, string>> = {
-  MARKET: 'Fills now at the executable price',
-  LIMIT: 'Rests until the market comes to your price; fills there or better',
-  STOP: 'Rests until the market reaches your price, then fills at market',
-  STOP_LIMIT:
-    'Stop-limit: rests until the market reaches the stop, then rests as a limit — fills at the limit or better, never at market',
+const ORDER_TYPE_HINT: Readonly<Record<OrderType, MessageKey>> = {
+  MARKET: 'ticket.hint.MARKET',
+  LIMIT: 'ticket.hint.LIMIT',
+  STOP: 'ticket.hint.STOP',
+  STOP_LIMIT: 'ticket.hint.STOP_LIMIT',
+};
+
+/** A side as the ticket names it: the side's own code in English. */
+const SIDE_WORD: Readonly<Record<'BUY' | 'SELL', MessageKey>> = {
+  BUY: 'ticket.side.BUY',
+  SELL: 'ticket.side.SELL',
+};
+
+/** What became of a command, in the ticket's own words. */
+const COMMAND_STATE_WORDS: Readonly<Record<CommandState, MessageKey>> = {
+  [CommandState.SUBMITTING]: 'ticket.command.SUBMITTING',
+  [CommandState.ACCEPTED]: 'ticket.command.ACCEPTED',
+  [CommandState.EXECUTED]: 'ticket.command.EXECUTED',
+  [CommandState.REJECTED]: 'ticket.command.REJECTED',
 };
 
 function EstimateRow({
@@ -978,23 +971,29 @@ function EstimateRow({
  * single most expensive thing this panel could get wrong.
  */
 function CommandLog({ commands }: { commands: readonly OrderCommand[] }) {
+  const t = useT();
   if (commands.length === 0) return null;
 
   return (
     <div className="rounded border border-terminal-border bg-terminal-bg px-2.5 py-2">
-      <p className="mb-1 text-label uppercase tracking-wider text-terminal-muted">Sent</p>
+      <p className="mb-1 text-label uppercase tracking-wider text-terminal-muted">
+        {t('ticket.sent')}
+      </p>
       <ul className="space-y-1">
         {commands.slice(0, 4).map((command) => (
           <li key={command.commandId} className="flex items-baseline justify-between gap-2">
-            <span className="numeric truncate text-caption text-terminal-text">
-              {command.side} {command.volume} {command.symbol}
-              {command.type === 'MARKET' ? '' : ` ${command.type}`}
+            <span className="truncate text-caption text-terminal-text">
+              {t(SIDE_WORD[command.side])} <span className="numeric">{command.volume}</span>{' '}
+              {command.symbol}
+              {command.type === 'MARKET' || !(command.type in ORDER_TYPE_LABEL)
+                ? ''
+                : ` ${t(ORDER_TYPE_LABEL[command.type as OrderType])}`}
             </span>
             <span
               className={cn('shrink-0 text-label', COMMAND_STATE_TONE[command.state])}
-              title={command.reason ?? `Command ${command.commandId}`}
+              title={command.reason ?? t('ticket.commandTitle', { id: command.commandId })}
             >
-              {COMMAND_STATE_LABEL[command.state]}
+              {t(COMMAND_STATE_WORDS[command.state])}
             </span>
           </li>
         ))}
@@ -1024,6 +1023,7 @@ function SideButton({
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -1043,7 +1043,7 @@ function SideButton({
           side === 'BUY' ? 'text-terminal-long' : 'text-terminal-short',
         )}
       >
-        {side}
+        {t(SIDE_WORD[side])}
       </span>
       {children}
     </button>

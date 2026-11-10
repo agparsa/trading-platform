@@ -2,6 +2,7 @@
 
 import { downloadCsv, toCsv } from '@/lib/csv';
 import { Button } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 /**
  * A count and an "Export CSV" button above a table: a download of exactly
@@ -31,6 +32,7 @@ export function ExportBar({
   /** Controls beside the label — a filter box, say. */
   children?: React.ReactNode;
 }) {
+  const t = useT();
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-terminal-border px-3 py-1.5">
       <div className="flex items-center gap-3">
@@ -48,7 +50,7 @@ export function ExportBar({
           )
         }
       >
-        Export CSV
+        {t('export.csv')}
       </Button>
     </div>
   );

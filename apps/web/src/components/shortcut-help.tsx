@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { cn } from '@tp/ui';
 import type { TradingPreferences } from '@/lib/trading-preferences';
+import { useT } from '@/lib/use-locale';
 
 /**
  * What the keys do, according to this trader's own map.
@@ -19,6 +20,7 @@ export function ShortcutHelp({
   preferences: TradingPreferences;
   onClose: () => void;
 }) {
+  const t = useT();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -28,13 +30,13 @@ export function ShortcutHelp({
   }, [onClose]);
 
   const rows: Array<[string, string, boolean]> = [
-    [preferences.keys.buy, 'Buy the selected instrument', true],
-    [preferences.keys.sell, 'Sell the selected instrument', true],
-    [preferences.keys.close, 'Close the expanded position, or the only one', true],
-    [preferences.keys.closeAll, 'Close every open position — always confirmed', true],
-    ['Enter', 'Confirm what is being asked about', false],
-    ['Esc', 'Dismiss it, and close this card', false],
-    ['?', 'Show this card', false],
+    [preferences.keys.buy, t('keys.buy'), true],
+    [preferences.keys.sell, t('keys.sell'), true],
+    [preferences.keys.close, t('keys.close'), true],
+    [preferences.keys.closeAll, t('keys.closeAll'), true],
+    ['Enter', t('keys.enter'), false],
+    ['Esc', t('keys.esc'), false],
+    ['?', t('keys.help'), false],
   ];
 
   return (
@@ -42,7 +44,7 @@ export function ShortcutHelp({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Keyboard shortcuts"
+      aria-label={t('terminal.shortcuts')}
       onClick={onClose}
     >
       <div
@@ -51,12 +53,12 @@ export function ShortcutHelp({
       >
         <header className="flex items-center justify-between border-b border-terminal-border px-4 py-2">
           <h2 className="text-xs font-medium uppercase tracking-wider text-terminal-muted">
-            Keyboard
+            {t('keys.title')}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t('pos.close')}
             className="text-body leading-none text-terminal-muted transition-colors hover:text-terminal-text"
           >
             ×
@@ -71,8 +73,7 @@ export function ShortcutHelp({
               the platform is broken.
             */
             <p className="mb-3 rounded border border-terminal-warning/50 bg-terminal-warning/10 px-2 py-1.5 text-caption text-terminal-warning">
-              Keyboard trading is off. These keys do nothing until you turn it on in Trading
-              settings — Escape still works.
+              {t('keys.off')}
             </p>
           ) : null}
 
@@ -101,12 +102,9 @@ export function ShortcutHelp({
           </table>
 
           <p className="mt-3 text-label leading-relaxed text-terminal-muted">
-            Keys never fire while you are typing in a field — except Escape, which only ever stops
-            something.
+            {t('keys.typing')}
             {preferences.oneClick && !preferences.confirm ? (
-              <span className="mt-1 block text-terminal-warning">
-                One-click is armed: buy and sell send immediately, with no confirmation.
-              </span>
+              <span className="mt-1 block text-terminal-warning">{t('keys.armed')}</span>
             ) : null}
           </p>
         </div>

@@ -241,14 +241,13 @@ Persian and fails if their right edges part. The words are
 in `lib/messages.ts`: English is the source, the Persian table is typed against
 its keys, so an untranslated key fails the build, and both must use the same
 placeholders. Translated so far: the section navigation, the page frame,
-sign-in, Settings, the terminal's header, panel titles and activity tabs, the
-account strip, the order ticket, and the column headings and empty states of
-the activity panels and the watchlist, every button and message of the
-watchlist and the positions, pending-orders and alerts panels, the whole Analytics, Wallet and
-Verification pages, and the title, description and details of Account, History, Instruments, Security and
-Developer. The order types and send button, the chart's caption, the
-history's remaining labels, the Security forms, the server's own messages and the phone are still English, and the
-language note says so on screen. The layout mirrors: every margin, padding,
+sign-in, Settings, the whole terminal — order ticket (order types, sides, the
+send button and its confirmation), chart caption, watchlist and every activity
+panel — and every trader page: Analytics, Wallet and Verification whole, and
+the title, description and details of Account, History, Instruments, Security
+and Developer. Still English: the Security forms, the status and reason codes
+the server sends (`FILLED`, `STOP_LOSS`), the server's own messages, the admin
+console and the phone; the language note says so on screen. The layout mirrors: every margin, padding,
 alignment and offset in the web app is a logical utility (`ms-`, `pe-`,
 `text-end`, `end-`), not a physical one, so start and end swap with the
 direction rather than staying pinned to left and right. The browser walk chooses فارسی, reloads, checks the page is right to

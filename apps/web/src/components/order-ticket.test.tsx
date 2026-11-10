@@ -427,3 +427,29 @@ describe('the order ticket, rendered', () => {
     });
   });
 });
+
+describe('the order ticket in Persian', () => {
+  it('names the order types, the sides and the send button in Persian', async () => {
+    window.localStorage.setItem('tp:locale', 'fa');
+    try {
+      render(
+        <OrderTicket
+          symbol={SYMBOL}
+          account={ACCOUNT}
+          accountId="acc-1"
+          preferences={PREFERENCES}
+          shortcut={null}
+          onShortcutHandled={() => undefined}
+        />,
+      );
+      fireEvent.click(await screen.findByRole('button', { name: /^استاپ‌لیمیت$/ }));
+      const send = screen
+        .getAllByRole('button')
+        .find((node) => node.textContent === 'خرید XAUUSD استاپ‌لیمیت');
+      expect(send).toBeDefined();
+      expect(screen.queryByRole('button', { name: /STOP LMT/ })).toBeNull();
+    } finally {
+      window.localStorage.removeItem('tp:locale');
+    }
+  });
+});

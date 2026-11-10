@@ -44,6 +44,7 @@ import {
 } from '@/lib/queries';
 import { barKey, useRealtime } from '@/lib/realtime-store';
 import { EmptyState } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 /**
  * Price history.
@@ -78,6 +79,7 @@ export function ChartPanel({
 }) {
   const history = useCandles(symbol?.code ?? null, resolution);
   const served = useResolutions();
+  const t = useT();
   const liveBars = useRealtime((state) =>
     symbol === undefined ? undefined : state.bars[barKey(symbol.code, resolution)],
   );
@@ -166,8 +168,7 @@ export function ChartPanel({
       </div>
 
       <p className="shrink-0 border-t border-terminal-border px-3 py-1 text-label text-terminal-muted">
-        Server candles, built from the bid. Drag a stop, a target or a resting order to move it —
-        the server decides. Indicators and drawing tools arrive with the licensed charting library.
+        {t('chart.caption')}
       </p>
     </div>
   );

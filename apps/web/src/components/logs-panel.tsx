@@ -47,7 +47,7 @@ export function LogsPanel({ accountId }: { accountId: string | null }) {
   return (
     <>
       <ExportBar
-        label={`${lines.length} event(s)${log.hasNextPage ? ' loaded' : ''}`}
+        label={t(log.hasNextPage ? 'logs.countLoaded' : 'logs.count', { count: lines.length })}
         filename="order-log"
         columns={COLUMNS}
         rows={lines.map((line) => [
@@ -101,7 +101,7 @@ export function LogsPanel({ accountId }: { accountId: string | null }) {
             onClick={() => void log.fetchNextPage()}
             className="px-3 py-1 text-caption"
           >
-            {log.isFetchingNextPage ? 'Loading…' : 'Load older events'}
+            {log.isFetchingNextPage ? t('common.loading') : t('logs.older')}
           </Button>
         </div>
       ) : null}

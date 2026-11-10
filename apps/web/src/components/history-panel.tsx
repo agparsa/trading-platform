@@ -67,22 +67,22 @@ export function HistoryPanel({
     return (
       <>
         <ExportBar
-          label={`${rows.length} trade(s)`}
+          label={t('history.countTrades', { count: rows.length })}
           filename="trades"
           columns={TRADE_COLUMNS}
           rows={rows.map(tradeToRow)}
         />
         <Table
           head={[
-            'Closed',
-            'Symbol',
-            'Side',
-            'Volume',
-            'Entry',
-            'Exit',
-            'Commission',
-            'Swap',
-            'Net P&L',
+            t('col.closed'),
+            t('col.symbol'),
+            t('col.side'),
+            t('col.volume'),
+            t('col.entry'),
+            t('col.exit'),
+            t('col.commission'),
+            t('col.swap'),
+            t('pos.netPnl'),
           ]}
         >
           {rows.map((trade) => (
@@ -101,7 +101,10 @@ export function HistoryPanel({
               </Cell>
               <td
                 className="numeric px-2 py-1.5 text-end text-terminal-muted"
-                title={`Entry ${trade.entryCommission} + exit ${trade.exitCommission}`}
+                title={t('history.commissionTitle', {
+                  entry: trade.entryCommission,
+                  exit: trade.exitCommission,
+                })}
               >
                 {money(trade.commission, currency)}
               </td>
@@ -110,7 +113,7 @@ export function HistoryPanel({
               </Cell>
               <td
                 className={cn('numeric px-2 py-1.5 text-end', toneClass[toneOf(trade.netPnl)])}
-                title={`Gross ${trade.grossPnl}${trade.closeReason === null ? '' : ` · ${trade.closeReason}`}`}
+                title={`${t('history.gross', { gross: trade.grossPnl })}${trade.closeReason === null ? '' : ` · ${trade.closeReason}`}`}
               >
                 {signedMoney(trade.netPnl, currency)}
               </td>
@@ -129,12 +132,22 @@ export function HistoryPanel({
     return (
       <>
         <ExportBar
-          label={`${rows.length} closed position(s)`}
+          label={t('history.countClosed', { count: rows.length })}
           filename="closed-positions"
           columns={POSITION_COLUMNS}
           rows={rows.map(positionToRow)}
         />
-        <Table head={['Closed', 'Symbol', 'Side', 'Volume', 'Entry', 'Reason', 'Realized P&L']}>
+        <Table
+          head={[
+            t('col.closed'),
+            t('col.symbol'),
+            t('col.side'),
+            t('col.volume'),
+            t('col.entry'),
+            t('col.reason'),
+            t('col.realizedPnl'),
+          ]}
+        >
           {rows.map((position) => (
             <tr key={position.id} className="border-t border-terminal-border/60">
               <Cell muted>{position.closedAt === null ? '—' : utcTime(position.closedAt)}</Cell>
@@ -169,12 +182,23 @@ export function HistoryPanel({
   return (
     <>
       <ExportBar
-        label={`${rows.length} order(s)`}
+        label={t('history.countOrders', { count: rows.length })}
         filename="orders"
         columns={ORDER_COLUMNS}
         rows={rows.map(orderToRow)}
       />
-      <Table head={['Created', 'Symbol', 'Side', 'Type', 'Volume', 'Filled', 'Status', 'Trail']}>
+      <Table
+        head={[
+          t('col.created'),
+          t('col.symbol'),
+          t('col.side'),
+          t('col.type'),
+          t('col.volume'),
+          t('col.filled'),
+          t('col.status'),
+          t('col.trail'),
+        ]}
+      >
         {rows.map((order) => (
           <OrderRowWithTrail
             key={order.id}
@@ -218,6 +242,7 @@ function OrderRowWithTrail({
   open: boolean;
   onToggle: () => void;
 }) {
+  const t = useT();
   return (
     <>
       <tr className="border-t border-terminal-border/60">
@@ -250,11 +275,14 @@ function OrderRowWithTrail({
             type="button"
             aria-expanded={open}
             aria-controls={open ? `trail-${order.id}` : undefined}
-            aria-label={`${open ? 'Hide the trail of' : 'Show the trail of'} the ${order.symbol} order from ${utcTime(order.createdAt)}`}
+            aria-label={t(open ? 'history.hideTrail' : 'history.showTrail', {
+              symbol: order.symbol,
+              time: utcTime(order.createdAt),
+            })}
             onClick={onToggle}
             className="rounded border border-terminal-border px-2 py-0.5 text-caption text-terminal-text hover:bg-terminal-raised"
           >
-            {open ? 'Hide' : 'Trail'}
+            {open ? t('history.hide') : t('col.trail')}
           </button>
         </td>
       </tr>
@@ -265,17 +293,16 @@ function OrderRowWithTrail({
 
 function TrailRow({ orderId }: { orderId: string }) {
   const events = useOrderEvents(orderId);
+  const t = useT();
   return (
     <tr id={`trail-${orderId}`} className="bg-terminal-raised/40">
       <td colSpan={8} className="px-3 py-2">
         {events.isError ? (
-          <span className="text-caption text-terminal-muted">The trail could not be loaded.</span>
+          <span className="text-caption text-terminal-muted">{t('history.trailError')}</span>
         ) : events.data === undefined ? (
-          <span className="text-caption text-terminal-muted">Loading the trail…</span>
+          <span className="text-caption text-terminal-muted">{t('history.trailLoading')}</span>
         ) : events.data.length === 0 ? (
-          <span className="text-caption text-terminal-muted">
-            Nothing is recorded for this order.
-          </span>
+          <span className="text-caption text-terminal-muted">{t('history.trailEmpty')}</span>
         ) : (
           <ol className="space-y-0.5" data-testid="order-trail">
             {trailLines(events.data).map((line, index) => (

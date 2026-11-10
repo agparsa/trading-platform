@@ -2,13 +2,15 @@
 
 import { cn } from '@tp/ui';
 import { useRealtime, type ConnectionStatus } from '@/lib/realtime-store';
+import type { MessageKey } from '@/lib/messages';
+import { useT } from '@/lib/use-locale';
 
-const LABEL: Record<ConnectionStatus, string> = {
-  idle: 'Offline',
-  connecting: 'Connecting',
-  live: 'Live',
-  reconnecting: 'Reconnecting',
-  offline: 'Offline',
+const LABEL: Record<ConnectionStatus, MessageKey> = {
+  idle: 'conn.offline',
+  connecting: 'conn.connecting',
+  live: 'conn.live',
+  reconnecting: 'conn.reconnecting',
+  offline: 'conn.offline',
 };
 
 const STYLE: Record<ConnectionStatus, string> = {
@@ -29,11 +31,12 @@ const STYLE: Record<ConnectionStatus, string> = {
 export function ConnectionBadge() {
   const status = useRealtime((state) => state.status);
   const frames = useRealtime((state) => state.framesReceived);
+  const t = useT();
 
   return (
     <span
-      className={cn('numeric rounded border px-2 py-0.5 text-caption', STYLE[status])}
-      title={`${frames} frames received on this connection`}
+      className={cn('rounded border px-2 py-0.5 text-caption', STYLE[status])}
+      title={t('conn.frames', { frames })}
     >
       <span
         className={cn(
@@ -42,7 +45,7 @@ export function ConnectionBadge() {
           status === 'connecting' || status === 'reconnecting' ? 'animate-pulse' : '',
         )}
       />
-      {LABEL[status]}
+      {t(LABEL[status])}
     </span>
   );
 }

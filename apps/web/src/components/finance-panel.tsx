@@ -38,7 +38,9 @@ export function FinancePanel({ accountId }: { accountId: string | null }) {
   return (
     <>
       <ExportBar
-        label={`${rows.length} movement(s)${ledger.hasNextPage ? ' loaded' : ''}`}
+        label={t(ledger.hasNextPage ? 'finance.countLoaded' : 'finance.count', {
+          count: rows.length,
+        })}
         filename="balance-history"
         columns={COLUMNS}
         rows={rows.map((row) => [
@@ -93,7 +95,7 @@ export function FinancePanel({ accountId }: { accountId: string | null }) {
             onClick={() => void ledger.fetchNextPage()}
             className="px-3 py-1 text-caption"
           >
-            {ledger.isFetchingNextPage ? 'Loading…' : 'Load older movements'}
+            {ledger.isFetchingNextPage ? t('common.loading') : t('finance.older')}
           </Button>
         </div>
       ) : null}

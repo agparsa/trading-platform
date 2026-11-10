@@ -5,6 +5,7 @@ import { cn } from '@tp/ui';
 import { useMarkAllRead, useMarkRead, useNotifications } from '@/lib/queries';
 import { relativeTime } from '@/lib/format';
 import { Button } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 /**
  * What the platform has told this trader, whether or not they were looking.
@@ -15,6 +16,7 @@ import { Button } from './primitives';
  * and one that only ever existed as a toast would not be.
  */
 export function NotificationBell() {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const notifications = useNotifications(open);
   const markRead = useMarkRead();
@@ -38,7 +40,7 @@ export function NotificationBell() {
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        aria-label={unread === 0 ? 'Notifications' : `Notifications, ${unread} unread`}
+        aria-label={unread === 0 ? t('bell.title') : t('bell.unread', { unread }, false)}
         className={cn(
           'relative rounded px-1.5 py-0.5 text-body leading-none transition-colors',
           unread > 0 ? 'text-terminal-warning' : 'text-terminal-muted hover:text-terminal-text',
@@ -56,7 +58,7 @@ export function NotificationBell() {
         <div className="absolute end-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded border border-terminal-border bg-terminal-surface shadow-lg shadow-black/40">
           <div className="flex items-center justify-between border-b border-terminal-border px-3 py-1.5">
             <span className="text-label uppercase tracking-wider text-terminal-muted">
-              Notifications
+              {t('bell.title')}
             </span>
             <Button
               variant="ghost"
@@ -64,15 +66,15 @@ export function NotificationBell() {
               disabled={unread === 0 || markAll.isPending}
               onClick={() => markAll.mutate()}
             >
-              Mark all read
+              {t('bell.markAll')}
             </Button>
           </div>
 
           <div className="max-h-80 overflow-auto">
             {notifications.isLoading ? (
-              <p className="px-3 py-3 text-caption text-terminal-muted">Loading…</p>
+              <p className="px-3 py-3 text-caption text-terminal-muted">{t('common.loading')}</p>
             ) : (notifications.data ?? []).length === 0 ? (
-              <p className="px-3 py-3 text-caption text-terminal-muted">Nothing yet.</p>
+              <p className="px-3 py-3 text-caption text-terminal-muted">{t('bell.empty')}</p>
             ) : (
               (notifications.data ?? []).map((row) => (
                 <button

@@ -107,30 +107,34 @@ export function AccountHeader({
         title={
           state?.realizedSince === undefined
             ? undefined
-            : `Closed trades since ${new Date(state.realizedSince).toISOString().replace('T', ' ').slice(0, 16)} UTC`
+            : t('account.realizedTitle', {
+                since: new Date(state.realizedSince).toISOString().replace('T', ' ').slice(0, 16),
+              })
         }
       />
       <Stat label={t('account.usedMargin')} value={money(state?.usedMargin, currency)} />
       <Stat label={t('account.freeMargin')} value={money(state?.freeMargin, currency)} />
       <Stat
         label={t('account.marginLevel')}
-        value={state?.marginLevel === null ? 'n/a' : percent(state?.marginLevel)}
+        value={state?.marginLevel === null ? t('account.na') : percent(state?.marginLevel)}
         tone={marginLevelTone}
         title={
           marginCall === null || stopOut === null
             ? undefined
-            : `Margin call at ${marginCall}%, stop-out at ${stopOut}%`
+            : t('account.marginLevelTitle', { call: marginCall, stopOut })
         }
       />
       <Stat
         label={t('account.utilisation')}
-        value={state?.marginUtilisation == null ? 'n/a' : percent(state.marginUtilisation)}
-        title="Margin in use as a share of equity"
+        value={
+          state?.marginUtilisation == null ? t('account.na') : percent(state.marginUtilisation)
+        }
+        title={t('account.utilisationTitle')}
       />
       <Stat
         label={t('account.exposure')}
         value={money(state?.grossExposure, currency)}
-        title="Gross notional across open positions, in account currency"
+        title={t('account.exposureTitle')}
       />
       {/*
         Counts, not money — and they come from the same lists the panels below
@@ -141,12 +145,12 @@ export function AccountHeader({
       <Stat
         label={t('account.positions')}
         value={openPositions === undefined ? '—' : String(openPositions)}
-        title="Open positions"
+        title={t('account.positionsTitle')}
       />
       <Stat
         label={t('account.orders')}
         value={openOrders === undefined ? '—' : String(openOrders)}
-        title="Resting orders waiting to trigger"
+        title={t('account.ordersTitle')}
       />
     </div>
   );

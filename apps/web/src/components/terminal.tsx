@@ -296,7 +296,7 @@ export function Terminal() {
               href="/admin"
               className="text-caption text-terminal-muted transition-colors hover:text-terminal-text"
             >
-              Administration
+              {t('shell.administration')}
             </Link>
           ) : null}
           <button
