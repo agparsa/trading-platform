@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/shell/app-shell';
+import { wordsFor } from '@/lib/messages';
+import { ACCOUNT_STATUS_WORDS, ACCOUNT_TYPE_WORDS } from '@/lib/server-words';
 import { useT } from '@/lib/use-locale';
 import { AccountHeader } from '@/components/account-header';
 import { FinancePanel } from '@/components/finance-panel';
@@ -76,8 +78,14 @@ export default function AccountPage() {
             <Panel className="p-4">
               <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <Detail label={t('account.number')} value={`#${account.number}`} />
-                <Detail label={t('account.type')} value={account.type} />
-                <Detail label={t('col.status')} value={account.status} />
+                <Detail
+                  label={t('account.type')}
+                  value={wordsFor(ACCOUNT_TYPE_WORDS, account.type, t)}
+                />
+                <Detail
+                  label={t('col.status')}
+                  value={wordsFor(ACCOUNT_STATUS_WORDS, account.status, t)}
+                />
                 <Detail label={t('account.currency')} value={account.currency} />
                 <Detail label={t('account.leverage')} value={`1:${String(account.leverage)}`} />
                 <Detail label={t('col.balance')} value={money(account.balance, account.currency)} />

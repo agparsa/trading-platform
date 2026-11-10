@@ -11,7 +11,7 @@ import {
   type SymbolRow,
 } from '@/lib/queries';
 import { useRealtime } from '@/lib/realtime-store';
-import { Button, EmptyState, inputClass } from './primitives';
+import { Button, EmptyState, inputClass, wordInputClass } from './primitives';
 import type { MessageKey } from '@/lib/messages';
 import { useT } from '@/lib/use-locale';
 
@@ -112,7 +112,7 @@ export function AlertsPanel({
         <label className="flex flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
           {t('alerts.when')}
           <select
-            className={inputClass}
+            className={wordInputClass}
             value={condition}
             onChange={(event) => setCondition(event.target.value === 'BELOW' ? 'BELOW' : 'ABOVE')}
           >
@@ -135,7 +135,7 @@ export function AlertsPanel({
         <label className="flex flex-1 flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
           {t('col.note')}
           <input
-            className={inputClass}
+            className={wordInputClass}
             value={note}
             maxLength={280}
             onChange={(event) => setNote(event.target.value)}

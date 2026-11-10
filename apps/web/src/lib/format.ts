@@ -44,6 +44,28 @@ export function percent(value: string | null | undefined, digits = 2): string {
   return `${numeric.toFixed(digits)}%`;
 }
 
+/**
+ * A change in percent as shown, with its sign and the direction it reads as.
+ *
+ * The direction is taken from the rounded figure, not the raw one: `-0.0004`
+ * shows as `0.00%`, and a red `-0.00%` beside it claimed a fall that the
+ * number on screen does not show.
+ */
+export function signedChange(
+  value: string | null | undefined,
+  digits = 2,
+): { text: string; direction: 'up' | 'down' | 'flat' | null } {
+  if (value === null || value === undefined) return { text: '—', direction: null };
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return { text: '—', direction: null };
+  const shown = Number(numeric.toFixed(digits));
+  if (shown === 0) return { text: `${(0).toFixed(digits)}%`, direction: 'flat' };
+  return {
+    text: `${shown > 0 ? '+' : ''}${shown.toFixed(digits)}%`,
+    direction: shown > 0 ? 'up' : 'down',
+  };
+}
+
 export function volume(value: string | null | undefined): string {
   if (value === null || value === undefined) return '—';
   const numeric = Number(value);

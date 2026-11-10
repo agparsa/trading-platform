@@ -54,104 +54,112 @@ export function AccountHeader({
   const marginLevelTone = marginLevelToneOf(state?.marginLevel ?? null, marginCall, stopOut);
 
   return (
-    <div className="grid grid-cols-2 gap-x-6 gap-y-3 px-4 py-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-10">
-      {/*
+    /*
+     * Sized by the room it is given, not the window: the terminal gives it the
+     * full width and gets one row of twelve; the Account page gives it a
+     * centred panel and gets two rows of six. Three rows of five had spent a
+     * tenth of the terminal's height on a strip a trader reads at a glance.
+     */
+    <div className="@container">
+      <div className="grid grid-cols-2 gap-x-5 gap-y-2.5 px-4 py-2.5 @md:grid-cols-4 @3xl:grid-cols-6 @6xl:grid-cols-12">
+        {/*
         A selector when there is a choice, and a label when there is not.
         A dropdown with one option in it is a control that suggests something
         can be done and then cannot; a trader with two accounts could reach
         only the first until this existed.
       */}
-      <div className="min-w-0">
-        <p className="text-label uppercase tracking-wider text-terminal-muted">
-          {t('account.account')}
-        </p>
-        {accounts.length > 1 ? (
-          <select
-            className="numeric mt-0.5 w-full truncate bg-transparent text-sm text-terminal-text outline-none"
-            value={account?.id ?? ''}
-            onChange={(event) => selectAccount(event.target.value)}
-            aria-label={t('account.account')}
-          >
-            {accounts.map((one) => (
-              <option key={one.id} value={one.id}>
-                #{one.number} · {one.currency}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <p className="numeric mt-0.5 truncate text-sm text-terminal-text">
-            {account === undefined ? '—' : `#${account.number}`}
+        <div className="min-w-0">
+          <p className="text-label uppercase tracking-wider text-terminal-muted">
+            {t('account.account')}
           </p>
-        )}
-      </div>
-      <Stat label={t('account.balance')} value={money(state?.balance, currency)} />
-      <Stat label={t('account.equity')} value={money(state?.equity, currency)} />
-      <Stat
-        label={t('account.floating')}
-        value={signedMoney(state?.floatingPnl, currency)}
-        tone={toneClass[toneOf(state?.floatingPnl)]}
-      />
-      {/*
+          {accounts.length > 1 ? (
+            <select
+              className="numeric mt-0.5 w-full truncate bg-transparent text-sm text-terminal-text outline-none"
+              value={account?.id ?? ''}
+              onChange={(event) => selectAccount(event.target.value)}
+              aria-label={t('account.account')}
+            >
+              {accounts.map((one) => (
+                <option key={one.id} value={one.id}>
+                  #{one.number} · {one.currency}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="numeric mt-0.5 truncate text-sm text-terminal-text">
+              {account === undefined ? '—' : `#${account.number}`}
+            </p>
+          )}
+        </div>
+        <Stat label={t('account.balance')} value={money(state?.balance, currency)} />
+        <Stat label={t('account.equity')} value={money(state?.equity, currency)} />
+        <Stat
+          label={t('account.floating')}
+          value={signedMoney(state?.floatingPnl, currency)}
+          tone={toneClass[toneOf(state?.floatingPnl)]}
+        />
+        {/*
         Realized P&L arrives with the REST snapshot and is carried across tick
         frames by the store. An em dash means "not loaded yet", never "zero" —
         the two are different claims and only one of them is ever true here.
       */}
-      <Stat
-        label={t('account.realizedToday')}
-        value={
-          state?.realizedPnlToday === undefined
-            ? '—'
-            : signedMoney(state.realizedPnlToday, currency)
-        }
-        tone={toneClass[toneOf(state?.realizedPnlToday ?? null)]}
-        title={
-          state?.realizedSince === undefined
-            ? undefined
-            : t('account.realizedTitle', {
-                since: new Date(state.realizedSince).toISOString().replace('T', ' ').slice(0, 16),
-              })
-        }
-      />
-      <Stat label={t('account.usedMargin')} value={money(state?.usedMargin, currency)} />
-      <Stat label={t('account.freeMargin')} value={money(state?.freeMargin, currency)} />
-      <Stat
-        label={t('account.marginLevel')}
-        value={state?.marginLevel === null ? t('account.na') : percent(state?.marginLevel)}
-        tone={marginLevelTone}
-        title={
-          marginCall === null || stopOut === null
-            ? undefined
-            : t('account.marginLevelTitle', { call: marginCall, stopOut })
-        }
-      />
-      <Stat
-        label={t('account.utilisation')}
-        value={
-          state?.marginUtilisation == null ? t('account.na') : percent(state.marginUtilisation)
-        }
-        title={t('account.utilisationTitle')}
-      />
-      <Stat
-        label={t('account.exposure')}
-        value={money(state?.grossExposure, currency)}
-        title={t('account.exposureTitle')}
-      />
-      {/*
+        <Stat
+          label={t('account.realizedToday')}
+          value={
+            state?.realizedPnlToday === undefined
+              ? '—'
+              : signedMoney(state.realizedPnlToday, currency)
+          }
+          tone={toneClass[toneOf(state?.realizedPnlToday ?? null)]}
+          title={
+            state?.realizedSince === undefined
+              ? undefined
+              : t('account.realizedTitle', {
+                  since: new Date(state.realizedSince).toISOString().replace('T', ' ').slice(0, 16),
+                })
+          }
+        />
+        <Stat label={t('account.usedMargin')} value={money(state?.usedMargin, currency)} />
+        <Stat label={t('account.freeMargin')} value={money(state?.freeMargin, currency)} />
+        <Stat
+          label={t('account.marginLevel')}
+          value={state?.marginLevel === null ? t('account.na') : percent(state?.marginLevel)}
+          tone={marginLevelTone}
+          title={
+            marginCall === null || stopOut === null
+              ? undefined
+              : t('account.marginLevelTitle', { call: marginCall, stopOut })
+          }
+        />
+        <Stat
+          label={t('account.utilisation')}
+          value={
+            state?.marginUtilisation == null ? t('account.na') : percent(state.marginUtilisation)
+          }
+          title={t('account.utilisationTitle')}
+        />
+        <Stat
+          label={t('account.exposure')}
+          value={money(state?.grossExposure, currency)}
+          title={t('account.exposureTitle')}
+        />
+        {/*
         Counts, not money — and they come from the same lists the panels below
         render, so the header can never disagree with the table a trader is
         looking at. A count derived from a second source is a count that starts
         arguing with the first one.
       */}
-      <Stat
-        label={t('account.positions')}
-        value={openPositions === undefined ? '—' : String(openPositions)}
-        title={t('account.positionsTitle')}
-      />
-      <Stat
-        label={t('account.orders')}
-        value={openOrders === undefined ? '—' : String(openOrders)}
-        title={t('account.ordersTitle')}
-      />
+        <Stat
+          label={t('account.positions')}
+          value={openPositions === undefined ? '—' : String(openPositions)}
+          title={t('account.positionsTitle')}
+        />
+        <Stat
+          label={t('account.orders')}
+          value={openOrders === undefined ? '—' : String(openOrders)}
+          title={t('account.ordersTitle')}
+        />
+      </div>
     </div>
   );
 }

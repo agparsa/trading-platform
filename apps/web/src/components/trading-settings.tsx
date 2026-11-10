@@ -124,11 +124,14 @@ export function TradingSettings({
         ))}
       </div>
 
-      <div className="mt-3 flex justify-end">
-        <Button variant="ghost" onClick={() => setOpen(false)}>
-          {t('trade.done')}
-        </Button>
-      </div>
+      {/* Closes the popover; on the Settings page there is nothing to close. */}
+      {presentation === 'page' ? null : (
+        <div className="mt-3 flex justify-end">
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            {t('trade.done')}
+          </Button>
+        </div>
+      )}
     </>
   );
 

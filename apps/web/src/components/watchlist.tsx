@@ -4,7 +4,7 @@ import { marketNotice } from '../lib/market-state';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { entrySideOf } from '@tp/financial-core';
 import { cn } from '@tp/ui';
-import { percent, price as formatPrice } from '@/lib/format';
+import { price as formatPrice, signedChange } from '@/lib/format';
 import { useMarketStats, useQuoteSnapshot, type SymbolRow } from '@/lib/queries';
 import { markClasses, markFor } from '@/lib/instrument-marks';
 import { useRealtime, type Quote } from '@/lib/realtime-store';
@@ -213,7 +213,7 @@ export function Watchlist({
           <table className="w-full border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-terminal-surface">
               <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
-                <th className="py-1.5 ps-2 pe-1 font-medium">{t('col.symbol')}</th>
+                <th className="py-1.5 ps-1.5 pe-1 font-medium">{t('col.symbol')}</th>
                 <th className="px-1 py-1.5 text-end font-medium">{t('col.bid')}</th>
                 <th className="px-1 py-1.5 text-end font-medium">{t('col.ask')}</th>
                 <th className="py-1.5 ps-1 pe-2 text-end font-medium" title={t('wl.changeTitle')}>
@@ -319,12 +319,13 @@ function WatchlistRow({
   const direction = useTickDirection(quote?.bid);
   const t = useT();
   const changePercent = stats?.changePercent ?? null;
+  const change = signedChange(changePercent, 2);
   const changeTone =
-    changePercent === null || Number(changePercent) === 0
-      ? 'text-terminal-muted'
-      : Number(changePercent) > 0
-        ? 'text-terminal-long'
-        : 'text-terminal-short';
+    change.direction === 'up'
+      ? 'text-terminal-long'
+      : change.direction === 'down'
+        ? 'text-terminal-short'
+        : 'text-terminal-muted';
 
   const ticketId = `row-ticket-${symbol.code}`;
 
@@ -341,61 +342,67 @@ function WatchlistRow({
           the change column is last, and when it was cut off the number
           "Movers" ranks by sat behind a scroll bar. A session label wraps
           under the code rather than widening the column. */}
-        <td className="py-1.5 ps-2 pe-1">
-          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-            <button
-              type="button"
-              onClick={(event) => {
-                // The row selects an instrument; the star does not.
-                event.stopPropagation();
-                onStar(symbol.code);
-              }}
-              aria-pressed={starred}
-              aria-label={t(starred ? 'wl.unstar' : 'wl.star', { code: symbol.code })}
-              /**
-               * The resting star is `muted`, not `border`.
-               *
-               * It was `text-terminal-border` — #232a35 on a #12161d row, which
-               * is **1.26:1**. The intent was "subtle until hovered" and the
-               * effect was invisible: the only way to favourite an instrument
-               * was a control most people cannot see is there. axe never said
-               * so, because the row background is semi-transparent and it files
-               * those as undetermined rather than failing them.
-               *
-               * `muted` is the token this UI already uses for secondary text, so
-               * the star stays quiet against the instrument code beside it while
-               * clearing 4.5:1. The three states remain distinct: quiet, brighter
-               * on hover, warning-coloured when set.
-               */
-              className={cn(
-                'text-caption leading-none transition-colors',
-                starred ? 'text-terminal-warning' : 'text-terminal-muted hover:text-terminal-text',
-              )}
-            >
-              ★
-            </button>
-            <InstrumentBadge code={symbol.code} />
-            <span className="font-medium text-terminal-text">{symbol.code}</span>
-            {onTrade === undefined ? null : (
+        <td className="py-1.5 ps-1.5 pe-1">
+          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+            <span className="inline-flex items-center gap-0.5 whitespace-nowrap">
               <button
                 type="button"
                 onClick={(event) => {
+                  // The row selects an instrument; the star does not.
                   event.stopPropagation();
-                  onToggle(symbol.code);
+                  onStar(symbol.code);
                 }}
-                aria-expanded={opened}
-                // Only while there is something to point at.
-                aria-controls={opened ? ticketId : undefined}
-                aria-label={t(opened ? 'wl.ticketClose' : 'wl.ticketOpen', { code: symbol.code })}
-                title={opened ? t('wl.ticketCloseTitle') : t('wl.ticketOpenTitle')}
+                aria-pressed={starred}
+                aria-label={t(starred ? 'wl.unstar' : 'wl.star', { code: symbol.code })}
+                /**
+                 * The resting star is `muted`, not `border`.
+                 *
+                 * It was `text-terminal-border` — #232a35 on a #12161d row, which
+                 * is **1.26:1**. The intent was "subtle until hovered" and the
+                 * effect was invisible: the only way to favourite an instrument
+                 * was a control most people cannot see is there. axe never said
+                 * so, because the row background is semi-transparent and it files
+                 * those as undetermined rather than failing them.
+                 *
+                 * `muted` is the token this UI already uses for secondary text, so
+                 * the star stays quiet against the instrument code beside it while
+                 * clearing 4.5:1. The three states remain distinct: quiet, brighter
+                 * on hover, warning-coloured when set.
+                 */
                 className={cn(
-                  'text-label leading-none transition-colors',
-                  opened ? 'text-terminal-accent' : 'text-terminal-muted hover:text-terminal-text',
+                  'text-caption leading-none transition-colors',
+                  starred
+                    ? 'text-terminal-warning'
+                    : 'text-terminal-muted hover:text-terminal-text',
                 )}
               >
-                {opened ? '▾' : '▸'}
+                ★
               </button>
-            )}
+              <InstrumentBadge code={symbol.code} />
+              <span className="font-medium text-terminal-text">{symbol.code}</span>
+              {onTrade === undefined ? null : (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onToggle(symbol.code);
+                  }}
+                  aria-expanded={opened}
+                  // Only while there is something to point at.
+                  aria-controls={opened ? ticketId : undefined}
+                  aria-label={t(opened ? 'wl.ticketClose' : 'wl.ticketOpen', { code: symbol.code })}
+                  title={opened ? t('wl.ticketCloseTitle') : t('wl.ticketOpenTitle')}
+                  className={cn(
+                    'text-label leading-none transition-colors',
+                    opened
+                      ? 'text-terminal-accent'
+                      : 'text-terminal-muted hover:text-terminal-text',
+                  )}
+                >
+                  {opened ? '▾' : '▸'}
+                </button>
+              )}
+            </span>
             {/* One word in a column with no room for more; the title carries the
               reason and, where the platform knows it, the opening time. */}
             {symbol.sessionOpen ? null : (
@@ -464,11 +471,7 @@ function WatchlistRow({
         >
           {/* An em dash, never a zero. "No reference yet" and "unchanged" are
             different claims and only one of them is ever true here. */}
-          <span className="numeric">
-            {changePercent === null
-              ? '—'
-              : `${Number(changePercent) > 0 ? '+' : ''}${percent(changePercent, 2)}`}
-          </span>
+          <span className="numeric">{change.text}</span>
         </td>
         <td className="numeric hidden px-3 py-1.5 text-end text-terminal-muted 2xl:table-cell">
           {quote === undefined ? '—' : formatPrice(quote.spread, symbol.pricePrecision)}

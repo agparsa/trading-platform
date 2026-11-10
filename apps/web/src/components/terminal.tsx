@@ -314,8 +314,12 @@ export function Terminal() {
           >
             {t('terminal.buildStatus')}
           </Link>
-          <span className="text-caption text-terminal-muted">{user?.email ?? ''}</span>
-          <Button variant="ghost" onClick={() => void signOut()}>
+          {/* The address only where there is room for it beside everything else:
+              at a laptop width it pushed the whole cluster onto a second row. */}
+          <span className="hidden text-caption text-terminal-muted 2xl:inline">
+            {user?.email ?? ''}
+          </span>
+          <Button variant="ghost" onClick={() => void signOut()} title={user?.email ?? undefined}>
             {t('shell.signOut')}
           </Button>
         </div>

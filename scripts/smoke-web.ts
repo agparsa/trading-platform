@@ -1475,6 +1475,7 @@ async function main(): Promise<void> {
       for (const [path, heading, words, view] of [
         ['/wallet', 'کیف پول', /افزودن پول/, 'the wallet screen, Persian'],
         ['/verification', 'احراز هویت', /وضعیت/, 'the verification screen, Persian'],
+        ['/security', 'امنیت', /تأیید دومرحله‌ای/, 'the security screen, Persian'],
       ] as const) {
         await visit(page, path, { url: path });
         const seen = await page

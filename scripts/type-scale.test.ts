@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { TYPE_SCALE } from '../packages/ui/src/cn';
 
 /**
  * The web app's font sizes come from a named scale.
@@ -88,6 +89,15 @@ describe('the type scale', () => {
     expect(definedSizes(CSS)).toEqual(
       expect.arrayContaining(['micro', 'label', 'caption', 'body']),
     );
+  });
+
+  /**
+   * `cn()` merges classes with tailwind-merge, which must be told which
+   * `text-*` names are sizes. A size added to globals.css and not to
+   * `TYPE_SCALE` is read as a colour and silently dropped beside one.
+   */
+  it('is the scale cn() knows, so a size is never merged away as a colour', () => {
+    expect([...TYPE_SCALE].sort()).toEqual([...definedSizes(CSS)].sort());
   });
 
   it('is the only way the web app sets a font size', () => {

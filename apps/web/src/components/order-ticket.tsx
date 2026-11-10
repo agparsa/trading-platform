@@ -526,15 +526,19 @@ export function OrderTicket({
         ))}
       </div>
 
+      {/* Sell first, at the bid; buy second, at the ask — the order the
+          watchlist's row ticket and the bid/ask line below already use, and
+          the one most terminals share, so a hand reaching for "buy" finds it
+          where it expects. */}
       <div className="grid grid-cols-2 gap-2">
-        <SideButton active={side === 'BUY'} side="BUY" onClick={() => setSide('BUY')}>
-          <span className="numeric block text-sm">
-            {quote === undefined ? '—' : formatPrice(quote.ask, symbol.pricePrecision)}
-          </span>
-        </SideButton>
         <SideButton active={side === 'SELL'} side="SELL" onClick={() => setSide('SELL')}>
           <span className="numeric block text-sm">
             {quote === undefined ? '—' : formatPrice(quote.bid, symbol.pricePrecision)}
+          </span>
+        </SideButton>
+        <SideButton active={side === 'BUY'} side="BUY" onClick={() => setSide('BUY')}>
+          <span className="numeric block text-sm">
+            {quote === undefined ? '—' : formatPrice(quote.ask, symbol.pricePrecision)}
           </span>
         </SideButton>
       </div>

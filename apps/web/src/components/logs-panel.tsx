@@ -1,6 +1,8 @@
 'use client';
 
 import { orderLogLines } from '@/lib/order-log';
+import { wordsFor } from '@/lib/messages';
+import { ORDER_TYPE_WORDS } from '@/lib/server-words';
 import { utcTime } from '@/lib/format';
 import { useOrderLog } from '@/lib/queries';
 import { ExportBar } from './export-bar';
@@ -37,7 +39,7 @@ const COLUMNS = [
 export function LogsPanel({ accountId }: { accountId: string | null }) {
   const t = useT();
   const log = useOrderLog(accountId);
-  const lines = orderLogLines(log.data?.pages);
+  const lines = orderLogLines(log.data?.pages, t);
 
   if (accountId === null) return <EmptyState>{t('empty.noAccount')}</EmptyState>;
   if (log.isError) return <EmptyState>{t('logs.error')}</EmptyState>;
@@ -80,7 +82,9 @@ export function LogsPanel({ accountId }: { accountId: string | null }) {
                 <span className="inline-flex items-center gap-1.5">
                   {line.symbol}
                   <SideBadge side={line.side} />
-                  <span className="text-terminal-muted">{line.orderType}</span>
+                  <span className="text-terminal-muted">
+                    {wordsFor(ORDER_TYPE_WORDS, line.orderType.toUpperCase().replace(/ /g, '_'), t)}
+                  </span>
                 </span>
               </td>
               <td className="px-2 py-1.5 font-medium text-terminal-text">{line.label}</td>

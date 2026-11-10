@@ -3,6 +3,8 @@
 import { cn } from '@tp/ui';
 import { utcTime } from '@/lib/format';
 import { useSecurityEvents, type SecurityEventRow } from '@/lib/queries';
+import { wordsFor, type MessageKey } from '@/lib/messages';
+import { useT } from '@/lib/use-locale';
 
 const SEVERITY_TONE: Record<SecurityEventRow['severity'], string> = {
   INFO: 'text-terminal-muted',
@@ -10,41 +12,47 @@ const SEVERITY_TONE: Record<SecurityEventRow['severity'], string> = {
   WARNING: 'text-terminal-short',
 };
 
+const SEVERITY_WORDS: Record<SecurityEventRow['severity'], MessageKey> = {
+  INFO: 'secev.severity.INFO',
+  NOTICE: 'secev.severity.NOTICE',
+  WARNING: 'secev.severity.WARNING',
+};
+
 /** The kinds in the words a person would use. Anything unlisted shows its code. */
-const WORDING: Record<string, string> = {
-  SIGN_IN: 'Signed in',
-  SIGN_IN_FAILED: 'Failed sign-in attempt',
-  SECOND_FACTOR_FAILED: 'Wrong second-factor code',
-  SIGN_IN_NEW_DEVICE: 'Signed in from a new device',
-  SIGN_OUT: 'Signed out',
-  SESSION_REVOKED: 'A session was ended',
-  SESSIONS_REVOKED_BY_STAFF: 'All sessions were ended by staff',
-  EMAIL_VERIFIED: 'Email address verified',
-  PASSWORD_CHANGED: 'Password changed',
-  PASSWORD_RESET: 'Password reset',
-  TWO_FACTOR_ENABLED: 'Two-factor authentication turned on',
-  TWO_FACTOR_DISABLED: 'Two-factor authentication turned off',
-  RECOVERY_CODE_USED: 'A recovery code was used',
-  API_KEY_MINTED: 'API key created',
-  API_KEY_REVOKED: 'API key revoked',
-  SERVICE_TOKEN_MINTED: 'Service token created',
-  SERVICE_TOKEN_REVOKED: 'Service token revoked',
-  ROLE_ASSIGNED: 'Your role was changed',
-  USER_SUSPENDED: 'Your account was suspended',
-  USER_REINSTATED: 'Your account was reinstated',
-  USER_UNLOCKED: 'Your sign-in lock was cleared',
-  BREAK_GLASS_OPENED: 'A member of staff viewed your account, with a recorded reason',
-  BREAK_GLASS_CLOSED: 'The staff view of your account ended',
-  IP_RULE_CHANGED: 'You changed where this firm can be reached from',
+const WORDING: Record<string, MessageKey> = {
+  SIGN_IN: 'secev.kind.SIGN_IN',
+  SIGN_IN_FAILED: 'secev.kind.SIGN_IN_FAILED',
+  SECOND_FACTOR_FAILED: 'secev.kind.SECOND_FACTOR_FAILED',
+  SIGN_IN_NEW_DEVICE: 'secev.kind.SIGN_IN_NEW_DEVICE',
+  SIGN_OUT: 'secev.kind.SIGN_OUT',
+  SESSION_REVOKED: 'secev.kind.SESSION_REVOKED',
+  SESSIONS_REVOKED_BY_STAFF: 'secev.kind.SESSIONS_REVOKED_BY_STAFF',
+  EMAIL_VERIFIED: 'secev.kind.EMAIL_VERIFIED',
+  PASSWORD_CHANGED: 'secev.kind.PASSWORD_CHANGED',
+  PASSWORD_RESET: 'secev.kind.PASSWORD_RESET',
+  TWO_FACTOR_ENABLED: 'secev.kind.TWO_FACTOR_ENABLED',
+  TWO_FACTOR_DISABLED: 'secev.kind.TWO_FACTOR_DISABLED',
+  RECOVERY_CODE_USED: 'secev.kind.RECOVERY_CODE_USED',
+  API_KEY_MINTED: 'secev.kind.API_KEY_MINTED',
+  API_KEY_REVOKED: 'secev.kind.API_KEY_REVOKED',
+  SERVICE_TOKEN_MINTED: 'secev.kind.SERVICE_TOKEN_MINTED',
+  SERVICE_TOKEN_REVOKED: 'secev.kind.SERVICE_TOKEN_REVOKED',
+  ROLE_ASSIGNED: 'secev.kind.ROLE_ASSIGNED',
+  USER_SUSPENDED: 'secev.kind.USER_SUSPENDED',
+  USER_REINSTATED: 'secev.kind.USER_REINSTATED',
+  USER_UNLOCKED: 'secev.kind.USER_UNLOCKED',
+  BREAK_GLASS_OPENED: 'secev.kind.BREAK_GLASS_OPENED',
+  BREAK_GLASS_CLOSED: 'secev.kind.BREAK_GLASS_CLOSED',
+  IP_RULE_CHANGED: 'secev.kind.IP_RULE_CHANGED',
   // The five device events were recorded from the day devices were, and shown
   // here as their raw names — including DEVICE_REGISTERED, a WARNING, which is
   // the one a person is meant to recognise as not theirs. Found by
   // `client-vocabularies.test.ts`, which holds this list to the enum.
-  DEVICE_REGISTERED: 'A new device was signed in to this account',
-  DEVICE_REVIVED: 'A device you had removed was signed in again',
-  DEVICE_REVOKED: 'You removed a device',
-  DEVICE_REVOKED_BY_STAFF: 'Staff removed one of your devices',
-  DEVICE_RESTORED_BY_STAFF: 'Staff restored one of your devices',
+  DEVICE_REGISTERED: 'secev.kind.DEVICE_REGISTERED',
+  DEVICE_REVIVED: 'secev.kind.DEVICE_REVIVED',
+  DEVICE_REVOKED: 'secev.kind.DEVICE_REVOKED',
+  DEVICE_REVOKED_BY_STAFF: 'secev.kind.DEVICE_REVOKED_BY_STAFF',
+  DEVICE_RESTORED_BY_STAFF: 'secev.kind.DEVICE_RESTORED_BY_STAFF',
 };
 
 /**
@@ -57,23 +65,23 @@ const WORDING: Record<string, string> = {
 export function SecurityEventsPanel() {
   const events = useSecurityEvents();
   const rows = events.data?.events ?? [];
+  const t = useT();
 
   return (
     <div className="space-y-3" data-testid="security-events">
       <div>
-        <p className="text-label uppercase tracking-wider text-terminal-muted">Recent activity</p>
-        <p className="mt-1 text-caption leading-relaxed text-terminal-muted">
-          Sign-ins, keys and changes to how you authenticate, as the platform recorded them. If
-          something here is not you, end your sessions and change your password now.
+        <p className="text-label uppercase tracking-wider text-terminal-muted">
+          {t('secev.title')}
         </p>
+        <p className="mt-1 text-caption leading-relaxed text-terminal-muted">{t('secev.lead')}</p>
       </div>
 
       {events.isPending ? (
-        <p className="text-caption text-terminal-muted">Loading…</p>
+        <p className="text-caption text-terminal-muted">{t('common.loading')}</p>
       ) : events.isError ? (
-        <p className="text-caption text-terminal-short">Could not load your security activity.</p>
+        <p className="text-caption text-terminal-short">{t('secev.error')}</p>
       ) : rows.length === 0 ? (
-        <p className="text-caption text-terminal-muted">Nothing recorded yet.</p>
+        <p className="text-caption text-terminal-muted">{t('secev.empty')}</p>
       ) : (
         <ul className="divide-y divide-terminal-border">
           {rows.map((row) => (
@@ -82,13 +90,18 @@ export function SecurityEventsPanel() {
                 {utcTime(row.at)}
               </span>
               <span className={cn('w-16 shrink-0 font-medium', SEVERITY_TONE[row.severity])}>
-                {row.severity}
+                {t(SEVERITY_WORDS[row.severity])}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="text-terminal-text">{WORDING[row.kind] ?? row.kind}</span>
-                {row.byOther ? <span className="text-terminal-muted"> · by staff</span> : null}
+                <span className="text-terminal-text">{wordsFor(WORDING, row.kind, t)}</span>
+                {row.byOther ? (
+                  <span className="text-terminal-muted"> · {t('secev.byStaff')}</span>
+                ) : null}
                 {row.ipAddress ? (
-                  <span className="text-terminal-muted"> · from {row.ipAddress}</span>
+                  <span className="text-terminal-muted">
+                    {' '}
+                    · {t('secev.from', { ip: row.ipAddress })}
+                  </span>
                 ) : null}
               </span>
             </li>

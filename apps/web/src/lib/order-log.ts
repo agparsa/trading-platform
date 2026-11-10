@@ -1,5 +1,5 @@
 import type { OrderLogRow } from './queries';
-import { trailLines, type TrailLine } from './order-trail';
+import { trailLines, type TrailLine, type Translate } from './order-trail';
 
 /**
  * The Logs tab's lines: the account's order events, newest first, each in
@@ -21,6 +21,7 @@ export interface OrderLogLine extends TrailLine {
 
 export function orderLogLines(
   pages: ReadonlyArray<{ events: readonly OrderLogRow[] }> | undefined,
+  t?: Translate,
 ): OrderLogLine[] {
   const seen = new Set<string>();
   const rows: OrderLogRow[] = [];
@@ -31,7 +32,7 @@ export function orderLogLines(
       rows.push(row);
     }
   }
-  const lines = trailLines(rows);
+  const lines = trailLines(rows, t);
   return rows.map((row, index) => ({
     ...lines[index]!,
     id: row.id,

@@ -5,6 +5,7 @@ import QRCode from 'qrcode';
 import { DomainError } from '@tp/shared-types';
 import { useSession } from '@/lib/session';
 import { Button, Field, inputClass } from './primitives';
+import { useT } from '@/lib/use-locale';
 
 interface TwoFactorStatus {
   enabled: boolean;
@@ -43,6 +44,7 @@ export function SecuritySettings({
   presentation?: 'popover' | 'page';
 } = {}) {
   const { api } = useSession();
+  const t = useT();
   const [open, setOpen] = useState(presentation === 'page');
   const [status, setStatus] = useState<TwoFactorStatus | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
@@ -92,7 +94,7 @@ export function SecuritySettings({
     try {
       await action();
     } catch (caught) {
-      setError(caught instanceof DomainError ? caught.message : 'Something went wrong.');
+      setError(caught instanceof DomainError ? caught.message : t('sec.failed'));
     } finally {
       setBusy(false);
     }
@@ -153,17 +155,14 @@ export function SecuritySettings({
   const body = (
     <>
       <p className="mb-2 text-label uppercase tracking-wider text-terminal-muted">
-        Two-factor authentication
+        {t('sec.twoFactor')}
       </p>
 
       {status === null ? (
-        <p className="text-caption text-terminal-muted">Loading…</p>
+        <p className="text-caption text-terminal-muted">{t('common.loading')}</p>
       ) : recoveryCodes !== null ? (
         <div>
-          <p className="text-caption text-terminal-text">
-            Two-factor authentication is on. Save these recovery codes now — they are the only way
-            back in without your phone, and they cannot be shown again.
-          </p>
+          <p className="text-caption text-terminal-text">{t('sec.recoveryShown')}</p>
           <ul className="my-3 grid grid-cols-2 gap-1 rounded border border-terminal-border bg-terminal-bg p-2 font-mono text-caption text-terminal-text">
             {recoveryCodes.map((value) => (
               <li key={value}>{value}</li>
@@ -174,21 +173,19 @@ export function SecuritySettings({
             className="w-full py-1.5"
             onClick={() => setRecoveryCodes(null)}
           >
-            I have saved them
+            {t('sec.saved')}
           </Button>
         </div>
       ) : offer !== null ? (
         <div className="space-y-2">
-          <p className="text-caption text-terminal-muted">
-            Scan this with your authenticator app, then enter the code it shows.
-          </p>
+          <p className="text-caption text-terminal-muted">{t('sec.scan')}</p>
           {qr === null ? null : (
             // A plain <img>, not next/image: the source is a data URL
             // generated in the browser, so there is nothing for an image
             // optimiser to fetch or cache.
             <img
               src={qr}
-              alt="Enrolment QR code"
+              alt={t('sec.qrAlt')}
               className="mx-auto rounded bg-white p-1"
               width={176}
               height={176}
@@ -197,7 +194,7 @@ export function SecuritySettings({
           <p className="break-all rounded border border-terminal-border bg-terminal-bg p-2 font-mono text-label text-terminal-text">
             {offer.secret}
           </p>
-          <Field label="Code from your app">
+          <Field label={t('sec.code')}>
             <input
               className={inputClass}
               value={code}
@@ -212,26 +209,27 @@ export function SecuritySettings({
             disabled={busy}
             onClick={() => void activate()}
           >
-            {busy ? 'Checking…' : 'Turn on'}
+            {busy ? t('sec.checking') : t('sec.turnOn')}
           </Button>
           <button
             type="button"
             className="w-full text-center text-label text-terminal-muted hover:text-terminal-text"
             onClick={() => setOffer(null)}
           >
-            Cancel
+            {t('wallet.cancel')}
           </button>
         </div>
       ) : on ? (
         <div className="space-y-2">
           <p className="text-caption text-terminal-text">
-            On since {new Date(status.enabledAt ?? '').toLocaleDateString()}.
+            {t('sec.onSince', { date: new Date(status.enabledAt ?? '').toLocaleDateString() })}
           </p>
           <p className="text-label text-terminal-muted">
-            {status.recoveryCodesRemaining} recovery{' '}
-            {status.recoveryCodesRemaining === 1 ? 'code' : 'codes'} left.
+            {t(status.recoveryCodesRemaining === 1 ? 'sec.codesLeftOne' : 'sec.codesLeft', {
+              count: status.recoveryCodesRemaining,
+            })}
           </p>
-          <Field label="Password">
+          <Field label={t('login.password')}>
             <input
               className={inputClass}
               type="password"
@@ -240,7 +238,7 @@ export function SecuritySettings({
               onChange={(event) => setPassword(event.target.value)}
             />
           </Field>
-          <Field label="Code from your app">
+          <Field label={t('sec.code')}>
             <input
               className={inputClass}
               value={code}
@@ -254,19 +252,14 @@ export function SecuritySettings({
             disabled={busy || password.length === 0 || code.length === 0}
             onClick={() => void disable()}
           >
-            {busy ? 'Working…' : 'Turn off'}
+            {busy ? t('login.working') : t('sec.turnOff')}
           </Button>
         </div>
       ) : (
         <div className="space-y-2">
-          <p className="text-caption text-terminal-muted">
-            A password alone is one stolen credential away from your positions. With this on, a
-            sign-in also needs the code on your phone.
-          </p>
+          <p className="text-caption text-terminal-muted">{t('sec.why')}</p>
           {status.pending ? (
-            <p className="text-label text-terminal-warning">
-              An enrolment was started and never confirmed. Starting again replaces it.
-            </p>
+            <p className="text-label text-terminal-warning">{t('sec.pending')}</p>
           ) : null}
           <Button
             variant="neutral"
@@ -274,7 +267,7 @@ export function SecuritySettings({
             disabled={busy}
             onClick={() => void begin()}
           >
-            {busy ? 'Working…' : 'Set up'}
+            {busy ? t('login.working') : t('sec.setUp')}
           </Button>
         </div>
       )}
@@ -282,10 +275,10 @@ export function SecuritySettings({
       {error === null ? null : <p className="mt-2 text-caption text-terminal-short">{error}</p>}
 
       <p className="mb-2 mt-4 border-t border-terminal-border pt-3 text-label uppercase tracking-wider text-terminal-muted">
-        Where you are signed in
+        {t('sec.sessions')}
       </p>
       {sessions === null ? (
-        <p className="text-caption text-terminal-muted">Loading…</p>
+        <p className="text-caption text-terminal-muted">{t('common.loading')}</p>
       ) : (
         <ul className="space-y-1.5">
           {sessions.map((session) => (
@@ -294,12 +287,12 @@ export function SecuritySettings({
                 <p className="truncate text-caption text-terminal-text">
                   {session.device}
                   {session.current ? (
-                    <span className="ms-1 text-terminal-muted">· this device</span>
+                    <span className="ms-1 text-terminal-muted">· {t('sec.thisDevice')}</span>
                   ) : null}
                 </p>
                 <p className="truncate text-label text-terminal-muted">
-                  {session.ipAddress ?? 'address unknown'} · since{' '}
-                  {new Date(session.signedInAt).toLocaleString()}
+                  {session.ipAddress ?? t('sec.addressUnknown')} ·{' '}
+                  {t('sec.since', { time: new Date(session.signedInAt).toLocaleString() })}
                 </p>
               </div>
               {session.current ? null : (
@@ -309,7 +302,7 @@ export function SecuritySettings({
                   disabled={busy}
                   onClick={() => void endSession(session.id)}
                 >
-                  End
+                  {t('sec.end')}
                 </button>
               )}
             </li>
@@ -317,8 +310,7 @@ export function SecuritySettings({
         </ul>
       )}
       <p className="mt-2 text-label leading-relaxed text-terminal-muted">
-        A device you do not recognise means someone else has your password. End that session, then
-        change it.
+        {t('sec.unknownDevice')}
       </p>
     </>
   );
@@ -331,9 +323,9 @@ export function SecuritySettings({
         type="button"
         onClick={() => setOpen((value) => !value)}
         className="rounded border border-terminal-border px-2 py-1 text-label uppercase tracking-wider text-terminal-muted transition-colors hover:text-terminal-text"
-        title="Account security"
+        title={t('sec.popoverTitle')}
       >
-        Security
+        {t('nav.security')}
       </button>
 
       {!open ? null : (

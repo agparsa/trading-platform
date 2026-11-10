@@ -30,6 +30,9 @@ const MAPS: Readonly<Record<string, Vocabulary | { none: string }>> = {
   'apps/web/src/app/(app)/wallet/page.tsx:PAYMENT_STATUS_LABELS': 'prisma.PaymentStatus',
   'apps/web/src/app/(app)/wallet/page.tsx:WITHDRAWAL_STATUS_LABELS': 'prisma.WithdrawalStatus',
   'apps/web/src/app/(app)/wallet/page.tsx:MOVEMENT_LABELS': 'prisma.WalletTransactionType',
+  'apps/web/src/components/api-keys-panel.tsx:STATUS_WORDS': {
+    none: "the same derived key status as STATUS_TONE, typed as its row's union",
+  },
   'apps/web/src/components/api-keys-panel.tsx:STATUS_TONE': {
     none: "a key's status is derived (ACTIVE, REVOKED, EXPIRED) and typed as its row's union",
   },
@@ -37,7 +40,13 @@ const MAPS: Readonly<Record<string, Vocabulary | { none: string }>> = {
     none: "the same derived key status as the trader's own panel",
   },
   'apps/web/src/components/alerts-panel.tsx:STATUS_WORDS': 'prisma.PriceAlertStatus',
+  'apps/web/src/lib/server-words.ts:ORDER_STATUS_WORDS': 'prisma.OrderStatus',
+  'apps/web/src/lib/server-words.ts:CLOSE_REASON_WORDS': 'prisma.CloseReason',
+  'apps/web/src/lib/server-words.ts:ACCOUNT_STATUS_WORDS': 'prisma.AccountStatus',
+  'apps/web/src/lib/server-words.ts:ACCOUNT_TYPE_WORDS': 'prisma.AccountType',
+  'apps/web/src/lib/server-words.ts:ORDER_TYPE_WORDS': 'prisma.OrderType',
   'apps/web/src/components/security-events-panel.tsx:SEVERITY_TONE': 'prisma.SecuritySeverity',
+  'apps/web/src/components/security-events-panel.tsx:SEVERITY_WORDS': 'prisma.SecuritySeverity',
   'apps/web/src/components/security-events-panel.tsx:WORDING': 'prisma.SecurityEventKind',
   'apps/web/src/components/admin/connections-panel.tsx:STATE_TONE': 'prisma.BrokerConnectionStatus',
   'apps/web/src/components/admin/connections-panel.tsx:STATE_WORDS':

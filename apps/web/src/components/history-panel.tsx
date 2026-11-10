@@ -24,8 +24,9 @@ import {
 import { trailLines } from '@/lib/order-trail';
 import { ExportBar } from './export-bar';
 import { EmptyState, SideBadge } from './primitives';
+import { CLOSE_REASON_WORDS, ORDER_STATUS_WORDS, ORDER_TYPE_WORDS } from '@/lib/server-words';
 import { useT } from '@/lib/use-locale';
-import type { MessageKey } from '@/lib/messages';
+import { wordsFor, type MessageKey } from '@/lib/messages';
 
 export type HistoryTab = 'trades' | 'closed' | 'orders';
 
@@ -113,7 +114,7 @@ export function HistoryPanel({
               </Cell>
               <td
                 className={cn('numeric px-2 py-1.5 text-end', toneClass[toneOf(trade.netPnl)])}
-                title={`${t('history.gross', { gross: trade.grossPnl })}${trade.closeReason === null ? '' : ` · ${trade.closeReason}`}`}
+                title={`${t('history.gross', { gross: trade.grossPnl })}${trade.closeReason === null ? '' : ` · ${wordsFor(CLOSE_REASON_WORDS, trade.closeReason, t)}`}`}
               >
                 {signedMoney(trade.netPnl, currency)}
               </td>
@@ -159,7 +160,11 @@ export function HistoryPanel({
               <Cell right muted>
                 {formatPrice(position.entryPrice, precisionOf(position.symbol))}
               </Cell>
-              <Cell muted>{position.closeReason ?? '—'}</Cell>
+              <Cell muted>
+                {position.closeReason === null
+                  ? '—'
+                  : wordsFor(CLOSE_REASON_WORDS, position.closeReason, t)}
+              </Cell>
               <td
                 className={cn(
                   'numeric px-2 py-1.5 text-end',
@@ -251,7 +256,7 @@ function OrderRowWithTrail({
         <td className="px-2 py-1.5">
           <SideBadge side={order.side} />
         </td>
-        <Cell muted>{order.type}</Cell>
+        <Cell muted>{wordsFor(ORDER_TYPE_WORDS, order.type, t)}</Cell>
         <Cell right>{formatVolume(order.volume)}</Cell>
         <Cell right muted>
           {formatVolume(order.filledVolume)}
@@ -267,7 +272,7 @@ function OrderRowWithTrail({
                   : 'bg-terminal-raised text-terminal-muted',
             )}
           >
-            {order.status}
+            {wordsFor(ORDER_STATUS_WORDS, order.status, t)}
           </span>
         </td>
         <td className="py-1.5 ps-2 pe-3 text-end">
@@ -305,12 +310,12 @@ function TrailRow({ orderId }: { orderId: string }) {
           <span className="text-caption text-terminal-muted">{t('history.trailEmpty')}</span>
         ) : (
           <ol className="space-y-0.5" data-testid="order-trail">
-            {trailLines(events.data).map((line, index) => (
+            {trailLines(events.data, t).map((line, index) => (
               <li key={index} className="flex flex-wrap items-baseline gap-x-3 text-caption">
                 <span className="numeric text-terminal-muted">{utcTime(line.at)}</span>
                 <span className="font-medium text-terminal-text">{line.label}</span>
                 {line.facts === '' ? null : (
-                  <span className="numeric text-terminal-muted">{line.facts}</span>
+                  <span className="text-terminal-muted">{line.facts}</span>
                 )}
                 {line.reason === null ? null : (
                   <span className="text-terminal-warning">{line.reason}</span>

@@ -240,19 +240,31 @@ follows the page. The browser walk measures a label and its figure in
 Persian and fails if their right edges part. The words are
 in `lib/messages.ts`: English is the source, the Persian table is typed against
 its keys, so an untranslated key fails the build, and both must use the same
-placeholders. Translated so far: the section navigation, the page frame,
-sign-in, Settings, the whole terminal — order ticket (order types, sides, the
-send button and its confirmation), chart caption, watchlist and every activity
-panel — and every trader page: Analytics, Wallet and Verification whole, and
-the title, description and details of Account, History, Instruments, Security
-and Developer. Still English: the Security forms, the status and reason codes
-the server sends (`FILLED`, `STOP_LOSS`), the server's own messages, the admin
+placeholders. Translated: every trader screen — navigation, sign-in, Settings,
+the terminal (order ticket, chart caption, watchlist, every activity panel and
+popover), Account, Wallet, Verification, History, Analytics, Instruments,
+Security and Developer — and the codes the server sends, worded through the
+tables in `lib/server-words.ts` (order status, close reason, account status and
+type), which `client-vocabularies.test.ts` holds to the Prisma enums. CSV
+exports keep the codes. Still English: the server's own messages, the admin
 console and the phone; the language note says so on screen. The layout mirrors: every margin, padding,
 alignment and offset in the web app is a logical utility (`ms-`, `pe-`,
 `text-end`, `end-`), not a physical one, so start and end swap with the
 direction rather than staying pinned to left and right. The browser walk chooses فارسی, reloads, checks the page is right to
 left with Persian links and a left-to-right figure, and audits Settings and the
 terminal in it.
+
+**Density.** The terminal's header is one row at a laptop width (the email
+shows only at `2xl`; the sign-out button carries it as a title), and the
+account strip is one row of twelve figures, sized by a container query so the
+Account page's narrower panel gets two rows of six. Small controls use the type
+scale (`text-caption`, `text-label`): `cn()` in `@tp/ui` is told those are
+sizes — tailwind-merge had read them as colours and dropped them beside a
+colour class, so every control built with `cn()` had rendered at 16px.
+`scripts/type-scale.test.ts` holds `TYPE_SCALE` to globals.css. The order
+ticket puts Sell first, at the bid, and Buy second, at the ask, as the
+watchlist's row ticket and the bid/ask line do. A change that rounds to zero
+reads `0.00%`, uncoloured — never a red `-0.00%`.
 
 **The pre-trade check.** A market order complete enough to send is shown to
 the risk engine before it is sent: `POST /orders/preview`, asked once the

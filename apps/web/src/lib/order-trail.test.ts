@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { translate } from './messages';
 import { ORDER_EVENT_LABEL, trailLines } from './order-trail';
 
 const event = (type: string, payload: Record<string, unknown> = {}) => ({
@@ -23,6 +24,14 @@ describe('an order trail, in words', () => {
     expect(lines[0]?.facts).toBe('volume 1.00 · price 4500.00 · time in force GTC');
     expect(lines[1]?.facts).toBe('price 4510.00 · was price 4500.00 · by system');
     expect(lines[2]?.reason).toBe('INSUFFICIENT_MARGIN');
+  });
+
+  it('speaks Persian when given a Persian translator, values kept left to right', () => {
+    const fa = (key: Parameters<typeof translate>[1], vars?: Record<string, string | number>) =>
+      translate('fa', key, vars);
+    const [line] = trailLines([event('FILLED', { volume: '0.30', by: 'SYSTEM' })], fa);
+    expect(line?.label).toBe('پر شد');
+    expect(line?.facts).toBe('حجم \u20660.30\u2069 · توسط \u2066system\u2069');
   });
 
   it('shows a step it does not know as spelled', () => {

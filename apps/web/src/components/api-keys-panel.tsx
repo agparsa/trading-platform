@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { DomainError, KEYABLE_PERMISSIONS } from '@tp/shared-types';
 import { cn } from '@tp/ui';
-import { Button, Field, inputClass } from '@/components/primitives';
+import { Button, Field, inputClass, wordInputClass } from '@/components/primitives';
 import { utcTime } from '@/lib/format';
 import {
   useApiKeys,
@@ -12,11 +12,20 @@ import {
   useRevokeApiKey,
   type ApiKeyRow,
 } from '@/lib/queries';
+import type { MessageKey } from '@/lib/messages';
+import { useT } from '@/lib/use-locale';
 
 const STATUS_TONE: Record<ApiKeyRow['status'], string> = {
   ACTIVE: 'text-terminal-long',
   EXPIRED: 'text-terminal-muted',
   REVOKED: 'text-terminal-short',
+};
+
+/** A key's status in words; the status itself is derived, see STATUS_TONE. */
+const STATUS_WORDS: Record<ApiKeyRow['status'], MessageKey> = {
+  ACTIVE: 'apikeys.status.ACTIVE',
+  EXPIRED: 'apikeys.status.EXPIRED',
+  REVOKED: 'apikeys.status.REVOKED',
 };
 
 /**
@@ -52,6 +61,7 @@ export function ApiKeysPanel() {
   const rows = keys.data?.keys ?? [];
   const live = rows.filter((row) => row.status === 'ACTIVE');
   const ended = rows.filter((row) => row.status !== 'ACTIVE');
+  const t = useT();
   const canMint =
     name.trim().length > 0 && chosen.size > 0 && password.length > 0 && !mint.isPending;
 
@@ -67,11 +77,10 @@ export function ApiKeysPanel() {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-label uppercase tracking-wider text-terminal-muted">API keys</p>
-        <p className="mt-1 text-caption leading-relaxed text-terminal-muted">
-          A key lets a script act as you, with only the capabilities you give it. It can never move
-          money in or out, change roles, or make more keys. Revoking one stops it at once.
+        <p className="text-label uppercase tracking-wider text-terminal-muted">
+          {t('apikeys.title')}
         </p>
+        <p className="mt-1 text-caption leading-relaxed text-terminal-muted">{t('apikeys.lead')}</p>
       </div>
 
       {shown === null ? null : (
@@ -79,10 +88,7 @@ export function ApiKeysPanel() {
           className="space-y-2 rounded border border-terminal-warning/60 bg-terminal-raised p-3"
           data-testid="api-key-secret"
         >
-          <p className="text-caption text-terminal-warning">
-            This is the only time the key will be shown. Copy it now; the platform does not keep it
-            and cannot show it again.
-          </p>
+          <p className="text-caption text-terminal-warning">{t('apikeys.onlyOnce')}</p>
           <pre className="whitespace-pre-wrap break-all rounded bg-terminal-bg px-3 py-2 font-mono text-caption text-terminal-text">
             {shown.token}
           </pre>
@@ -94,7 +100,7 @@ export function ApiKeysPanel() {
                 void navigator.clipboard?.writeText(shown.token).then(() => setCopied(true));
               }}
             >
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? t('apikeys.copied') : t('apikeys.copy')}
             </Button>
             <Button
               variant="ghost"
@@ -104,31 +110,32 @@ export function ApiKeysPanel() {
                 setCopied(false);
               }}
             >
-              I have saved it
+              {t('apikeys.saved')}
             </Button>
           </div>
         </div>
       )}
 
       <div className="space-y-3 rounded border border-terminal-border/60 p-3">
-        <p className="text-label uppercase tracking-wider text-terminal-muted">New key</p>
-        <Field label="Name">
+        <p className="text-label uppercase tracking-wider text-terminal-muted">
+          {t('apikeys.new')}
+        </p>
+        <Field label={t('apikeys.name')}>
           <input
-            className={inputClass}
+            className={wordInputClass}
+            dir="auto"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="What will use it — a trading bot, a spreadsheet"
+            placeholder={t('apikeys.namePlaceholder')}
             maxLength={100}
           />
         </Field>
         <div className="block">
           <span className="mb-1 flex items-center justify-between text-caption uppercase tracking-wider text-terminal-muted">
-            Capabilities
+            {t('apikeys.capabilities')}
           </span>
           {offered.length === 0 ? (
-            <p className="text-caption text-terminal-muted">
-              Nothing you hold can be carried by a key.
-            </p>
+            <p className="text-caption text-terminal-muted">{t('apikeys.nothingOffered')}</p>
           ) : (
             <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
               {offered.map((permission) => (
@@ -148,7 +155,7 @@ export function ApiKeysPanel() {
           )}
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Lives for (days)">
+          <Field label={t('apikeys.lifetime')}>
             <input
               className={inputClass}
               inputMode="numeric"
@@ -156,7 +163,7 @@ export function ApiKeysPanel() {
               onChange={(event) => setDays(event.target.value)}
             />
           </Field>
-          <Field label="Your password">
+          <Field label={t('apikeys.password')}>
             <input
               className={inputClass}
               type="password"
@@ -168,7 +175,7 @@ export function ApiKeysPanel() {
         </div>
         {mint.error === null ? null : (
           <p className="text-caption text-terminal-short">
-            {mint.error instanceof DomainError ? mint.error.message : 'The key was not created.'}
+            {mint.error instanceof DomainError ? mint.error.message : t('apikeys.createFailed')}
           </p>
         )}
         <Button
@@ -194,20 +201,20 @@ export function ApiKeysPanel() {
             )
           }
         >
-          {mint.isPending ? 'Creating…' : 'Create key'}
+          {mint.isPending ? t('apikeys.creating') : t('apikeys.create')}
         </Button>
       </div>
 
       {revoke.error === null ? null : (
         <p className="text-caption text-terminal-short">
-          {revoke.error instanceof DomainError ? revoke.error.message : 'The key was not revoked.'}
+          {revoke.error instanceof DomainError ? revoke.error.message : t('apikeys.revokeFailed')}
         </p>
       )}
 
       {keys.isLoading ? (
-        <p className="text-caption text-terminal-muted">Loading…</p>
+        <p className="text-caption text-terminal-muted">{t('common.loading')}</p>
       ) : rows.length === 0 ? (
-        <p className="text-caption text-terminal-muted">You have no keys.</p>
+        <p className="text-caption text-terminal-muted">{t('apikeys.none')}</p>
       ) : (
         <div className="space-y-2">
           {[...live, ...ended].map((row) => (
@@ -219,23 +226,32 @@ export function ApiKeysPanel() {
                 <p className="text-sm text-terminal-text">
                   {row.name}{' '}
                   <span className={cn('text-label uppercase', STATUS_TONE[row.status])}>
-                    {row.status}
+                    {t(STATUS_WORDS[row.status])}
                   </span>
                 </p>
                 <p className="font-mono text-caption text-terminal-muted">{row.fingerprint}</p>
                 <p className="text-label text-terminal-muted">{row.permissions.join(', ')}</p>
                 <p className="text-label text-terminal-muted">
                   {row.status === 'REVOKED'
-                    ? `Revoked ${utcTime(row.revokedAt ?? row.createdAt)}${row.revokedReason === null ? '' : ` — ${row.revokedReason}`}`
-                    : `Expires ${utcTime(row.expiresAt)}`}
+                    ? `${t('apikeys.revokedAt', { time: utcTime(row.revokedAt ?? row.createdAt) })}${row.revokedReason === null ? '' : ` — ${row.revokedReason}`}`
+                    : t('apikeys.expires', { time: utcTime(row.expiresAt) })}
                   {' · '}
                   {row.lastUsedAt === null
-                    ? 'never used'
-                    : `last used ${utcTime(row.lastUsedAt)}${row.lastUsedIp === null ? '' : ` from ${row.lastUsedIp}`}`}
+                    ? t('apikeys.neverUsed')
+                    : row.lastUsedIp === null
+                      ? t('apikeys.lastUsed', { time: utcTime(row.lastUsedAt) })
+                      : t('apikeys.lastUsedFrom', {
+                          time: utcTime(row.lastUsedAt),
+                          ip: row.lastUsedIp,
+                        })}
                   {' · '}
-                  {row.usage7d.requests} requests this week
-                  {row.usage7d.refused > 0 ? `, ${row.usage7d.refused} refused` : ''}
-                  {row.usage7d.throttled > 0 ? `, ${row.usage7d.throttled} throttled` : ''}
+                  {t('apikeys.requests', { count: row.usage7d.requests })}
+                  {row.usage7d.refused > 0
+                    ? `, ${t('apikeys.refused', { count: row.usage7d.refused })}`
+                    : ''}
+                  {row.usage7d.throttled > 0
+                    ? `, ${t('apikeys.throttled', { count: row.usage7d.throttled })}`
+                    : ''}
                 </p>
               </div>
               {row.status === 'ACTIVE' ? (
@@ -245,7 +261,7 @@ export function ApiKeysPanel() {
                   disabled={revoke.isPending}
                   onClick={() => revoke.mutate({ id: row.id })}
                 >
-                  Revoke
+                  {t('apikeys.revoke')}
                 </Button>
               ) : null}
             </div>

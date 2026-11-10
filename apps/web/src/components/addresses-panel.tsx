@@ -3,6 +3,7 @@
 import { cn } from '@tp/ui';
 import { useAddresses, type AddressRow } from '@/lib/queries';
 import { utcTime } from '@/lib/format';
+import { useT } from '@/lib/use-locale';
 
 /**
  * Where this account has been signed in from.
@@ -20,25 +21,21 @@ import { utcTime } from '@/lib/format';
 export function AddressesPanel() {
   const addresses = useAddresses();
   const rows = addresses.data ?? [];
+  const t = useT();
 
   return (
     <div className="space-y-3" data-testid="addresses">
       <div>
-        <p className="text-label uppercase tracking-wider text-terminal-muted">
-          Where you have signed in from
-        </p>
-        <p className="mt-1 text-caption leading-relaxed text-terminal-muted">
-          Every address this account has been signed in from, for as long as sign-in records are
-          kept. An address you do not recognise, with a session still open, is the one to end.
-        </p>
+        <p className="text-label uppercase tracking-wider text-terminal-muted">{t('addr.title')}</p>
+        <p className="mt-1 text-caption leading-relaxed text-terminal-muted">{t('addr.lead')}</p>
       </div>
 
       {addresses.isPending ? (
-        <p className="text-caption text-terminal-muted">Loading…</p>
+        <p className="text-caption text-terminal-muted">{t('common.loading')}</p>
       ) : addresses.isError ? (
-        <p className="text-caption text-terminal-short">Could not load your sign-in history.</p>
+        <p className="text-caption text-terminal-short">{t('addr.error')}</p>
       ) : rows.length === 0 ? (
-        <p className="text-caption text-terminal-muted">No sign-ins recorded yet.</p>
+        <p className="text-caption text-terminal-muted">{t('addr.empty')}</p>
       ) : (
         <ul className="divide-y divide-terminal-border">
           {rows.map((row: AddressRow) => (
@@ -46,20 +43,23 @@ export function AddressesPanel() {
               <span className="w-36 shrink-0 tabular-nums text-terminal-text">
                 {row.ipAddress}
                 {row.current ? (
-                  <span className="ms-1 text-label text-terminal-long">you, now</span>
+                  <span className="ms-1 text-label text-terminal-long">{t('addr.youNow')}</span>
                 ) : null}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="text-terminal-text">{row.devices.join(', ')}</span>
                 <span className="text-terminal-muted">
                   {' '}
-                  · {row.sessions} {row.sessions === 1 ? 'sign-in' : 'sign-ins'}
-                  {row.active ? ' · a session is still open' : ''}
+                  ·{' '}
+                  {t(row.sessions === 1 ? 'addr.signInOne' : 'addr.signIns', {
+                    count: row.sessions,
+                  })}
+                  {row.active ? ` · ${t('addr.stillOpen')}` : ''}
                 </span>
               </span>
               <span
                 className={cn(
-                  'w-44 shrink-0 text-end tabular-nums text-terminal-muted',
+                  'numeric shrink-0 whitespace-nowrap text-end text-terminal-muted',
                   row.active ? 'text-terminal-text' : '',
                 )}
               >
