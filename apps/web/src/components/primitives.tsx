@@ -67,7 +67,9 @@ export function Tabs<T extends string>({
         >
           {tab.labelKey === undefined ? tab.label : t(tab.labelKey)}
           {tab.count === undefined ? null : (
-            <span className="numeric ms-1.5 text-label text-terminal-muted">{tab.count}</span>
+            <span className="ms-1.5 text-label text-terminal-muted">
+              <span className="numeric">{tab.count}</span>
+            </span>
           )}
         </button>
       ))}

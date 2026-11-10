@@ -50,9 +50,13 @@ export function useLocale(): {
 export function useT(): (
   key: MessageKey,
   vars?: Readonly<Record<string, string | number>>,
+  isolateValues?: boolean,
 ) => string {
   const { locale } = useLocale();
-  return useCallback((key, vars) => translate(locale, key, vars), [locale]);
+  return useCallback(
+    (key, vars, isolateValues) => translate(locale, key, vars, isolateValues),
+    [locale],
+  );
 }
 
 /** Keeps `<html lang dir>` equal to the choice. Mounted once, in the providers. */

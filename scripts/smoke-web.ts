@@ -1425,6 +1425,31 @@ async function main(): Promise<void> {
         'a figure stays left-to-right on a right-to-left page',
         `computed direction of the first .numeric: ${figure}`,
       );
+      /**
+       * And sits where the page says, not where its own direction says: the
+       * account strip's figures had been pinned to the left of their cells,
+       * under labels on the right, because `direction: ltr` turned "start"
+       * left for the figure itself.
+       */
+      const alignment = await page.evaluate<string>(
+        `(() => {
+          const value = [...document.querySelectorAll('p.numeric')].find(
+            (node) => node.previousElementSibling !== null && node.textContent.trim() !== '',
+          );
+          if (value === undefined) return 'none';
+          const edge = (node) => {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            return range.getBoundingClientRect().right;
+          };
+          return String(Math.round(Math.abs(edge(value) - edge(value.previousElementSibling))));
+        })()`,
+      );
+      ok(
+        alignment !== 'none' && Number(alignment) <= 4,
+        "a figure lines up with its Persian label's start, on the right",
+        `distance between the right edges of a label and its figure: ${alignment}px`,
+      );
       await screenshot(page, 'terminal-persian');
       await auditAccessibility(page, 'the terminal, Persian');
       await visit(page, '/analytics', { url: '/analytics' });

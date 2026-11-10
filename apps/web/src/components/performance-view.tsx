@@ -179,15 +179,17 @@ export function PerformanceView({ accountId }: { accountId: string | null }) {
               <tbody>
                 {data.months.map((row) => (
                   <tr key={row.month} className="border-t border-terminal-border/60">
-                    <td className="numeric py-1.5 pe-2 text-terminal-text">{row.month}</td>
+                    <td className="py-1.5 pe-2 text-terminal-text">
+                      <span className="numeric">{row.month}</span>
+                    </td>
                     <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                       {row.trades}
                     </td>
                     <td
-                      className={cn('numeric py-1.5 ps-2 text-end', toneClass[toneOf(row.netPnl)])}
+                      className={cn('py-1.5 ps-2 text-end', toneClass[toneOf(row.netPnl)])}
                       title={row.netPnl}
                     >
-                      {signedMoney(row.netPnl, data.currency)}
+                      <span className="numeric">{signedMoney(row.netPnl, data.currency)}</span>
                     </td>
                   </tr>
                 ))}

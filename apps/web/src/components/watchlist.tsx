@@ -130,29 +130,29 @@ export function Watchlist({
 
   const emptyMessage = movers
     ? stats.isError
-      ? 'Daily changes are unavailable right now.'
+      ? t('wl.changesUnavailable')
       : stats.data === undefined
-        ? 'Daily changes have not loaded yet.'
-        : 'Nothing here has moved since its reference price.'
+        ? t('wl.changesLoading')
+        : t('wl.nothingMoved')
     : favouritesOnly && favourites.length === 0
-      ? 'No favourites yet. Use the star beside an instrument.'
-      : 'Nothing matches that search.';
+      ? t('wl.noFavourites')
+      : t('wl.noMatch');
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-1 border-b border-terminal-border px-2 py-1.5">
         <input
           className={cn(inputClass, 'py-1 text-xs')}
-          placeholder="Search"
+          placeholder={t('wl.search')}
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          aria-label="Search instruments"
+          aria-label={t('wl.searchLabel')}
         />
         <button
           type="button"
           onClick={() => setFavouritesOnly((on) => !on)}
           aria-pressed={favouritesOnly}
-          title={favouritesOnly ? 'Showing favourites only' : 'Show favourites only'}
+          title={favouritesOnly ? t('wl.favouritesOn') : t('wl.favouritesOff')}
           className={cn(
             'shrink-0 rounded border px-2 py-1 text-xs transition-colors',
             favouritesOnly
@@ -166,11 +166,7 @@ export function Watchlist({
           type="button"
           onClick={() => setMovers((on) => !on)}
           aria-pressed={movers}
-          title={
-            movers
-              ? `Showing the ${TOP_MOVERS} largest moves since each reference price`
-              : 'Rank by the largest move since each reference price'
-          }
+          title={movers ? t('wl.moversOn', { count: TOP_MOVERS }) : t('wl.moversOff')}
           className={cn(
             'shrink-0 rounded border px-2 py-1 text-xs transition-colors',
             movers
@@ -178,14 +174,14 @@ export function Watchlist({
               : 'border-terminal-border text-terminal-muted hover:text-terminal-text',
           )}
         >
-          Movers
+          {t('wl.movers')}
         </button>
       </div>
 
       {categories.length > 0 && (
         <div
           role="group"
-          aria-label="Instrument category"
+          aria-label={t('wl.category')}
           className="flex shrink-0 gap-1 overflow-x-auto border-b border-terminal-border px-2 py-1"
         >
           {[null, ...categories].map((name) => {
@@ -203,7 +199,7 @@ export function Watchlist({
                     : 'text-terminal-muted hover:text-terminal-text',
                 )}
               >
-                {name ?? 'All'}
+                {name ?? t('wl.all')}
               </button>
             );
           })}
@@ -220,11 +216,8 @@ export function Watchlist({
                 <th className="py-1.5 ps-2 pe-1 font-medium">{t('col.symbol')}</th>
                 <th className="px-1 py-1.5 text-end font-medium">{t('col.bid')}</th>
                 <th className="px-1 py-1.5 text-end font-medium">{t('col.ask')}</th>
-                <th
-                  className="py-1.5 ps-1 pe-2 text-end font-medium"
-                  title="Change since the previous daily close, computed by the server"
-                >
-                  Chg %
+                <th className="py-1.5 ps-1 pe-2 text-end font-medium" title={t('wl.changeTitle')}>
+                  {t('wl.change')}
                 </th>
                 {/* Reference, and first to yield: the ticket shows the spread too,
                     and only the widest layout has room for a fifth column. */}
@@ -324,6 +317,7 @@ function WatchlistRow({
   // a price, not a button that the server would only refuse.
   const tradeable = onTrade !== undefined && symbol.sessionOpen && quote !== undefined;
   const direction = useTickDirection(quote?.bid);
+  const t = useT();
   const changePercent = stats?.changePercent ?? null;
   const changeTone =
     changePercent === null || Number(changePercent) === 0
@@ -357,7 +351,7 @@ function WatchlistRow({
                 onStar(symbol.code);
               }}
               aria-pressed={starred}
-              aria-label={starred ? `Unstar ${symbol.code}` : `Star ${symbol.code}`}
+              aria-label={t(starred ? 'wl.unstar' : 'wl.star', { code: symbol.code })}
               /**
                * The resting star is `muted`, not `border`.
                *
@@ -392,8 +386,8 @@ function WatchlistRow({
                 aria-expanded={opened}
                 // Only while there is something to point at.
                 aria-controls={opened ? ticketId : undefined}
-                aria-label={`${opened ? 'Close' : 'Open'} the ${symbol.code} row ticket`}
-                title={opened ? 'Close this ticket' : 'Choose a volume and trade from this row'}
+                aria-label={t(opened ? 'wl.ticketClose' : 'wl.ticketOpen', { code: symbol.code })}
+                title={opened ? t('wl.ticketCloseTitle') : t('wl.ticketOpenTitle')}
                 className={cn(
                   'text-label leading-none transition-colors',
                   opened ? 'text-terminal-accent' : 'text-terminal-muted hover:text-terminal-text',
@@ -409,13 +403,12 @@ function WatchlistRow({
                 className="rounded bg-terminal-raised px-1 text-micro uppercase tracking-wider text-terminal-muted"
                 title={
                   symbol.market === undefined
-                    ? "Outside this instrument's trading session"
-                    : (marketNotice(symbol.market, symbol.code).detail ??
-                      "Outside this instrument's trading session")
+                    ? t('wl.outsideSession')
+                    : (marketNotice(symbol.market, symbol.code).detail ?? t('wl.outsideSession'))
                 }
               >
                 {symbol.market === undefined
-                  ? 'closed'
+                  ? t('wl.closed')
                   : marketNotice(symbol.market, symbol.code).label}
               </span>
             )}
@@ -457,22 +450,25 @@ function WatchlistRow({
           )}
         </td>
         <td
-          className={cn('numeric py-1.5 ps-1 pe-2 text-end', changeTone)}
+          className={cn('py-1.5 ps-1 pe-2 text-end', changeTone)}
           title={
             stats === undefined || stats.reference === null
-              ? 'No reference price yet for this instrument'
-              : `${stats.change ?? '—'} from ${
+              ? t('wl.noReference')
+              : t(
                   stats.referenceKind === 'PREVIOUS_CLOSE'
-                    ? 'the previous daily close'
-                    : "today's open"
-                } of ${stats.reference}`
+                    ? 'wl.changeFromClose'
+                    : 'wl.changeFromOpen',
+                  { change: stats.change ?? '—', reference: stats.reference },
+                )
           }
         >
           {/* An em dash, never a zero. "No reference yet" and "unchanged" are
             different claims and only one of them is ever true here. */}
-          {changePercent === null
-            ? '—'
-            : `${Number(changePercent) > 0 ? '+' : ''}${percent(changePercent, 2)}`}
+          <span className="numeric">
+            {changePercent === null
+              ? '—'
+              : `${Number(changePercent) > 0 ? '+' : ''}${percent(changePercent, 2)}`}
+          </span>
         </td>
         <td className="numeric hidden px-3 py-1.5 text-end text-terminal-muted 2xl:table-cell">
           {quote === undefined ? '—' : formatPrice(quote.spread, symbol.pricePrecision)}
@@ -519,11 +515,12 @@ function RowTicket({
   onTrade: (code: string, side: 'BUY' | 'SELL', volume?: string) => void;
 }) {
   const [volume, setVolume] = useState(() => inlineStartVolume(symbol, defaultVolume));
+  const t = useT();
   const problem = volumeProblem(symbol, volume);
   const closedReason = !symbol.sessionOpen
-    ? 'This market is closed, so there is no price to deal at.'
+    ? t('wl.marketClosed')
     : quote === undefined
-      ? 'No price has arrived for this instrument yet.'
+      ? t('wl.noPrice')
       : null;
   const ready = problem === null && closedReason === null && quote !== undefined;
   const lots = volume.trim();
@@ -535,7 +532,7 @@ function RowTicket({
           <button
             type="button"
             onClick={() => setVolume(stepVolume(symbol, volume, -1))}
-            aria-label={`Decrease the ${symbol.code} volume`}
+            aria-label={t('wl.decrease', { code: symbol.code })}
             className="shrink-0 rounded border border-terminal-border px-1.5 py-0.5 text-terminal-text hover:bg-terminal-raised"
           >
             −
@@ -544,7 +541,7 @@ function RowTicket({
             className={cn(inputClass, 'numeric min-w-0 py-0.5 text-center text-xs')}
             value={volume}
             inputMode="decimal"
-            aria-label={`${symbol.code} volume in lots`}
+            aria-label={t('wl.volume', { code: symbol.code })}
             aria-invalid={problem !== null}
             aria-describedby={problem === null ? undefined : `${id}-problem`}
             onChange={(event) => setVolume(event.target.value)}
@@ -552,7 +549,7 @@ function RowTicket({
           <button
             type="button"
             onClick={() => setVolume(stepVolume(symbol, volume, 1))}
-            aria-label={`Increase the ${symbol.code} volume`}
+            aria-label={t('wl.increase', { code: symbol.code })}
             className="shrink-0 rounded border border-terminal-border px-1.5 py-0.5 text-terminal-text hover:bg-terminal-raised"
           >
             +
@@ -579,10 +576,10 @@ function RowTicket({
                 // 0.71580" — and then says what it is for. A name that put the
                 // lots first did not contain the visible text, which a person
                 // using voice control reads off the screen to say.
-                aria-label={`${side === 'BUY' ? 'Buy' : 'Sell'}${
+                aria-label={`${t(side === 'BUY' ? 'wl.buy' : 'wl.sell')}${
                   at === null ? '' : ` ${at}`
-                }, ${lots} lots of ${symbol.code}`}
-                title="Stages the order in the ticket, which asks before sending"
+                }${t('wl.rowTicketFor', { lots, code: symbol.code })}`}
+                title={t('wl.stagesTitle')}
                 // Solid, as the main ticket's buttons are: the tinted version
                 // put the short colour on its own tint at 4.2:1, which the
                 // terminal's accessibility audit refused.
@@ -593,7 +590,7 @@ function RowTicket({
                     : 'bg-terminal-short text-terminal-bg hover:opacity-90',
                 )}
               >
-                {side === 'BUY' ? 'Buy' : 'Sell'}
+                {t(side === 'BUY' ? 'wl.buy' : 'wl.sell')}
                 {at === null ? null : (
                   <>
                     {' '}
@@ -629,11 +626,12 @@ function PriceButton({
   price: string;
   onTrade: (code: string, side: 'BUY' | 'SELL') => void;
 }) {
+  const t = useT();
   return (
     <button
       type="button"
-      aria-label={`${side === 'BUY' ? 'Buy' : 'Sell'} ${code} at ${price}`}
-      title={`${side === 'BUY' ? 'Buy at the ask' : 'Sell at the bid'} — the ticket asks before sending`}
+      aria-label={t(side === 'BUY' ? 'wl.buyAt' : 'wl.sellAt', { code, price }, false)}
+      title={t(side === 'BUY' ? 'wl.buyAtAsk' : 'wl.sellAtBid')}
       onClick={(event) => {
         // The row selects; the price stages an order (which selects too).
         event.stopPropagation();

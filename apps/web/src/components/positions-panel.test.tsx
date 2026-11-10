@@ -306,3 +306,22 @@ describe('the position editor, rendered', () => {
     expect(modify.mock.calls[0]?.[0]).toMatchObject({ stopLoss: null, takeProfit: '4012' });
   });
 });
+
+/**
+ * Persian, chosen: the buttons a trader presses are in it, and the figures in
+ * a sentence keep their own direction.
+ */
+describe('the open positions in Persian', () => {
+  it('names the actions in Persian and keeps the figures left to right', async () => {
+    window.localStorage.setItem('tp:locale', 'fa');
+    try {
+      renderPanel();
+      fireEvent.click(await screen.findByRole('button', { name: 'مدیریت' }));
+      expect(screen.getByRole('button', { name: 'اعمال سطح‌ها' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'بستن ⁦0.30⁩' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /Apply levels|Manage/ })).toBeNull();
+    } finally {
+      window.localStorage.removeItem('tp:locale');
+    }
+  });
+});

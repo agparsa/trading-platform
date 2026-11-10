@@ -52,11 +52,7 @@ export function PendingPanel({
     try {
       await cancel.mutateAsync({ orderId });
     } catch (caught) {
-      setError(
-        caught instanceof DomainError
-          ? caught.message
-          : 'The order could not be cancelled. Nothing was changed.',
-      );
+      setError(caught instanceof DomainError ? caught.message : t('pend.cancelFailed'));
     } finally {
       setWorking(null);
     }
@@ -75,8 +71,8 @@ export function PendingPanel({
         <table className="w-full min-w-[52rem] border-collapse text-xs">
           <thead className="sticky top-0 z-10 bg-terminal-surface">
             <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">
-              <th className="px-3 py-1.5 font-medium" title="Order reference">
-                Ref
+              <th className="px-3 py-1.5 font-medium" title={t('pend.refTitle')}>
+                {t('pos.ref')}
               </th>
               <th className="px-2 py-1.5 font-medium">{t('col.placedUtc')}</th>
               <th className="px-2 py-1.5 font-medium">{t('col.symbol')}</th>
@@ -84,11 +80,8 @@ export function PendingPanel({
               <th className="px-2 py-1.5 font-medium">{t('col.type')}</th>
               <th className="px-2 py-1.5 text-end font-medium">{t('col.volume')}</th>
               <th className="px-2 py-1.5 text-end font-medium">{t('col.price')}</th>
-              <th
-                className="px-2 py-1.5 text-end font-medium"
-                title="How far the market is from the trigger price right now"
-              >
-                Distance
+              <th className="px-2 py-1.5 text-end font-medium" title={t('pend.distanceTitle')}>
+                {t('pend.distance')}
               </th>
               <th className="px-2 py-1.5 text-end font-medium">{t('col.sl')}</th>
               <th className="px-2 py-1.5 text-end font-medium">{t('col.tp')}</th>
@@ -139,11 +132,16 @@ export function PendingPanel({
                           )}
                           title={
                             phase === 'resting'
-                              ? `Stop reached ${order.activatedAt == null ? '' : `${utcTime(order.activatedAt)} UTC`}; rests as a limit and fills at its price or better`
-                              : 'Waiting for the stop; it then rests as a limit'
+                              ? t('pend.resting', {
+                                  at:
+                                    order.activatedAt == null
+                                      ? ''
+                                      : `${utcTime(order.activatedAt)} UTC`,
+                                })
+                              : t('pend.waitingTitle')
                           }
                         >
-                          {phase === 'resting' ? 'at limit' : 'waiting'}
+                          {phase === 'resting' ? t('pend.atLimit') : t('pend.waiting')}
                         </span>
                       )}
                     </td>
@@ -154,7 +152,7 @@ export function PendingPanel({
                       {formatPrice(order.price, precision)}
                       {order.type === 'STOP_LIMIT' && order.stopPrice != null ? (
                         <span className="block text-label text-terminal-muted">
-                          stop {formatPrice(order.stopPrice, precision)}
+                          {t('pend.stop', { price: formatPrice(order.stopPrice, precision) })}
                         </span>
                       ) : null}
                     </td>
@@ -162,11 +160,11 @@ export function PendingPanel({
                       className="numeric px-2 py-1.5 text-end text-terminal-muted"
                       title={
                         reference === null
-                          ? 'No live quote for this instrument yet'
-                          : `Against the ${entrySideOf(order.side)} of ${reference}`
+                          ? t('pend.noQuote')
+                          : t('pend.against', { side: entrySideOf(order.side), reference })
                       }
                     >
-                      {distance === null ? '—' : `${distance} pt`}
+                      {distance === null ? '—' : t('pend.points', { distance })}
                     </td>
                     <td className="numeric px-2 py-1.5 text-end text-terminal-muted">
                       {order.stopLoss === null ? '—' : formatPrice(order.stopLoss, precision)}
@@ -178,8 +176,8 @@ export function PendingPanel({
                       className="px-2 py-1.5 text-terminal-muted"
                       title={
                         order.expiresAt === null
-                          ? 'Rests until cancelled'
-                          : `Expires ${utcTime(order.expiresAt)} UTC`
+                          ? t('pend.untilCancelled')
+                          : t('pend.expires', { time: utcTime(order.expiresAt) })
                       }
                     >
                       {order.timeInForce}
@@ -193,7 +191,7 @@ export function PendingPanel({
                             setEditing(editing === order.orderId ? null : order.orderId)
                           }
                         >
-                          {editing === order.orderId ? 'Close' : 'Modify'}
+                          {editing === order.orderId ? t('pos.close') : t('pend.modify')}
                         </Button>
                         <Button
                           variant="danger"
@@ -201,7 +199,7 @@ export function PendingPanel({
                           disabled={working !== null}
                           onClick={() => void run(order.orderId)}
                         >
-                          {working === order.orderId ? 'Cancelling…' : 'Cancel'}
+                          {working === order.orderId ? t('pend.cancelling') : t('wallet.cancel')}
                         </Button>
                       </div>
                     </td>
@@ -223,9 +221,7 @@ export function PendingPanel({
           </tbody>
         </table>
       </div>
-      <p className="px-3 py-2 text-label text-terminal-muted">
-        No margin is held while an order rests. It is checked again when the order fires.
-      </p>
+      <p className="px-3 py-2 text-label text-terminal-muted">{t('pend.noMarginNote')}</p>
     </div>
   );
 }
@@ -254,6 +250,7 @@ function PendingEditor({
   const [stopLoss, setStopLoss] = useState(order.stopLoss ?? '');
   const [takeProfit, setTakeProfit] = useState(order.takeProfit ?? '');
   const [error, setError] = useState<string | null>(null);
+  const t = useT();
 
   const modify = useModifyPending(accountId);
 
@@ -281,7 +278,7 @@ function PendingEditor({
     if (nextTake !== order.takeProfit) body.takeProfit = nextTake;
 
     if (Object.keys(body).length === 1) {
-      setError('Nothing was changed.');
+      setError(t('pend.nothingChanged'));
       return;
     }
 
@@ -289,11 +286,7 @@ function PendingEditor({
       await modify.mutateAsync(body);
       onDone();
     } catch (caught) {
-      setError(
-        caught instanceof DomainError
-          ? caught.message
-          : 'The order could not be modified. Nothing was changed.',
-      );
+      setError(caught instanceof DomainError ? caught.message : t('pend.modifyFailed'));
     }
   };
 
@@ -301,32 +294,30 @@ function PendingEditor({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end gap-2">
         {phase === 'waiting' ? (
-          <Labelled label="Stop price" value={stopPrice} onChange={setStopPrice} />
+          <Labelled label={t('ticket.stopPrice')} value={stopPrice} onChange={setStopPrice} />
         ) : null}
         <Labelled
           label={
-            order.type === 'STOP_LIMIT'
-              ? 'Limit price'
-              : order.type === 'LIMIT'
-                ? 'Limit price'
-                : 'Trigger price'
+            order.type === 'STOP_LIMIT' || order.type === 'LIMIT'
+              ? t('ticket.limitPrice')
+              : t('pend.triggerPrice')
           }
           value={price}
           onChange={setPrice}
         />
-        <Labelled label="Volume" value={volume} onChange={setVolume} />
-        <Labelled label="Stop loss" value={stopLoss} onChange={setStopLoss} />
-        <Labelled label="Take profit" value={takeProfit} onChange={setTakeProfit} />
+        <Labelled label={t('col.volume')} value={volume} onChange={setVolume} />
+        <Labelled label={t('ticket.stopLoss')} value={stopLoss} onChange={setStopLoss} />
+        <Labelled label={t('ticket.takeProfit')} value={takeProfit} onChange={setTakeProfit} />
         <Button variant="neutral" disabled={modify.isPending} onClick={() => void apply()}>
-          {modify.isPending ? 'Applying…' : 'Apply'}
+          {modify.isPending ? t('pend.applying') : t('pend.apply')}
         </Button>
         <Button variant="ghost" onClick={onDone}>
-          Discard
+          {t('pend.discard')}
         </Button>
       </div>
       <p className="text-label text-terminal-muted">
-        Only the fields you change are sent. An empty stop or target clears it.
-        {phase === 'resting' ? ' Its stop has been reached, so only the limit price can move.' : ''}
+        {t('pend.onlyChanged')}
+        {phase === 'resting' ? ` ${t('pend.onlyLimit')}` : ''}
       </p>
       {error === null ? null : <p className="text-caption text-terminal-short">{error}</p>}
     </div>

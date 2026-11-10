@@ -140,11 +140,7 @@ export function PositionsPanel({
     }
 
     if (closeTarget === null) {
-      setNotice(
-        positions.length === 0
-          ? 'Nothing to close.'
-          : 'Several positions are open — expand the one you mean, then press close again.',
-      );
+      setNotice(positions.length === 0 ? t('pos.nothingToClose') : t('pos.whichOne'));
       return;
     }
     if (needsConfirmation(ShortcutAction.CLOSE, preferences.confirm)) {
@@ -152,9 +148,18 @@ export function PositionsPanel({
       return;
     }
     void closeOne.mutateAsync({ positionId: closeTarget.id, volume: null }).catch(() => {
-      setNotice('The close request failed. The position is unchanged.');
+      setNotice(t('pos.closeFailed'));
     });
-  }, [shortcut, closeTarget, positions, preferences.confirm, closeOne, onShortcutHandled, prompt]);
+  }, [
+    shortcut,
+    closeTarget,
+    positions,
+    preferences.confirm,
+    closeOne,
+    onShortcutHandled,
+    prompt,
+    t,
+  ]);
 
   /**
    * Held in a ref so the keyboard effect can call it without listing it as a
@@ -169,7 +174,7 @@ export function PositionsPanel({
 
     if (prompt.kind === 'ONE') {
       await closeOne.mutateAsync({ positionId: prompt.position.id, volume: null }).catch(() => {
-        setNotice('The close request failed. The position is unchanged.');
+        setNotice(t('pos.closeFailed'));
       });
       return;
     }
@@ -196,12 +201,15 @@ export function PositionsPanel({
         const [first] = result.refused;
         setNotice(
           result.refused.length === 1
-            ? `${result.closed.length} closed. One is still open: ${first?.message ?? ''}`
-            : `${result.closed.length} closed. ${result.refused.length} are still open — the list shows which.`,
+            ? t('pos.closedOneLeft', { closed: result.closed.length, reason: first?.message ?? '' })
+            : t('pos.closedSomeLeft', {
+                closed: result.closed.length,
+                left: result.refused.length,
+              }),
         );
       }
     } catch {
-      setNotice('Close all failed. Nothing was closed; the list is unchanged.');
+      setNotice(t('pos.closeAllFailed'));
     }
   };
 
@@ -266,8 +274,10 @@ export function PositionsPanel({
       <ExportBar
         label={
           filter.trim() === ''
-            ? `${positions.length} open position${positions.length === 1 ? '' : 's'}`
-            : `${shown.length} of ${positions.length} shown`
+            ? t(positions.length === 1 ? 'pos.countOne' : 'pos.countMany', {
+                count: positions.length,
+              })
+            : t('pos.shownOf', { shown: shown.length, total: positions.length })
         }
         filename="open-positions"
         columns={OPEN_POSITION_COLUMNS}
@@ -275,8 +285,8 @@ export function PositionsPanel({
       >
         <input
           className={cn(inputClass, 'w-40 py-0.5 text-caption')}
-          placeholder="Filter: symbol, side, ref"
-          aria-label="Filter positions"
+          placeholder={t('pos.filterPlaceholder')}
+          aria-label={t('pos.filter')}
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
           onKeyDown={(event) => {
@@ -290,7 +300,7 @@ export function PositionsPanel({
           data-testid="selection-bar"
         >
           <span className="text-caption text-terminal-muted">
-            {selected.length} of {positions.length} selected
+            {t('pos.selectedOf', { selected: selected.length, total: positions.length })}
           </span>
           <Button
             variant="danger"
@@ -301,10 +311,10 @@ export function PositionsPanel({
               setPrompt({ kind: 'SOME', positionIds: selected });
             }}
           >
-            Close ({selected.length})
+            {t('pos.closeSelected', { count: selected.length })}
           </Button>
           <Button variant="ghost" className="px-2 py-0.5" onClick={() => setTicked(new Set())}>
-            Clear
+            {t('pos.clear')}
           </Button>
         </div>
       )}
@@ -315,7 +325,7 @@ export function PositionsPanel({
               <th className="px-2 py-1.5 font-medium">
                 <input
                   type="checkbox"
-                  aria-label="Select every position"
+                  aria-label={t('pos.selectAll')}
                   checked={shown.length > 0 && shown.every((p) => ticked.has(p.id))}
                   onChange={(event) =>
                     setTicked((current) => {
@@ -329,8 +339,8 @@ export function PositionsPanel({
                   }
                 />
               </th>
-              <th className="px-3 py-1.5 font-medium" title="Position reference">
-                Ref
+              <th className="px-3 py-1.5 font-medium" title={t('pos.refTitle')}>
+                {t('pos.ref')}
               </th>
               <th className="px-2 py-1.5 font-medium">{t('col.symbol')}</th>
               <th className="px-2 py-1.5 font-medium">{t('col.side')}</th>
@@ -339,21 +349,15 @@ export function PositionsPanel({
               <th className="px-2 py-1.5 text-end font-medium">{t('col.current')}</th>
               <th className="px-2 py-1.5 text-end font-medium">{t('col.sl')}</th>
               <th className="px-2 py-1.5 text-end font-medium">{t('col.tp')}</th>
-              <th
-                className="px-2 py-1.5 text-end font-medium"
-                title="Initial margin held for this position, in the account currency"
-              >
-                Margin
+              <th className="px-2 py-1.5 text-end font-medium" title={t('pos.marginTitle')}>
+                {t('pos.margin')}
               </th>
-              <th
-                className="px-2 py-1.5 text-end font-medium"
-                title="Opening commission already charged"
-              >
-                Comm.
+              <th className="px-2 py-1.5 text-end font-medium" title={t('pos.commTitle')}>
+                {t('pos.comm')}
               </th>
               <th className="px-2 py-1.5 text-end font-medium">{t('col.swap')}</th>
-              <th className="px-2 py-1.5 text-end font-medium">P&amp;L</th>
-              <th className="px-2 py-1.5 text-end font-medium">Net P&amp;L</th>
+              <th className="px-2 py-1.5 text-end font-medium">{t('pos.pnl')}</th>
+              <th className="px-2 py-1.5 text-end font-medium">{t('pos.netPnl')}</th>
               <th className="px-2 py-1.5 font-medium">{t('col.openedUtc')}</th>
               <th className="px-3 py-1.5 text-end font-medium">{t('col.actions')}</th>
             </tr>
@@ -362,7 +366,7 @@ export function PositionsPanel({
             {shown.length === 0 ? (
               <tr>
                 <td colSpan={16} className="px-3 py-3 text-caption text-terminal-muted">
-                  Nothing matches “{filter.trim()}”. Esc clears the filter.
+                  {t('pos.noMatch', { filter: filter.trim() })}
                 </td>
               </tr>
             ) : null}
@@ -385,7 +389,10 @@ export function PositionsPanel({
                     <td className="px-2 py-1.5">
                       <input
                         type="checkbox"
-                        aria-label={`Select ${refs.get(position.id) ?? position.id} ${position.symbol}`}
+                        aria-label={t('pos.selectOne', {
+                          ref: refs.get(position.id) ?? position.id,
+                          symbol: position.symbol,
+                        })}
                         checked={ticked.has(position.id)}
                         onChange={() => toggle(position.id)}
                       />
@@ -410,7 +417,7 @@ export function PositionsPanel({
                         'numeric px-2 py-1.5 text-end',
                         stale ? 'text-terminal-warning' : 'text-terminal-text',
                       )}
-                      title={stale ? 'This price is older than the freshness limit' : undefined}
+                      title={stale ? t('pos.stale') : undefined}
                     >
                       {formatPrice(current, precision)}
                     </td>
@@ -419,9 +426,9 @@ export function PositionsPanel({
                       {position.trailingStopDistance === null ? null : (
                         <span
                           className="ms-1 text-micro uppercase text-terminal-warning"
-                          title="Trailing"
+                          title={t('pos.trailing')}
                         >
-                          trl
+                          {t('pos.trl')}
                         </span>
                       )}
                     </td>
@@ -449,7 +456,7 @@ export function PositionsPanel({
                     </td>
                     <td
                       className={cn('numeric px-2 py-1.5 text-end', toneClass[toneOf(netPnl)])}
-                      title="Mark less the commission and swap already charged. The closing commission has not been charged and is not guessed at."
+                      title={t('pos.netTitle')}
                     >
                       {signedMoney(netPnl, currency)}
                     </td>
@@ -462,7 +469,7 @@ export function PositionsPanel({
                         onClick={() => setEditing(editing === position.id ? null : position.id)}
                         className="px-2 py-0.5"
                       >
-                        {editing === position.id ? 'Close panel' : 'Manage'}
+                        {editing === position.id ? t('pos.closePanel') : t('pos.manage')}
                       </Button>
                     </td>
                   </tr>
@@ -488,12 +495,13 @@ export function PositionsPanel({
       </div>
       {snapshot === undefined ? null : (
         <p className="border-t border-terminal-border/60 px-3 py-1.5 text-label text-terminal-muted">
-          Account floating P&amp;L{' '}
+          {t('pos.totals.floating')}{' '}
           <span className={cn('numeric', toneClass[toneOf(snapshot.floatingPnl)])}>
             {signedMoney(snapshot.floatingPnl, currency)}
           </span>{' '}
-          · used margin <span className="numeric">{money(snapshot.usedMargin, currency)}</span> —
-          the server&rsquo;s own totals, not a sum of the rows above.
+          · {t('pos.totals.used')}{' '}
+          <span className="numeric">{money(snapshot.usedMargin, currency)}</span> —{' '}
+          {t('pos.totals.note')}
         </p>
       )}
     </>
@@ -509,6 +517,7 @@ export function PositionsPanel({
  */
 function CopyRef({ full, label }: { full: string; label: string }) {
   const [copied, setCopied] = useState(false);
+  const t = useT();
 
   useEffect(() => {
     if (!copied) return;
@@ -519,7 +528,7 @@ function CopyRef({ full, label }: { full: string; label: string }) {
   return (
     <button
       type="button"
-      title={`${full} — click to copy`}
+      title={t('pos.copyTitle', { ref: full })}
       className="rounded px-1 py-0.5 text-label tracking-wide text-terminal-muted transition-colors hover:bg-terminal-raised hover:text-terminal-text"
       onClick={() => {
         // Clipboard access is refused in insecure contexts and by some
@@ -532,7 +541,7 @@ function CopyRef({ full, label }: { full: string; label: string }) {
           .catch(() => setCopied(false));
       }}
     >
-      {copied ? 'copied' : label}
+      {copied ? t('pos.copied') : label}
     </button>
   );
 }
@@ -543,13 +552,14 @@ type ClosePrompt =
   | { kind: 'SOME'; positionIds: readonly string[] };
 
 function Notice({ text, onDismiss }: { text: string; onDismiss: () => void }) {
+  const t = useT();
   return (
     <button
       type="button"
       onClick={onDismiss}
       className="w-full border-b border-terminal-border bg-terminal-raised/60 px-3 py-1 text-start text-caption text-terminal-warning"
     >
-      {text} — dismiss
+      {text} — {t('pos.dismiss')}
     </button>
   );
 }
@@ -570,20 +580,28 @@ function ConfirmClose({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-3 border-b border-terminal-warning/50 bg-terminal-warning/10 px-3 py-2">
       <span className="text-caption text-terminal-text">
         {prompt.kind === 'ALL'
-          ? `Close all ${prompt.count} position${prompt.count === 1 ? '' : 's'} at market?`
+          ? t(prompt.count === 1 ? 'pos.confirm.allOne' : 'pos.confirm.allMany', {
+              count: prompt.count,
+            })
           : prompt.kind === 'SOME'
-            ? `Close the ${prompt.positionIds.length} selected position${prompt.positionIds.length === 1 ? '' : 's'} at market?`
-            : `Close ${formatVolume(prompt.position.volume)} ${prompt.position.symbol} at market?`}
+            ? t(prompt.positionIds.length === 1 ? 'pos.confirm.someOne' : 'pos.confirm.someMany', {
+                count: prompt.positionIds.length,
+              })
+            : t('pos.confirm.one', {
+                volume: formatVolume(prompt.position.volume),
+                symbol: prompt.position.symbol,
+              })}
       </span>
       <Button variant="danger" onClick={onConfirm} className="px-2 py-0.5">
-        Close
+        {t('pos.close')}
       </Button>
       <Button variant="ghost" onClick={onCancel} className="px-2 py-0.5">
-        Cancel
+        {t('wallet.cancel')}
       </Button>
     </div>
   );
@@ -620,6 +638,7 @@ function PositionEditor({
   );
   const [trailing, setTrailing] = useState(position.trailingStopDistance ?? '');
   const [error, setError] = useState<string | null>(null);
+  const t = useT();
 
   /**
    * The levels in the trader's unit, resolved to the prices the API takes.
@@ -660,9 +679,7 @@ function PositionEditor({
       await action();
       if (done) onDone();
     } catch (caught) {
-      setError(
-        caught instanceof DomainError ? caught.message : 'The request failed. Nothing was changed.',
-      );
+      setError(caught instanceof DomainError ? caught.message : t('pos.requestFailed'));
     }
   };
 
@@ -676,7 +693,7 @@ function PositionEditor({
             void run(() => close.mutateAsync({ positionId: position.id, volume: null }), true)
           }
         >
-          Close {formatVolume(position.volume)}
+          {t('pos.closeVolume', { volume: formatVolume(position.volume) })}
         </Button>
 
         <div className="flex items-end gap-1">
@@ -697,7 +714,7 @@ function PositionEditor({
               )
             }
           >
-            Close part
+            {t('pos.closePart')}
           </Button>
         </div>
 
@@ -705,35 +722,35 @@ function PositionEditor({
           variant="neutral"
           disabled={busy}
           onClick={() => void run(() => reverse.mutateAsync({ positionId: position.id }), true)}
-          title="Close this position and open the same size the other way"
+          title={t('pos.reverseTitle')}
         >
-          Reverse
+          {t('pos.reverse')}
         </Button>
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
         <LevelField
-          label="Stop loss"
+          label={t('ticket.stopLoss')}
           context={stopContext}
           entry={stopLoss}
           onChange={setStopLoss}
         />
         <LevelField
-          label="Take profit"
+          label={t('ticket.takeProfit')}
           context={targetContext}
           entry={takeProfit}
           onChange={setTakeProfit}
         />
         <LabelledInput
-          label="Trailing distance"
+          label={t('ticket.trailing')}
           value={trailing}
           onChange={setTrailing}
-          title="Distance in price units the stop follows behind the best price seen"
+          title={t('pos.trailingTitle')}
         />
         <Button
           variant="neutral"
           disabled={busy || levelsIncomplete}
-          title={levelsIncomplete ? 'A level has not resolved to a price yet.' : undefined}
+          title={levelsIncomplete ? t('pos.levelUnresolved') : undefined}
           onClick={() =>
             void run(
               () =>
@@ -749,14 +766,17 @@ function PositionEditor({
             )
           }
         >
-          Apply levels
+          {t('pos.applyLevels')}
         </Button>
       </div>
 
       <p className="text-label text-terminal-muted">
-        Opened {new Date(position.openedAt).toISOString().replace('T', ' ').slice(0, 19)} UTC ·
-        margin {position.margin} · commission {position.commission}
-        {spec === undefined ? '' : ` · tick ${spec.tickSize}`}
+        {t('pos.facts', {
+          opened: new Date(position.openedAt).toISOString().replace('T', ' ').slice(0, 19),
+          margin: position.margin,
+          commission: position.commission,
+        })}
+        {spec === undefined ? '' : ` · ${t('pos.tick', { tick: spec.tickSize })}`}
       </p>
 
       {error === null ? null : <p className="text-caption text-terminal-short">{error}</p>}

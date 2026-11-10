@@ -36,6 +36,7 @@ const MAPS: Readonly<Record<string, Vocabulary | { none: string }>> = {
   'apps/web/src/components/admin/credentials-panel.tsx:STATUS_TONE': {
     none: "the same derived key status as the trader's own panel",
   },
+  'apps/web/src/components/alerts-panel.tsx:STATUS_WORDS': 'prisma.PriceAlertStatus',
   'apps/web/src/components/security-events-panel.tsx:SEVERITY_TONE': 'prisma.SecuritySeverity',
   'apps/web/src/components/security-events-panel.tsx:WORDING': 'prisma.SecurityEventKind',
   'apps/web/src/components/admin/connections-panel.tsx:STATE_TONE': 'prisma.BrokerConnectionStatus',

@@ -73,7 +73,9 @@ export function LogsPanel({ accountId }: { accountId: string | null }) {
         <tbody>
           {lines.map((line) => (
             <tr key={line.id} className="border-t border-terminal-border/60">
-              <td className="numeric py-1.5 ps-3 pe-2 text-terminal-muted">{utcTime(line.at)}</td>
+              <td className="py-1.5 ps-3 pe-2 text-terminal-muted">
+                <span className="numeric">{utcTime(line.at)}</span>
+              </td>
               <td className="px-2 py-1.5 text-terminal-text">
                 <span className="inline-flex items-center gap-1.5">
                   {line.symbol}

@@ -131,4 +131,28 @@ summary {
 [dir='rtl'] .numeric {
   direction: ltr;
   unicode-bidi: isolate;
+  /*
+   * But aligned as the page is. `direction: ltr` also turns the element's own
+   * "start" to the left, so a figure under a right-aligned Persian label sat at
+   * the far side of its cell, and a column's numbers parted from its heading.
+   * `match-parent` resolves start and end against the parent, which is RTL.
+   * Chromium parses the standard keyword but resolves it against the element
+   * itself (checked in a real browser), so the prefixed one it does honour
+   * comes second; a browser without it keeps the first.
+   */
+  text-align: match-parent;
+  text-align: -webkit-match-parent;
+}
+
+/* An explicit alignment on a figure means the page's end or start, not its own. */
+[dir='rtl'] .numeric.text-end {
+  text-align: left;
+}
+
+[dir='rtl'] .numeric.text-start {
+  text-align: right;
+}
+
+[dir='rtl'] .numeric.text-center {
+  text-align: center;
 }

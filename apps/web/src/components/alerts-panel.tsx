@@ -12,7 +12,21 @@ import {
 } from '@/lib/queries';
 import { useRealtime } from '@/lib/realtime-store';
 import { Button, EmptyState, inputClass } from './primitives';
+import type { MessageKey } from '@/lib/messages';
 import { useT } from '@/lib/use-locale';
+
+/** An alert's status in words. */
+const STATUS_WORDS: Record<string, MessageKey> = {
+  ACTIVE: 'alerts.status.ACTIVE',
+  TRIGGERED: 'alerts.status.TRIGGERED',
+  CANCELLED: 'alerts.status.CANCELLED',
+  EXPIRED: 'alerts.status.EXPIRED',
+};
+
+function statusInWords(status: string, t: (key: MessageKey) => string): string {
+  const key = STATUS_WORDS[status];
+  return key === undefined ? status : t(key);
+}
 
 /**
  * Levels the trader asked to be told about.
@@ -73,7 +87,7 @@ export function AlertsPanel({
       setLevel('');
       setNote('');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not set that alert');
+      setError(cause instanceof Error ? cause.message : t('alerts.setFailed'));
     }
   };
 
@@ -81,7 +95,7 @@ export function AlertsPanel({
     <div className="flex h-full flex-col gap-3" data-testid="alerts-panel">
       <form onSubmit={submit} className="flex flex-wrap items-end gap-2 px-3 pt-2">
         <label className="flex flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
-          Instrument
+          {t('alerts.instrument')}
           <select
             className={inputClass}
             value={chosen}
@@ -96,19 +110,19 @@ export function AlertsPanel({
         </label>
 
         <label className="flex flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
-          When
+          {t('alerts.when')}
           <select
             className={inputClass}
             value={condition}
             onChange={(event) => setCondition(event.target.value === 'BELOW' ? 'BELOW' : 'ABOVE')}
           >
-            <option value="ABOVE">Rises to</option>
-            <option value="BELOW">Falls to</option>
+            <option value="ABOVE">{t('alerts.risesTo')}</option>
+            <option value="BELOW">{t('alerts.fallsTo')}</option>
           </select>
         </label>
 
         <label className="flex flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
-          Level
+          {t('col.level')}
           <input
             className={cn(inputClass, 'w-32 text-end tabular-nums')}
             inputMode="decimal"
@@ -119,18 +133,18 @@ export function AlertsPanel({
         </label>
 
         <label className="flex flex-1 flex-col gap-1 text-label uppercase tracking-wider text-terminal-muted">
-          Note
+          {t('col.note')}
           <input
             className={inputClass}
             value={note}
             maxLength={280}
             onChange={(event) => setNote(event.target.value)}
-            placeholder="For yourself — shown with the alert"
+            placeholder={t('alerts.notePlaceholder')}
           />
         </label>
 
         <Button type="submit" disabled={create.isPending || level.trim() === ''}>
-          Set alert
+          {t('alerts.set')}
         </Button>
       </form>
 
@@ -171,7 +185,7 @@ export function AlertsPanel({
                   >
                     <td className="px-3 py-1.5 font-medium">{row.symbol}</td>
                     <td className="px-2 py-1.5">
-                      {row.condition === 'ABOVE' ? 'Rises to' : 'Falls to'}
+                      {row.condition === 'ABOVE' ? t('alerts.risesTo') : t('alerts.fallsTo')}
                       <span className="ms-1 text-label uppercase text-terminal-muted">
                         {row.source}
                       </span>
@@ -194,8 +208,8 @@ export function AlertsPanel({
                     </td>
                     <td className="px-2 py-1.5">
                       {row.status === 'TRIGGERED' && row.triggeredAt !== null
-                        ? `Fired ${utcTime(row.triggeredAt)}`
-                        : row.status.charAt(0) + row.status.slice(1).toLowerCase()}
+                        ? t('alerts.fired', { time: utcTime(row.triggeredAt) })
+                        : statusInWords(row.status, t)}
                     </td>
                     <td className="max-w-[16rem] truncate px-2 py-1.5" title={row.note ?? ''}>
                       {row.note ?? ''}
@@ -210,13 +224,13 @@ export function AlertsPanel({
                             cancel.mutate(row.id, {
                               onError: (cause: unknown) => {
                                 setError(
-                                  cause instanceof Error ? cause.message : 'Could not cancel that',
+                                  cause instanceof Error ? cause.message : t('alerts.cancelFailed'),
                                 );
                               },
                             });
                           }}
                         >
-                          Cancel
+                          {t('wallet.cancel')}
                         </Button>
                       ) : null}
                     </td>

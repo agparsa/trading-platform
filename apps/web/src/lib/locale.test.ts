@@ -82,6 +82,10 @@ describe('the message tables', () => {
     expect(translate('en', 'wallet.withdraw.range', vars)).toBe(
       'Between $10.00 and $50,000.00 per request',
     );
+    // An accessible name compared with the visible figure asks for it bare.
+    expect(translate('fa', 'wl.buyAt', { code: 'XAUUSD', price: '4582.72' }, false)).toBe(
+      'خرید XAUUSD با 4582.72',
+    );
   });
 
   it('do not translate a figure: Persian copy carries no Persian digits', () => {

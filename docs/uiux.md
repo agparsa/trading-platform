@@ -231,15 +231,23 @@ digits, as on the charts and statements they are compared with. A figure set int
 Persian sentence (`{amount}` in a message) is wrapped in a left-to-right
 isolate by `translate`, so `$10.00` is not reordered into `10.00$` by the
 words around it. Fields that hold words (`wordInputClass`) follow the page's
-direction; fields that hold figures stay `numeric`. The words are
+direction; fields that hold figures stay `numeric`. A figure is left to right but aligned as
+the page is: `text-align: -webkit-match-parent` (Chromium resolves the
+unprefixed keyword against the figure's own direction), and an explicit
+`text-end` on a figure means the page's end. A figure that needs inline
+padding or margin on one side is wrapped in a `numeric` span, so the padding
+follows the page. The browser walk measures a label and its figure in
+Persian and fails if their right edges part. The words are
 in `lib/messages.ts`: English is the source, the Persian table is typed against
 its keys, so an untranslated key fails the build, and both must use the same
 placeholders. Translated so far: the section navigation, the page frame,
 sign-in, Settings, the terminal's header, panel titles and activity tabs, the
 account strip, the order ticket, and the column headings and empty states of
-the activity panels and the watchlist, the whole Analytics, Wallet and
+the activity panels and the watchlist, every button and message of the
+watchlist and the positions, pending-orders and alerts panels, the whole Analytics, Wallet and
 Verification pages, and the title, description and details of Account, History, Instruments, Security and
-Developer. The panels' remaining labels, the Security forms, the server's own messages and the phone are still English, and the
+Developer. The order types and send button, the chart's caption, the
+history's remaining labels, the Security forms, the server's own messages and the phone are still English, and the
 language note says so on screen. The layout mirrors: every margin, padding,
 alignment and offset in the web app is a logical utility (`ms-`, `pe-`,
 `text-end`, `end-`), not a physical one, so start and end swap with the

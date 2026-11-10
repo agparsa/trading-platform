@@ -63,8 +63,8 @@ export function FinancePanel({ accountId }: { accountId: string | null }) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.id} className="border-t border-terminal-border/60">
-              <td className="numeric py-1.5 ps-3 pe-2 text-terminal-muted">
-                {utcTime(row.createdAt)}
+              <td className="py-1.5 ps-3 pe-2 text-terminal-muted">
+                <span className="numeric">{utcTime(row.createdAt)}</span>
               </td>
               <td className="px-2 py-1.5 text-terminal-text" title={row.type}>
                 {ledgerLabel(row.type)}
@@ -78,11 +78,8 @@ export function FinancePanel({ accountId }: { accountId: string | null }) {
               >
                 {signedMoney(row.amount, row.currency)}
               </td>
-              <td
-                className="numeric py-1.5 ps-2 pe-3 text-end text-terminal-text"
-                title={row.balanceAfter}
-              >
-                {money(row.balanceAfter, row.currency)}
+              <td className="py-1.5 ps-2 pe-3 text-end text-terminal-text" title={row.balanceAfter}>
+                <span className="numeric">{money(row.balanceAfter, row.currency)}</span>
               </td>
             </tr>
           ))}
