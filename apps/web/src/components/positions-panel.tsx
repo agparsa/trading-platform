@@ -614,7 +614,7 @@ function ConfirmClose({
  * reports its own failure. A failed partial close must not leave the trader
  * believing a modify succeeded, so nothing here is batched.
  */
-function PositionEditor({
+export function PositionEditor({
   position,
   spec,
   accountId,

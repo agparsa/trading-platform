@@ -759,6 +759,24 @@ export const en = {
   'trail.fact.previousVolume': 'was volume',
   'trail.value': '{value}',
   'trail.by': 'by {who}',
+  'pos.lots': 'Lots',
+  'pos.edit': 'Edit',
+  'pos.breakEven': 'Break even',
+  'pos.breakEvenTitle':
+    'Move the stop to the entry price; the target and the trail stay as they are',
+  'phone.pickInstrument': '{code}, change instrument',
+  'phone.tabs': 'Terminal screens',
+  'phone.tab.markets': 'Markets',
+  'phone.tab.chart': 'Chart',
+  'phone.tab.trade': 'Trade',
+  'phone.tab.positions': 'Positions',
+  'phone.tab.account': 'Account',
+  'phone.selectInstrument': 'Select instrument',
+  'phone.searchAnything': 'Search for an instrument…',
+  'chart.high': 'H',
+  'chart.low': 'L',
+  'chart.loading': 'Loading bars…',
+  'chart.noBars': 'No bars recorded for {code} at {resolution} in this window.',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1510,6 +1528,23 @@ export const fa: Messages = {
   'trail.fact.previousVolume': 'حجم قبلی',
   'trail.value': '{value}',
   'trail.by': 'توسط {who}',
+  'pos.lots': 'لات',
+  'pos.edit': 'ویرایش',
+  'pos.breakEven': 'سربه‌سر',
+  'pos.breakEvenTitle': 'حد ضرر را به قیمت ورود ببر؛ حد سود و استاپ متحرک همان می‌مانند',
+  'phone.pickInstrument': '{code}، تغییر نماد',
+  'phone.tabs': 'صفحه‌های ترمینال',
+  'phone.tab.markets': 'بازارها',
+  'phone.tab.chart': 'نمودار',
+  'phone.tab.trade': 'معامله',
+  'phone.tab.positions': 'پوزیشن‌ها',
+  'phone.tab.account': 'حساب',
+  'phone.selectInstrument': 'انتخاب نماد',
+  'phone.searchAnything': 'جستجوی نماد…',
+  'chart.high': 'H',
+  'chart.low': 'L',
+  'chart.loading': 'در حال بارگذاری کندل‌ها…',
+  'chart.noBars': 'برای {code} در بازهٔ {resolution} در این پنجره کندلی ثبت نشده است.',
 };
 
 const TABLES: Record<Locale, Messages> = { en, fa };

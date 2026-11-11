@@ -156,3 +156,12 @@ summary {
 [dir='rtl'] .numeric.text-center {
   text-align: center;
 }
+
+/*
+ * The phone terminal's tab bar sits above the home indicator, not under it.
+ * A named class rather than an arbitrary utility: the inset is the device's,
+ * not a step on the spacing scale (`scripts/spacing-scale.test.ts`).
+ */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}

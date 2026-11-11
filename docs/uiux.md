@@ -266,6 +266,25 @@ ticket puts Sell first, at the bid, and Buy second, at the ask, as the
 watchlist's row ticket and the bid/ask line do. A change that rounds to zero
 reads `0.00%`, uncoloured — never a red `-0.00%`.
 
+**On a phone.** Below `lg` the terminal is not the desktop's columns stacked
+(that put a 200-pixel header and a block of twelve figures above a
+thumbnail-sized chart). It is five screens behind a tab bar — Markets, Chart,
+Trade, Positions, Account — as trading apps lay it out. The header names the
+instrument (a searchable list opens from it) and the account's floating P&L.
+The Chart screen shows the visible range's high and low, scrolling timeframes,
+and a quick ticket under the thumb: the bid to sell at, a lot size, the ask to
+buy at. Sell and Buy _stage_ the order and open the Trade screen, where the
+same ticket as on the desktop asks before sending — nothing on a phone sends on
+one tap. Positions are cards (side and size, entry → now, the server's P&L),
+which open to the levels, swap, margin and three actions: Edit (the desktop's
+position editor), Break even (one modify moving the stop to the entry and
+keeping the target and trail; the server refuses it when the market is on the
+wrong side) and Close, which asks when confirmations are on. Close all always
+asks. The same queries and socket as the desktop: a second layout, not a second
+calculation. The browser walk checks at 390×844 that nothing is wider than the
+screen, that Sell stages and sends nothing, that there is one card per open
+position in the database, and audits both screens.
+
 **The pre-trade check.** A market order complete enough to send is shown to
 the risk engine before it is sent: `POST /orders/preview`, asked once the
 ticket's fields have been still for half a second (a quote tick asks

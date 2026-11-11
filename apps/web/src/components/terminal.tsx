@@ -38,6 +38,8 @@ import { ShortcutHelp } from './shortcut-help';
 import { Toasts } from './toasts';
 import { Button, Panel, Tabs } from './primitives';
 import { Watchlist } from './watchlist';
+import { PhoneTerminal } from './phone-terminal';
+import { PHONE_QUERY, useMediaQuery } from '@/lib/use-media-query';
 import { useT } from '@/lib/use-locale';
 
 type BottomTab = 'open' | 'pending' | 'alerts' | 'finance' | 'logs' | HistoryTab;
@@ -241,6 +243,34 @@ export function Terminal() {
   const positions = openPositions.data ?? [];
   const pending = pendingOrders.data ?? [];
   const currency = account?.currency ?? 'USD';
+  const phone = useMediaQuery(PHONE_QUERY);
+
+  if (phone) {
+    return (
+      <>
+        <PhoneTerminal
+          symbols={tradeableSymbols}
+          activeSymbol={activeSymbol}
+          onSelectSymbol={setSelectedSymbol}
+          resolution={resolution}
+          onResolutionChange={setResolution}
+          positions={positions}
+          pending={pending}
+          account={account}
+          accountId={accountId}
+          currency={currency}
+          snapshot={accountState.data}
+          preferences={preferences}
+          staged={staged}
+          onStage={setStaged}
+          onStagedHandled={clearStaged}
+          email={user?.email ?? ''}
+          onSignOut={() => void signOut()}
+        />
+        <Toasts />
+      </>
+    );
+  }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-terminal-bg">

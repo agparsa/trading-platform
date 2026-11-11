@@ -20,6 +20,7 @@ import {
   RESOLUTION_LABEL,
   isResolution,
   mergeBars,
+  rangeOf,
   type ChartBar,
 } from '@tp/chart-core';
 import {
@@ -68,7 +69,14 @@ export function ChartPanel({
   pendingOrders,
   accountId,
   currency,
+  compact = false,
 }: {
+  /**
+   * The phone's chart: the screen's own header already names the instrument,
+   * so this one shows the range on screen and the timeframes, which scroll,
+   * and drops the caption a phone has no room to keep reading.
+   */
+  compact?: boolean;
   symbol: SymbolRow | undefined;
   resolution: string;
   onResolutionChange: (resolution: string) => void;
@@ -93,43 +101,62 @@ export function ChartPanel({
   );
 
   const empty = !history.isLoading && bars.length === 0;
+  const range = useMemo(() => (compact ? rangeOf(bars) : null), [compact, bars]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between border-b border-terminal-border px-3 py-1.5">
-        <div className="flex items-center gap-2">
-          {symbol === undefined ? null : (
-            <span
-              aria-hidden
-              title={markFor(symbol.code).label}
-              className={cn(
-                'inline-flex h-5 w-7 shrink-0 items-center justify-center rounded text-caption font-semibold leading-none ring-1 ring-inset',
-                markClasses(markFor(symbol.code).kind),
-              )}
-            >
-              {markFor(symbol.code).glyph}
-            </span>
-          )}
-          <span className="text-sm font-medium text-terminal-text">{symbol?.code ?? '—'}</span>
-          {symbol === undefined ? null : (
-            <span className="text-label uppercase tracking-wider text-terminal-muted">
-              {markFor(symbol.code).label}
-            </span>
-          )}
-          <span className="numeric text-xs text-terminal-muted">
-            {quote === undefined || symbol === undefined
-              ? ''
-              : `${currencySymbol(symbol.quoteCurrency)} ${formatPrice(quote.bid, symbol.pricePrecision)}`}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-terminal-border px-3 py-1.5">
+        {compact ? (
+          <span className="numeric shrink-0 text-caption" data-testid="chart-range">
+            {range === null ? null : (
+              <>
+                <span className="text-terminal-muted">{t('chart.high')} </span>
+                <span className="text-terminal-long">{range.high}</span>
+                <span className="text-terminal-muted"> {t('chart.low')} </span>
+                <span className="text-terminal-short">{range.low}</span>
+              </>
+            )}
           </span>
-        </div>
-        <div className="flex items-center gap-0.5">
+        ) : (
+          <div className="flex items-center gap-2">
+            {symbol === undefined ? null : (
+              <span
+                aria-hidden
+                title={markFor(symbol.code).label}
+                className={cn(
+                  'inline-flex h-5 w-7 shrink-0 items-center justify-center rounded text-caption font-semibold leading-none ring-1 ring-inset',
+                  markClasses(markFor(symbol.code).kind),
+                )}
+              >
+                {markFor(symbol.code).glyph}
+              </span>
+            )}
+            <span className="text-sm font-medium text-terminal-text">{symbol?.code ?? '—'}</span>
+            {symbol === undefined ? null : (
+              <span className="text-label uppercase tracking-wider text-terminal-muted">
+                {markFor(symbol.code).label}
+              </span>
+            )}
+            <span className="numeric text-xs text-terminal-muted">
+              {quote === undefined || symbol === undefined
+                ? ''
+                : `${currencySymbol(symbol.quoteCurrency)} ${formatPrice(quote.bid, symbol.pricePrecision)}`}
+            </span>
+          </div>
+        )}
+        <div
+          className={cn(
+            'flex items-center gap-0.5',
+            compact && 'min-w-0 overflow-x-auto [scrollbar-width:none]',
+          )}
+        >
           {(served.data ?? RESOLUTIONS).map((value) => (
             <button
               key={value}
               type="button"
               onClick={() => onResolutionChange(value)}
               className={cn(
-                'rounded px-2 py-0.5 text-caption transition-colors',
+                'shrink-0 rounded px-2 py-0.5 text-caption transition-colors',
                 value === resolution
                   ? 'bg-terminal-raised text-terminal-text'
                   : 'text-terminal-muted hover:text-terminal-text',
@@ -143,7 +170,7 @@ export function ChartPanel({
 
       <div className="relative min-h-0 flex-1">
         {symbol === undefined ? (
-          <EmptyState>Select an instrument.</EmptyState>
+          <EmptyState>{t('ticket.selectOne')}</EmptyState>
         ) : (
           <>
             <Candles
@@ -155,21 +182,24 @@ export function ChartPanel({
               currency={currency}
             />
             {history.isLoading ? (
-              <Overlay>Loading bars…</Overlay>
+              <Overlay>{t('chart.loading')}</Overlay>
             ) : empty ? (
               <Overlay>
-                No bars recorded for {symbol.code} at{' '}
-                {isResolution(resolution) ? RESOLUTION_LABEL[resolution] : resolution} in this
-                window.
+                {t('chart.noBars', {
+                  code: symbol.code,
+                  resolution: isResolution(resolution) ? RESOLUTION_LABEL[resolution] : resolution,
+                })}
               </Overlay>
             ) : null}
           </>
         )}
       </div>
 
-      <p className="shrink-0 border-t border-terminal-border px-3 py-1 text-label text-terminal-muted">
-        {t('chart.caption')}
-      </p>
+      {compact ? null : (
+        <p className="shrink-0 border-t border-terminal-border px-3 py-1 text-label text-terminal-muted">
+          {t('chart.caption')}
+        </p>
+      )}
     </div>
   );
 }

@@ -1854,6 +1854,112 @@ async function main(): Promise<void> {
     await auditAccessibility(page, 'the position editor');
 
     /**
+     * The terminal on a phone: one screen at a time behind a tab bar, the
+     * two prices and a lot size under the chart, the positions as cards.
+     * What is checked is what a phone gets wrong: a page wider than the
+     * screen, a buy button that sends without asking, and a card list that
+     * disagrees with the book.
+     */
+    {
+      await page.setViewportSize({ width: 390, height: 844 });
+      const phone = page.getByTestId('phone');
+      const shown = await phone
+        .waitFor({ timeout: 10_000 })
+        .then(() => true)
+        .catch(() => false);
+      const quick = await page
+        .getByTestId('quick-trade')
+        .isVisible()
+        .catch(() => false);
+      const overflow = await page.evaluate<number>(
+        '(() => document.documentElement.scrollWidth - window.innerWidth)()',
+      );
+      ok(
+        shown && quick && overflow <= 0,
+        'on a phone the terminal is one screen behind a tab bar, with the quick ticket under the chart, and nothing wider than the screen',
+        `phone layout ${shown} · quick ticket ${quick} · ${overflow}px wider than the screen`,
+      );
+      await screenshot(page, 'terminal phone chart');
+      await auditAccessibility(page, 'the terminal on a phone');
+
+      // Choosing an instrument from the header's list.
+      await phone.getByRole('button', { name: /, change instrument$/ }).click();
+      const sheet = page.getByRole('dialog', { name: 'Select instrument' });
+      await sheet.getByRole('textbox').fill('XAU');
+      await sheet
+        .getByRole('button', { name: /XAUUSD/ })
+        .first()
+        .click();
+      const picked = await phone
+        .getByRole('button', { name: 'XAUUSD, change instrument' })
+        .waitFor({ timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false);
+      ok(
+        picked,
+        'the phone header changes instrument from its searchable list',
+        `XAUUSD picked: ${picked}`,
+      );
+
+      // Sell stages; the Trade screen asks before anything is sent.
+      const ordersBefore = await prisma.order.count({
+        where: { account: { user: { email: people.trader.email } } },
+      });
+      await page.getByTestId('quick-trade').getByRole('button', { name: /SELL/ }).click();
+      const question = await page
+        .getByTestId('ticket-confirm')
+        .innerText({ timeout: 10_000 })
+        .catch(() => '');
+      const ordersAfter = await prisma.order.count({
+        where: { account: { user: { email: people.trader.email } } },
+      });
+      ok(
+        /SELL .*XAUUSD/.test(question) &&
+          /at market/.test(question) &&
+          ordersAfter === ordersBefore,
+        "the phone's Sell stages the order on the Trade screen, which asks, and sends nothing",
+        `${question.replace(/\s+/g, ' ')} · orders ${ordersBefore} → ${ordersAfter}`,
+      );
+      await page
+        .getByRole('button', { name: /^Cancel$/ })
+        .first()
+        .click();
+
+      // The positions, as cards: as many as the book holds open.
+      await phone.getByRole('button', { name: /^Positions/ }).click();
+      await page.getByTestId('phone-positions').waitFor({ timeout: 10_000 });
+      const open = await prisma.position.count({
+        where: { account: { user: { email: people.trader.email } }, status: 'OPEN' },
+      });
+      let cards = -1;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        cards = await page.getByTestId('position-card').count();
+        if (cards === open) break;
+        await page.waitForTimeout(250);
+      }
+      if (cards > 0) {
+        await page.getByTestId('position-card').first().getByRole('button').first().click();
+      }
+      const actions =
+        cards === 0 ||
+        (await page
+          .getByRole('button', { name: 'Break even' })
+          .first()
+          .isVisible()
+          .catch(() => false));
+      ok(
+        cards === open && actions,
+        "the phone's positions are cards, one per open position in the database, each with its actions",
+        `${cards} cards · ${open} open in the database · break-even offered ${actions}`,
+      );
+      await screenshot(page, 'terminal phone positions');
+      await auditAccessibility(page, 'the positions on a phone');
+
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.getByTestId('phone').waitFor({ state: 'detached', timeout: 10_000 });
+    }
+
+    /**
      * And closed from the same screen as a selection: the row ticked, "Close
      * (1)", the question answered. One command naming the position, and the
      * row in the database says CLOSED with a close reason of MANUAL — the
