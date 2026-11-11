@@ -453,3 +453,28 @@ describe('the order ticket in Persian', () => {
     }
   });
 });
+
+describe('sizing an order by risk', () => {
+  it('sets the volume so the stop costs no more than the amount, rounded down', async () => {
+    quote();
+    render(
+      <OrderTicket
+        symbol={SYMBOL}
+        account={ACCOUNT}
+        accountId="acc-1"
+        preferences={PREFERENCES}
+        shortcut={null}
+        onShortcutHandled={() => undefined}
+      />,
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Size by risk' }));
+    // A buy at the ask, 4583.72, stopped at 4578.72: 5.00 × 100 = 500 a lot.
+    fireEvent.change(screen.getAllByPlaceholderText('—')[0]!, { target: { value: '4578.72' } });
+    fireEvent.change(screen.getByLabelText('Risk (USD)'), { target: { value: '42' } });
+    // 42 / 500 = 0.084 → 0.08, never 0.09.
+    await waitFor(() =>
+      expect((screen.getByLabelText('Volume (lots)') as HTMLInputElement).value).toBe('0.08'),
+    );
+    expect(screen.getByTestId('risk-sizing').textContent).toContain('0.08 lots');
+  });
+});

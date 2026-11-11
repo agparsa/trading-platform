@@ -9,6 +9,7 @@ import { price as formatPrice, signedMoney, toneClass, toneOf } from '@/lib/form
 import {
   estimateCosts,
   projectedOutcome,
+  sizeForRisk,
   rewardToRisk,
   riskPercent,
   stepVolume,
@@ -90,6 +91,9 @@ export function OrderTicket({
   const [stopTrigger, setStopTrigger] = useState('');
   const [timeInForce, setTimeInForce] = useState<'GTC' | 'DAY'>('GTC');
   const [stopLoss, setStopLoss] = useState('');
+  /** Size by risk: the volume follows from the money at stake and the stop. */
+  const [riskMode, setRiskMode] = useState(false);
+  const [riskAmount, setRiskAmount] = useState('');
   const [trailing, setTrailing] = useState('');
   const [takeProfit, setTakeProfit] = useState('');
   const [submitError, setSubmitError] = useState<readonly string[]>([]);
@@ -205,6 +209,15 @@ export function OrderTicket({
     [symbol, account, side, volume, entryReference, takeProfit],
   );
   const ratio = useMemo(() => rewardToRisk(ifTargeted, ifStopped), [ifTargeted, ifStopped]);
+
+  const sizedVolume = useMemo(
+    () =>
+      riskMode ? sizeForRisk(symbol, account, side, entryReference, stopLoss, riskAmount) : null,
+    [riskMode, symbol, account, side, entryReference, stopLoss, riskAmount],
+  );
+  useEffect(() => {
+    if (sizedVolume !== null) setVolume(sizedVolume);
+  }, [sizedVolume]);
   /**
    * The projected loss as a share of equity — the number a trader actually
    * manages by. "Two percent" is a rule people follow; "eighty-four dollars"
@@ -530,7 +543,7 @@ export function OrderTicket({
           watchlist's row ticket and the bid/ask line below already use, and
           the one most terminals share, so a hand reaching for "buy" finds it
           where it expects. */}
-      <div className="grid grid-cols-2 gap-2">
+      <div dir="ltr" className="grid grid-cols-2 gap-2">
         <SideButton active={side === 'SELL'} side="SELL" onClick={() => setSide('SELL')}>
           <span className="numeric block text-sm">
             {quote === undefined ? '—' : formatPrice(quote.bid, symbol.pricePrecision)}
@@ -594,6 +607,8 @@ export function OrderTicket({
             className={inputClass}
             value={volume}
             inputMode="decimal"
+            readOnly={riskMode}
+            aria-label={t('ticket.volume')}
             onChange={(event) => setVolume(event.target.value)}
           />
           <Button
@@ -606,6 +621,39 @@ export function OrderTicket({
           </Button>
         </div>
       </Field>
+
+      {/*
+        Size by risk. The volume above follows from the money named here and
+        the stop loss below, rounded down to the lot step so the loss at the
+        stop is never more than was named. It changes nothing else: the order
+        is checked as any other, and "If stopped" below shows what it risks.
+      */}
+      <label className="-mt-1 flex items-center gap-2 text-caption text-terminal-muted">
+        <input
+          type="checkbox"
+          checked={riskMode}
+          onChange={(event) => setRiskMode(event.target.checked)}
+        />
+        {t('ticket.riskMode')}
+      </label>
+      {riskMode ? (
+        <div>
+          <Field label={t('ticket.riskAmount', { currency: account?.currency ?? '' })}>
+            <input
+              className={inputClass}
+              value={riskAmount}
+              inputMode="decimal"
+              placeholder="0.00"
+              onChange={(event) => setRiskAmount(event.target.value)}
+            />
+          </Field>
+          <span className="mt-1 block text-caption text-terminal-muted" data-testid="risk-sizing">
+            {sizedVolume !== null
+              ? t('ticket.riskSized', { volume: sizedVolume })
+              : t('ticket.riskNeeds')}
+          </span>
+        </div>
+      ) : null}
 
       {orderType === 'STOP_LIMIT' ? (
         <Field

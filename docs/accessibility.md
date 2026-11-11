@@ -5,18 +5,18 @@ this does **not** claim.
 
 ## The claim, stated narrowly
 
-**Forty-nine views** are audited by `axe-core` on every `pnpm smoke:web` run,
+**Fifty views** are audited by `axe-core` on every `pnpm smoke:web` run,
 against the WCAG 2.1 A and AA rule set, in a real browser with real data.
 Serious and critical violations fail the run; moderate and minor ones are
 printed.
 
-Forty-nine _views_, not forty-nine pages: nineteen of them share a URL with
+Fifty _views_, not fifty pages: twenty of them share a URL with
 a page already audited — seven tab panels (Alerts, Finance and Logs on the
 terminal; IP rules, service tokens, risk ceilings and venue disagreement in the
 admin console), the position editor and an open order trail, the terminal and
 settings again in the light theme, and the same two, Analytics, Wallet,
 Verification and Security in Persian, right to left, and the terminal's chart
-and positions screens at a phone's width.
+and positions screens at a phone's width, the chart again in Persian.
 That distinction is the whole of the next section.
 
 That is a **machine-checkable subset of WCAG, and it is a minority of it** —
@@ -36,7 +36,7 @@ What is **not** covered, and is therefore still unknown:
   not, and no automated rule will say so;
 - anything that needs a person with the assistive technology they actually use.
 
-Naming those is the honest version of a pass. A suite that reported "49/49
+Naming those is the honest version of a pass. A suite that reported "50/50
 accessible" would be worse than having none, because it would end the question.
 
 ### And a narrower limit, found by breaking it

@@ -777,6 +777,11 @@ export const en = {
   'chart.low': 'L',
   'chart.loading': 'Loading bars…',
   'chart.noBars': 'No bars recorded for {code} at {resolution} in this window.',
+  'ticket.riskMode': 'Size by risk',
+  'ticket.riskAmount': 'Risk ({currency})',
+  'ticket.riskSized': '{volume} lots: the stop costs no more than this.',
+  'ticket.riskNeeds':
+    'Name an amount and a stop loss on the losing side; the volume follows. It must buy at least the minimum lot, in the account’s own currency.',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1545,6 +1550,11 @@ export const fa: Messages = {
   'chart.low': 'L',
   'chart.loading': 'در حال بارگذاری کندل‌ها…',
   'chart.noBars': 'برای {code} در بازهٔ {resolution} در این پنجره کندلی ثبت نشده است.',
+  'ticket.riskMode': 'تعیین حجم بر اساس ریسک',
+  'ticket.riskAmount': 'ریسک ({currency})',
+  'ticket.riskSized': '{volume} لات: حد ضرر بیش از این هزینه ندارد.',
+  'ticket.riskNeeds':
+    'مبلغ و حد ضرری در سمت زیان وارد کنید تا حجم محاسبه شود. باید دست‌کم حداقل لات را بخرد و به ارز خود حساب باشد.',
 };
 
 const TABLES: Record<Locale, Messages> = { en, fa };

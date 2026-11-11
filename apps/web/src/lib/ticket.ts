@@ -13,6 +13,7 @@ import {
   validatePendingPrice,
   validateProtectiveLevels,
   validateStopLimit,
+  volumeForRisk,
 } from '@tp/trading-core';
 import { money } from './format';
 import type { AccountSummary, SymbolRow } from './queries';
@@ -319,4 +320,37 @@ export function riskPercent(
 ): string | null {
   if (account === undefined || equity === null || equity === undefined) return null;
   return percentOfEquity(amount, equity);
+}
+
+/**
+ * The volume at which this ticket's stop would cost `amount` — "size by risk".
+ *
+ * `volumeForRisk` in `@tp/trading-core` does the arithmetic and rounds down to
+ * the lot step, so the loss at the stop is never more than was named; what
+ * stays here is the browser's rule about rates (see `projectedOutcome`).
+ * `null` while there is no entry, no stop on the losing side, an amount that
+ * buys less than the minimum lot, or an account in another currency.
+ */
+export function sizeForRisk(
+  spec: SymbolRow | undefined,
+  account: AccountSummary | undefined,
+  side: 'BUY' | 'SELL',
+  entryPrice: string | null,
+  stopLoss: string,
+  amount: string,
+): string | null {
+  if (spec === undefined || account === undefined || entryPrice === null) return null;
+  if (stopLoss.trim() === '' || amount.trim() === '') return null;
+  const volume = volumeForRisk({
+    spec: spec as SymbolSpec,
+    side,
+    entryPrice,
+    stopPrice: stopLoss.trim(),
+    riskAmount: amount.trim(),
+    accountCurrency: account.currency,
+    quoteToAccountRate: spec.quoteCurrency === account.currency ? '1' : null,
+  });
+  if (volume === null) return null;
+  // As the lot step writes it: 0.08, not 0.080000.
+  return toDecimal(volume).toFixed(Math.max(0, toDecimal(spec.volumeStep).decimalPlaces()));
 }

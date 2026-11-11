@@ -1492,6 +1492,40 @@ async function main(): Promise<void> {
         );
         await auditAccessibility(page, view);
       }
+      // And on a phone, in Persian: the tab bar in Persian, nothing wider
+      // than the screen, laid out right to left.
+      await page.setViewportSize({ width: 390, height: 844 });
+      await visit(page, '/terminal', { url: '/terminal' });
+      const phoneTab = await page
+        .getByTestId('phone')
+        .getByRole('button', { name: 'نمودار' })
+        .waitFor({ timeout: 10_000 })
+        .then(() => true)
+        .catch(() => false);
+      const phoneOverflow = await page.evaluate<number>(
+        '(() => document.documentElement.scrollWidth - window.innerWidth)()',
+      );
+      const sellBox = await page
+        .getByTestId('quick-trade')
+        .getByRole('button', { name: /فروش/ })
+        .boundingBox();
+      const buyBox = await page
+        .getByTestId('quick-trade')
+        .getByRole('button', { name: /خرید/ })
+        .boundingBox();
+      ok(
+        sellBox !== null && buyBox !== null && sellBox.x < buyBox.x,
+        'Sell stays on the left and Buy on the right in Persian too, as a price ladder reads',
+        `sell at x=${sellBox?.x ?? '?'} · buy at x=${buyBox?.x ?? '?'}`,
+      );
+      ok(
+        phoneTab && phoneOverflow <= 0,
+        'the phone terminal is Persian and no wider than the screen',
+        `Persian chart tab ${phoneTab} · ${phoneOverflow}px wider than the screen`,
+      );
+      await screenshot(page, 'terminal-phone-persian');
+      await auditAccessibility(page, 'the terminal on a phone, Persian');
+      await page.setViewportSize({ width: 1440, height: 900 });
       await visit(page, '/settings', { url: '/settings' });
       await page.getByRole('radio', { name: 'English' }).click();
     }

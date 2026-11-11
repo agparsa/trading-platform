@@ -306,7 +306,10 @@ function QuickTrade({
       className="shrink-0 border-t border-terminal-border bg-terminal-surface px-3 py-2"
       data-testid="quick-trade"
     >
-      <div className="grid grid-cols-[1fr_minmax(0,1.1fr)_1fr] items-stretch gap-2">
+      {/* Sell on the left and Buy on the right in every language: the bid and
+          the ask are a price ladder, which reads left to right like the
+          figures on it, and a hand reaching for Buy should not find Sell. */}
+      <div dir="ltr" className="grid grid-cols-[1fr_minmax(0,1.1fr)_1fr] items-stretch gap-2">
         <SideButton
           side="SELL"
           label={t('ticket.side.SELL')}

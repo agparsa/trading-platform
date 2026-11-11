@@ -273,7 +273,8 @@ Trade, Positions, Account — as trading apps lay it out. The header names the
 instrument (a searchable list opens from it) and the account's floating P&L.
 The Chart screen shows the visible range's high and low, scrolling timeframes,
 and a quick ticket under the thumb: the bid to sell at, a lot size, the ask to
-buy at. Sell and Buy _stage_ the order and open the Trade screen, where the
+buy at, Sell on the left and Buy on the right in Persian too (a price ladder
+reads left to right like its figures). Sell and Buy _stage_ the order and open the Trade screen, where the
 same ticket as on the desktop asks before sending — nothing on a phone sends on
 one tap. Positions are cards (side and size, entry → now, the server's P&L),
 which open to the levels, swap, margin and three actions: Edit (the desktop's
@@ -284,6 +285,16 @@ asks. The same queries and socket as the desktop: a second layout, not a second
 calculation. The browser walk checks at 390×844 that nothing is wider than the
 screen, that Sell stages and sends nothing, that there is one card per open
 position in the database, and audits both screens.
+
+**Size by risk.** The ticket can size an order from the money a trader is
+willing to lose: tick "Size by risk", name the amount, set a stop loss on the
+losing side, and the volume follows — `volumeForRisk` in `@tp/trading-core`,
+rounded down to the lot step so the loss at the stop is never more than named,
+and capped at the maximum lot. It answers nothing (and says what it needs)
+without a stop on the losing side, for an amount below the minimum lot, or
+when the instrument is quoted in a currency other than the account's: the
+browser holds no exchange rate and a guessed size is a wrong size. The order is
+checked as any other; "If stopped" shows what it risks.
 
 **The pre-trade check.** A market order complete enough to send is shown to
 the risk engine before it is sent: `POST /orders/preview`, asked once the
