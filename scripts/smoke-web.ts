@@ -1935,6 +1935,52 @@ async function main(): Promise<void> {
         `XAUUSD picked: ${picked}`,
       );
 
+      // The open gold position, marked on the chart at its entry, with a
+      // close button that asks — and Cancel leaves it open.
+      const goldOpen = await prisma.position.count({
+        where: {
+          account: { user: { email: people.trader.email } },
+          status: 'OPEN',
+          symbol: { code: 'XAUUSD' },
+        },
+      });
+      let chips = -1;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        chips = await page.getByTestId('position-chip').count();
+        if (chips === goldOpen) break;
+        await page.waitForTimeout(250);
+      }
+      let asked = false;
+      if (chips > 0) {
+        await page
+          .getByRole('button', { name: /^Close the .* XAUUSD position$/ })
+          .first()
+          .click();
+        asked = await page
+          .getByTestId('position-chip')
+          .first()
+          .getByRole('button', { name: 'Cancel' })
+          .isVisible();
+        await page
+          .getByTestId('position-chip')
+          .first()
+          .getByRole('button', { name: 'Cancel' })
+          .click();
+      }
+      const stillOpen = await prisma.position.count({
+        where: {
+          account: { user: { email: people.trader.email } },
+          status: 'OPEN',
+          symbol: { code: 'XAUUSD' },
+        },
+      });
+      ok(
+        chips === goldOpen && (chips === 0 || asked) && stillOpen === goldOpen,
+        'each open position is marked on the chart at its entry, and its close button asks first',
+        `${chips} chips · ${goldOpen} open gold positions · asked ${asked} · open after Cancel ${stillOpen}`,
+      );
+      await screenshot(page, 'terminal phone chart position');
+
       // Sell stages; the Trade screen asks before anything is sent.
       const ordersBefore = await prisma.order.count({
         where: { account: { user: { email: people.trader.email } } },

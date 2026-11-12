@@ -14,7 +14,7 @@ import {
 } from 'lightweight-charts';
 import { cn } from '@tp/ui';
 import { currencySymbol, markClasses, markFor } from '@/lib/instrument-marks';
-import { price as formatPrice, signedMoney } from '@/lib/format';
+import { price as formatPrice, signedMoney, toneClass, toneOf } from '@/lib/format';
 import {
   RESOLUTIONS,
   RESOLUTION_LABEL,
@@ -42,6 +42,7 @@ import {
   type PendingOrderRow,
   type PositionRow,
   type SymbolRow,
+  useClosePosition,
 } from '@/lib/queries';
 import { barKey, useRealtime } from '@/lib/realtime-store';
 import { EmptyState } from './primitives';
@@ -238,6 +239,11 @@ function Candles({
   accountId: string | null;
   currency: string;
 }) {
+  const t = useT();
+  const onThisChart = useMemo(
+    () => positions.filter((position) => position.symbol === spec.code),
+    [positions, spec.code],
+  );
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -670,13 +676,21 @@ function Candles({
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full touch-none" />
+      <PositionChips
+        chartRef={chartRef}
+        seriesRef={seriesRef}
+        positions={onThisChart}
+        accountId={accountId}
+        currency={currency}
+        revision={bars}
+      />
       {refusal === null ? null : (
         <button
           type="button"
           onClick={() => setRefusal(null)}
           className="absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded border border-terminal-short/50 bg-terminal-surface px-3 py-1 text-caption text-terminal-short"
         >
-          {refusal} — dismiss
+          {refusal} — {t('pos.dismiss')}
         </button>
       )}
     </div>
@@ -708,4 +722,144 @@ function toCandlestickData(bar: ChartBar): CandlestickData<UTCTimestamp> {
     low: Number(bar.low),
     close: Number(bar.close),
   };
+}
+
+/**
+ * Each open position on the chart, at its entry: its size, what it is making
+ * now, and a button to close it — the way a trading app marks a position on
+ * the price it was opened at.
+ *
+ * Drawn over the chart in HTML rather than inside it, so the button is a real
+ * button (focusable, named, announced). Placed from the chart's own price
+ * coordinate a few times a second, which follows pan, zoom and rescale
+ * without listening to each. The figure is the server's, from the socket.
+ *
+ * Closing asks first, on the chip itself: a cross beside a moving price is the
+ * easiest thing on the screen to hit by accident.
+ */
+function PositionChips({
+  chartRef,
+  seriesRef,
+  positions,
+  accountId,
+  currency,
+  revision,
+}: {
+  /** Changes when the bars do, so the chips follow the rescaled axis. */
+  revision: unknown;
+  chartRef: React.RefObject<IChartApi | null>;
+  seriesRef: React.RefObject<ISeriesApi<'Candlestick'> | null>;
+  positions: readonly PositionRow[];
+  accountId: string | null;
+  currency: string;
+}) {
+  const t = useT();
+  const pnl = useRealtime((state) => state.pnl);
+  const close = useClosePosition(accountId);
+  const [places, setPlaces] = useState<Record<string, number | null>>({});
+  const [asking, setAsking] = useState<string | null>(null);
+  const [scale, setScale] = useState(0);
+
+  /*
+   * Placed again whenever what decides a line's height changes: the bars (the
+   * price scale rescales to them), the visible range (pan and zoom), the
+   * panel's size and the positions themselves. Event-driven, not a timer.
+   */
+  useEffect(() => {
+    const series = seriesRef.current;
+    const chart = chartRef.current;
+    if (series === null || chart === null) return;
+    const place = () => {
+      const next: Record<string, number | null> = {};
+      for (const position of positions) {
+        next[position.id] = series.priceToCoordinate(Number(position.entryPrice));
+      }
+      setPlaces((now) => (JSON.stringify(now) === JSON.stringify(next) ? now : next));
+      setScale(chart.priceScale('right').width());
+    };
+    // After the chart has drawn this change, so the scale is the new one.
+    const frame = requestAnimationFrame(place);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(place);
+    chart.subscribeCrosshairMove(place);
+    return () => {
+      cancelAnimationFrame(frame);
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(place);
+      chart.unsubscribeCrosshairMove(place);
+    };
+  }, [chartRef, seriesRef, positions, revision]);
+
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-10 overflow-hidden"
+      data-testid="position-chips"
+    >
+      {positions.map((position) => {
+        const y = places[position.id];
+        if (y === null || y === undefined) return null;
+        const floating = pnl[position.id]?.floatingPnl ?? null;
+        const confirming = asking === position.id;
+        return (
+          <div
+            key={position.id}
+            className="pointer-events-auto absolute flex -translate-y-1/2 items-stretch overflow-hidden rounded border border-terminal-border bg-terminal-surface text-caption shadow"
+            style={{ top: y, right: scale + 8 }}
+            data-testid="position-chip"
+          >
+            <span
+              className={cn(
+                'numeric px-1.5 py-0.5 font-medium',
+                position.side === 'BUY' ? 'text-terminal-long' : 'text-terminal-short',
+              )}
+            >
+              {position.volume}
+            </span>
+            <span
+              className={cn(
+                'numeric border-s border-terminal-border px-1.5 py-0.5',
+                toneClass[toneOf(floating)],
+              )}
+            >
+              {signedMoney(floating, currency)}
+            </span>
+            {confirming ? (
+              <>
+                <button
+                  type="button"
+                  className="border-s border-terminal-border bg-terminal-short px-1.5 font-medium text-terminal-bg"
+                  disabled={close.isPending}
+                  onClick={() => {
+                    setAsking(null);
+                    void close
+                      .mutateAsync({ positionId: position.id, volume: null })
+                      .catch(() => undefined);
+                  }}
+                >
+                  {t('pos.close')}
+                </button>
+                <button
+                  type="button"
+                  className="border-s border-terminal-border px-1.5 text-terminal-muted"
+                  onClick={() => setAsking(null)}
+                >
+                  {t('wallet.cancel')}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="border-s border-terminal-border px-1.5 text-terminal-muted hover:text-terminal-short"
+                aria-label={t('chart.closePosition', {
+                  volume: position.volume,
+                  symbol: position.symbol,
+                })}
+                onClick={() => setAsking(position.id)}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }

@@ -782,6 +782,7 @@ export const en = {
   'ticket.riskSized': '{volume} lots: the stop costs no more than this.',
   'ticket.riskNeeds':
     'Name an amount and a stop loss on the losing side; the volume follows. It must buy at least the minimum lot, in the account’s own currency.',
+  'chart.closePosition': 'Close the {volume} {symbol} position',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1555,6 +1556,7 @@ export const fa: Messages = {
   'ticket.riskSized': '{volume} لات: حد ضرر بیش از این هزینه ندارد.',
   'ticket.riskNeeds':
     'مبلغ و حد ضرری در سمت زیان وارد کنید تا حجم محاسبه شود. باید دست‌کم حداقل لات را بخرد و به ارز خود حساب باشد.',
+  'chart.closePosition': 'بستن پوزیشن {volume} {symbol}',
 };
 
 const TABLES: Record<Locale, Messages> = { en, fa };

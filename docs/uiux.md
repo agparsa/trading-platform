@@ -286,6 +286,16 @@ calculation. The browser walk checks at 390×844 that nothing is wider than the
 screen, that Sell stages and sends nothing, that there is one card per open
 position in the database, and audits both screens.
 
+**Positions on the chart.** Each open position on the chart's instrument is
+marked at its entry with a chip — its size, coloured by side, and the server's
+live P&L — and a close button. The chip is HTML over the chart, so the button
+is a real, named, focusable button, placed from the chart's own price
+coordinate whenever the bars, the visible range or the positions change (no
+timer). Closing asks on the chip itself, Close or Cancel: a cross beside a
+moving price is the easiest thing on the screen to hit by accident. The browser
+walk checks one chip per open position in the database and that Cancel leaves
+the position open.
+
 **Size by risk.** The ticket can size an order from the money a trader is
 willing to lose: tick "Size by risk", name the amount, set a stop loss on the
 losing side, and the volume follows — `volumeForRisk` in `@tp/trading-core`,
