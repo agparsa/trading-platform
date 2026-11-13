@@ -27,6 +27,9 @@ import {
   LevelKind,
   levelIdentity,
   draftLevel,
+  editChanges,
+  editErrors,
+  editFrom,
   halfVolume,
   levelsFor,
   riskReward,
@@ -36,6 +39,7 @@ import {
   priceFromDrag,
   priceFromPendingDrag,
   type ChartLevel,
+  type LevelEdit,
 } from '@/lib/chart-levels';
 import { useTradingCommands } from '@/lib/chart-commands';
 import { documentPalette, levelColour } from '@/lib/chart-theme';
@@ -47,11 +51,14 @@ import {
   type PositionRow,
   type SymbolRow,
   useClosePosition,
+  useModifyPosition,
 } from '@/lib/queries';
 import { barKey, useRealtime } from '@/lib/realtime-store';
-import { EmptyState } from './primitives';
+import { EmptyState, inputClass } from './primitives';
 import { useT } from '@/lib/use-locale';
+import { useStale } from '@/lib/use-stale';
 import { useToasts } from '@/lib/toasts';
+import { playTradeSound } from '@/lib/trade-sounds';
 
 /**
  * Price history.
@@ -100,6 +107,7 @@ export function ChartPanel({
   const quote = useRealtime((state) =>
     symbol === undefined ? undefined : state.quotes[symbol.code],
   );
+  const stale = useStale(quote?.timestamp, quote !== undefined && symbol?.sessionOpen === true);
 
   const bars = useMemo(
     () => mergeBars((history.data ?? []) as ChartBar[], liveBars as Record<number, ChartBar>),
@@ -148,6 +156,15 @@ export function ChartPanel({
                 ? ''
                 : `${currencySymbol(symbol.quoteCurrency)} ${formatPrice(quote.bid, symbol.pricePrecision)}`}
             </span>
+            {stale ? (
+              <span
+                className="rounded bg-terminal-warning/15 px-1 text-micro uppercase tracking-wider text-terminal-warning"
+                title={t('quote.staleTitle')}
+                data-testid="quote-stale"
+              >
+                {t('quote.stale')}
+              </span>
+            ) : null}
           </div>
         )}
         <div
@@ -382,13 +399,6 @@ function Candles({
   const commands = useTradingCommands(accountId);
   const quote = useRealtime((state) => state.quotes[spec.code]);
   /**
-   * Stops and targets the trader asked for from a position's panel and has not
-   * yet placed — drawn, draggable, and sent only when released. A draft whose
-   * position already has that level from the server is not drawn: the server's
-   * line is the one to move.
-   */
-  const [drafts, setDrafts] = useState<Record<string, ChartLevel>>({});
-  /**
    * A level released and sent, until the server answers. Drawn where it was
    * dropped, marked as waiting; on success the server's own value replaces it,
    * and on refusal it disappears and the confirmed line is where it always was.
@@ -396,23 +406,60 @@ function Candles({
   const [pending, setPending] = useState<{ key: string; level: ChartLevel; price: string } | null>(
     null,
   );
+  const byId = useMemo(
+    () => Object.fromEntries(positions.map((position) => [position.id, position])),
+    [positions],
+  );
+  /**
+   * The position whose stop and target are open in the editor, and the values
+   * typed or dragged there. Nothing here is sent until Save; until then the
+   * chart draws these values in place of the position's own, marked as
+   * unsaved, and dragging those lines changes the fields rather than the
+   * position.
+   */
+  const [editing, setEditing] = useState<{ positionId: string; edit: LevelEdit } | null>(null);
+  const editedPosition = editing === null ? undefined : byId[editing.positionId];
+  // A position that has gone takes its editor with it.
+  const edit = editedPosition === undefined ? null : (editing?.edit ?? null);
+  const dirty =
+    editedPosition !== undefined &&
+    edit !== null &&
+    Object.keys(editChanges(editedPosition, edit)).length > 0;
+
   const levels = useMemo(() => {
     const confirmed = [
       ...levelsFor(positions, spec.code),
       ...pendingLevelsFor(pendingOrders, spec.code, spec, quote),
     ];
-    const taken = new Set(confirmed.map(levelIdentity));
-    const open = new Set(positions.map((position) => position.id));
-    const drafted = Object.values(drafts).filter(
-      (draft) =>
-        !taken.has(levelIdentity(draft)) && draft.positionId !== null && open.has(draft.positionId),
+    if (editedPosition === undefined || edit === null) return confirmed;
+    const id = editedPosition.id;
+    const kept = confirmed.filter(
+      (level) =>
+        level.positionId !== id ||
+        (level.kind !== LevelKind.STOP_LOSS && level.kind !== LevelKind.TAKE_PROFIT),
     );
-    return [...confirmed, ...drafted];
-  }, [positions, pendingOrders, spec, quote, drafts]);
-  const byId = useMemo(
-    () => Object.fromEntries(positions.map((position) => [position.id, position])),
-    [positions],
-  );
+    const changes = editChanges(editedPosition, edit);
+    const drawn: ChartLevel[] = [];
+    for (const [kind, field, label] of [
+      [LevelKind.STOP_LOSS, 'stopLoss', 'SL'],
+      [LevelKind.TAKE_PROFIT, 'takeProfit', 'TP'],
+    ] as const) {
+      const text = edit[field].trim();
+      if (!/^\d+(\.\d+)?$/.test(text)) continue;
+      const unsaved = field in changes;
+      drawn.push({
+        positionId: id,
+        orderId: null,
+        kind,
+        price: text,
+        draggable: true,
+        trailing: false,
+        title: `${label} ${text}${unsaved ? ' •' : ''}`,
+        ...(unsaved ? { draft: true as const } : {}),
+      });
+    }
+    return [...kept, ...drawn];
+  }, [positions, pendingOrders, spec, quote, editedPosition, edit]);
   const ordersById = useMemo(
     () => Object.fromEntries(pendingOrders.map((order) => [order.orderId, order])),
     [pendingOrders],
@@ -430,6 +477,22 @@ function Candles({
   const linesRef = useRef<Map<string, IPriceLine>>(new Map());
   const dragRef = useRef<DragState | null>(null);
   dragRef.current = drag;
+  const editRef = useRef({ editing, dirty });
+  editRef.current = { editing, dirty };
+  /** Opens the editor on a position — unless another one has unsaved changes. */
+  const openEditor = useCallback(
+    (position: PositionRow) => {
+      const now = editRef.current;
+      if (now.editing !== null && now.dirty && now.editing.positionId !== position.id) return;
+      setRefusal(null);
+      setEditing((current) =>
+        current !== null && current.positionId === position.id
+          ? current
+          : { positionId: position.id, edit: editFrom(position, spec.pricePrecision) },
+      );
+    },
+    [spec.pricePrecision],
+  );
 
   /**
    * Keep the drawn levels inside the visible price range.
@@ -602,22 +665,11 @@ function Candles({
             ? null
             : commands.modifyPositionLevel(level.positionId, level.kind, price);
       if (sent === null) return;
-      const forget = () => {
-        if (level.draft !== true) return;
-        setDrafts((now) => {
-          const next = { ...now };
-          delete next[key];
-          return next;
-        });
-      };
       setRefusal(null);
       setPending({ key, level, price });
       sent
-        // The server's value is the line now; a draft has done its job.
-        .then(forget)
         .catch((error: unknown) => {
-          // A draft goes too: it was never a level the server accepted.
-          forget();
+          playTradeSound('order_rejected', `level-refused:${key}:${Date.now()}`);
           setRefusal(error instanceof Error ? error.message : t('chart.refused'));
         })
         .finally(() => setPending(null));
@@ -680,7 +732,31 @@ function Candles({
         yIn(event),
         event.pointerType === 'touch' ? TOUCH_GRAB_RADIUS_PX : GRAB_RADIUS_PX,
       );
-      if (level === null) return;
+      if (level === null) {
+        // A tap on a position's entry line opens its editor; a tap anywhere
+        // else closes an editor with nothing unsaved in it.
+        const y = yIn(event);
+        const series = seriesRef.current;
+        const radius = event.pointerType === 'touch' ? TOUCH_GRAB_RADIUS_PX : GRAB_RADIUS_PX;
+        const entry =
+          series === null
+            ? undefined
+            : levels.find((candidate) => {
+                if (candidate.kind !== LevelKind.ENTRY || candidate.positionId === null) {
+                  return false;
+                }
+                const at = series.priceToCoordinate(Number(candidate.price));
+                return at !== null && Math.abs(at - y) <= radius;
+              });
+        const position =
+          entry === undefined || entry.positionId === null ? undefined : byId[entry.positionId];
+        if (position !== undefined) {
+          openEditor(position);
+          return;
+        }
+        if (editRef.current.editing !== null && !editRef.current.dirty) setEditing(null);
+        return;
+      }
       // The row behind the line has to still exist. A line whose position or
       // order has just closed is a line about to disappear, and dragging it
       // would send a modification for something that is gone.
@@ -744,6 +820,19 @@ function Candles({
       // line is not a decision to place it there. Its panel button is.
       if (current.price === current.level.price) return;
 
+      // A line of the position being edited moves the editor's field, not
+      // the position: Save sends it, with the other field, in one request.
+      const open = editRef.current.editing;
+      if (
+        open !== null &&
+        current.level.positionId === open.positionId &&
+        (current.level.kind === LevelKind.STOP_LOSS || current.level.kind === LevelKind.TAKE_PROFIT)
+      ) {
+        const field = current.level.kind === LevelKind.STOP_LOSS ? 'stopLoss' : 'takeProfit';
+        setEditing({ ...open, edit: { ...open.edit, [field]: current.price } });
+        return;
+      }
+
       submitLevel(current.level, current.price);
     };
 
@@ -757,7 +846,7 @@ function Candles({
       container.removeEventListener('pointerup', endDrag);
       container.removeEventListener('pointercancel', endDrag);
     };
-  }, [levelUnder, hasTarget, byId, ordersById, spec, quote, submitLevel]);
+  }, [levelUnder, hasTarget, byId, ordersById, spec, quote, submitLevel, levels, openEditor]);
 
   return (
     <div className="relative h-full w-full">
@@ -769,17 +858,23 @@ function Candles({
         accountId={accountId}
         currency={currency}
         revision={bars}
-        spec={spec}
-        drafts={drafts}
-        waiting={pending === null ? null : pending.key}
-        onPlace={submitLevel}
-        onDraft={(position, kind) => {
-          const draft = draftLevel(spec, position, kind, quote?.bid ?? null);
-          if (draft === null) return;
-          setRefusal(null);
-          setDrafts((now) => ({ ...now, [levelIdentity(draft)]: draft }));
-        }}
+        editingId={editedPosition?.id ?? null}
+        onOpen={openEditor}
       />
+      {editedPosition === undefined || edit === null ? null : (
+        <LevelEditor
+          key={editedPosition.id}
+          position={editedPosition}
+          spec={spec}
+          edit={edit}
+          dirty={dirty}
+          reference={quote?.bid ?? editedPosition.currentPrice}
+          accountId={accountId}
+          currency={currency}
+          onChange={(next) => setEditing({ positionId: editedPosition.id, edit: next })}
+          onDone={() => setEditing(null)}
+        />
+      )}
       {refusal === null ? null : (
         <button
           type="button"
@@ -823,17 +918,15 @@ function toCandlestickData(bar: ChartBar): CandlestickData<UTCTimestamp> {
 }
 
 /**
- * Each open position on the chart, at its entry: its size, what it is making
- * now, and a button to close it — the way a trading app marks a position on
- * the price it was opened at.
+ * Each open position on the chart, at its entry: its size and what it is
+ * making now. Tapping it opens the position's editor; × closes it, after
+ * asking — a cross beside a moving price is the easiest thing on the screen
+ * to hit by accident.
  *
- * Drawn over the chart in HTML rather than inside it, so the button is a real
- * button (focusable, named, announced). Placed from the chart's own price
- * coordinate a few times a second, which follows pan, zoom and rescale
- * without listening to each. The figure is the server's, from the socket.
- *
- * Closing asks first, on the chip itself: a cross beside a moving price is the
- * easiest thing on the screen to hit by accident.
+ * Drawn over the chart in HTML rather than inside it, so the buttons are real
+ * buttons (focusable, named, announced). Placed from the chart's own price
+ * coordinate whenever the scale moves, and spread apart when two would
+ * overlap. The figure is the server's, from the socket.
  */
 function PositionChips({
   chartRef,
@@ -842,11 +935,8 @@ function PositionChips({
   accountId,
   currency,
   revision,
-  spec,
-  drafts,
-  waiting: sending,
-  onPlace,
-  onDraft,
+  editingId,
+  onOpen,
 }: {
   /** Changes when the bars do, so the chips follow the rescaled axis. */
   revision: unknown;
@@ -855,36 +945,17 @@ function PositionChips({
   positions: readonly PositionRow[];
   accountId: string | null;
   currency: string;
-  spec: SymbolRow;
-  /** Drafted stops and targets, by line identity. */
-  drafts: Readonly<Record<string, ChartLevel>>;
-  /** The line identity of a level sent and not yet answered. */
-  waiting: string | null;
-  /** Send a level as it stands — a draft accepted where it was drawn. */
-  onPlace: (level: ChartLevel, price: string) => void;
-  /** Draw a draggable stop or target for a position that has none. */
-  onDraft: (
-    position: PositionRow,
-    kind: typeof LevelKind.STOP_LOSS | typeof LevelKind.TAKE_PROFIT,
-  ) => void;
+  /** The position open in the editor, drawn as selected. */
+  editingId: string | null;
+  onOpen: (position: PositionRow) => void;
 }) {
   const t = useT();
   const pnl = useRealtime((state) => state.pnl);
-  const close = useClosePosition(accountId);
   const [places, setPlaces] = useState<Record<string, number | null>>({});
   const [asking, setAsking] = useState<string | null>(null);
-  const [opened, setOpened] = useState<string | null>(null);
-  /** Positions with a close on the wire: their buttons wait, so one tap is one close. */
-  const [closing, setClosing] = useState<ReadonlySet<string>>(new Set());
   const [scale, setScale] = useState(0);
-  // A panel for a position that has gone is no panel at all.
-  const expanded = positions.some((position) => position.id === opened) ? opened : null;
+  const closer = useCloser(accountId, t);
 
-  /*
-   * Placed again whenever what decides a line's height changes: the bars (the
-   * price scale rescales to them), the visible range (pan and zoom), the
-   * panel's size and the positions themselves. Event-driven, not a timer.
-   */
   useEffect(() => {
     const series = seriesRef.current;
     const chart = chartRef.current;
@@ -898,7 +969,6 @@ function PositionChips({
       setPlaces((now) => (JSON.stringify(now) === JSON.stringify(next) ? now : next));
       setScale(chart.priceScale('right').width());
     };
-    // After the chart has drawn this change, so the scale is the new one.
     const frame = requestAnimationFrame(place);
     chart.timeScale().subscribeVisibleLogicalRangeChange(place);
     chart.subscribeCrosshairMove(place);
@@ -908,35 +978,6 @@ function PositionChips({
       chart.unsubscribeCrosshairMove(place);
     };
   }, [chartRef, seriesRef, positions, revision]);
-
-  /**
-   * One close, sent once. The chip stays — showing that it is waiting — until
-   * the server's answer arrives and the list drops the row; a refusal is said
-   * out loud rather than leaving the trader to wonder why it is still there.
-   */
-  const closeNow = (position: PositionRow, volume: string | null) => {
-    if (closing.has(position.id)) return;
-    setClosing((now) => new Set(now).add(position.id));
-    setAsking(null);
-    close
-      .mutateAsync({ positionId: position.id, volume })
-      .catch((error: unknown) =>
-        useToasts.getState().push({
-          id: `close-failed:${position.id}`,
-          tone: 'danger',
-          sticky: false,
-          title: t('pos.closeFailed'),
-          ...(error instanceof Error ? { body: error.message } : {}),
-        }),
-      )
-      .finally(() =>
-        setClosing((now) => {
-          const next = new Set(now);
-          next.delete(position.id);
-          return next;
-        }),
-      );
-  };
 
   return (
     <div
@@ -948,137 +989,87 @@ function PositionChips({
         if (y === null || y === undefined) return null;
         const floating = pnl[position.id]?.floatingPnl ?? null;
         const confirming = asking === position.id;
-        const open = expanded === position.id;
-        const waiting = closing.has(position.id);
-        const half = halfVolume(spec, position);
+        const waiting = closer.closing.has(position.id);
         return (
           <div
             key={position.id}
             className={cn(
-              'pointer-events-auto absolute flex flex-col overflow-hidden rounded border bg-terminal-surface text-caption shadow',
-              open ? 'z-20 border-terminal-accent' : 'border-terminal-border',
+              'pointer-events-auto absolute flex items-stretch overflow-hidden rounded border bg-terminal-surface text-caption shadow',
+              editingId === position.id ? 'border-terminal-accent' : 'border-terminal-border',
             )}
             style={{ top: y, right: scale + 8, transform: 'translateY(-50%)' }}
             data-testid="position-chip"
             data-position-id={position.id}
           >
-            <div className="flex items-stretch">
-              <button
-                type="button"
-                className="flex items-stretch"
-                aria-expanded={open}
-                aria-label={t(
-                  'chart.positionDetails',
-                  { volume: position.volume, symbol: position.symbol },
-                  false,
-                )}
-                onClick={() => setOpened(open ? null : position.id)}
-                data-testid="position-chip-toggle"
-              >
-                <span
-                  className={cn(
-                    'numeric px-2 py-1 font-medium',
-                    position.side === 'BUY' ? 'text-terminal-long' : 'text-terminal-short',
-                  )}
-                >
-                  {position.volume}
-                </span>
-                <span
-                  className={cn(
-                    'numeric border-s border-terminal-border px-2 py-1',
-                    toneClass[toneOf(floating)],
-                  )}
-                >
-                  {signedMoney(floating, currency)}
-                </span>
-              </button>
-              {waiting ? (
-                <span
-                  className="border-s border-terminal-border px-2 py-1 text-terminal-muted"
-                  role="status"
-                >
-                  {t('chart.closing')}
-                </span>
-              ) : confirming ? (
-                <>
-                  <button
-                    type="button"
-                    className="border-s border-terminal-border bg-terminal-short px-2 font-medium text-terminal-bg"
-                    onClick={() => closeNow(position, null)}
-                  >
-                    {t('pos.close')}
-                  </button>
-                  <button
-                    type="button"
-                    className="border-s border-terminal-border px-2 text-terminal-muted"
-                    onClick={() => setAsking(null)}
-                  >
-                    {t('wallet.cancel')}
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="border-s border-terminal-border px-2 text-terminal-muted hover:text-terminal-short"
-                  aria-label={t('chart.closePosition', {
-                    volume: position.volume,
-                    symbol: position.symbol,
-                  })}
-                  onClick={() => setAsking(position.id)}
-                >
-                  ×
-                </button>
+            <button
+              type="button"
+              className="flex items-stretch"
+              aria-expanded={editingId === position.id}
+              aria-label={t(
+                'chart.positionDetails',
+                { volume: position.volume, symbol: position.symbol },
+                false,
               )}
-            </div>
-            {open ? (
-              <div
-                className="grid grid-cols-2 gap-1 border-t border-terminal-border p-1"
-                data-testid="position-chip-panel"
-              >
-                <LevelButton
-                  label="SL"
-                  value={position.stopLoss}
-                  draft={drafts[`${position.id}:${LevelKind.STOP_LOSS}`] ?? null}
-                  sending={sending === `${position.id}:${LevelKind.STOP_LOSS}`}
-                  onAdd={() => onDraft(position, LevelKind.STOP_LOSS)}
-                  onPlace={onPlace}
-                  t={t}
-                />
-                <LevelButton
-                  label="TP"
-                  value={position.takeProfit}
-                  draft={drafts[`${position.id}:${LevelKind.TAKE_PROFIT}`] ?? null}
-                  sending={sending === `${position.id}:${LevelKind.TAKE_PROFIT}`}
-                  onAdd={() => onDraft(position, LevelKind.TAKE_PROFIT)}
-                  onPlace={onPlace}
-                  t={t}
-                />
-                {half === null ? null : (
-                  <button
-                    type="button"
-                    disabled={waiting}
-                    className="min-h-8 rounded border border-terminal-border px-2 text-terminal-text disabled:opacity-50"
-                    onClick={() => closeNow(position, half)}
-                    data-testid="position-chip-half"
-                  >
-                    {t('pos.closeVolume', { volume: half })}
-                  </button>
+              onClick={() => onOpen(position)}
+              data-testid="position-chip-toggle"
+            >
+              <span
+                className={cn(
+                  'numeric px-2 py-1 font-medium',
+                  position.side === 'BUY' ? 'text-terminal-long' : 'text-terminal-short',
                 )}
-                {/* Opening the panel was the deliberate step; this one closes. */}
+              >
+                {position.volume}
+              </span>
+              <span
+                className={cn(
+                  'numeric border-s border-terminal-border px-2 py-1',
+                  toneClass[toneOf(floating)],
+                )}
+              >
+                {signedMoney(floating, currency)}
+              </span>
+            </button>
+            {waiting ? (
+              <span
+                className="border-s border-terminal-border px-2 py-1 text-terminal-muted"
+                role="status"
+              >
+                {t('chart.closing')}
+              </span>
+            ) : confirming ? (
+              <>
                 <button
                   type="button"
-                  disabled={waiting}
-                  className={cn(
-                    'min-h-8 rounded bg-terminal-short px-2 font-medium text-terminal-bg disabled:opacity-50',
-                    half === null && 'col-span-2',
-                  )}
-                  onClick={() => closeNow(position, null)}
-                  data-testid="position-chip-close"
+                  className="border-s border-terminal-border bg-terminal-short px-2 font-medium text-terminal-bg"
+                  onClick={() => {
+                    setAsking(null);
+                    closer.close(position, null);
+                  }}
                 >
                   {t('pos.close')}
                 </button>
-              </div>
-            ) : null}
+                <button
+                  type="button"
+                  className="border-s border-terminal-border px-2 text-terminal-muted"
+                  onClick={() => setAsking(null)}
+                >
+                  {t('wallet.cancel')}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="border-s border-terminal-border px-2 text-terminal-muted hover:text-terminal-short"
+                aria-label={t('chart.closePosition', {
+                  volume: position.volume,
+                  symbol: position.symbol,
+                })}
+                onClick={() => setAsking(position.id)}
+              >
+                ×
+              </button>
+            )}
           </div>
         );
       })}
@@ -1087,75 +1078,273 @@ function PositionChips({
 }
 
 /**
- * A stop or target in a position's panel.
- *
- * Set: its value, moved by dragging its line. Drafted: the price the draft
- * line is at, and a button that places it there — the way to set one without
- * dragging, for a keyboard, a screen reader, or a thumb that would rather tap.
- * Neither: a button that draws a draft to drag into place.
+ * Closing from the chart: one close per position on the wire, and a refusal
+ * said out loud. The row disappears only when the server's answer reaches
+ * the list.
  */
-function LevelButton({
-  label,
-  value,
-  draft,
-  sending,
-  onAdd,
-  onPlace,
-  t,
+function useCloser(accountId: string | null, t: ReturnType<typeof useT>) {
+  const close = useClosePosition(accountId);
+  const [closing, setClosing] = useState<ReadonlySet<string>>(new Set());
+  const inFlight = useRef(new Set<string>());
+  const run = (position: PositionRow, volume: string | null) => {
+    // Synchronous: a double tap lands twice before the re-render disables it.
+    if (inFlight.current.has(position.id)) return;
+    inFlight.current.add(position.id);
+    setClosing(new Set(inFlight.current));
+    close
+      .mutateAsync({ positionId: position.id, volume })
+      .catch((error: unknown) => {
+        playTradeSound('order_rejected', `close-failed:${position.id}:${Date.now()}`);
+        useToasts.getState().push({
+          id: `close-failed:${position.id}`,
+          tone: 'danger',
+          sticky: true,
+          title: t('pos.closeFailed'),
+          ...(error instanceof Error ? { body: error.message } : {}),
+        });
+      })
+      .finally(() => {
+        inFlight.current.delete(position.id);
+        setClosing(new Set(inFlight.current));
+      });
+  };
+  return { closing, close: run };
+}
+
+/**
+ * A position's stop and target, in a small box at the chart's lower corner —
+ * where the oldest bars are, not the newest, and away from the toasts,
+ * which on a phone arrive at the top.
+ *
+ * Side, size and entry; a field each for SL and TP with what the position
+ * would make or lose there; Save and Cancel; and closing, whole or half. The
+ * fields and the chart's lines are one value: typing moves the line, dragging
+ * the line fills the field. Nothing is sent until Save, which sends both in
+ * one request and closes the box only when the server has answered and the
+ * position list holds the new values; a refusal keeps the box open with the
+ * server's reason. A value the engine would refuse is caught before sending,
+ * by the engine's own rule.
+ */
+function LevelEditor({
+  position,
+  spec,
+  edit,
+  dirty,
+  reference,
+  accountId,
+  currency,
+  onChange,
+  onDone,
 }: {
-  label: 'SL' | 'TP';
-  value: string | null;
-  draft: ChartLevel | null;
-  sending: boolean;
-  onAdd: () => void;
-  onPlace: (level: ChartLevel, price: string) => void;
-  t: ReturnType<typeof useT>;
+  position: PositionRow;
+  spec: SymbolRow;
+  edit: LevelEdit;
+  dirty: boolean;
+  reference: string | null;
+  accountId: string | null;
+  currency: string;
+  onChange: (edit: LevelEdit) => void;
+  onDone: () => void;
 }) {
-  const id = label.toLowerCase();
-  if (sending) {
+  const t = useT();
+  const modify = useModifyPosition(accountId);
+  const closer = useCloser(accountId, t);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const errors = editErrors(spec, position, edit, reference);
+  const invalid = errors.stopLoss !== null || errors.takeProfit !== null;
+  const saving = modify.isPending;
+  const half = halfVolume(spec, position);
+  const shape =
+    edit.stopLoss.trim() !== '' && edit.takeProfit.trim() !== '' && !invalid
+      ? riskReward(
+          { ...position, stopLoss: edit.stopLoss, takeProfit: edit.takeProfit },
+          spec,
+          LevelKind.STOP_LOSS,
+          edit.stopLoss,
+          currency,
+        )
+      : null;
+
+  const save = () => {
+    if (!dirty || invalid || saving) return;
+    setServerError(null);
+    modify
+      .mutateAsync({ positionId: position.id, ...editChanges(position, edit) })
+      .then(onDone)
+      .catch((error: unknown) => {
+        playTradeSound('order_rejected', `edit-refused:${position.id}:${Date.now()}`);
+        setServerError(error instanceof Error ? error.message : t('chart.refused'));
+      });
+  };
+
+  const field = (kind: 'stopLoss' | 'takeProfit') => {
+    const label = kind === 'stopLoss' ? 'SL' : 'TP';
+    const text = edit[kind];
+    const raw = errors[kind];
+    // The editor's own two messages in the reader's language; the engine's
+    // rule messages as the engine words them.
+    const error =
+      raw === 'Not a price.'
+        ? t('chart.notPrice')
+        : raw?.startsWith('Must be a multiple') === true
+          ? t('chart.offGrid', { tick: spec.tickSize })
+          : raw;
+    const outcome =
+      text.trim() === '' || raw !== null ? null : outcomeAt(position, spec, text.trim(), currency);
+    const id = `edit-${kind}-${position.id}`;
     return (
-      <span
-        className="numeric flex min-h-8 items-center rounded border border-terminal-border px-2 text-terminal-muted"
-        role="status"
-      >
-        {label} …
-      </span>
+      <div>
+        <div className="flex items-center gap-1">
+          <label htmlFor={id} className="w-7 shrink-0 text-label text-terminal-muted">
+            {label}
+          </label>
+          <input
+            id={id}
+            className={cn(
+              inputClass,
+              'numeric min-w-0 flex-1 px-1.5 py-1 text-caption',
+              error !== null && 'border-terminal-short',
+            )}
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="—"
+            value={text}
+            disabled={saving}
+            aria-invalid={error !== null}
+            onChange={(event) => {
+              setServerError(null);
+              onChange({ ...edit, [kind]: event.target.value });
+            }}
+            data-testid={`sltp-${label.toLowerCase()}`}
+          />
+          {text.trim() === '' ? (
+            <button
+              type="button"
+              className="min-h-7 min-w-7 rounded border border-dashed border-terminal-border text-terminal-text"
+              aria-label={t('chart.addLevel', { label })}
+              disabled={saving}
+              onClick={() => {
+                const draft = draftLevel(
+                  spec,
+                  position,
+                  kind === 'stopLoss' ? LevelKind.STOP_LOSS : LevelKind.TAKE_PROFIT,
+                  reference,
+                );
+                if (draft !== null) onChange({ ...edit, [kind]: draft.price });
+              }}
+              data-testid={`sltp-add-${label.toLowerCase()}`}
+            >
+              +
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="min-h-7 min-w-7 rounded border border-terminal-border text-terminal-muted"
+              aria-label={t('chart.removeLevel', { label })}
+              disabled={saving}
+              onClick={() => onChange({ ...edit, [kind]: '' })}
+            >
+              ×
+            </button>
+          )}
+        </div>
+        {error !== null ? (
+          <p className="ms-8 mt-0.5 text-micro text-terminal-short">{error}</p>
+        ) : outcome !== null ? (
+          <p className={cn('numeric ms-8 mt-0.5 text-micro', toneClass[toneOf(outcome)])}>
+            {signedMoney(outcome, currency)}
+          </p>
+        ) : null}
+      </div>
     );
-  }
-  if (value !== null) {
-    return (
-      <span
-        className="numeric flex min-h-8 items-center rounded border border-terminal-border px-2 text-terminal-text"
-        title={t('chart.dragToSet')}
-        data-testid={`position-chip-${id}`}
-      >
-        {label} {value}
-      </span>
-    );
-  }
-  if (draft !== null) {
-    return (
-      <button
-        type="button"
-        className="numeric min-h-8 rounded border border-terminal-accent px-2 text-terminal-accent"
-        onClick={() => onPlace(draft, draft.price)}
-        title={t('chart.dragToSet')}
-        data-testid={`position-chip-place-${id}`}
-      >
-        {t('chart.placeLevel', { label, price: draft.price })}
-      </button>
-    );
-  }
+  };
+
   return (
-    <button
-      type="button"
-      className="min-h-8 rounded border border-dashed border-terminal-border px-2 text-terminal-text"
-      onClick={onAdd}
-      title={t('chart.dragToSet')}
-      data-testid={`position-chip-add-${id}`}
+    <div
+      role="dialog"
+      aria-label={t('chart.editLevels', { symbol: position.symbol })}
+      className="absolute bottom-2 start-2 z-20 w-56 rounded-md border border-terminal-border bg-terminal-surface/95 p-2 text-caption shadow-lg shadow-black/40 backdrop-blur-sm"
+      data-testid="sltp-editor"
+      onPointerDown={(event) => event.stopPropagation()}
     >
-      + {label}
-    </button>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="numeric">
+          <span
+            className={cn(
+              'font-medium',
+              position.side === 'BUY' ? 'text-terminal-long' : 'text-terminal-short',
+            )}
+          >
+            {t(position.side === 'BUY' ? 'ticket.side.BUY' : 'ticket.side.SELL')} {position.volume}
+          </span>
+          <span className="text-terminal-muted"> @ {position.entryPrice}</span>
+        </span>
+        <button
+          type="button"
+          className="min-h-7 min-w-7 text-terminal-muted hover:text-terminal-text"
+          aria-label={t('wallet.cancel')}
+          onClick={onDone}
+        >
+          ×
+        </button>
+      </div>
+      <div className="space-y-1.5">
+        {field('stopLoss')}
+        {field('takeProfit')}
+      </div>
+      {shape === null ? null : (
+        <p className="numeric mt-1 text-micro text-terminal-muted">R:R {shape.ratio}</p>
+      )}
+      {serverError === null ? null : (
+        <p className="mt-1 text-micro text-terminal-short" role="alert" data-testid="sltp-error">
+          {serverError}
+        </p>
+      )}
+      <div className="mt-2 grid grid-cols-2 gap-1">
+        <button
+          type="button"
+          className="min-h-8 rounded border border-terminal-border text-terminal-text"
+          onClick={onDone}
+          disabled={saving}
+          data-testid="sltp-cancel"
+        >
+          {t('wallet.cancel')}
+        </button>
+        <button
+          type="button"
+          className="min-h-8 rounded bg-terminal-accent font-medium text-terminal-bg disabled:opacity-40"
+          onClick={save}
+          disabled={!dirty || invalid || saving}
+          data-testid="sltp-save"
+        >
+          {saving ? t('chart.saving') : t('chart.save')}
+        </button>
+      </div>
+      <div className="mt-1 grid grid-cols-2 gap-1 border-t border-terminal-border pt-1">
+        {half === null ? (
+          <span />
+        ) : (
+          <button
+            type="button"
+            className="min-h-8 rounded text-terminal-text disabled:opacity-40"
+            disabled={closer.closing.has(position.id)}
+            onClick={() => closer.close(position, half)}
+            data-testid="position-chip-half"
+          >
+            {t('pos.closeVolume', { volume: half })}
+          </button>
+        )}
+        <button
+          type="button"
+          className="min-h-8 rounded text-terminal-short disabled:opacity-40"
+          disabled={closer.closing.has(position.id)}
+          onClick={() => closer.close(position, null)}
+          data-testid="position-chip-close"
+        >
+          {closer.closing.has(position.id) ? t('chart.closing') : t('pos.close')}
+        </button>
+      </div>
+    </div>
   );
 }
 

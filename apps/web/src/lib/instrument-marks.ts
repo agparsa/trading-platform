@@ -150,3 +150,63 @@ export function markClasses(kind: InstrumentKind): string {
       return 'bg-terminal-raised text-terminal-muted ring-white/10 light:ring-black/10';
   }
 }
+
+/** One disc of an instrument's icon: a symbol on a colour. */
+export interface IconDisc {
+  readonly glyph: string;
+  /** Fill, as a hex colour; the glyph is drawn in white over it. */
+  readonly fill: string;
+}
+
+/**
+ * Each currency's disc colour. Chosen to tell the majors apart at 16 pixels
+ * — not flags, which become noise at that size, and not anybody's logo.
+ */
+const DISC_COLOURS: Readonly<Record<string, string>> = {
+  USD: '#2f9e6b',
+  EUR: '#2f5fbf',
+  GBP: '#7a3fb8',
+  JPY: '#c8373f',
+  CHF: '#d0452f',
+  AUD: '#d9851e',
+  CAD: '#b8323a',
+  NZD: '#2a7f8a',
+  CNY: '#c23b2f',
+  XAU: '#c99a2e',
+  XAG: '#8a96a3',
+  XPT: '#7d8a99',
+  XPD: '#6f7c8c',
+  BTC: '#e8891a',
+  ETH: '#5b67c9',
+  LTC: '#4d6fa8',
+  XRP: '#3a4250',
+  SOL: '#8a4fd8',
+  ADA: '#2a5fbf',
+  DOGE: '#b8962e',
+};
+
+/**
+ * The discs an instrument's icon is drawn from: one for a metal or a coin,
+ * two overlapping — base in front, quote behind — for a currency pair, the
+ * way a trading app's market list shows them.
+ */
+export function iconFor(code: string): readonly IconDisc[] {
+  const upper = code.trim().toUpperCase();
+  const base = upper.slice(0, 3);
+  const quote = upper.length === 6 ? upper.slice(3, 6) : '';
+  const metal = METALS[base];
+  if (metal !== undefined) return [{ glyph: metal.glyph, fill: DISC_COLOURS[base] ?? '#8a96a3' }];
+  const coin = CRYPTO[base] ?? CRYPTO[upper.replace(/USDT?$/, '')];
+  if (coin !== undefined) {
+    const key = CRYPTO[base] !== undefined ? base : upper.replace(/USDT?$/, '');
+    return [{ glyph: coin.glyph, fill: DISC_COLOURS[key] ?? '#6b5bd6' }];
+  }
+  if (quote.length === 3 && hasCurrencySymbol(base) && hasCurrencySymbol(quote)) {
+    const disc = (currency: string): IconDisc => ({
+      glyph: CURRENCY_SYMBOLS[currency] === undefined ? currency[0]! : currencySymbol(currency),
+      fill: DISC_COLOURS[currency] ?? '#5a6472',
+    });
+    return [disc(base), disc(quote)];
+  }
+  return [{ glyph: upper.slice(0, 2) || '—', fill: '#5a6472' }];
+}

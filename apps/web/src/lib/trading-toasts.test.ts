@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { translate } from './messages';
-import { tradingToast } from './trading-toasts';
+import { soundFor, tradingToast } from './trading-toasts';
 
 const t = (key: Parameters<typeof translate>[1], vars?: Record<string, string | number>) =>
   translate('en', key, vars);
@@ -77,5 +77,26 @@ describe('toasts from trading frames', () => {
     expect(tradingToast('quotes.updated', [], t)).toBeNull();
     expect(tradingToast('position.created', {}, t)).toBeNull();
     expect(tradingToast('position.closed', null, t)).toBeNull();
+  });
+});
+
+describe('sounds from trading frames', () => {
+  it('gives each outcome its own sound', () => {
+    expect(soundFor('position.created', { positionId: 'p' })).toBe('trade_opened');
+    expect(soundFor('position.closed', { positionId: 'p', reason: 'MANUAL' })).toBe('trade_closed');
+    expect(soundFor('position.closed', { positionId: 'p', reason: 'STOP_LOSS' })).toBe('stop_loss');
+    expect(soundFor('position.closed', { positionId: 'p', reason: 'TAKE_PROFIT' })).toBe(
+      'take_profit',
+    );
+    expect(soundFor('position.closed', { positionId: 'p', reason: 'LIQUIDATION' })).toBe(
+      'risk_warning',
+    );
+    expect(soundFor('position.updated', { positionId: 'p' })).toBe('trade_modified');
+    expect(soundFor('order.rejected', { orderId: 'o' })).toBe('order_rejected');
+  });
+  it('is silent for frames that are not news', () => {
+    expect(soundFor('quotes.updated', [])).toBeNull();
+    expect(soundFor('order.created', { orderId: 'o' })).toBeNull();
+    expect(soundFor('position.created', {})).toBeNull();
   });
 });

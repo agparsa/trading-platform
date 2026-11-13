@@ -102,7 +102,8 @@ export function tradingToast(event: string, data: unknown, t: Translate): Tradin
       return {
         id: `order-rejected:${id}`,
         tone: 'danger',
-        sticky: false,
+        // An error stays until the trader has seen it.
+        sticky: true,
         title: t('toast.rejected', { symbol: text('symbol') ?? '' }),
         ...(text('reason') === null ? {} : { body: text('reason') ?? '' }),
       };
@@ -115,4 +116,50 @@ export function tradingToast(event: string, data: unknown, t: Translate): Tradin
 /** A server decimal with its sign shown both ways. */
 function signed(value: string): string {
   return value.startsWith('-') || value === '0' || /^0(\.0+)?$/.test(value) ? value : `+${value}`;
+}
+
+/**
+ * The sound a trading frame makes — `null` for one that is not news.
+ *
+ * Distinct by outcome, the way a desktop terminal's are: an opening, a close,
+ * a moved level, a stop loss, a take profit, a refusal, and a stop-out each
+ * sound different, so a trader looking away can tell which happened. Only
+ * ever from the server's events, like the toasts.
+ */
+export type TradeSoundId =
+  | 'trade_opened'
+  | 'trade_closed'
+  | 'trade_modified'
+  | 'stop_loss'
+  | 'take_profit'
+  | 'order_rejected'
+  | 'risk_warning';
+
+export function soundFor(event: string, data: unknown): TradeSoundId | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const d = data as Record<string, unknown>;
+  switch (event) {
+    case 'position.created':
+      return typeof d['positionId'] === 'string' ? 'trade_opened' : null;
+    case 'position.updated':
+      return typeof d['positionId'] === 'string' ? 'trade_modified' : null;
+    case 'order.rejected':
+      return typeof d['orderId'] === 'string' ? 'order_rejected' : null;
+    case 'position.closed': {
+      if (typeof d['positionId'] !== 'string') return null;
+      switch (d['reason']) {
+        case 'STOP_LOSS':
+        case 'TRAILING_STOP':
+          return 'stop_loss';
+        case 'TAKE_PROFIT':
+          return 'take_profit';
+        case 'LIQUIDATION':
+          return 'risk_warning';
+        default:
+          return 'trade_closed';
+      }
+    }
+    default:
+      return null;
+  }
 }

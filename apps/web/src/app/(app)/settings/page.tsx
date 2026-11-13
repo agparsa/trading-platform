@@ -4,6 +4,7 @@ import { AppShell } from '@/components/shell/app-shell';
 import { Panel } from '@/components/primitives';
 import { LanguageSettings } from '@/components/language-settings';
 import { NotificationSettings } from '@/components/notification-settings';
+import { SoundSettings } from '@/components/sound-settings';
 import { ThemeSettings } from '@/components/theme-settings';
 import { TradingSettings } from '@/components/trading-settings';
 import { useTradingPreferences } from '@/lib/use-trading-preferences';
@@ -36,6 +37,9 @@ export default function SettingsPage() {
           presentation="page"
           oneClickAllowed={oneClickAllowed}
         />
+      </Panel>
+      <Panel className="mb-3 max-w-md p-4">
+        <SoundSettings />
       </Panel>
       <Panel className="max-w-md p-4">
         <NotificationSettings />

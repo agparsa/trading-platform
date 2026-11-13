@@ -122,36 +122,43 @@ pointer, against 6 for a mouse. A finger that misses the line pans the chart
 instead, and on a phone that was most grabs. While a level is held the chart's
 own pan and zoom are off, so the price scale cannot move under it.
 
-## The position panel
+## The SL/TP editor
 
 Each open position is a chip at its entry: size and the live P/L from the
-socket. Tapping it opens a panel — the stop and the target, close, and close
-half where half is on the lot grid and leaves at least the minimum behind.
-Chips that would overlap (positions opened a few ticks apart) are spread apart
-in price order, so every close button stays reachable.
+socket. Tapping the chip — or the entry line itself — opens the position's
+editor, a small box (224 px) in the chart's lower corner, where the oldest bars
+are and away from the toasts:
 
-A position with no stop or target shows **+ SL** / **+ TP**. That draws a
-_draft_: a dashed line half a percent from the market on the side the level
-must sit, snapped to the tick grid. A draft is nothing the server has seen. It
-is sent when it is dragged and released, or with the panel's **Set SL …**
-button — the way to place one without dragging, for a keyboard, a screen
-reader, or a thumb. A tap that merely lands on a draft line sends nothing.
+- side, size and entry price;
+- a Stop Loss and a Take Profit field, each with **+** (draws a level half a
+  percent from the market on the side it must sit, on the tick grid) or **×**
+  (remove), and what the position would make or lose there;
+- reward-to-risk when both are set;
+- **Cancel** and **Save**; Close and Close half below.
 
-While dragging, the preview carries the proposed price, what the position
-would make or lose there, and — when both levels exist — the reward-to-risk
-ratio, from the same arithmetic as the line labels.
+The fields and the chart are one value. Typing moves the line; dragging the
+position's SL or TP line while the editor is open fills the field instead of
+sending. Unsaved lines carry a `•`. Nothing is sent until Save, which sends only
+what changed — both levels in one `PATCH /positions/:id`, `null` for a removed
+one. Save is off when nothing changed or a field would be refused: not a price,
+off the tick grid, or on the wrong side of the market by the engine's own
+`validateProtectiveLevels`. The server validates again.
 
-Once sent, the level is drawn as **waiting** (`… SL 3989.95`) until the server
-answers, and the confirmed line stays where it was. On success the panel's
-mutation resolves only after the position list has refetched, so the waiting
-line hands straight over to the server's value without snapping back first. On
-refusal the waiting line and the draft disappear, and the server's own reason
-is shown on the chart.
+While saving, the fields are disabled. The box closes only when the server has
+answered and the position list holds the new values. A refusal keeps it open
+with the server's reason and plays the refusal sound; the position is untouched.
+A tap elsewhere on the chart closes an editor with nothing unsaved; with unsaved
+changes it stays, and so does a tap on another position. A position that closes
+takes its editor with it.
 
-Closing from the panel is immediate — opening the panel was the deliberate
-step — but the chip's × still asks. A close in flight disables that chip's
-buttons and reads "Closing…"; the chip disappears only when the server's
-answer has reached the list. A double tap is one close.
+Without the editor open, dragging a stop or target still sends it on release, as
+before: drawn as waiting until the answer, rolled back with the server's reason
+on refusal.
+
+Chips that would overlap are spread apart in price order. The chip's × asks
+before closing. Close and Close half in the editor act at once, since opening
+the editor was the deliberate step. A close in flight reads "Closing…", and a
+double tap is one close.
 
 ## Notifications
 

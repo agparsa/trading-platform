@@ -119,4 +119,16 @@ contract, generated, and given to the in-app player, and a price alert arriving
 in the background named a sound the build did not contain — while the build's
 check, which listed eight names by hand, passed.
 
-The web terminal plays no sounds. It shows a notice; it does not make a noise.
+In the web terminal (`lib/trade-sounds.ts`): synthesised with the Web Audio
+API from short scores written for this platform, so there is no recording to
+license and nothing to download. Opened and take profit rise, closed and stop
+loss fall, a moved level is a single tick, a refusal is two low pulses, and a
+stop-out alternates. `soundFor` in `lib/trading-toasts.ts` picks the sound from
+the server's frame (`position.created`, `position.closed` by its reason,
+`position.updated`, `order.rejected`). A one-tap order's answer plays the same
+sound under the same key as its frame, and `PlayedOnce` keeps one event to one
+sound. The terminal follows the server's `soundEnabled` and `soundVolume`
+through `useSoundSync`, and is silent until they have loaded. Browsers start
+audio suspended, so the first pointer or key press unlocks it. Settings → Trading
+sounds, and the phone's Account screen, switch it, set the volume and preview
+each sound.

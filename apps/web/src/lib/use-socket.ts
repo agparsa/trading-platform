@@ -12,7 +12,8 @@ import {
   type RiskUpdate,
 } from './realtime-store';
 import { useToasts } from './toasts';
-import { tradingToast } from './trading-toasts';
+import { soundFor, tradingToast } from './trading-toasts';
+import { playTradeSound } from './trade-sounds';
 import { useT } from './use-locale';
 
 const WS_URL = process.env['NEXT_PUBLIC_WS_URL'] ?? 'http://localhost:4000';
@@ -179,7 +180,11 @@ export function useSocket(
 
       // Told from the server's own events only — see tradingToast.
       const toast = tradingToast(frame.event, frame.data, tRef.current);
-      if (toast !== null) useToasts.getState().push(toast);
+      if (toast !== null) {
+        useToasts.getState().push(toast);
+        // Keyed like the toast, so the order's answer and this frame are one sound.
+        playTradeSound(soundFor(frame.event, frame.data), toast.id);
+      }
 
       switch (frame.event) {
         case 'quotes.updated':

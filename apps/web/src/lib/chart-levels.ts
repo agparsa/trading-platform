@@ -488,3 +488,79 @@ export function stackChips(
   }
   return out;
 }
+
+/** A stop and a target being edited; `''` is "none". */
+export interface LevelEdit {
+  stopLoss: string;
+  takeProfit: string;
+}
+
+/**
+ * What the editor starts from: the position's own levels, written to the
+ * instrument's decimals — "4577.20", as the line label shows it, not "4577.2".
+ */
+export function editFrom(position: PositionRow, precision?: number): LevelEdit {
+  const shown = (value: string | null) =>
+    value === null ? '' : precision === undefined ? value : toDecimal(value).toFixed(precision);
+  return { stopLoss: shown(position.stopLoss), takeProfit: shown(position.takeProfit) };
+}
+
+/**
+ * Why each typed level would be refused, before anything is sent.
+ *
+ * Not a price, off the tick grid, or on the wrong side of the market by the
+ * engine's own rule (`validateProtectiveLevels`, imported, not copied). The
+ * server validates again — this only keeps Save from sending what it would
+ * refuse, and says why next to the field.
+ */
+export function editErrors(
+  spec: SymbolRow | undefined,
+  position: PositionRow,
+  edit: LevelEdit,
+  reference: string | null,
+): { stopLoss: string | null; takeProfit: string | null } {
+  const check = (kind: 'stopLoss' | 'takeProfit'): string | null => {
+    const text = edit[kind].trim();
+    if (text === '' || spec === undefined) return null;
+    if (!/^\d+(\.\d+)?$/.test(text) || !toDecimal(text).greaterThan(0)) {
+      return 'Not a price.';
+    }
+    const snapped = normalizePrice(spec as SymbolSpec, toDecimal(text));
+    if (!snapped.equals(toDecimal(text))) return `Must be a multiple of ${spec.tickSize}.`;
+    if (reference === null) return null;
+    try {
+      validateProtectiveLevels(spec as SymbolSpec, position.side, reference, {
+        stopLoss: kind === 'stopLoss' ? text : null,
+        takeProfit: kind === 'takeProfit' ? text : null,
+      });
+      return null;
+    } catch (error) {
+      return error instanceof DomainError ? error.message : 'That level is not allowed.';
+    }
+  };
+  return { stopLoss: check('stopLoss'), takeProfit: check('takeProfit') };
+}
+
+/**
+ * The `PATCH /positions/:id` body for an edit: only what changed, `null` for
+ * a level cleared. Equal decimals are unchanged ("4580.5" is "4580.50").
+ */
+export function editChanges(
+  position: PositionRow,
+  edit: LevelEdit,
+): { stopLoss?: string | null; takeProfit?: string | null } {
+  const changed = (before: string | null, after: string): boolean => {
+    const text = after.trim();
+    if (before === null) return text !== '';
+    if (text === '') return true;
+    return !/^\d+(\.\d+)?$/.test(text) || !toDecimal(before).equals(toDecimal(text));
+  };
+  const out: { stopLoss?: string | null; takeProfit?: string | null } = {};
+  if (changed(position.stopLoss, edit.stopLoss)) {
+    out.stopLoss = edit.stopLoss.trim() === '' ? null : edit.stopLoss.trim();
+  }
+  if (changed(position.takeProfit, edit.takeProfit)) {
+    out.takeProfit = edit.takeProfit.trim() === '' ? null : edit.takeProfit.trim();
+  }
+  return out;
+}

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { LevelKind, draftLevel, halfVolume, riskReward, stackChips } from './chart-levels';
+import {
+  LevelKind,
+  draftLevel,
+  editChanges,
+  editErrors,
+  editFrom,
+  halfVolume,
+  riskReward,
+  stackChips,
+} from './chart-levels';
 import type { PositionRow, SymbolRow } from './queries';
 
 const GOLD = {
@@ -79,5 +88,33 @@ describe('chips that would overlap', () => {
   });
   it('leaves chips already apart where they are', () => {
     expect(stackChips({ a: 10, b: 50 }, 24)).toEqual({ a: 10, b: 50 });
+  });
+});
+
+describe('editing a position’s stop and target', () => {
+  it('starts from the position’s own levels', () => {
+    expect(editFrom(BUY)).toEqual({ stopLoss: '', takeProfit: '4040.00' });
+    expect(editFrom({ ...BUY, stopLoss: '3990.5' }, 2).stopLoss).toBe('3990.50');
+  });
+
+  it('sends only what changed, null for a cleared level', () => {
+    expect(editChanges(BUY, { stopLoss: '', takeProfit: '4040.0' })).toEqual({});
+    expect(editChanges(BUY, { stopLoss: '3990.00', takeProfit: '4040.00' })).toEqual({
+      stopLoss: '3990.00',
+    });
+    expect(editChanges(BUY, { stopLoss: '', takeProfit: '' })).toEqual({ takeProfit: null });
+  });
+
+  it('refuses what the server would: not a price, off the grid, the wrong side', () => {
+    const at = (edit: { stopLoss: string; takeProfit: string }) =>
+      editErrors(GOLD, BUY, edit, '4010.00');
+    expect(at({ stopLoss: 'abc', takeProfit: '' }).stopLoss).toBe('Not a price.');
+    expect(at({ stopLoss: '3990.005', takeProfit: '' }).stopLoss).toMatch(/multiple of 0.01/);
+    expect(at({ stopLoss: '4020.00', takeProfit: '' }).stopLoss).not.toBeNull();
+    expect(at({ stopLoss: '', takeProfit: '4000.00' }).takeProfit).not.toBeNull();
+    expect(at({ stopLoss: '3990.00', takeProfit: '4040.00' })).toEqual({
+      stopLoss: null,
+      takeProfit: null,
+    });
   });
 });

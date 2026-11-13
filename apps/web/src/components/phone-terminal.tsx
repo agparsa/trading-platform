@@ -1,11 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
 import { cn } from '@tp/ui';
 import { accountView } from '@/lib/account-view';
 import { price as formatPrice, signedMoney, toneClass, toneOf } from '@/lib/format';
-import { markClasses, markFor } from '@/lib/instrument-marks';
 import {
   useOpenPosition,
   type AccountSummary,
@@ -16,18 +14,20 @@ import {
   type SymbolRow,
 } from '@/lib/queries';
 import { useToasts } from '@/lib/toasts';
+import { playTradeSound } from '@/lib/trade-sounds';
 import { tradingToast } from '@/lib/trading-toasts';
 import { useRealtime } from '@/lib/realtime-store';
 import { inlineStartVolume, stepVolume, volumeProblem } from '@/lib/ticket';
 import type { TradingPreferences } from '@/lib/trading-preferences';
 import { useT } from '@/lib/use-locale';
-import { AccountHeader } from './account-header';
+import { useStale } from '@/lib/use-stale';
 import { ChartPanel } from './chart-panel';
 import { ConnectionBadge } from './connection-badge';
 import { OrderTicket } from './order-ticket';
+import { InstrumentIcon } from './instrument-icon';
+import { PhoneAccount } from './phone-account';
 import { PhonePositions } from './phone-positions';
-import { Button, inputClass, wordInputClass } from './primitives';
-import { TRADER_SECTIONS } from './shell/sections';
+import { inputClass, wordInputClass } from './primitives';
 import { Watchlist } from './watchlist';
 
 export type PhoneTab = 'markets' | 'chart' | 'trade' | 'positions' | 'account';
@@ -68,7 +68,6 @@ export function PhoneTerminal({
   staged,
   onStage,
   onStagedHandled,
-  email,
   onSignOut,
 }: {
   symbols: readonly SymbolRow[];
@@ -89,7 +88,6 @@ export function PhoneTerminal({
   staged: Staged;
   onStage: (staged: NonNullable<Staged>) => void;
   onStagedHandled: () => void;
-  email: string;
   onSignOut: () => void;
 }) {
   const t = useT();
@@ -111,7 +109,7 @@ export function PhoneTerminal({
             begin with the text a button shows, and a glyph like "A$" inside
             it would be read as part of that text. */}
         <div className="flex min-w-0 items-center gap-1.5">
-          {activeSymbol === undefined ? null : <Mark code={activeSymbol.code} />}
+          {activeSymbol === undefined ? null : <InstrumentIcon code={activeSymbol.code} />}
           <button
             type="button"
             onClick={() => setPicking(true)}
@@ -183,6 +181,7 @@ export function PhoneTerminal({
                 setTab('chart');
               }}
               defaultVolume={preferences.defaultVolume}
+              icons
               onTrade={(code, side, volume) => {
                 onSelectSymbol(code);
                 stage(side, volume ?? preferences.defaultVolume);
@@ -213,39 +212,7 @@ export function PhoneTerminal({
             preferences={preferences}
           />
         ) : (
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-4">
-            <div className="border-b border-terminal-border bg-terminal-surface">
-              <AccountHeader
-                accountId={accountId}
-                account={account}
-                openPositions={positions.length}
-                openOrders={pending.length}
-              />
-            </div>
-            <nav aria-label={t('nav.sections')} className="px-3">
-              <ul className="divide-y divide-terminal-border/60 rounded-lg border border-terminal-border">
-                {TRADER_SECTIONS.filter((item) => item.href !== '/terminal').map((item) => (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      className="flex items-center justify-between px-3 py-3 text-sm text-terminal-text"
-                    >
-                      {item.key === undefined ? item.label : t(item.key)}
-                      <span aria-hidden className="text-terminal-muted rtl:rotate-180">
-                        ›
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-            <div className="flex items-center justify-between px-3 text-caption text-terminal-muted">
-              <span className="truncate">{email}</span>
-              <Button variant="ghost" onClick={onSignOut}>
-                {t('shell.signOut')}
-              </Button>
-            </div>
-          </div>
+          <PhoneAccount accountId={accountId} snapshot={snapshot} onSignOut={onSignOut} />
         )}
       </main>
 
@@ -331,6 +298,7 @@ function QuickTrade({
   const [volume, setVolume] = useState(() => inlineStartVolume(symbol, defaultVolume));
   const open = useOpenPosition(accountId);
   const problem = volumeProblem(symbol, volume);
+  const stale = useStale(quote?.timestamp, quote !== undefined && symbol.sessionOpen);
   const ready = problem === null && symbol.sessionOpen && quote !== undefined && !open.isPending;
 
   /**
@@ -358,14 +326,15 @@ function QuickTrade({
         takeProfit: null,
       })
       .then((ack) => announce(ack, t))
-      .catch((error: unknown) =>
+      .catch((error: unknown) => {
+        playTradeSound('order_rejected', `tap-refused:${Date.now()}`);
         useToasts.getState().push({
           tone: 'danger',
-          sticky: false,
+          sticky: true,
           title: t('toast.rejected', { symbol: symbol.code }),
           ...(error instanceof Error ? { body: error.message } : {}),
-        }),
-      )
+        });
+      })
       .finally(() => {
         inFlight.current = false;
       });
@@ -433,6 +402,11 @@ function QuickTrade({
         <p className="mt-1 text-caption text-terminal-short">{problem}</p>
       ) : !symbol.sessionOpen ? (
         <p className="mt-1 text-caption text-terminal-muted">{t('wl.marketClosed')}</p>
+      ) : stale ? (
+        // The server refuses to trade on an old quote; say so before it does.
+        <p className="mt-1 text-caption text-terminal-warning" data-testid="quote-stale-note">
+          {t('quote.staleTitle')}
+        </p>
       ) : null}
       {onArm === undefined ? null : (
         <label className="mt-1.5 flex min-h-8 items-center justify-between gap-2 text-caption">
@@ -478,6 +452,7 @@ function announce(ack: OrderAck, t: ReturnType<typeof useT>): void {
           },
           t,
         );
+  if (toast !== null) playTradeSound('trade_opened', toast.id);
   useToasts.getState().push(
     toast ?? {
       tone: 'info',
@@ -601,7 +576,7 @@ function InstrumentSheet({
                     className="flex w-full items-center justify-between gap-3 rounded px-2 py-2.5 text-start hover:bg-terminal-raised"
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      <Mark code={symbol.code} />
+                      <InstrumentIcon code={symbol.code} />
                       <span className="min-w-0">
                         <span className="block text-sm text-terminal-text">{symbol.code}</span>
                         <span className="block truncate text-caption text-terminal-muted">
@@ -624,21 +599,6 @@ function InstrumentSheet({
 }
 
 /** The instrument's mark, as the watchlist draws it, here always shown. */
-function Mark({ code }: { code: string }) {
-  const mark = markFor(code);
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        'inline-flex h-5 w-7 shrink-0 items-center justify-center rounded-sm text-label font-semibold leading-none ring-1 ring-inset',
-        markClasses(mark.kind),
-      )}
-    >
-      {mark.glyph}
-    </span>
-  );
-}
-
 /** Line icons for the tab bar, drawn in the text colour. */
 function TabIcon({ id }: { id: PhoneTab }) {
   const common = {

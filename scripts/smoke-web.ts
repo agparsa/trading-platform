@@ -1981,32 +1981,44 @@ async function main(): Promise<void> {
       );
       await screenshot(page, 'terminal phone chart position');
 
-      // Tapping a chip opens its panel: stop, target, close and close-half.
-      // A stop or target set from it is drawn as a draft, sent only when
-      // placed, shown as waiting until the server answers, and — refused —
-      // rolled back with the server's reason on screen.
+      // Tapping a chip opens the position's editor: SL and TP fields, Save
+      // and Cancel. Nothing is sent before Save; a refusal keeps the editor
+      // open with the server's reason and leaves the row untouched; an
+      // accepted save reaches the database and closes the editor.
       if (chips > 0) {
         const chip = page.getByTestId('position-chip').first();
         const positionId = (await chip.getAttribute('data-position-id')) ?? '';
         await chip.getByTestId('position-chip-toggle').click();
-        const panel = await chip
-          .getByTestId('position-chip-panel')
+        const editor = page.getByTestId('sltp-editor');
+        const opened = await editor
           .waitFor({ timeout: 5_000 })
           .then(() => true)
           .catch(() => false);
         const row = () => prisma.position.findUniqueOrThrow({ where: { id: positionId } });
         const before = await row();
         const kind = before.stopLoss === null ? 'sl' : before.takeProfit === null ? 'tp' : null;
+        const saveDisabled = await editor.getByTestId('sltp-save').isDisabled();
         ok(
-          panel,
-          'tapping a position on the chart opens its panel',
-          `panel ${panel} · free level ${kind ?? 'none'}`,
+          opened && saveDisabled,
+          'tapping a position on the chart opens its SL/TP editor, with nothing to save yet',
+          `editor ${opened} · Save disabled ${saveDisabled} · free level ${kind ?? 'none'}`,
         );
-        await screenshot(page, 'terminal phone chart position panel');
+        await screenshot(page, 'terminal phone sltp editor');
+
+        // An impossible level is caught before sending.
+        await editor.getByTestId('sltp-sl').fill('abc');
+        const caught =
+          (await editor.getByTestId('sltp-save').isDisabled()) &&
+          (await editor.getByText('Not a price.').count()) > 0;
+        await editor.getByTestId('sltp-sl').fill(before.stopLoss?.toString() ?? '');
+        ok(
+          caught,
+          'a value that is not a price is caught in the editor, and Save stays off',
+          `caught ${caught}`,
+        );
 
         if (kind !== null) {
           const field = kind === 'sl' ? 'stopLoss' : 'takeProfit';
-          // Refused: the server's envelope, as it answers a level it will not take.
           await page.route('**/api/v1/positions/*', async (route) => {
             if (route.request().method() !== 'PATCH') return route.fallback();
             await route.fulfill({
@@ -2018,49 +2030,50 @@ async function main(): Promise<void> {
               }),
             });
           });
-          await chip.getByTestId(`position-chip-add-${kind}`).click();
-          await chip.getByTestId(`position-chip-place-${kind}`).click();
-          const refused = await page
-            .getByText('Smoke: level refused by the server')
-            .waitFor({ timeout: 5_000 })
-            .then(() => true)
-            .catch(() => false);
-          const rolledBack = await chip
-            .getByTestId(`position-chip-add-${kind}`)
-            .waitFor({ timeout: 5_000 })
-            .then(() => true)
-            .catch(() => false);
+          await editor.getByTestId(`sltp-add-${kind}`).click();
+          const proposed = await editor.getByTestId(`sltp-${kind}`).inputValue();
+          await editor.getByTestId('sltp-save').click();
+          const refused = await editor
+            .getByTestId('sltp-error')
+            .innerText({ timeout: 5_000 })
+            .catch(() => '');
+          const stillOpen = await editor.isVisible();
           const untouched = (await row())[field] === null;
           await page.unroute('**/api/v1/positions/*');
           ok(
-            refused && rolledBack && untouched,
-            'a level the server refuses is rolled back, with the server’s reason shown',
-            `reason shown ${refused} · draft gone ${rolledBack} · database unchanged ${untouched}`,
+            refused.includes('Smoke: level refused by the server') && stillOpen && untouched,
+            'a level the server refuses keeps the editor open with the server’s reason, and changes nothing',
+            `reason "${refused}" · editor open ${stillOpen} · database unchanged ${untouched}`,
           );
 
-          // Accepted: placed, confirmed by the database, then shown as set.
-          await chip.getByTestId(`position-chip-add-${kind}`).click();
-          const place = chip.getByTestId(`position-chip-place-${kind}`);
-          const proposed = ((await place.innerText()).match(/[\d.]+$/) ?? [''])[0];
-          await place.click();
+          await editor.getByTestId('sltp-save').click();
           let stored: string | null = null;
           for (let attempt = 0; attempt < 40 && stored === null; attempt += 1) {
             const value = (await row())[field];
             stored = value === null ? null : value.toString();
             if (stored === null) await page.waitForTimeout(150);
           }
-          const shown = await chip
-            .getByTestId(`position-chip-${kind}`)
-            .innerText({ timeout: 5_000 })
-            .catch(() => '');
+          const closed = await editor
+            .waitFor({ state: 'detached', timeout: 5_000 })
+            .then(() => true)
+            .catch(() => false);
           ok(
-            stored !== null && Number(stored) === Number(proposed) && shown.includes(proposed),
-            'a level placed from the chart reaches the database and comes back as the position’s own',
-            `proposed ${proposed} · stored ${stored ?? 'nothing'} · chip ${shown}`,
+            stored !== null && Number(stored) === Number(proposed) && closed,
+            'Save sends the level, the database holds it, and the editor closes on the answer',
+            `proposed ${proposed} · stored ${stored ?? 'nothing'} · editor closed ${closed}`,
+          );
+
+          // Opened again, it shows the server's value; Cancel sends nothing.
+          await chip.getByTestId('position-chip-toggle').click();
+          const shown = await editor.getByTestId(`sltp-${kind}`).inputValue();
+          await editor.getByTestId('sltp-cancel').click();
+          ok(
+            Number(shown) === Number(stored),
+            'reopened, the editor shows the level the server holds',
+            `shown ${shown} · stored ${stored}`,
           );
         }
-
-        await screenshot(page, 'terminal phone chart position after');
+        await screenshot(page, 'terminal phone chart position saved');
       }
 
       // Sell stages; the Trade screen asks before anything is sent.
@@ -2109,6 +2122,14 @@ async function main(): Promise<void> {
           where: { account: { user: { email: people.trader.email } } },
         });
         await screenshot(page, 'terminal phone one tap');
+        // A routine toast fades by itself after ten seconds.
+        await page.waitForTimeout(10_800);
+        const faded = (await page.getByText(/^Opened BUY /).count()) === 0;
+        ok(
+          faded,
+          'a routine trade notice fades by itself after ten seconds',
+          `still on screen: ${!faded}`,
+        );
         await oneTap.uncheck();
         ok(
           told && ordersAfterTap === ordersBeforeTap + 1,
@@ -2128,7 +2149,7 @@ async function main(): Promise<void> {
         });
         const halfChip = page.locator(`[data-position-id="${opened?.id ?? 'none'}"]`);
         await halfChip.getByTestId('position-chip-toggle').click();
-        const half = halfChip.getByTestId('position-chip-half');
+        const half = page.getByTestId('sltp-editor').getByTestId('position-chip-half');
         const offered = await half
           .waitFor({ timeout: 5_000 })
           .then(() => true)
@@ -2193,6 +2214,44 @@ async function main(): Promise<void> {
       );
       await screenshot(page, 'terminal phone positions');
       await auditAccessibility(page, 'the positions on a phone');
+
+      // Account and settings: who, which accounts (from the database), the
+      // selected account's figures, and the sound switch — which is the
+      // server's setting, so it lands in the database.
+      await phone.getByRole('button', { name: /^Account/ }).click();
+      const more = page.getByTestId('phone-account');
+      await more.waitFor({ timeout: 10_000 });
+      const trader = await prisma.user.findFirstOrThrow({ where: { email: people.trader.email } });
+      const accountsHeld = await prisma.account.count({ where: { userId: trader.id } });
+      let rows = -1;
+      for (let attempt = 0; attempt < 20 && rows !== accountsHeld; attempt += 1) {
+        rows = await more.getByTestId('phone-account-row').count();
+        if (rows !== accountsHeld) await page.waitForTimeout(250);
+      }
+      const named = await more.getByTestId('phone-profile').innerText();
+      const soundSwitch = more.getByTestId('sound-enabled');
+      await soundSwitch.waitFor({ timeout: 10_000 });
+      await page.waitForFunction(
+        '(() => { const box = document.querySelector(\'[data-testid="sound-enabled"]\'); return box !== null && !box.closest("fieldset").disabled; })()',
+        undefined,
+        { timeout: 10_000 },
+      );
+      const soundBefore = await soundSwitch.isChecked();
+      await soundSwitch.click();
+      let stored: boolean | null = null;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const row = await prisma.notificationSetting.findFirst({ where: { userId: trader.id } });
+        stored = row?.soundEnabled ?? null;
+        if (stored === !soundBefore) break;
+        await page.waitForTimeout(150);
+      }
+      await screenshot(page, 'terminal phone account');
+      await auditAccessibility(page, 'account and settings on a phone');
+      ok(
+        rows === accountsHeld && named.includes(people.trader.email) && stored === !soundBefore,
+        "the phone's account screen lists the trader's accounts and saves the sound switch to the server",
+        `${rows} rows · ${accountsHeld} accounts · email shown ${named.includes(people.trader.email)} · sound ${soundBefore} → ${String(stored)}`,
+      );
 
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.getByTestId('phone').waitFor({ state: 'detached', timeout: 10_000 });

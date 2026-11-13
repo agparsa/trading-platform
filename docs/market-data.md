@@ -238,3 +238,27 @@ a trial. Until a licensed feed is chosen, forex and metals stay simulated, and
 one at once.** The integrity gate refuses the jump, then re-anchors after
 `MARKET_REANCHOR_AFTER` consecutive ticks; open positions are revalued at the
 real price, and stops and stop-outs act on it. The chart shows the step.
+
+## Why a price can be wrong, and what the screen says
+
+Audited 13 Nov 2026 against the code paths. Decimals come from each symbol's
+`pricePrecision` (forex 5, JPY 3, gold 2, silver 3, crypto 2). Bid and ask arrive
+separately on every quote. The chart draws bid candles, and the quick ticket
+shows the bid on Sell and the ask on Buy, so the gap between the chart and a buy
+fill is the spread. Units and caching are not the cause.
+
+The cause is the **source**. Without a configured live feed, instruments are
+priced by the internal simulator, which is anchored at seed prices and drifts
+away from the real market. BTCUSD and ETHUSD can take real quotes from
+Binance's public book ticker (`MARKET_LIVE_BINANCE`). Forex and metals need a
+licensed feed. Twelve Data's adapter is written and pending verification on a
+paid key, and the broker's own feed is better still once a broker integration
+exists. A TradingView chart shows TradingView's data inside its widget, but that
+grants no right to that data as a price feed. Executable prices always come from
+this server's engine.
+
+A quote that has not changed for 10 s while the market is open is marked
+**Delayed** on the chart header, and the phone's quick ticket warns that the
+price may be out of date (`lib/use-stale.ts`). That is twice the server's
+`QUOTE_MAX_AGE_MS`, past which the engine refuses to trade on the quote. A lost
+socket shows on the connection badge and as a sticky toast.

@@ -1,5 +1,6 @@
 'use client';
 
+import { useSoundSync } from '@/lib/use-sound-sync';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -227,6 +228,7 @@ export function Terminal() {
   }, [accountId, queryClient]);
 
   useSocket(accessToken, resnapshot, selectedSymbol, resolution);
+  useSoundSync();
 
   /**
    * A sequence gap means frames were dropped, so anything derived from the
@@ -266,10 +268,9 @@ export function Terminal() {
           staged={staged}
           onStage={setStaged}
           onStagedHandled={clearStaged}
-          email={user?.email ?? ''}
           onSignOut={() => void signOut()}
         />
-        <Toasts />
+        <Toasts placement="top" />
       </>
     );
   }

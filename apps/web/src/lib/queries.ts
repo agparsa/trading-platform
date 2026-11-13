@@ -1452,6 +1452,27 @@ export function useNotificationPreferences() {
 }
 
 /**
+ * Changes the switches that apply to every category — trading notices on or
+ * off, sound on or off, and the volume (0–100) every client plays at.
+ */
+export function useUpdateNotificationSettings() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      patch: Partial<
+        Pick<NotificationSettingsDto, 'tradingEnabled' | 'soundEnabled' | 'soundVolume'>
+      >,
+    ) =>
+      api.patch<NotificationSettingsDto>('/notifications/preferences', patch, {
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    onSuccess: (settings) => client.setQueryData(['notification-preferences'], settings),
+    onSettled: () => void client.invalidateQueries({ queryKey: ['notification-preferences'] }),
+  });
+}
+
+/**
  * Changes one category's switches. The server refuses to mute a risk or
  * security category rather than accepting and ignoring it; the screen shows
  * the refusal and re-reads, so a switch never sits "off" while the notices

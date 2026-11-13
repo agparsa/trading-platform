@@ -9,7 +9,7 @@ import { create } from 'zustand';
  * toast is a thing that appears and goes away; the record of what happened is
  * the notification the server wrote, the position table, and the ledger. If the
  * only place a trader could learn they were on margin call was a strip that
- * faded after eight seconds, the platform would have told them nothing.
+ * faded after ten seconds, the platform would have told them nothing.
  *
  * So this is the *nudge*, and the bell beside it is the record.
  */
@@ -58,4 +58,6 @@ export const useToasts = create<ToastState>((set) => ({
 }));
 
 /** How long a non-sticky toast stays. Long enough to read a sentence twice. */
-export const TOAST_TTL_MS = 8_000;
+export const TOAST_TTL_MS = 10_000;
+/** The fade a toast leaves with — inside the 150–250 ms the motion scale allows. */
+export const TOAST_FADE_MS = 200;

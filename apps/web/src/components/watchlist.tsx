@@ -1,5 +1,6 @@
 'use client';
 
+import { InstrumentIcon } from './instrument-icon';
 import { marketNotice } from '../lib/market-state';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { entrySideOf } from '@tp/financial-core';
@@ -50,6 +51,7 @@ export function Watchlist({
   onSelect,
   onTrade,
   defaultVolume = '0.10',
+  icons = false,
 }: {
   symbols: readonly SymbolRow[];
   selected: string | null;
@@ -62,6 +64,8 @@ export function Watchlist({
   onTrade?: (code: string, side: 'BUY' | 'SELL', volume?: string) => void;
   /** The trader's default volume, which a row's ticket opens on where it can. */
   defaultVolume?: string;
+  /** Instrument icons on every row — on a phone, where the list has the width. */
+  icons?: boolean;
 }) {
   const t = useT();
   const snapshot = useQuoteSnapshot();
@@ -241,6 +245,7 @@ export function Watchlist({
                   opened={symbol.code === opened}
                   onToggle={(code) => setOpened((now) => (now === code ? null : code))}
                   defaultVolume={defaultVolume}
+                  icons={icons}
                 />
               ))}
             </tbody>
@@ -300,6 +305,7 @@ function WatchlistRow({
   opened,
   onToggle,
   defaultVolume,
+  icons,
 }: {
   symbol: SymbolRow;
   quote: Quote | undefined;
@@ -312,6 +318,7 @@ function WatchlistRow({
   opened: boolean;
   onToggle: (code: string) => void;
   defaultVolume: string;
+  icons: boolean;
 }) {
   // A closed market or a missing quote has no price to deal at; the cell stays
   // a price, not a button that the server would only refuse.
@@ -378,7 +385,11 @@ function WatchlistRow({
               >
                 ★
               </button>
-              <InstrumentBadge code={symbol.code} />
+              {icons ? (
+                <InstrumentIcon code={symbol.code} size={18} />
+              ) : (
+                <InstrumentBadge code={symbol.code} />
+              )}
               <span className="font-medium text-terminal-text">{symbol.code}</span>
               {onTrade === undefined ? null : (
                 <button

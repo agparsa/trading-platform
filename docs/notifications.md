@@ -19,7 +19,7 @@ readers of one row.
 | A toast               | the nudge. Appears, fades, is not a record of anything. |
 
 If the only place a trader could learn they were on margin call were a strip
-that faded after eight seconds, the platform would have told them nothing.
+that faded after ten seconds, the platform would have told them nothing.
 
 ## Raising one
 
