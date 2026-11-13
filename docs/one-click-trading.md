@@ -110,6 +110,21 @@ keystroke they may have half-pressed needs to see what they are agreeing to, not
 be asked whether they meant something the dialog will not name. The same applies
 to closing: "Close all 4 positions?".
 
+## One-tap on a phone
+
+The quick ticket under the phone chart stages by default: Buy and Sell open
+the Trade screen, which asks. Its switch — shown only where the firm allows
+`quick_trading` — arms one-tap, the same preference as the desktop's (one-click
+on, confirmation off). Armed, a tap sends a market order through the same
+`POST /orders` as the ticket: risk, margin, session and rate limits all run on
+the server, and nothing is skipped but the question.
+
+While an order is on the wire both buttons are disabled and the switch reads
+"Sending…". A synchronous guard covers the gap before that render, so a double
+tap is one order; each request carries its own idempotency key. "Opened …" is
+announced from the server's answer (and its `position.created` frame, under
+the same toast id); a refusal is announced with the server's reason.
+
 ## How this was verified
 
 The pure decisions — what a keystroke means, when it means nothing, what a stored

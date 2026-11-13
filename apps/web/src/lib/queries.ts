@@ -241,6 +241,25 @@ export function invalidateTradingState(client: QueryClient, accountId: string): 
 }
 
 /**
+ * The same, but answered only once the position and resting-order lists hold
+ * the server's new values.
+ *
+ * For a command whose screen draws a "waiting" state until it is confirmed: a
+ * moved stop line that cleared its waiting mark the moment the request
+ * returned would snap back to the old value for the length of the refetch and
+ * then jump forward — looking, for a few hundred milliseconds, like a refusal.
+ * Joins a refetch already running rather than starting a second.
+ */
+export function settleTradingState(client: QueryClient, accountId: string): Promise<void> {
+  invalidateTradingState(client, accountId);
+  return Promise.all(
+    [['positions', accountId], queryKeys.pending(accountId)].map((queryKey) =>
+      client.refetchQueries({ queryKey, type: 'active' }, { cancelRefetch: false }),
+    ),
+  ).then(() => undefined);
+}
+
+/**
  * What this login may do, according to the server.
  *
  * Asked rather than computed. It used to be computed — `roleHasPermissions`
@@ -457,6 +476,8 @@ export interface OrderAck {
   volume: string;
   price: string;
   executedAt?: string;
+  /** The position a market fill opened, as `GET /positions` serves it. */
+  position?: PositionRow;
 }
 
 export function useOpenPosition(accountId: string | null) {
@@ -466,8 +487,22 @@ export function useOpenPosition(accountId: string | null) {
     mutationFn: mutate<OpenPositionInput, OrderAck>(api, (client_, input, key) =>
       client_.post<OrderAck>('/orders', input, { idempotencyKey: key }),
     ),
-    onSuccess: () => {
-      if (accountId !== null) invalidateTradingState(client, accountId);
+    onSuccess: (ack) => {
+      if (accountId === null) return;
+      /**
+       * The server's own row for the position this fill opened, put in the
+       * list at once — the answer already carries it, and waiting for the
+       * refetch below put a visible pause between "filled" and the position
+       * appearing. Only what the server sent: nothing here is made up, and
+       * the refetch then replaces the list with the authoritative one.
+       */
+      if (ack.position !== undefined) {
+        const opened = ack.position;
+        client.setQueryData<PositionRow[]>(queryKeys.positions(accountId, false), (rows) =>
+          rows === undefined || rows.some((row) => row.id === opened.id) ? rows : [opened, ...rows],
+        );
+      }
+      invalidateTradingState(client, accountId);
     },
   });
 }
@@ -548,9 +583,8 @@ export function useModifyPosition(accountId: string | null) {
       const { positionId, ...body } = input;
       return client_.patch(`/positions/${positionId}`, body, { idempotencyKey: key });
     }),
-    onSuccess: () => {
-      if (accountId !== null) invalidateTradingState(client, accountId);
-    },
+    // Answered once the lists hold the new value — see settleTradingState.
+    onSuccess: () => (accountId === null ? undefined : settleTradingState(client, accountId)),
   });
 }
 
@@ -706,9 +740,8 @@ export function useModifyPending(accountId: string | null) {
       const { orderId, ...body } = input;
       return client_.patch(`/orders/${orderId}`, body, { idempotencyKey: key });
     }),
-    onSuccess: () => {
-      if (accountId !== null) invalidateTradingState(client, accountId);
-    },
+    // Answered once the lists hold the new value — see settleTradingState.
+    onSuccess: () => (accountId === null ? undefined : settleTradingState(client, accountId)),
   });
 }
 

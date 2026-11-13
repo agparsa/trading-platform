@@ -117,6 +117,53 @@ A **trailing** stop is draggable, and its label names its distance. The trader
 may tighten it by hand and the engine carries on from wherever they leave it;
 refusing the drag would make the safer stop the harder one to set.
 
+A finger gets a wider target than a cursor: within 20 pixels for a touch
+pointer, against 6 for a mouse. A finger that misses the line pans the chart
+instead, and on a phone that was most grabs. While a level is held the chart's
+own pan and zoom are off, so the price scale cannot move under it.
+
+## The position panel
+
+Each open position is a chip at its entry: size and the live P/L from the
+socket. Tapping it opens a panel — the stop and the target, close, and close
+half where half is on the lot grid and leaves at least the minimum behind.
+Chips that would overlap (positions opened a few ticks apart) are spread apart
+in price order, so every close button stays reachable.
+
+A position with no stop or target shows **+ SL** / **+ TP**. That draws a
+_draft_: a dashed line half a percent from the market on the side the level
+must sit, snapped to the tick grid. A draft is nothing the server has seen. It
+is sent when it is dragged and released, or with the panel's **Set SL …**
+button — the way to place one without dragging, for a keyboard, a screen
+reader, or a thumb. A tap that merely lands on a draft line sends nothing.
+
+While dragging, the preview carries the proposed price, what the position
+would make or lose there, and — when both levels exist — the reward-to-risk
+ratio, from the same arithmetic as the line labels.
+
+Once sent, the level is drawn as **waiting** (`… SL 3989.95`) until the server
+answers, and the confirmed line stays where it was. On success the panel's
+mutation resolves only after the position list has refetched, so the waiting
+line hands straight over to the server's value without snapping back first. On
+refusal the waiting line and the draft disappear, and the server's own reason
+is shown on the chart.
+
+Closing from the panel is immediate — opening the panel was the deliberate
+step — but the chip's × still asks. A close in flight disables that chip's
+buttons and reads "Closing…"; the chip disappears only when the server's
+answer has reached the list. A double tap is one close.
+
+## Notifications
+
+The toasts are the server's events, never the button's: `position.created`
+("Opened BUY 0.10 XAUUSD"), `position.closed` (named by its reason — stop loss,
+take profit, trailing stop, stop-out, or a partial close with what is left),
+`position.updated` and `order.rejected` with the server's reason. Each is keyed
+by its subject, so the same news arriving twice — the order's answer and its
+frame — replaces one toast instead of stacking two. A lost socket raises a
+sticky "Connection lost — reconnecting…", replaced by "Connection restored"
+when it returns and the lists have been re-read. See `lib/trading-toasts.ts`.
+
 ## What the chart is not
 
 `lightweight-charts` renders; it decides nothing. Prices become JavaScript
@@ -135,3 +182,10 @@ confirm the server moved it.
 Then the refusal path: drag a long's stop above the market. The preview turns
 red and carries the engine's message inline — "A BUY stop loss must sit below
 4584.6" — nothing is sent, and the stored stop is unchanged.
+
+The panel, drafts, rollback and one-tap are covered by `pnpm smoke:web` on a
+phone viewport against a real API and database: a refused level (the server's
+envelope, injected) rolls back with its reason and leaves the row untouched; a
+placed level is read back from the database and shown as the position's own;
+close-half double-tapped removes exactly half once; and an armed one-tap
+double-tapped on Buy creates exactly one order.

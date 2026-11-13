@@ -1,18 +1,22 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { cn } from '@tp/ui';
 import { accountView } from '@/lib/account-view';
 import { price as formatPrice, signedMoney, toneClass, toneOf } from '@/lib/format';
 import { markClasses, markFor } from '@/lib/instrument-marks';
-import type {
-  AccountSummary,
-  AccountStateResponse,
-  PendingOrderRow,
-  PositionRow,
-  SymbolRow,
+import {
+  useOpenPosition,
+  type AccountSummary,
+  type AccountStateResponse,
+  type OrderAck,
+  type PendingOrderRow,
+  type PositionRow,
+  type SymbolRow,
 } from '@/lib/queries';
+import { useToasts } from '@/lib/toasts';
+import { tradingToast } from '@/lib/trading-toasts';
 import { useRealtime } from '@/lib/realtime-store';
 import { inlineStartVolume, stepVolume, volumeProblem } from '@/lib/ticket';
 import type { TradingPreferences } from '@/lib/trading-preferences';
@@ -59,6 +63,8 @@ export function PhoneTerminal({
   currency,
   snapshot,
   preferences,
+  oneClickAllowed = false,
+  onPreferencesChange,
   staged,
   onStage,
   onStagedHandled,
@@ -77,6 +83,9 @@ export function PhoneTerminal({
   currency: string;
   snapshot: AccountStateResponse | undefined;
   preferences: TradingPreferences;
+  /** The firm's `quick_trading` flag: without it one-tap cannot be armed. */
+  oneClickAllowed?: boolean;
+  onPreferencesChange?: (patch: Partial<TradingPreferences>) => void;
   staged: Staged;
   onStage: (staged: NonNullable<Staged>) => void;
   onStagedHandled: () => void;
@@ -154,6 +163,13 @@ export function PhoneTerminal({
                 symbol={activeSymbol}
                 defaultVolume={preferences.defaultVolume}
                 onStage={stage}
+                accountId={accountId}
+                armed={oneClickAllowed && preferences.oneClick && !preferences.confirm}
+                {...(oneClickAllowed && onPreferencesChange !== undefined
+                  ? {
+                      onArm: (on: boolean) => onPreferencesChange({ oneClick: on, confirm: !on }),
+                    }
+                  : {})}
               />
             )}
           </>
@@ -284,22 +300,76 @@ const TABS = [
 /**
  * The quick ticket under the chart: the bid to sell at, a lot size, the ask
  * to buy at — the arrangement every phone trading app shares, so a thumb
- * finds Buy on the right. It stages; it does not send.
+ * finds Buy on the right.
+ *
+ * By default it stages: the Trade screen asks before anything is sent. Armed
+ * — the trader's own switch, and only where the firm allows quick trading —
+ * one tap sends a market order. The same request as the ticket's, through
+ * the same server checks (risk, margin, session); nothing is skipped but the
+ * question. While one is on the wire both buttons wait, so one tap is one
+ * order; the request carries its own idempotency key, so a retry of it is
+ * the same order. "Filled" is said only from the server's answer.
  */
 function QuickTrade({
   symbol,
   defaultVolume,
   onStage,
+  accountId,
+  armed,
+  onArm,
 }: {
   symbol: SymbolRow;
   defaultVolume: string;
   onStage: (side: 'BUY' | 'SELL', volume: string) => void;
+  accountId: string | null;
+  armed: boolean;
+  /** Absent where the firm has switched quick trading off. */
+  onArm?: (on: boolean) => void;
 }) {
   const t = useT();
   const quote = useRealtime((state) => state.quotes[symbol.code]);
   const [volume, setVolume] = useState(() => inlineStartVolume(symbol, defaultVolume));
+  const open = useOpenPosition(accountId);
   const problem = volumeProblem(symbol, volume);
-  const ready = problem === null && symbol.sessionOpen && quote !== undefined;
+  const ready = problem === null && symbol.sessionOpen && quote !== undefined && !open.isPending;
+
+  /**
+   * Set synchronously on the tap. `open.isPending` disables the buttons, but
+   * only from the next render — and two taps a few milliseconds apart are
+   * both delivered before it. This is what makes a double tap one order.
+   */
+  const inFlight = useRef(false);
+
+  const press = (side: 'BUY' | 'SELL') => {
+    const lots = volume.trim();
+    if (!armed || accountId === null) {
+      onStage(side, lots);
+      return;
+    }
+    if (inFlight.current || open.isPending) return;
+    inFlight.current = true;
+    open
+      .mutateAsync({
+        accountId,
+        symbol: symbol.code,
+        side,
+        volume: lots,
+        stopLoss: null,
+        takeProfit: null,
+      })
+      .then((ack) => announce(ack, t))
+      .catch((error: unknown) =>
+        useToasts.getState().push({
+          tone: 'danger',
+          sticky: false,
+          title: t('toast.rejected', { symbol: symbol.code }),
+          ...(error instanceof Error ? { body: error.message } : {}),
+        }),
+      )
+      .finally(() => {
+        inFlight.current = false;
+      });
+  };
 
   return (
     <div
@@ -315,7 +385,7 @@ function QuickTrade({
           label={t('ticket.side.SELL')}
           price={quote === undefined ? null : formatPrice(quote.bid, symbol.pricePrecision)}
           disabled={!ready}
-          onClick={() => onStage('SELL', volume.trim())}
+          onClick={() => press('SELL')}
         />
         <div className="flex items-center rounded-lg bg-terminal-raised">
           <button
@@ -356,7 +426,7 @@ function QuickTrade({
           label={t('ticket.side.BUY')}
           price={quote === undefined ? null : formatPrice(quote.ask, symbol.pricePrecision)}
           disabled={!ready}
-          onClick={() => onStage('BUY', volume.trim())}
+          onClick={() => press('BUY')}
         />
       </div>
       {problem !== null ? (
@@ -364,7 +434,56 @@ function QuickTrade({
       ) : !symbol.sessionOpen ? (
         <p className="mt-1 text-caption text-terminal-muted">{t('wl.marketClosed')}</p>
       ) : null}
+      {onArm === undefined ? null : (
+        <label className="mt-1.5 flex min-h-8 items-center justify-between gap-2 text-caption">
+          <span className={armed ? 'font-medium text-terminal-warning' : 'text-terminal-muted'}>
+            {open.isPending
+              ? t('phone.sending')
+              : armed
+                ? t('phone.oneTapOn')
+                : t('phone.oneTapOff')}
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            className="h-5 w-9 accent-terminal-warning"
+            checked={armed}
+            onChange={(event) => onArm(event.target.checked)}
+            aria-label={t('trade.oneClick')}
+            data-testid="one-tap"
+          />
+        </label>
+      )}
     </div>
+  );
+}
+
+/**
+ * Says what the server did with a one-tap order. A fill uses the same toast,
+ * and the same id, as the `position.created` frame for it, so whichever
+ * arrives second replaces the first instead of saying it twice.
+ */
+function announce(ack: OrderAck, t: ReturnType<typeof useT>): void {
+  const toast =
+    ack.positionId === undefined || ack.positionId === null
+      ? null
+      : tradingToast(
+          'position.created',
+          {
+            positionId: ack.positionId,
+            side: ack.side,
+            volume: ack.volume,
+            symbol: ack.symbol,
+            entryPrice: ack.price,
+          },
+          t,
+        );
+  useToasts.getState().push(
+    toast ?? {
+      tone: 'info',
+      sticky: false,
+      title: t('phone.accepted', { symbol: ack.symbol, status: ack.status }),
+    },
   );
 }
 

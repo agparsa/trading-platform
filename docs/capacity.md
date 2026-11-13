@@ -298,3 +298,30 @@ after the burst, on the same machine in the same run.
   never double-fill).
 - The hosts must differ: run the load generator somewhere other than the
   platform, or the numbers measure the contest for the cores.
+
+## Execution latency as a trader feels it (`pnpm latency`)
+
+`scripts/execution-latency.ts` times one trader's open, stop move and close —
+each from the request leaving to (a) the server's answer and (b) the
+confirming WebSocket frame — while other traders trade in the background,
+paced inside the per-account action limit so the engine, not the throttler, is
+measured. It also prints the server's own stage means from
+`tp_order_stage_seconds`. It prints; it asserts nothing.
+
+Measured on 13 Nov 2026 in the development container (2 vCPU, API, Postgres
+and Redis on the same box, no network distance), 60 round trips each:
+
+| Background                 | Open → answer p50/p95/p99 | Open → frame p50/p95/p99 | Stop move → answer | Close → answer     | Server `executed` mean |
+| -------------------------- | ------------------------- | ------------------------ | ------------------ | ------------------ | ---------------------- |
+| none                       | 47 / 62 / 76 ms           | 40 / 54 / 65 ms          | 24 / 37 / 79 ms    | 38 / 56 / 62 ms    | 28.8 ms                |
+| 30 traders (~2,600 orders) | 297 / 500 / 619 ms        | 240 / 379 / 512 ms       | 160 / 448 / 532 ms | 185 / 628 / 731 ms | 121 ms                 |
+
+No confirmation frame was missed in either run, and nothing was refused. The
+frame arrives before the HTTP answer: the event is published inside the
+command, before the response is written. `executed` (transaction, risk under
+the account lock, ledger, outbox) is where the time goes; `validated` and
+`priced` are under a millisecond.
+
+These are not production numbers. Production adds the network to the server
+and the server's own load; run `TP_BASE=https://… pnpm latency` against it
+(with its rate limits as they are, and with permission) to measure that.

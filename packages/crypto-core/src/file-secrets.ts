@@ -56,6 +56,8 @@ export const FILE_BACKED_SECRETS: readonly string[] = [
   'GRAFANA_ADMIN_PASSWORD',
   /** The SMTP login the API sends verification and reset mail through. */
   'EMAIL_SMTP_PASSWORD',
+  /** The market-data vendor's key, when a live price source needs one. */
+  'TWELVEDATA_API_KEY',
 ];
 
 export interface FileSecretsOptions {

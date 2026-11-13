@@ -12,6 +12,8 @@ import {
   type RiskUpdate,
 } from './realtime-store';
 import { useToasts } from './toasts';
+import { tradingToast } from './trading-toasts';
+import { useT } from './use-locale';
 
 const WS_URL = process.env['NEXT_PUBLIC_WS_URL'] ?? 'http://localhost:4000';
 
@@ -69,6 +71,10 @@ export function useSocket(
   // Kept in a ref so changing the callback does not tear the socket down.
   const notify = useRef(onTradingEvent);
   notify.current = onTradingEvent;
+  // The language can change while the socket stays open.
+  const t = useT();
+  const tRef = useRef(t);
+  tRef.current = t;
 
   useEffect(() => {
     const store = useRealtime.getState();
@@ -92,7 +98,36 @@ export function useSocket(
     });
     socketRef.current = socket;
 
+    /**
+     * Whether the socket has been lost since it last connected. The first
+     * connect is not news; coming back after a loss is, and replaces the
+     * "lost" toast rather than stacking under it.
+     */
+    let lost = false;
+    const connectionLost = () => {
+      useRealtime.getState().setStatus('reconnecting');
+      if (lost) return;
+      lost = true;
+      useToasts.getState().push({
+        id: 'connection',
+        tone: 'warning',
+        sticky: true,
+        title: tRef.current('toast.connLost'),
+        body: tRef.current('toast.connLostBody'),
+      });
+    };
+
     socket.on('connect', () => {
+      if (lost) {
+        lost = false;
+        useToasts.getState().push({
+          id: 'connection',
+          tone: 'success',
+          sticky: false,
+          title: tRef.current('toast.connBack'),
+          body: tRef.current('toast.connBackBody'),
+        });
+      }
       // A reconnect is a new connection with a new sequence origin.
       useRealtime.getState().resetConnection();
       useRealtime.getState().setStatus('live');
@@ -109,8 +144,8 @@ export function useSocket(
       notify.current();
     });
 
-    socket.on('disconnect', () => useRealtime.getState().setStatus('reconnecting'));
-    socket.on('connect_error', () => useRealtime.getState().setStatus('reconnecting'));
+    socket.on('disconnect', connectionLost);
+    socket.on('connect_error', connectionLost);
 
     /**
      * Event ids already applied, newest last.
@@ -141,6 +176,10 @@ export function useSocket(
           if (oldest !== undefined) seen.delete(oldest);
         }
       }
+
+      // Told from the server's own events only — see tradingToast.
+      const toast = tradingToast(frame.event, frame.data, tRef.current);
+      if (toast !== null) useToasts.getState().push(toast);
 
       switch (frame.event) {
         case 'quotes.updated':

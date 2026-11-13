@@ -261,6 +261,8 @@ export function Terminal() {
           currency={currency}
           snapshot={accountState.data}
           preferences={preferences}
+          oneClickAllowed={oneClickAllowed}
+          onPreferencesChange={updatePreferences}
           staged={staged}
           onStage={setStaged}
           onStagedHandled={clearStaged}

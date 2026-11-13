@@ -177,6 +177,19 @@ export const envSchema = z
     MARKET_SIMULATOR_SEED: z.coerce.number().int().default(20260821),
 
     /**
+     * Real prices. Each names the instruments a live source is followed for,
+     * as `PLATFORMCODE:venue-symbol` pairs; an instrument named here is never
+     * simulated. Empty (the default) means the simulator quotes everything.
+     * See docs/market-data.md.
+     *
+     * Binance's public book ticker needs no key: `BTCUSD:btcusdt,ETHUSD:ethusdt`.
+     */
+    MARKET_LIVE_BINANCE: z.string().default(''),
+    MARKET_LIVE_BINANCE_URL: z.string().url().default('wss://data-stream.binance.vision'),
+    /** Twelve Data, e.g. `EURUSD:EUR/USD,XAUUSD:XAU/USD`. Needs TWELVEDATA_API_KEY. */
+    MARKET_LIVE_TWELVEDATA: z.string().default(''),
+    TWELVEDATA_API_KEY: z.string().default(''),
+    /**
      * Reference levels for the simulated market: `XAUUSD:3350,BTCUSD:95000`.
      *
      * The prices shipped in code are plausible, not live, and they were plausible

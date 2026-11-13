@@ -52,6 +52,11 @@ export interface ChartLevel {
    * stop-limit waiting for its stop is drawn as its stop and its limit.
    */
   leg?: 'stop' | 'limit';
+  /**
+   * A level asked for from a position's panel and not yet sent: drawn, and
+   * draggable, but nothing the server has seen. Releasing it sends it.
+   */
+  draft?: true;
 }
 
 /**
@@ -371,4 +376,115 @@ export function priceFromPendingDrag(
       error: error instanceof DomainError ? error.message : 'That price is not allowed.',
     };
   }
+}
+
+/**
+ * A stop or target the trader has asked for and not yet placed: tapping "SL"
+ * on a position with none draws one here, to be dragged where it belongs.
+ *
+ * Placed half a percent from the current price on the side the level must sit
+ * — below the bid for a buy's stop, above it for its target — and snapped to
+ * the tick grid, so it starts somewhere the server would accept. It is a draft:
+ * nothing is sent until it is dragged and released, and it is drawn as one.
+ * `null` without a price to measure from.
+ */
+export function draftLevel(
+  spec: SymbolRow,
+  position: PositionRow,
+  kind: typeof LevelKind.STOP_LOSS | typeof LevelKind.TAKE_PROFIT,
+  reference: string | null,
+): ChartLevel | null {
+  const from = reference ?? position.currentPrice;
+  if (from === null) return null;
+  const base = toDecimal(from);
+  if (!base.greaterThan(0)) return null;
+  const away = base.mul('0.005');
+  const below = (kind === LevelKind.STOP_LOSS) === (position.side === 'BUY');
+  const raw = below ? base.minus(away) : base.plus(away);
+  if (!raw.greaterThan(0)) return null;
+  const price = normalizePrice(spec as SymbolSpec, raw).toFixed(spec.pricePrecision);
+  return {
+    positionId: position.id,
+    orderId: null,
+    kind,
+    price,
+    draggable: true,
+    trailing: false,
+    title: `${kind === LevelKind.STOP_LOSS ? 'SL' : 'TP'}? ${price}`,
+    draft: true,
+  };
+}
+
+/**
+ * Reward over risk for a position whose stop or target is being moved: the
+ * proposed level paired with the other one as it stands. `null` until both
+ * exist and the risk is a loss — a stop above the entry on a buy risks nothing
+ * and has no ratio.
+ */
+export function riskReward(
+  position: PositionRow,
+  spec: SymbolRow | undefined,
+  kind: LevelKind,
+  proposed: string,
+  accountCurrency: string,
+): { risk: string; reward: string; ratio: string } | null {
+  const stop = kind === LevelKind.STOP_LOSS ? proposed : position.stopLoss;
+  const target = kind === LevelKind.TAKE_PROFIT ? proposed : position.takeProfit;
+  if (stop === null || target === null) return null;
+  const risk = outcomeAt(position, spec, stop, accountCurrency);
+  const reward = outcomeAt(position, spec, target, accountCurrency);
+  if (risk === null || reward === null) return null;
+  const loss = toDecimal(risk);
+  const gain = toDecimal(reward);
+  if (!loss.lessThan(0) || !gain.greaterThan(0)) return null;
+  return {
+    risk: loss.abs().toFixed(2),
+    reward: gain.toFixed(2),
+    ratio: gain.div(loss.abs()).toFixed(2),
+  };
+}
+
+/**
+ * Half a position, on the lot grid, for a one-tap partial close.
+ *
+ * Rounded down to the volume step, and `null` when either half would fall
+ * under the instrument's minimum — a "close half" that the server must refuse,
+ * or that would leave a remainder it cannot hold, is not a button to offer.
+ */
+export function halfVolume(spec: SymbolRow | undefined, position: PositionRow): string | null {
+  if (spec === undefined) return null;
+  const step = toDecimal(spec.volumeStep);
+  if (!step.greaterThan(0)) return null;
+  const whole = toDecimal(position.volume);
+  const half = whole.div(2).div(step).floor().mul(step);
+  const rest = whole.minus(half);
+  const min = toDecimal(spec.minVolume);
+  if (half.lessThan(min) || rest.lessThan(min) || !half.greaterThan(0)) return null;
+  return half.toFixed(Math.max(0, step.decimalPlaces()));
+}
+
+/**
+ * Spreads chips that would sit on top of each other.
+ *
+ * Two positions opened a few ticks apart are drawn a pixel or two apart, and
+ * their chips — each a row of buttons — would cover one another, leaving the
+ * lower one's close button unreachable. Kept in price order; each is pushed
+ * down just far enough to clear the one above. Ids without a coordinate stay
+ * hidden.
+ */
+export function stackChips(
+  places: Readonly<Record<string, number | null>>,
+  gap: number,
+): Record<string, number | null> {
+  const placed = Object.entries(places)
+    .filter((entry): entry is [string, number] => entry[1] !== null)
+    .sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1));
+  const out: Record<string, number | null> = { ...places };
+  let floor = -Infinity;
+  for (const [id, y] of placed) {
+    const at = Math.max(y, floor);
+    out[id] = at;
+    floor = at + gap;
+  }
+  return out;
 }

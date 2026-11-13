@@ -1,3 +1,4 @@
+import type { positionView } from './position-view';
 import type { OrderSide } from '@tp/shared-types';
 
 export interface OpenPositionRequest {
@@ -39,6 +40,12 @@ export interface OrderResult {
   volume: string;
   price: string;
   executedAt: string;
+  /**
+   * The position a market fill opened, in the shape `GET /positions` serves —
+   * so a screen can show it on the answer instead of after a second request.
+   * Absent for a resting order and for one routed to a venue.
+   */
+  position?: ReturnType<typeof positionView>;
 }
 
 /**

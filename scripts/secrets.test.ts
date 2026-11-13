@@ -37,7 +37,8 @@ const declared = (file: string): Set<string> =>
  * look-alikes that are not secrets excluded by name so that each exclusion is
  * a decision somebody can read.
  */
-const SECRET = /SECRET|PASSWORD|CREDENTIALS|SERVICE_ACCOUNT|PRIVATE_KEY|^DATABASE_URL|^REDIS_URL/;
+const SECRET =
+  /SECRET|PASSWORD|CREDENTIALS|SERVICE_ACCOUNT|PRIVATE_KEY|API_KEY$|^DATABASE_URL|^REDIS_URL/;
 const NOT_SECRET = new Set([
   'PASSWORD_HASH_MEMORY_COST',
   'PASSWORD_HASH_TIME_COST',

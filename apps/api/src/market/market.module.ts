@@ -3,6 +3,7 @@ import { SymbolsService } from '../symbols/symbols.service';
 import { SymbolsController } from '../symbols/symbols.controller';
 import { MarketController } from './market.controller';
 import { MarketFeedService } from './market-feed.service';
+import { LiveFeedService } from './live-feed.service';
 import { MarketIntegrityService } from './market-integrity.service';
 import { QuoteService } from './quote.service';
 import { CandlesService } from './candles.service';
@@ -16,6 +17,7 @@ import { CandleBus } from './candle-bus';
     QuoteService,
     MarketIntegrityService,
     MarketFeedService,
+    LiveFeedService,
     CandlesService,
     TickBus,
     CandleBus,

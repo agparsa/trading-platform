@@ -26,7 +26,11 @@ import {
 import {
   LevelKind,
   levelIdentity,
+  draftLevel,
+  halfVolume,
   levelsFor,
+  riskReward,
+  stackChips,
   outcomeAt,
   pendingLevelsFor,
   priceFromDrag,
@@ -47,6 +51,7 @@ import {
 import { barKey, useRealtime } from '@/lib/realtime-store';
 import { EmptyState } from './primitives';
 import { useT } from '@/lib/use-locale';
+import { useToasts } from '@/lib/toasts';
 
 /**
  * Price history.
@@ -376,13 +381,34 @@ function Candles({
    */
   const commands = useTradingCommands(accountId);
   const quote = useRealtime((state) => state.quotes[spec.code]);
-  const levels = useMemo(
-    () => [
+  /**
+   * Stops and targets the trader asked for from a position's panel and has not
+   * yet placed — drawn, draggable, and sent only when released. A draft whose
+   * position already has that level from the server is not drawn: the server's
+   * line is the one to move.
+   */
+  const [drafts, setDrafts] = useState<Record<string, ChartLevel>>({});
+  /**
+   * A level released and sent, until the server answers. Drawn where it was
+   * dropped, marked as waiting; on success the server's own value replaces it,
+   * and on refusal it disappears and the confirmed line is where it always was.
+   */
+  const [pending, setPending] = useState<{ key: string; level: ChartLevel; price: string } | null>(
+    null,
+  );
+  const levels = useMemo(() => {
+    const confirmed = [
       ...levelsFor(positions, spec.code),
       ...pendingLevelsFor(pendingOrders, spec.code, spec, quote),
-    ],
-    [positions, pendingOrders, spec, quote],
-  );
+    ];
+    const taken = new Set(confirmed.map(levelIdentity));
+    const open = new Set(positions.map((position) => position.id));
+    const drafted = Object.values(drafts).filter(
+      (draft) =>
+        !taken.has(levelIdentity(draft)) && draft.positionId !== null && open.has(draft.positionId),
+    );
+    return [...confirmed, ...drafted];
+  }, [positions, pendingOrders, spec, quote, drafts]);
   const byId = useMemo(
     () => Object.fromEntries(positions.map((position) => [position.id, position])),
     [positions],
@@ -486,6 +512,13 @@ function Candles({
         position === undefined || drag.level.kind === LevelKind.PENDING
           ? null
           : outcomeAt(position, spec, drag.price, currency);
+      // With both levels set, what the move does to the trade's shape: the
+      // money at risk, the money in view, and their ratio — from the same
+      // arithmetic as the line labels, so the three can never disagree.
+      const shape =
+        position === undefined || drag.level.kind === LevelKind.PENDING
+          ? null
+          : riskReward(position, spec, drag.level.kind, drag.price, currency);
       linesRef.current.set(
         'preview',
         series.createPriceLine({
@@ -497,9 +530,32 @@ function Candles({
           title:
             drag.error !== null
               ? drag.error
-              : proposed === null
-                ? `→ ${drag.price}`
-                : `→ ${drag.price}  ${signedMoney(proposed, currency)}`,
+              : [
+                  `→ ${drag.price}`,
+                  proposed === null ? null : signedMoney(proposed, currency),
+                  shape === null ? null : `R:R ${shape.ratio}`,
+                ]
+                  .filter((part) => part !== null)
+                  .join('  '),
+        }),
+      );
+    }
+
+    // Sent and not yet answered: where it was dropped, marked as waiting.
+    if (pending !== null) {
+      linesRef.current.set(
+        'pending',
+        series.createPriceLine({
+          price: Number(pending.price),
+          color: palette.pending,
+          lineWidth: 2,
+          lineStyle: LineStyle.Dotted,
+          axisLabelVisible: true,
+          title:
+            `… ${pending.level.kind === LevelKind.TAKE_PROFIT ? 'TP' : pending.level.kind === LevelKind.STOP_LOSS ? 'SL' : ''} ${pending.price}`.replace(
+              '  ',
+              ' ',
+            ),
         }),
       );
     }
@@ -508,7 +564,7 @@ function Candles({
       for (const line of linesRef.current.values()) series.removePriceLine(line);
       linesRef.current.clear();
     };
-  }, [levels, drag, byId, spec, currency, palette]);
+  }, [levels, drag, pending, byId, spec, currency, palette]);
 
   /**
    * Which level, if any, is under the pointer.
@@ -525,6 +581,50 @@ function Candles({
    * refetching. Grabbing it in that instant would send a modification for
    * something that no longer exists.
    */
+  /**
+   * Sends a level — dropped by a drag, or placed from a position's panel.
+   *
+   * The round trip. Nothing confirmed moves until the server says so: the
+   * sent value is drawn as waiting, on success the server's own value
+   * arrives through the position query and the `position.updated` frame, and
+   * on refusal the waiting line goes and the confirmed one is where it always
+   * was — with the server's reason on screen.
+   */
+  const submitLevel = useCallback(
+    (level: ChartLevel, price: string) => {
+      const key = levelIdentity(level);
+      const sent =
+        level.kind === LevelKind.PENDING
+          ? level.orderId === null
+            ? null
+            : commands.movePendingOrder(level.orderId, price)
+          : level.positionId === null
+            ? null
+            : commands.modifyPositionLevel(level.positionId, level.kind, price);
+      if (sent === null) return;
+      const forget = () => {
+        if (level.draft !== true) return;
+        setDrafts((now) => {
+          const next = { ...now };
+          delete next[key];
+          return next;
+        });
+      };
+      setRefusal(null);
+      setPending({ key, level, price });
+      sent
+        // The server's value is the line now; a draft has done its job.
+        .then(forget)
+        .catch((error: unknown) => {
+          // A draft goes too: it was never a level the server accepted.
+          forget();
+          setRefusal(error instanceof Error ? error.message : t('chart.refused'));
+        })
+        .finally(() => setPending(null));
+    },
+    [commands, t],
+  );
+
   const hasTarget = useCallback(
     (level: ChartLevel): boolean =>
       level.kind === LevelKind.PENDING
@@ -534,7 +634,7 @@ function Candles({
   );
 
   const levelUnder = useCallback(
-    (offsetY: number): ChartLevel | null => {
+    (offsetY: number, radius: number = GRAB_RADIUS_PX): ChartLevel | null => {
       const series = seriesRef.current;
       if (series === null) return null;
       let nearest: { level: ChartLevel; distance: number } | null = null;
@@ -543,7 +643,7 @@ function Candles({
         const y = series.priceToCoordinate(Number(level.price));
         if (y === null) continue;
         const distance = Math.abs(y - offsetY);
-        if (distance <= GRAB_RADIUS_PX && (nearest === null || distance < nearest.distance)) {
+        if (distance <= radius && (nearest === null || distance < nearest.distance)) {
           nearest = { level, distance };
         }
       }
@@ -574,7 +674,12 @@ function Candles({
     };
 
     const onPointerDown = (event: PointerEvent) => {
-      const level = levelUnder(yIn(event));
+      // A fingertip is not a cursor: a line six pixels tall is a target a
+      // finger mostly misses, and a missed grab pans the chart instead.
+      const level = levelUnder(
+        yIn(event),
+        event.pointerType === 'touch' ? TOUCH_GRAB_RADIUS_PX : GRAB_RADIUS_PX,
+      );
       if (level === null) return;
       // The row behind the line has to still exist. A line whose position or
       // order has just closed is a line about to disappear, and dragging it
@@ -635,30 +740,11 @@ function Candles({
         setRefusal(current.error);
         return;
       }
+      // Unmoved is nothing to send — a draft too: a tap that lands on its
+      // line is not a decision to place it there. Its panel button is.
       if (current.price === current.level.price) return;
 
-      /**
-       * The round trip. Nothing on screen has moved yet and nothing will until
-       * the server says so: on success the new value arrives through the
-       * position query and the `position.updated` frame, and on failure the
-       * line is already where it always was.
-       */
-      const sent =
-        current.level.kind === LevelKind.PENDING
-          ? current.level.orderId === null
-            ? null
-            : commands.movePendingOrder(current.level.orderId, current.price)
-          : current.level.positionId === null
-            ? null
-            : commands.modifyPositionLevel(
-                current.level.positionId,
-                current.level.kind,
-                current.price,
-              );
-
-      sent?.catch((error: unknown) =>
-        setRefusal(error instanceof Error ? error.message : 'The server refused that level.'),
-      );
+      submitLevel(current.level, current.price);
     };
 
     container.addEventListener('pointerdown', onPointerDown);
@@ -671,7 +757,7 @@ function Candles({
       container.removeEventListener('pointerup', endDrag);
       container.removeEventListener('pointercancel', endDrag);
     };
-  }, [levelUnder, hasTarget, byId, ordersById, spec, quote, commands]);
+  }, [levelUnder, hasTarget, byId, ordersById, spec, quote, submitLevel]);
 
   return (
     <div className="relative h-full w-full">
@@ -683,6 +769,16 @@ function Candles({
         accountId={accountId}
         currency={currency}
         revision={bars}
+        spec={spec}
+        drafts={drafts}
+        waiting={pending === null ? null : pending.key}
+        onPlace={submitLevel}
+        onDraft={(position, kind) => {
+          const draft = draftLevel(spec, position, kind, quote?.bid ?? null);
+          if (draft === null) return;
+          setRefusal(null);
+          setDrafts((now) => ({ ...now, [levelIdentity(draft)]: draft }));
+        }}
       />
       {refusal === null ? null : (
         <button
@@ -706,6 +802,8 @@ interface DragState {
 
 /** Within this many pixels counts as grabbing the line. A 1px target is unusable. */
 const GRAB_RADIUS_PX = 6;
+/** The same, for a finger — about the 44pt minimum touch target, halved. */
+const TOUCH_GRAB_RADIUS_PX = 20;
 
 /**
  * Prices become JS numbers here, at the rendering boundary and nowhere else.
@@ -744,6 +842,11 @@ function PositionChips({
   accountId,
   currency,
   revision,
+  spec,
+  drafts,
+  waiting: sending,
+  onPlace,
+  onDraft,
 }: {
   /** Changes when the bars do, so the chips follow the rescaled axis. */
   revision: unknown;
@@ -752,13 +855,30 @@ function PositionChips({
   positions: readonly PositionRow[];
   accountId: string | null;
   currency: string;
+  spec: SymbolRow;
+  /** Drafted stops and targets, by line identity. */
+  drafts: Readonly<Record<string, ChartLevel>>;
+  /** The line identity of a level sent and not yet answered. */
+  waiting: string | null;
+  /** Send a level as it stands — a draft accepted where it was drawn. */
+  onPlace: (level: ChartLevel, price: string) => void;
+  /** Draw a draggable stop or target for a position that has none. */
+  onDraft: (
+    position: PositionRow,
+    kind: typeof LevelKind.STOP_LOSS | typeof LevelKind.TAKE_PROFIT,
+  ) => void;
 }) {
   const t = useT();
   const pnl = useRealtime((state) => state.pnl);
   const close = useClosePosition(accountId);
   const [places, setPlaces] = useState<Record<string, number | null>>({});
   const [asking, setAsking] = useState<string | null>(null);
+  const [opened, setOpened] = useState<string | null>(null);
+  /** Positions with a close on the wire: their buttons wait, so one tap is one close. */
+  const [closing, setClosing] = useState<ReadonlySet<string>>(new Set());
   const [scale, setScale] = useState(0);
+  // A panel for a position that has gone is no panel at all.
+  const expanded = positions.some((position) => position.id === opened) ? opened : null;
 
   /*
    * Placed again whenever what decides a line's height changes: the bars (the
@@ -770,10 +890,11 @@ function PositionChips({
     const chart = chartRef.current;
     if (series === null || chart === null) return;
     const place = () => {
-      const next: Record<string, number | null> = {};
+      const raw: Record<string, number | null> = {};
       for (const position of positions) {
-        next[position.id] = series.priceToCoordinate(Number(position.entryPrice));
+        raw[position.id] = series.priceToCoordinate(Number(position.entryPrice));
       }
+      const next = stackChips(raw, CHIP_GAP_PX);
       setPlaces((now) => (JSON.stringify(now) === JSON.stringify(next) ? now : next));
       setScale(chart.priceScale('right').width());
     };
@@ -788,6 +909,35 @@ function PositionChips({
     };
   }, [chartRef, seriesRef, positions, revision]);
 
+  /**
+   * One close, sent once. The chip stays — showing that it is waiting — until
+   * the server's answer arrives and the list drops the row; a refusal is said
+   * out loud rather than leaving the trader to wonder why it is still there.
+   */
+  const closeNow = (position: PositionRow, volume: string | null) => {
+    if (closing.has(position.id)) return;
+    setClosing((now) => new Set(now).add(position.id));
+    setAsking(null);
+    close
+      .mutateAsync({ positionId: position.id, volume })
+      .catch((error: unknown) =>
+        useToasts.getState().push({
+          id: `close-failed:${position.id}`,
+          tone: 'danger',
+          sticky: false,
+          title: t('pos.closeFailed'),
+          ...(error instanceof Error ? { body: error.message } : {}),
+        }),
+      )
+      .finally(() =>
+        setClosing((now) => {
+          const next = new Set(now);
+          next.delete(position.id);
+          return next;
+        }),
+      );
+  };
+
   return (
     <div
       className="pointer-events-none absolute inset-0 z-10 overflow-hidden"
@@ -798,68 +948,216 @@ function PositionChips({
         if (y === null || y === undefined) return null;
         const floating = pnl[position.id]?.floatingPnl ?? null;
         const confirming = asking === position.id;
+        const open = expanded === position.id;
+        const waiting = closing.has(position.id);
+        const half = halfVolume(spec, position);
         return (
           <div
             key={position.id}
-            className="pointer-events-auto absolute flex -translate-y-1/2 items-stretch overflow-hidden rounded border border-terminal-border bg-terminal-surface text-caption shadow"
-            style={{ top: y, right: scale + 8 }}
+            className={cn(
+              'pointer-events-auto absolute flex flex-col overflow-hidden rounded border bg-terminal-surface text-caption shadow',
+              open ? 'z-20 border-terminal-accent' : 'border-terminal-border',
+            )}
+            style={{ top: y, right: scale + 8, transform: 'translateY(-50%)' }}
             data-testid="position-chip"
+            data-position-id={position.id}
           >
-            <span
-              className={cn(
-                'numeric px-1.5 py-0.5 font-medium',
-                position.side === 'BUY' ? 'text-terminal-long' : 'text-terminal-short',
-              )}
-            >
-              {position.volume}
-            </span>
-            <span
-              className={cn(
-                'numeric border-s border-terminal-border px-1.5 py-0.5',
-                toneClass[toneOf(floating)],
-              )}
-            >
-              {signedMoney(floating, currency)}
-            </span>
-            {confirming ? (
-              <>
+            <div className="flex items-stretch">
+              <button
+                type="button"
+                className="flex items-stretch"
+                aria-expanded={open}
+                aria-label={t(
+                  'chart.positionDetails',
+                  { volume: position.volume, symbol: position.symbol },
+                  false,
+                )}
+                onClick={() => setOpened(open ? null : position.id)}
+                data-testid="position-chip-toggle"
+              >
+                <span
+                  className={cn(
+                    'numeric px-2 py-1 font-medium',
+                    position.side === 'BUY' ? 'text-terminal-long' : 'text-terminal-short',
+                  )}
+                >
+                  {position.volume}
+                </span>
+                <span
+                  className={cn(
+                    'numeric border-s border-terminal-border px-2 py-1',
+                    toneClass[toneOf(floating)],
+                  )}
+                >
+                  {signedMoney(floating, currency)}
+                </span>
+              </button>
+              {waiting ? (
+                <span
+                  className="border-s border-terminal-border px-2 py-1 text-terminal-muted"
+                  role="status"
+                >
+                  {t('chart.closing')}
+                </span>
+              ) : confirming ? (
+                <>
+                  <button
+                    type="button"
+                    className="border-s border-terminal-border bg-terminal-short px-2 font-medium text-terminal-bg"
+                    onClick={() => closeNow(position, null)}
+                  >
+                    {t('pos.close')}
+                  </button>
+                  <button
+                    type="button"
+                    className="border-s border-terminal-border px-2 text-terminal-muted"
+                    onClick={() => setAsking(null)}
+                  >
+                    {t('wallet.cancel')}
+                  </button>
+                </>
+              ) : (
                 <button
                   type="button"
-                  className="border-s border-terminal-border bg-terminal-short px-1.5 font-medium text-terminal-bg"
-                  disabled={close.isPending}
-                  onClick={() => {
-                    setAsking(null);
-                    void close
-                      .mutateAsync({ positionId: position.id, volume: null })
-                      .catch(() => undefined);
-                  }}
+                  className="border-s border-terminal-border px-2 text-terminal-muted hover:text-terminal-short"
+                  aria-label={t('chart.closePosition', {
+                    volume: position.volume,
+                    symbol: position.symbol,
+                  })}
+                  onClick={() => setAsking(position.id)}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            {open ? (
+              <div
+                className="grid grid-cols-2 gap-1 border-t border-terminal-border p-1"
+                data-testid="position-chip-panel"
+              >
+                <LevelButton
+                  label="SL"
+                  value={position.stopLoss}
+                  draft={drafts[`${position.id}:${LevelKind.STOP_LOSS}`] ?? null}
+                  sending={sending === `${position.id}:${LevelKind.STOP_LOSS}`}
+                  onAdd={() => onDraft(position, LevelKind.STOP_LOSS)}
+                  onPlace={onPlace}
+                  t={t}
+                />
+                <LevelButton
+                  label="TP"
+                  value={position.takeProfit}
+                  draft={drafts[`${position.id}:${LevelKind.TAKE_PROFIT}`] ?? null}
+                  sending={sending === `${position.id}:${LevelKind.TAKE_PROFIT}`}
+                  onAdd={() => onDraft(position, LevelKind.TAKE_PROFIT)}
+                  onPlace={onPlace}
+                  t={t}
+                />
+                {half === null ? null : (
+                  <button
+                    type="button"
+                    disabled={waiting}
+                    className="min-h-8 rounded border border-terminal-border px-2 text-terminal-text disabled:opacity-50"
+                    onClick={() => closeNow(position, half)}
+                    data-testid="position-chip-half"
+                  >
+                    {t('pos.closeVolume', { volume: half })}
+                  </button>
+                )}
+                {/* Opening the panel was the deliberate step; this one closes. */}
+                <button
+                  type="button"
+                  disabled={waiting}
+                  className={cn(
+                    'min-h-8 rounded bg-terminal-short px-2 font-medium text-terminal-bg disabled:opacity-50',
+                    half === null && 'col-span-2',
+                  )}
+                  onClick={() => closeNow(position, null)}
+                  data-testid="position-chip-close"
                 >
                   {t('pos.close')}
                 </button>
-                <button
-                  type="button"
-                  className="border-s border-terminal-border px-1.5 text-terminal-muted"
-                  onClick={() => setAsking(null)}
-                >
-                  {t('wallet.cancel')}
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="border-s border-terminal-border px-1.5 text-terminal-muted hover:text-terminal-short"
-                aria-label={t('chart.closePosition', {
-                  volume: position.volume,
-                  symbol: position.symbol,
-                })}
-                onClick={() => setAsking(position.id)}
-              >
-                ×
-              </button>
-            )}
+              </div>
+            ) : null}
           </div>
         );
       })}
     </div>
   );
 }
+
+/**
+ * A stop or target in a position's panel.
+ *
+ * Set: its value, moved by dragging its line. Drafted: the price the draft
+ * line is at, and a button that places it there — the way to set one without
+ * dragging, for a keyboard, a screen reader, or a thumb that would rather tap.
+ * Neither: a button that draws a draft to drag into place.
+ */
+function LevelButton({
+  label,
+  value,
+  draft,
+  sending,
+  onAdd,
+  onPlace,
+  t,
+}: {
+  label: 'SL' | 'TP';
+  value: string | null;
+  draft: ChartLevel | null;
+  sending: boolean;
+  onAdd: () => void;
+  onPlace: (level: ChartLevel, price: string) => void;
+  t: ReturnType<typeof useT>;
+}) {
+  const id = label.toLowerCase();
+  if (sending) {
+    return (
+      <span
+        className="numeric flex min-h-8 items-center rounded border border-terminal-border px-2 text-terminal-muted"
+        role="status"
+      >
+        {label} …
+      </span>
+    );
+  }
+  if (value !== null) {
+    return (
+      <span
+        className="numeric flex min-h-8 items-center rounded border border-terminal-border px-2 text-terminal-text"
+        title={t('chart.dragToSet')}
+        data-testid={`position-chip-${id}`}
+      >
+        {label} {value}
+      </span>
+    );
+  }
+  if (draft !== null) {
+    return (
+      <button
+        type="button"
+        className="numeric min-h-8 rounded border border-terminal-accent px-2 text-terminal-accent"
+        onClick={() => onPlace(draft, draft.price)}
+        title={t('chart.dragToSet')}
+        data-testid={`position-chip-place-${id}`}
+      >
+        {t('chart.placeLevel', { label, price: draft.price })}
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="min-h-8 rounded border border-dashed border-terminal-border px-2 text-terminal-text"
+      onClick={onAdd}
+      title={t('chart.dragToSet')}
+      data-testid={`position-chip-add-${id}`}
+    >
+      + {label}
+    </button>
+  );
+}
+
+/** Chips closer than this are spread apart; about one chip's height. */
+const CHIP_GAP_PX = 28;

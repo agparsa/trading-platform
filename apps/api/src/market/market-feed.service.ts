@@ -27,6 +27,7 @@ import { TickBus } from './tick-bus';
 import { LeadershipService, LeaderLoop } from '../leadership/leadership.service';
 import { CandleBus } from './candle-bus';
 import { isSessionOpen } from './session';
+import { LiveFeedService } from './live-feed.service';
 import type { Env } from '../config/env.schema';
 
 /** Redis channel every API instance relays to its own WebSocket clients. */
@@ -71,6 +72,7 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
     private readonly ticks: TickBus,
     private readonly candles: CandleBus,
     private readonly leadership: LeadershipService,
+    private readonly live: LiveFeedService,
   ) {}
 
   /**
@@ -143,8 +145,19 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
     await this.provider.start();
     this.running = true;
     this.scheduleNextPump();
+    /**
+     * Real prices for the instruments a live source is configured for; the
+     * simulator keeps the rest. Configured here, with the instruments loaded,
+     * and started only on the instance that ingests — two listeners would be
+     * every live tick twice.
+     */
+    this.live.configure(
+      (code) => this.symbols.find(code)?.spec.pricePrecision,
+      (code) => SIMULATOR_HALF_SPREAD[code],
+    );
+    this.live.start((tick) => this.ingest(tick));
     this.logger.log(
-      `Market feed started: ${this.provider.name}, ${this.symbols.codes().length} instrument(s), resolutions ${this.resolutions.join(',')}`,
+      `Market feed started: ${this.provider.name}, ${this.symbols.codes().length} instrument(s), resolutions ${this.resolutions.join(',')}; live sources: ${this.live.describe()}`,
     );
   }
 
@@ -161,6 +174,7 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
     this.running = false;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
+    this.live.stop();
     await this.provider?.stop();
     for (const aggregator of this.aggregators.values()) {
       const candle = aggregator.flush();
@@ -173,6 +187,7 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
 
   async onApplicationShutdown(): Promise<void> {
     this.running = false;
+    this.live.stop();
     if (this.timer !== null) clearTimeout(this.timer);
     if (this.relaying) {
       this.relaying = false;
@@ -222,7 +237,12 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
     const simulator = this.provider as InternalMarketSimulator | null;
     if (simulator === null) return;
     const ticks = simulator.pump();
-    for (const tick of ticks) await this.ingest(tick);
+    for (const tick of ticks) {
+      // An instrument with a live source is never simulated — not even while
+      // that source is down. See `LiveFeedService`.
+      if (this.live.covers(tick.symbol)) continue;
+      await this.ingest(tick);
+    }
   }
 
   /**

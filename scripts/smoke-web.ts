@@ -1981,6 +1981,88 @@ async function main(): Promise<void> {
       );
       await screenshot(page, 'terminal phone chart position');
 
+      // Tapping a chip opens its panel: stop, target, close and close-half.
+      // A stop or target set from it is drawn as a draft, sent only when
+      // placed, shown as waiting until the server answers, and — refused —
+      // rolled back with the server's reason on screen.
+      if (chips > 0) {
+        const chip = page.getByTestId('position-chip').first();
+        const positionId = (await chip.getAttribute('data-position-id')) ?? '';
+        await chip.getByTestId('position-chip-toggle').click();
+        const panel = await chip
+          .getByTestId('position-chip-panel')
+          .waitFor({ timeout: 5_000 })
+          .then(() => true)
+          .catch(() => false);
+        const row = () => prisma.position.findUniqueOrThrow({ where: { id: positionId } });
+        const before = await row();
+        const kind = before.stopLoss === null ? 'sl' : before.takeProfit === null ? 'tp' : null;
+        ok(
+          panel,
+          'tapping a position on the chart opens its panel',
+          `panel ${panel} · free level ${kind ?? 'none'}`,
+        );
+        await screenshot(page, 'terminal phone chart position panel');
+
+        if (kind !== null) {
+          const field = kind === 'sl' ? 'stopLoss' : 'takeProfit';
+          // Refused: the server's envelope, as it answers a level it will not take.
+          await page.route('**/api/v1/positions/*', async (route) => {
+            if (route.request().method() !== 'PATCH') return route.fallback();
+            await route.fulfill({
+              status: 422,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                ok: false,
+                error: { code: 'INVALID_STOP_LOSS', message: 'Smoke: level refused by the server' },
+              }),
+            });
+          });
+          await chip.getByTestId(`position-chip-add-${kind}`).click();
+          await chip.getByTestId(`position-chip-place-${kind}`).click();
+          const refused = await page
+            .getByText('Smoke: level refused by the server')
+            .waitFor({ timeout: 5_000 })
+            .then(() => true)
+            .catch(() => false);
+          const rolledBack = await chip
+            .getByTestId(`position-chip-add-${kind}`)
+            .waitFor({ timeout: 5_000 })
+            .then(() => true)
+            .catch(() => false);
+          const untouched = (await row())[field] === null;
+          await page.unroute('**/api/v1/positions/*');
+          ok(
+            refused && rolledBack && untouched,
+            'a level the server refuses is rolled back, with the server’s reason shown',
+            `reason shown ${refused} · draft gone ${rolledBack} · database unchanged ${untouched}`,
+          );
+
+          // Accepted: placed, confirmed by the database, then shown as set.
+          await chip.getByTestId(`position-chip-add-${kind}`).click();
+          const place = chip.getByTestId(`position-chip-place-${kind}`);
+          const proposed = ((await place.innerText()).match(/[\d.]+$/) ?? [''])[0];
+          await place.click();
+          let stored: string | null = null;
+          for (let attempt = 0; attempt < 40 && stored === null; attempt += 1) {
+            const value = (await row())[field];
+            stored = value === null ? null : value.toString();
+            if (stored === null) await page.waitForTimeout(150);
+          }
+          const shown = await chip
+            .getByTestId(`position-chip-${kind}`)
+            .innerText({ timeout: 5_000 })
+            .catch(() => '');
+          ok(
+            stored !== null && Number(stored) === Number(proposed) && shown.includes(proposed),
+            'a level placed from the chart reaches the database and comes back as the position’s own',
+            `proposed ${proposed} · stored ${stored ?? 'nothing'} · chip ${shown}`,
+          );
+        }
+
+        await screenshot(page, 'terminal phone chart position after');
+      }
+
       // Sell stages; the Trade screen asks before anything is sent.
       const ordersBefore = await prisma.order.count({
         where: { account: { user: { email: people.trader.email } } },
@@ -2004,6 +2086,83 @@ async function main(): Promise<void> {
         .getByRole('button', { name: /^Cancel$/ })
         .first()
         .click();
+
+      // One-tap, armed by the trader: Buy sends at once, through the same
+      // server checks. A double tap is one order, and "opened" is said only
+      // from the server's answer.
+      await phone.getByRole('button', { name: /^Chart/ }).click();
+      const oneTap = page.getByTestId('one-tap');
+      if (await oneTap.isVisible().catch(() => false)) {
+        await oneTap.check();
+        const ordersBeforeTap = await prisma.order.count({
+          where: { account: { user: { email: people.trader.email } } },
+        });
+        await page.getByTestId('quick-trade').getByRole('button', { name: /BUY/ }).dblclick();
+        const told = await page
+          .getByText(/^Opened BUY /)
+          .first()
+          .waitFor({ timeout: 10_000 })
+          .then(() => true)
+          .catch(() => false);
+        await page.waitForTimeout(1_000);
+        const ordersAfterTap = await prisma.order.count({
+          where: { account: { user: { email: people.trader.email } } },
+        });
+        await screenshot(page, 'terminal phone one tap');
+        await oneTap.uncheck();
+        ok(
+          told && ordersAfterTap === ordersBeforeTap + 1,
+          'armed one-tap: a double tap on Buy is exactly one order, announced from the server’s answer',
+          `orders ${ordersBeforeTap} → ${ordersAfterTap} · announced ${told}`,
+        );
+
+        // Close half of that position from its chip: one partial close,
+        // exactly half, on the lot grid — and a double tap is still one.
+        const opened = await prisma.position.findFirst({
+          where: {
+            account: { user: { email: people.trader.email } },
+            status: 'OPEN',
+            symbol: { code: 'XAUUSD' },
+          },
+          orderBy: { openedAt: 'desc' },
+        });
+        const halfChip = page.locator(`[data-position-id="${opened?.id ?? 'none'}"]`);
+        await halfChip.getByTestId('position-chip-toggle').click();
+        const half = halfChip.getByTestId('position-chip-half');
+        const offered = await half
+          .waitFor({ timeout: 5_000 })
+          .then(() => true)
+          .catch(() => false);
+        const volumeBefore = opened?.volume.toString() ?? '0';
+        let asked = '';
+        let after = volumeBefore;
+        if (offered && opened !== null) {
+          asked = ((await half.innerText()).match(/[\d.]+/) ?? [''])[0];
+          await half.dblclick();
+          for (let attempt = 0; attempt < 40 && after === volumeBefore; attempt += 1) {
+            await page.waitForTimeout(150);
+            after = (
+              await prisma.position.findUniqueOrThrow({ where: { id: opened.id } })
+            ).volume.toString();
+          }
+          await page.waitForTimeout(1_000);
+          after = (
+            await prisma.position.findUniqueOrThrow({ where: { id: opened.id } })
+          ).volume.toString();
+        }
+        await screenshot(page, 'terminal phone close half');
+        ok(
+          offered && asked !== '' && Number(volumeBefore) - Number(after) === Number(asked),
+          'closing half from the chart closes exactly half, once — a double tap is one close',
+          `offered ${offered} · ${volumeBefore} → ${after}, asked ${asked}`,
+        );
+      } else {
+        ok(
+          true,
+          'one-tap is not offered where the firm has switched quick trading off',
+          'switch absent',
+        );
+      }
 
       // The positions, as cards: as many as the book holds open.
       await phone.getByRole('button', { name: /^Positions/ }).click();

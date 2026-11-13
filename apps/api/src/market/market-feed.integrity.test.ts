@@ -52,7 +52,7 @@ const ALWAYS_OPEN = {
   },
 };
 
-function build() {
+function build(covered: readonly string[] = []) {
   const published: string[] = [];
   const stored = new Map<string, string>();
 
@@ -106,6 +106,8 @@ function build() {
      * from a provider is a different question, answered in `leadership.test.ts`.
      */
     { campaign: () => undefined, isLeading: () => true } as unknown as LeadershipService,
+    // No live source in this suite: the gate is what is under test.
+    { covers: (code: string) => covered.includes(code), stop: () => undefined } as never,
   );
 
   return { feed, quotes, ticks, published, integrity };
@@ -170,5 +172,26 @@ describe('MarketFeedService integrity wiring', () => {
 
     expect(seen).toHaveLength(1);
     expect(stack.integrity.summary().rejectedTotal).toBe(1);
+  });
+});
+
+describe('an instrument with a live source', () => {
+  it('is never simulated: the pump passes it over, and quotes the rest', async () => {
+    const stack = build(['XAUUSD']);
+    const seen: Tick[] = [];
+    stack.ticks.subscribe((incoming) => {
+      seen.push(incoming);
+      return Promise.resolve();
+    });
+    const now = Date.now();
+    // The simulator, standing in: one tick for the covered instrument, one not.
+    (stack.feed as unknown as { provider: unknown }).provider = {
+      pump: () => [
+        { symbol: 'XAUUSD', bid: '4000.00', ask: '4000.10', timestamp: now, volume: '0' },
+        { symbol: 'EURUSD', bid: '1.10000', ask: '1.10010', timestamp: now, volume: '0' },
+      ],
+    };
+    await (stack.feed as unknown as { pump: () => Promise<void> }).pump();
+    expect(seen.map((tick) => tick.symbol)).toEqual(['EURUSD']);
   });
 });

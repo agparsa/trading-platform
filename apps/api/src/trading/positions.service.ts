@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { positionView } from './position-view';
 import {
   commissionForLeg,
   exitPriceFor,
@@ -944,44 +945,9 @@ export class PositionsService {
         )
       : new Map();
 
-    return positions.map((position) => ({
-      id: position.id,
-      symbol: position.symbol.code,
-      side: position.side,
-      status: position.status,
-      volume: position.volume.toString(),
-      initialVolume: position.initialVolume.toString(),
-      entryPrice: position.entryPrice.toString(),
-      currentPrice: position.currentPrice?.toString() ?? null,
-      stopLoss: position.stopLoss?.toString() ?? null,
-      takeProfit: position.takeProfit?.toString() ?? null,
-      trailingStopDistance: position.trailingStopDistance?.toString() ?? null,
-      highWaterPrice: position.highWaterPrice?.toString() ?? null,
-      margin: position.margin.toString(),
-      commission: position.commission.toString(),
-      swap: position.swap.toString(),
-      realizedPnl: position.realizedPnl.toString(),
-      /**
-       * Price P&L at the current mark, before costs. `null` for a closed
-       * position, and for an open one whose instrument has no fresh quote —
-       * never `'0'`, because a trader cannot tell a genuine flat from a missing
-       * price, and one of those is a reason to act.
-       */
-      floatingPnl: valuations.get(position.id)?.floatingPnl?.toString() ?? null,
-      /** True when no fresh price existed, so the mark above is not current. */
-      stale: valuations.get(position.id)?.stale ?? null,
-      /**
-       * Floating P&L less the costs already charged against this position.
-       *
-       * Deliberately not an estimate of the round trip — the exit commission
-       * has not been charged, and inventing it would put a number on screen no
-       * ledger entry will ever match.
-       */
-      netFloatingPnl: valuations.get(position.id)?.netPnl?.toString() ?? null,
-      closeReason: position.closeReason,
-      openedAt: position.openedAt.toISOString(),
-      closedAt: position.closedAt?.toISOString() ?? null,
-    }));
+    return positions.map((position) =>
+      positionView(position, position.symbol.code, valuations.get(position.id)),
+    );
   }
 
   async trades(userId: string, accountId: string, limit: number) {

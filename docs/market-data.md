@@ -190,3 +190,51 @@ It is deliberately **not** part of `/ready`. A process pulled out of the load
 balancer because the upstream feed stopped is a process that cannot serve
 history, account state or the ledger either, and traders would lose the screen
 that tells them what has happened. Alert on it; do not route on it.
+
+## Real prices (live sources)
+
+The simulator invents a market. An instrument can instead follow a real one:
+`LiveFeedService` listens on a venue's WebSocket and hands each quote to
+`MarketFeedService.ingest` — the same seam, integrity gate and fan-out as every
+other tick. Off unless configured.
+
+| Variable                 | Example                         | Source                                                                                      |
+| ------------------------ | ------------------------------- | ------------------------------------------------------------------------------------------- |
+| `MARKET_LIVE_BINANCE`    | `BTCUSD:btcusdt,ETHUSD:ethusdt` | Binance's public best bid/ask (`<symbol>@bookTicker`). No key.                              |
+| `MARKET_LIVE_TWELVEDATA` | `EURUSD:EUR/USD,XAUUSD:XAU/USD` | Twelve Data price stream. Needs `TWELVEDATA_API_KEY`. **Pending verification** — see below. |
+
+Pairs are `PLATFORMCODE:venue-symbol`. What holds:
+
+- **A covered instrument is never simulated**, even while its source is down.
+  An outage shows as a stale price, which `requireFresh` refuses to trade on —
+  not as an invented price that looks alive.
+- At most four ticks a second per instrument reach the platform; a book ticker
+  prints far more often, and every tick is evaluated against every stop.
+- The bid is rounded down and the ask up to the instrument's precision, so
+  rounding cannot cross the book.
+- A dropped socket reconnects with a growing pause (1s to 30s) and is logged
+  as a transport fault. It is never a market event.
+- Only the ingesting instance listens; the others relay, as with the simulator.
+
+**Binance.** The default host is `wss://data-stream.binance.vision`, Binance's
+market-data-only endpoint: `stream.binance.com` and `api.binance.com` refuse
+connections from the United States, where the production server is. The pairs
+are quoted in **USDT**, a dollar stablecoin — close to the dollar and not the
+dollar. `BTCUSD` here is therefore BTC/USDT's book; say so to anyone who
+compares it with a USD venue to the cent.
+
+**Twelve Data.** Written from the published documentation
+(`wss://ws.twelvedata.com/v1/quotes/price`, `{"action":"subscribe",...}`,
+price events with `bid`/`ask` "where available") and **not yet run against a
+live key**. When a price arrives without a bid and ask, the platform quotes its
+own half-spread around it. Their free plan is limited to one connection, eight
+"trial" symbols, and evaluation use; showing prices to traders needs a paid
+plan. No free feed was found (November 2026) that licenses forex and metals
+quotes for display: Tiingo's free plan is "internal use only", Twelve Data's is
+a trial. Until a licensed feed is chosen, forex and metals stay simulated, and
+`MARKET_SIMULATOR_PRICES` can set the level the simulation reverts to.
+
+**Switching an instrument from simulated to live moves its price to the real
+one at once.** The integrity gate refuses the jump, then re-anchors after
+`MARKET_REANCHOR_AFTER` consecutive ticks; open positions are revalued at the
+real price, and stops and stop-outs act on it. The chart shows the step.

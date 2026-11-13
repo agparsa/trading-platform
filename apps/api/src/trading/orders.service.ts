@@ -66,6 +66,7 @@ import { ConfigService } from '@nestjs/config';
 import { Inject } from '@nestjs/common';
 import type { Env } from '../config/env.schema';
 import { requireTenantId } from '@tp/tenancy';
+import { positionView } from './position-view';
 
 /**
  * Carries a risk rejection out of the transaction that discovered it.
@@ -725,6 +726,13 @@ export class OrdersService {
       volume: volume.toString(),
       price: entryPrice.toString(),
       executedAt: result.order.createdAt.toISOString(),
+      /**
+       * The position this fill opened, as `GET /positions` would give it — so
+       * a screen can show it the moment the order is answered rather than
+       * after a second request. Unvalued: its floating figures are null until
+       * the next account frame, never a guessed zero.
+       */
+      position: positionView(result.position, symbolCode),
     };
   }
 
