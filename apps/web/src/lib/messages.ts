@@ -843,6 +843,7 @@ export const en = {
   'profile.saved': 'Saved.',
   'profile.failed': 'Your profile could not be loaded.',
   'sound.notices': 'Trading notifications (bell and phone push)',
+  'chart.ask': 'Ask',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1677,6 +1678,7 @@ export const fa: Messages = {
   'profile.saved': 'ذخیره شد.',
   'profile.failed': 'پروفایل شما بارگیری نشد.',
   'sound.notices': 'اعلان‌های معاملاتی (زنگوله و پوش گوشی)',
+  'chart.ask': 'Ask',
 };
 
 const TABLES: Record<Locale, Messages> = { en, fa };

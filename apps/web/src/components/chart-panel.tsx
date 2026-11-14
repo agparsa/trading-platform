@@ -477,6 +477,36 @@ function Candles({
   const linesRef = useRef<Map<string, IPriceLine>>(new Map());
   const dragRef = useRef<DragState | null>(null);
   dragRef.current = drag;
+
+  /**
+   * The ask, as its own line. The candles are bid prices — what a sell gets —
+   * so without it a buy filled above every candle on screen looks like a bad
+   * fill, when the gap is the spread. One line, moved on every quote rather
+   * than redrawn.
+   */
+  const askLineRef = useRef<IPriceLine | null>(null);
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (series === null || quote === undefined) return;
+    const options = {
+      price: Number(quote.ask),
+      color: palette.text,
+      lineWidth: 1 as const,
+      lineStyle: LineStyle.Dotted,
+      axisLabelVisible: true,
+      title: t('chart.ask'),
+    };
+    if (askLineRef.current === null) askLineRef.current = series.createPriceLine(options);
+    else askLineRef.current.applyOptions(options);
+  }, [quote, palette, t]);
+  useEffect(
+    () => () => {
+      // Not a stale ask from the last instrument while the next one loads.
+      if (askLineRef.current !== null) seriesRef.current?.removePriceLine(askLineRef.current);
+      askLineRef.current = null;
+    },
+    [spec.code],
+  );
   const editRef = useRef({ editing, dirty });
   editRef.current = { editing, dirty };
   /** Opens the editor on a position — unless another one has unsaved changes. */

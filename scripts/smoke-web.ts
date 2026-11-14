@@ -2318,6 +2318,31 @@ async function main(): Promise<void> {
         `lost shown ${lostShown} · restored shown ${backShown}`,
       );
 
+      // The smallest phone still in use (320 × 568): nothing wider than the
+      // screen on the chart or the account screen, and Buy and Sell visible.
+      await page.setViewportSize({ width: 320, height: 568 });
+      const widest: string[] = [];
+      for (const tab of ['Chart', 'Account'] as const) {
+        await phone.getByRole('button', { name: new RegExp(`^${tab}`) }).click();
+        await page.waitForTimeout(400);
+        const over = await page.evaluate<number>(
+          '(() => document.documentElement.scrollWidth - window.innerWidth)()',
+        );
+        widest.push(`${tab} ${over}px`);
+      }
+      await phone.getByRole('button', { name: /^Chart/ }).click();
+      const buyVisible = await page
+        .getByTestId('quick-trade')
+        .getByRole('button', { name: /BUY/ })
+        .isVisible()
+        .catch(() => false);
+      await screenshot(page, 'terminal phone 320');
+      ok(
+        widest.every((entry) => entry.endsWith(' 0px') || entry.includes(' -')) && buyVisible,
+        'on a 320-pixel phone nothing is wider than the screen, and Buy is on it',
+        `${widest.join(' · ')} · Buy visible ${buyVisible}`,
+      );
+
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.getByTestId('phone').waitFor({ state: 'detached', timeout: 10_000 });
     }
