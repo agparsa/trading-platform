@@ -200,6 +200,17 @@ export const envSchema = z
     /** `practice` for a demo account's token, `live` for a real one's. */
     OANDA_ENVIRONMENT: z.enum(['practice', 'live']).default('practice'),
     /**
+     * fastFOREX bid/ask, polled — e.g. `EURUSD:EURUSD,XAUUSD:XAUUSD`. Forex
+     * from `/fx/quote` (Extra plan and up), metals from `/metals/quote`
+     * (Premium and up). Needs FASTFOREX_API_KEY.
+     */
+    MARKET_LIVE_FASTFOREX: z.string().default(''),
+    FASTFOREX_API_KEY: z.string().default(''),
+    FASTFOREX_BASE_URL: z.string().url().default('https://api.fastforex.io'),
+    /** One poll fetches every batch of ten; the month's calls must fit the quota. */
+    FASTFOREX_POLL_MS: z.coerce.number().int().min(1_000).default(6_000),
+    FASTFOREX_MONTHLY_QUOTA: z.coerce.number().int().min(1).default(1_000_000),
+    /**
      * Reference levels for the simulated market: `XAUUSD:3350,BTCUSD:95000`.
      *
      * The prices shipped in code are plausible, not live, and they were plausible
@@ -335,6 +346,14 @@ export const envSchema = z
 
     // How old a quote may be before the engine refuses to trade on it.
     QUOTE_MAX_AGE_MS: z.coerce.number().int().min(100).default(5_000),
+    /** Per instrument, e.g. `EURUSD:15000` for a polled feed; see QuoteService.maxAgeMs. */
+    QUOTE_MAX_AGE_OVERRIDES: z
+      .string()
+      .regex(
+        /^(\s*[A-Z0-9._-]+\s*:\s*\d+\s*)?(,\s*[A-Z0-9._-]+\s*:\s*\d+\s*)*$/,
+        'SYMBOL:ms,SYMBOL:ms',
+      )
+      .default(''),
 
     /**
      * Market data integrity thresholds. See MarketIntegrityService and

@@ -184,3 +184,58 @@ describe('the OANDA source', () => {
     live.stop();
   });
 });
+
+describe('the fastFOREX source', () => {
+  const FX =
+    '{"quotes":{"EURUSD":{"bid":"1.10214","ask":"1.1025","tsp":"1794613872987","size":1}},"ms":3}';
+
+  it('polls fx and metals separately with the key in a header, and ingests each quote once', async () => {
+    const { live } = service({
+      MARKET_LIVE_FASTFOREX: 'XAUUSD:XAUUSD,BTCUSD:EURUSD',
+      FASTFOREX_API_KEY: 'ff-secret',
+      FASTFOREX_BASE_URL: 'https://api.fastforex.io',
+      FASTFOREX_POLL_MS: 6000 as never,
+      FASTFOREX_MONTHLY_QUOTA: 1_000_000 as never,
+    });
+    const polls: Array<{
+      urls: readonly string[];
+      headers: Readonly<Record<string, string>>;
+      interval: number;
+    }> = [];
+    const socket = fakeSocket();
+    live.pollFactory = (urls, headers, interval) => {
+      polls.push({ urls, headers, interval });
+      return socket;
+    };
+    const ticks: Tick[] = [];
+    live.start(async (tick) => void ticks.push(tick));
+    expect(polls[0]).toEqual({
+      urls: [
+        'https://api.fastforex.io/fx/quote?pairs=EURUSD',
+        'https://api.fastforex.io/metals/quote?instruments=XAUUSD',
+      ],
+      headers: { 'X-API-Key': 'ff-secret' },
+      interval: 6000,
+    });
+    expect(live.describe()).not.toContain('ff-secret');
+    socket.onopen?.({});
+    socket.onmessage?.({ data: FX });
+    socket.onmessage?.({ data: FX });
+    await Promise.resolve();
+    expect(ticks).toEqual([
+      expect.objectContaining({ symbol: 'BTCUSD', bid: '1.10', ask: '1.11' }),
+    ]);
+    live.stop();
+  });
+
+  it('refuses to start a poll that would spend the month’s quota early', () => {
+    const { live } = service({
+      MARKET_LIVE_FASTFOREX: 'XAUUSD:XAUUSD',
+      FASTFOREX_API_KEY: 'k',
+      FASTFOREX_BASE_URL: 'https://api.fastforex.io',
+      FASTFOREX_POLL_MS: 1000 as never,
+      FASTFOREX_MONTHLY_QUOTA: 1_000_000 as never,
+    });
+    expect(live.covers('XAUUSD')).toBe(false);
+  });
+});

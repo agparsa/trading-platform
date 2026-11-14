@@ -136,11 +136,11 @@ export class QuoteService {
      */
     this.metrics.quoteAge.observe({ symbol, purpose }, Math.max(0, nowMs - tick.timestamp) / 1000);
 
-    if (!isTickFresh(tick, nowMs, { maxAgeMs: this.maxAgeMs() })) {
+    if (!isTickFresh(tick, nowMs, { maxAgeMs: this.maxAgeMs(symbol) })) {
       throw new DomainError(
         TradingErrorCode.STALE_QUOTE,
         `The last ${symbol} price is too old to trade on`,
-        { symbol, ageMs: nowMs - tick.timestamp, maxAgeMs: this.maxAgeMs() },
+        { symbol, ageMs: nowMs - tick.timestamp, maxAgeMs: this.maxAgeMs(symbol) },
       );
     }
     return tick;
@@ -175,8 +175,22 @@ export class QuoteService {
     return newest === null ? null : nowMs - newest;
   }
 
-  private maxAgeMs(): number {
-    return this.config.getOrThrow('QUOTE_MAX_AGE_MS', { infer: true });
+  /**
+   * How old a price may be and still be traded on — per instrument, because
+   * markets are not fed alike. A crypto book over a socket ticks many times a
+   * second; forex polled from a REST quote endpoint every few seconds cannot
+   * be held to the same five seconds without refusing every other order.
+   * `QUOTE_MAX_AGE_OVERRIDES` (`EURUSD:15000,XAUUSD:15000`) widens or narrows
+   * it for the instruments named; every other one keeps `QUOTE_MAX_AGE_MS`.
+   */
+  maxAgeMs(symbol?: string): number {
+    const fallback = this.config.getOrThrow('QUOTE_MAX_AGE_MS', { infer: true });
+    if (symbol === undefined) return fallback;
+    return (
+      parseAgeOverrides(this.config.get('QUOTE_MAX_AGE_OVERRIDES', { infer: true }) ?? '')[
+        symbol
+      ] ?? fallback
+    );
   }
 }
 
@@ -186,3 +200,15 @@ export class QuoteService {
  * that uses it — one answer to "is this book broken", not two that can drift.
  */
 export { isBookSane };
+
+/** `EURUSD:15000,XAUUSD:15000` → `{ EURUSD: 15000, XAUUSD: 15000 }`; malformed entries are ignored. */
+export function parseAgeOverrides(text: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const pair of text.split(',')) {
+    const [code, ms] = pair.split(':').map((part) => part.trim());
+    if (code === undefined || code === '' || ms === undefined || !/^\d+$/.test(ms)) continue;
+    const value = Number(ms);
+    if (value >= 100) out[code] = value;
+  }
+  return out;
+}

@@ -292,3 +292,53 @@ with a TradingView chart of the same symbol.
   required and a non-tradeable status is refused. It is **pending verification
   against a live stream**. Redisplaying OANDA's prices to clients is a matter
   for OANDA's agreement with the firm, not something this code decides.
+
+## fastFOREX (forex and metals, bid/ask, polled)
+
+Checked against the live API on 14 Nov 2026 with a 7-day trial key, which has
+a 1,000,000-call monthly quota:
+
+| Endpoint                                 | Answer                                                                        |
+| ---------------------------------------- | ----------------------------------------------------------------------------- |
+| `GET /usage`                             | 200, `monthly_quota`, `current_period.remaining_quota`                        |
+| `GET /fetch-multi`, `GET /fetch-one`     | 200, **midpoint only** (`results` / `result`) — never used as a dealing price |
+| `GET /fx/quote?pairs=EURUSD,…`           | 200, `bid`, `ask`, `tsp` (string, Unix ms), `size` 1                          |
+| `GET /metals/quote?instruments=XAUUSD,…` | 200, `bid`, `ask`, `mid`, `spread`, `tsp` (number), `unit` `oz_t`             |
+
+The WebSocket (`wss://fastforex.wsdx.io`) requires the Premium + WebSockets plan.
+It is documented but has not been confirmed for this key, so it is **not**
+implemented. Prices are polled instead.
+
+Configuration:
+
+- `MARKET_LIVE_FASTFOREX=EURUSD:EURUSD,…,XAUUSD:XAUUSD` maps platform code to
+  fastFOREX instrument. Metals (`XAU`, `XAG`, `XPT`, `XPD`) go to
+  `/metals/quote`, everything else to `/fx/quote`, ten instruments a call.
+- `FASTFOREX_API_KEY` is a file-backed secret, sent in the `X-API-Key` header
+  and never logged. `FASTFOREX_POLL_MS` defaults to 6000. At start-up the month
+  (2 calls × one every 6 s = 864,000) is checked against
+  `FASTFOREX_MONTHLY_QUOTA`, and a source that would overrun it is not started.
+- A 401, 403, 429, 5xx or network failure closes the poll, and the live feed
+  reconnects with its 1→30 s pause.
+- Only a quote with **both** a bid and an ask becomes a tick. An FX quote for a
+  `size` other than 1, or a metal in a unit other than troy ounces, is skipped
+  rather than rescaled. A repeated quote (same `tsp`) is ingested once.
+- The tick's time is the source's `tsp`. Outside an instrument's session no tick
+  is published at all, so over the weekend the forex instruments hold Friday's
+  last price and refuse to trade (`ingest` → `isSessionOpen`).
+- A polled price is older than a streamed one, so freshness is per instrument:
+  `QUOTE_MAX_AGE_OVERRIDES=EURUSD:15000,…` (see `QuoteService.maxAgeMs`).
+  Without an override, a 6 s poll would refuse roughly every other order under
+  the default 5 s.
+
+Run end to end in the development container against the live API: the start-up
+log read "fastforex: 6 instrument(s), 2 call(s) every 6000 ms (about 864000 of
+1000000 a month)" and "fastforex: live feed connected". XAUUSD became
+3881.93 / 3886.08, Friday's close. The key appeared nowhere in the log.
+
+**Before switching an instrument from the simulator to a real source:** the
+simulator's gold stood near 4583 and the real price near 3884. Switching moves
+every open position on that instrument to the real price at once, which can
+trigger stops and stop-outs, and the stored candles before the switch are
+simulated history. Close or settle open positions on those instruments first,
+and decide what to do with the simulated candles, before the switch.

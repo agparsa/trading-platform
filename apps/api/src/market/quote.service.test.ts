@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ConfigService } from '@nestjs/config';
 import type { Tick } from '@tp/market-core';
-import { QuoteService } from './quote.service';
+import { QuoteService, parseAgeOverrides } from './quote.service';
 import type { RedisService } from '../redis/redis.service';
 import { MetricsService } from '../metrics/metrics.service';
 
@@ -146,5 +146,39 @@ describe('QuoteService ordering', () => {
     await expect(quotes.requireFresh('NOTHING', NOW)).rejects.toMatchObject({
       code: 'NO_QUOTE_AVAILABLE',
     });
+  });
+});
+
+describe('how old a price may be, per instrument', () => {
+  const build = (overrides: string) => {
+    const fake = fakeRedis();
+    const config = new ConfigService<Record<string, unknown>, true>({
+      QUOTE_MAX_AGE_MS: 5_000,
+      QUOTE_MAX_AGE_OVERRIDES: overrides,
+    } as never);
+    return new QuoteService(fake.service, config as never, new MetricsService());
+  };
+
+  it('holds a polled instrument to its own limit and every other to the default', async () => {
+    const quotes = build('EURUSD:15000');
+    await quotes.publish(
+      tick({ symbol: 'EURUSD', bid: '1.10214', ask: '1.10250', timestamp: NOW }),
+    );
+    await quotes.publish(tick({ timestamp: NOW }));
+    await expect(quotes.requireFresh('EURUSD', NOW + 12_000)).resolves.toBeTruthy();
+    await expect(quotes.requireFresh('XAUUSD', NOW + 12_000)).rejects.toMatchObject({
+      code: 'STALE_QUOTE',
+    });
+    await expect(quotes.requireFresh('EURUSD', NOW + 15_001)).rejects.toMatchObject({
+      code: 'STALE_QUOTE',
+    });
+  });
+
+  it('reads the overrides, ignoring what is malformed', () => {
+    expect(parseAgeOverrides('EURUSD:15000, XAUUSD : 20000,BAD,XAGUSD:x,GBPUSD:50')).toEqual({
+      EURUSD: 15_000,
+      XAUUSD: 20_000,
+    });
+    expect(parseAgeOverrides('')).toEqual({});
   });
 });

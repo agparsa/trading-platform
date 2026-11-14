@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   TickThrottle,
   parseSymbolMap,
+  isFastForexMetal,
+  ticksFromFastForexQuotes,
   tickFromBinanceBookTicker,
   tickFromOandaPrice,
   tickFromTwelveDataPrice,
@@ -190,5 +192,55 @@ describe('OANDA v20 pricing stream', () => {
   it('never dates a price after now', () => {
     const later = DOCUMENTED.replace('2016-09-20T15:05:47', '2016-09-20T16:00:00');
     expect(tickFromOandaPrice(later, symbols, precision, NOW)?.timestamp).toBe(NOW);
+  });
+});
+
+describe('fastFOREX quotes', () => {
+  const symbols = { EURUSD: 'EURUSD', USDJPY: 'USDJPY', XAUUSD: 'XAUUSD', XAGUSD: 'XAGUSD' };
+  const precision = (code: string) => ({ EURUSD: 5, USDJPY: 3, XAUUSD: 2, XAGUSD: 3 })[code];
+  const NOW = 1_794_614_000_000;
+  // As the live API answered on 14 Nov 2026.
+  const FX =
+    '{"quotes":{"EURUSD":{"bid":"1.10214","ask":"1.1025","tsp":"1794613872987","size":1},"USDJPY":{"bid":"159.688","ask":"159.755","tsp":"1794613907476","size":1}},"ms":3}';
+  const METALS =
+    '{"quotes":{"XAUUSD":{"bid":"3881.93","ask":"3886.08","mid":"3884.01","spread":"4.15","tsp":1794607199966,"dtm":"2026-11-13T21:59:59Z","metal":"XAU","target":"USD","unit":"oz_t","purity":"1000","cross_rate":false}},"source":"otc_aggregate","ms":6}';
+
+  it('turns each bid/ask quote into a tick at the source time', () => {
+    expect(ticksFromFastForexQuotes(FX, symbols, precision, NOW)).toEqual([
+      { symbol: 'EURUSD', bid: '1.10214', ask: '1.10250', timestamp: 1794613872987, volume: '0' },
+      { symbol: 'USDJPY', bid: '159.688', ask: '159.755', timestamp: 1794613907476, volume: '0' },
+    ]);
+    expect(ticksFromFastForexQuotes(METALS, symbols, precision, NOW)).toEqual([
+      { symbol: 'XAUUSD', bid: '3881.93', ask: '3886.08', timestamp: 1794607199966, volume: '0' },
+    ]);
+  });
+
+  it('never makes a dealing price from a midpoint, or from a quote with no ask', () => {
+    const midOnly =
+      '{"base":"USD","results":{"EUR":0.907178},"updated":"2026-11-13T23:51:47Z","ms":4}';
+    expect(ticksFromFastForexQuotes(midOnly, symbols, precision, NOW)).toEqual([]);
+    const noAsk = '{"quotes":{"XAGUSD":{"bid":"48.595","tsp":1794607199964,"unit":"oz_t"}}}';
+    expect(ticksFromFastForexQuotes(noAsk, symbols, precision, NOW)).toEqual([]);
+  });
+
+  it('skips a quote for another size or unit rather than rescaling it', () => {
+    expect(
+      ticksFromFastForexQuotes(FX.replace('"size":1}', '"size":100000}'), symbols, precision, NOW),
+    ).toHaveLength(1);
+    expect(
+      ticksFromFastForexQuotes(METALS.replace('"oz_t"', '"gram"'), symbols, precision, NOW),
+    ).toEqual([]);
+  });
+
+  it('yields nothing new when a poll returns the same quote again', () => {
+    const seen = new Map<string, number>();
+    expect(ticksFromFastForexQuotes(FX, symbols, precision, NOW, seen)).toHaveLength(2);
+    expect(ticksFromFastForexQuotes(FX, symbols, precision, NOW, seen)).toHaveLength(0);
+  });
+
+  it('knows a metal from a currency pair', () => {
+    expect(isFastForexMetal('XAUUSD')).toBe(true);
+    expect(isFastForexMetal('XAGEUR')).toBe(true);
+    expect(isFastForexMetal('EURUSD')).toBe(false);
   });
 });

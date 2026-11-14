@@ -236,3 +236,74 @@ export function tickFromOandaPrice(
   }
   return tick(code, bid, ask, precision, at);
 }
+
+/**
+ * fastFOREX bid/ask quotes, from `GET /fx/quote?pairs=…` (Extra plan and up)
+ * or `GET /metals/quote?instruments=…` (Premium and up).
+ *
+ * Documented shapes (fastforex.io/docs, API reference):
+ * - `/fx/quote`: `{"quotes":{"EURUSD":{"bid":"1.2145","ask":"1.2146","tsp":"1739305030072","size":1}},"ms":8}`
+ *   — `tsp` is Unix milliseconds as a string; `size` is the units of the base
+ *   the quote is for.
+ * - `/metals/quote`: `{"quotes":{"XAUUSD":{"bid":"4127.32","ask":"4127.65","mid":"4127.49","spread":"0.33","tsp":1793870621899,…,"unit":"oz_t",…}},"source":"otc_aggregate","ms":8}`
+ *   — `tsp` is a number; `ask`, `mid` and `spread` are absent when there is
+ *   no ask.
+ * Both confirmed against the live API on 14 Nov 2026 with a trial key.
+ *
+ * Only a quote with both a bid and an ask becomes a tick: the midpoint
+ * endpoints (`/fetch-*`) are never turned into a dealing price. An FX quote
+ * for more than one unit (`size` ≠ 1) and a metal quoted in anything but troy
+ * ounces are skipped rather than rescaled. The time is the source's, never
+ * later than now. `seen` remembers each instrument's last source time, so a
+ * poll that returns the same quote again yields nothing new.
+ */
+export function ticksFromFastForexQuotes(
+  raw: string,
+  symbols: SymbolMap,
+  precisionOf: (code: string) => number | undefined,
+  now: number,
+  seen?: Map<string, number>,
+): Tick[] {
+  let message: unknown;
+  try {
+    message = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (typeof message !== 'object' || message === null) return [];
+  const quotes = (message as { quotes?: unknown }).quotes;
+  if (typeof quotes !== 'object' || quotes === null) return [];
+  const ticks: Tick[] = [];
+  for (const [venue, value] of Object.entries(quotes as Record<string, unknown>)) {
+    const code = symbols[venue];
+    if (code === undefined || typeof value !== 'object' || value === null) continue;
+    const q = value as {
+      bid?: unknown;
+      ask?: unknown;
+      tsp?: unknown;
+      size?: unknown;
+      unit?: unknown;
+    };
+    if (q.size !== undefined && q.size !== 1) continue;
+    if (q.unit !== undefined && q.unit !== 'oz_t') continue;
+    const precision = precisionOf(code);
+    const bid = positive(q.bid);
+    const ask = positive(q.ask);
+    if (precision === undefined || bid === null || ask === null) continue;
+    const tsp = typeof q.tsp === 'number' ? q.tsp : typeof q.tsp === 'string' ? Number(q.tsp) : NaN;
+    if (!Number.isFinite(tsp) || tsp <= 0) continue;
+    const at = Math.min(Math.trunc(tsp), now);
+    if (seen !== undefined) {
+      if (seen.get(code) === at) continue;
+      seen.set(code, at);
+    }
+    const made = tick(code, bid, ask, precision, at);
+    if (made !== null) ticks.push(made);
+  }
+  return ticks;
+}
+
+/** Whether a fastFOREX instrument is a metal (`/metals/quote`) rather than FX (`/fx/quote`). */
+export function isFastForexMetal(venue: string): boolean {
+  return /^X(AU|AG|PT|PD)[A-Z]{3}$/.test(venue);
+}

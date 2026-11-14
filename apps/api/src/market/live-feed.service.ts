@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import {
   TickThrottle,
   parseSymbolMap,
+  isFastForexMetal,
+  ticksFromFastForexQuotes,
   tickFromBinanceBookTicker,
   tickFromOandaPrice,
   tickFromTwelveDataPrice,
@@ -11,6 +13,7 @@ import {
 } from '@tp/market-core';
 import type { Env } from '../config/env.schema';
 import { httpLineStream } from './http-line-stream';
+import { httpPoll, monthlyCalls } from './http-poll';
 
 /** The part of the standard WebSocket this needs — so a test can stand in for it. */
 export interface LiveSocket {
@@ -31,7 +34,7 @@ interface Source {
   readonly hello: string | null;
   /** Sent on a timer to keep the venue from closing an idle socket. */
   readonly heartbeat: string | null;
-  readonly parse: (raw: string, now: number) => Tick | null;
+  readonly parse: (raw: string, now: number) => Tick | readonly Tick[] | null;
   /** Opens the connection, when it is not a WebSocket to `url`. */
   readonly open?: () => LiveSocket;
 }
@@ -79,6 +82,12 @@ export class LiveFeedService {
     url,
     headers,
   ) => httpLineStream(url, headers);
+  /** Replaced in tests. A REST endpoint polled on an interval (fastFOREX). */
+  pollFactory: (
+    urls: readonly string[],
+    headers: Readonly<Record<string, string>>,
+    intervalMs: number,
+  ) => LiveSocket = (urls, headers, intervalMs) => httpPoll(urls, headers, intervalMs);
 
   constructor(@Inject(ConfigService) private readonly config: ConfigService<Env, true>) {}
 
@@ -146,6 +155,64 @@ export class LiveFeedService {
     }
 
     this.configureOanda(known, precisionOf);
+    this.configureFastForex(known, precisionOf);
+  }
+
+  /**
+   * fastFOREX: bid/ask polled from `/fx/quote` and `/metals/quote`, ten
+   * instruments a call, the key in the `X-API-Key` header. A poll interval
+   * that would spend the month's quota early is refused at start-up, loudly —
+   * prices that stop on the 20th are worse than prices that are slower.
+   */
+  private configureFastForex(
+    known: (map: SymbolMap, source: string) => SymbolMap,
+    precisionOf: (code: string) => number | undefined,
+  ): void {
+    const mapped = parseSymbolMap(this.config.get('MARKET_LIVE_FASTFOREX', { infer: true }) ?? '');
+    if (Object.keys(mapped).length === 0) return;
+    const key = this.config.get('FASTFOREX_API_KEY', { infer: true }) ?? '';
+    if (key === '') {
+      this.logger.warn('fastforex: MARKET_LIVE_FASTFOREX is set but FASTFOREX_API_KEY is not');
+      return;
+    }
+    const fastforex = known(mapped, 'fastforex');
+    const venues = Object.keys(fastforex);
+    if (venues.length === 0) return;
+    const base = this.config.getOrThrow('FASTFOREX_BASE_URL', { infer: true }).replace(/\/$/, '');
+    const batches = (list: string[]) =>
+      Array.from({ length: Math.ceil(list.length / 10) }, (_, i) =>
+        list.slice(i * 10, i * 10 + 10),
+      );
+    const urls = [
+      ...batches(venues.filter((venue) => !isFastForexMetal(venue))).map(
+        (batch) => `${base}/fx/quote?pairs=${batch.join(',')}`,
+      ),
+      ...batches(venues.filter(isFastForexMetal)).map(
+        (batch) => `${base}/metals/quote?instruments=${batch.join(',')}`,
+      ),
+    ];
+    const interval = this.config.getOrThrow('FASTFOREX_POLL_MS', { infer: true });
+    const quota = this.config.getOrThrow('FASTFOREX_MONTHLY_QUOTA', { infer: true });
+    const month = monthlyCalls(urls.length, interval);
+    if (month > quota) {
+      this.logger.error(
+        `fastforex: ${urls.length} call(s) every ${interval} ms is ${month} a month, over the quota of ${quota}; not started. Raise FASTFOREX_POLL_MS.`,
+      );
+      return;
+    }
+    const seen = new Map<string, number>();
+    this.sources.push({
+      name: 'fastforex',
+      url: base,
+      symbols: fastforex,
+      hello: null,
+      heartbeat: null,
+      parse: (raw, now) => ticksFromFastForexQuotes(raw, fastforex, precisionOf, now, seen),
+      open: () => this.pollFactory(urls, { 'X-API-Key': key }, interval),
+    });
+    this.logger.log(
+      `fastforex: ${venues.length} instrument(s), ${urls.length} call(s) every ${interval} ms (about ${month} of ${quota} a month)`,
+    );
   }
 
   /**
@@ -237,11 +304,14 @@ export class LiveFeedService {
     };
     socket.onmessage = (event) => {
       if (typeof event.data !== 'string') return;
-      const tick = source.parse(event.data, Date.now());
-      if (tick === null || !this.throttle.admit(tick)) return;
-      void this.sink?.(tick).catch((error: unknown) => {
-        this.logger.error({ err: error }, `${source.name}: a live tick failed to ingest`);
-      });
+      const parsed = source.parse(event.data, Date.now());
+      const ticks = parsed === null ? [] : Array.isArray(parsed) ? parsed : [parsed as Tick];
+      for (const tick of ticks) {
+        if (!this.throttle.admit(tick)) continue;
+        void this.sink?.(tick).catch((error: unknown) => {
+          this.logger.error({ err: error }, `${source.name}: a live tick failed to ingest`);
+        });
+      }
     };
     socket.onerror = () => {
       // The close that follows is what reconnects; this only says it happened.
