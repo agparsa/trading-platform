@@ -262,3 +262,33 @@ A quote that has not changed for 10 s while the market is open is marked
 price may be out of date (`lib/use-stale.ts`). That is twice the server's
 `QUOTE_MAX_AGE_MS`, past which the engine refuses to trade on the quote. A lost
 socket shows on the connection badge and as a sticky toast.
+
+## Matching TradingView (OANDA and Binance)
+
+TradingView offers no price API for a platform to trade on, and its terms do
+not allow taking its prices for that purpose. A TradingView symbol does name its
+source, though. `BINANCE:BTCUSDT` is Binance, and `OANDA:XAUUSD` or
+`OANDA:EURUSD` is OANDA. Following the same sources makes the terminal agree
+with a TradingView chart of the same symbol.
+
+- **Crypto (Binance).** Since 14 Nov 2026 production follows BTCUSD and ETHUSD
+  from Binance's public book ticker
+  (`MARKET_LIVE_BINANCE=BTCUSD:btcusdt,ETHUSD:ethusdt`, only in the
+  `api-ingest` container). Checked on switch-on: the platform's BTCUSD was
+  65903.12 / 65903.13 while Binance's REST book ticker read 65898.04 / 65898.05
+  moments later. The spread is Binance's own, about one cent, because no markup
+  is configured.
+- **Gold, silver and forex (OANDA v20).** `MARKET_LIVE_OANDA` (for example
+  `XAUUSD:XAU_USD,XAGUSD:XAG_USD,EURUSD:EUR_USD`), `OANDA_API_KEY` (the
+  account's personal access token, a file-backed secret), `OANDA_ACCOUNT_ID`,
+  and `OANDA_ENVIRONMENT` (`practice` or `live`). The feed reads
+  `GET /v3/accounts/{id}/pricing/stream` line by line
+  (`market/http-line-stream.ts`) and takes the top bid and ask from each price
+  line. Heartbeats arrive every 5 s, so a stream silent for 20 s is closed and
+  reconnected. The token travels in the `Authorization` header and is never
+  logged. OANDA streams at most four prices a second per instrument and allows
+  20 streams per IP. The parser follows the documented lines, which carry
+  `status` but not `type` or `tradeable`; the schema lists both, so neither is
+  required and a non-tradeable status is refused. It is **pending verification
+  against a live stream**. Redisplaying OANDA's prices to clients is a matter
+  for OANDA's agreement with the firm, not something this code decides.

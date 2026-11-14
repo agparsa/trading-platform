@@ -127,3 +127,60 @@ describe('the live price feed', () => {
     live.stop();
   });
 });
+
+describe('the OANDA source', () => {
+  const LINE =
+    '{"asks":[{"liquidity":10000000,"price":"4012.37"}],"bids":[{"liquidity":10000000,"price":"4012.05"}],"instrument":"XAU_USD","status":"tradeable","time":"2026-11-14T10:00:00.123456789Z"}';
+
+  it('streams the mapped instruments with the token in a header, and ingests a price', async () => {
+    const { live } = service({
+      MARKET_LIVE_OANDA: 'XAUUSD:XAU_USD',
+      OANDA_API_KEY: 'secret-token-123',
+      OANDA_ACCOUNT_ID: '101-004-1-001',
+      OANDA_ENVIRONMENT: 'practice',
+    });
+    const opened: Array<{ url: string; headers: Readonly<Record<string, string>> }> = [];
+    const socket = fakeSocket();
+    live.streamFactory = (url, headers) => {
+      opened.push({ url, headers });
+      return socket;
+    };
+    const ticks: Tick[] = [];
+    live.start(async (tick) => void ticks.push(tick));
+    expect(opened[0]?.url).toBe(
+      'https://stream-fxpractice.oanda.com/v3/accounts/101-004-1-001/pricing/stream?instruments=XAU_USD',
+    );
+    expect(opened[0]?.headers).toEqual({ Authorization: 'Bearer secret-token-123' });
+    expect(live.covers('XAUUSD')).toBe(true);
+    expect(live.describe()).not.toContain('secret-token-123');
+    socket.onopen?.({});
+    socket.onmessage?.({ data: LINE });
+    await Promise.resolve();
+    expect(ticks).toEqual([
+      expect.objectContaining({ symbol: 'XAUUSD', bid: '4012.05', ask: '4012.37' }),
+    ]);
+    live.stop();
+  });
+
+  it('stays off, saying why, without a token or an account', () => {
+    const { live } = service({ MARKET_LIVE_OANDA: 'XAUUSD:XAU_USD', OANDA_API_KEY: '' });
+    expect(live.covers('XAUUSD')).toBe(false);
+  });
+
+  it('uses the live host for a live account', () => {
+    const { live } = service({
+      MARKET_LIVE_OANDA: 'XAUUSD:XAU_USD',
+      OANDA_API_KEY: 'k',
+      OANDA_ACCOUNT_ID: '001-001-1-001',
+      OANDA_ENVIRONMENT: 'live',
+    });
+    const urls: string[] = [];
+    live.streamFactory = (url) => {
+      urls.push(url);
+      return fakeSocket();
+    };
+    live.start(async () => undefined);
+    expect(urls[0]).toMatch(/^https:\/\/stream-fxtrade\.oanda\.com\//);
+    live.stop();
+  });
+});

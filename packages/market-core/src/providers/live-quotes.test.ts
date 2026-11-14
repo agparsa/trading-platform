@@ -3,6 +3,7 @@ import {
   TickThrottle,
   parseSymbolMap,
   tickFromBinanceBookTicker,
+  tickFromOandaPrice,
   tickFromTwelveDataPrice,
 } from './live-quotes';
 
@@ -132,5 +133,62 @@ describe('TickThrottle', () => {
     expect(at('BTCUSD', 1100)).toBe(false);
     expect(at('ETHUSD', 1100)).toBe(true);
     expect(at('BTCUSD', 1250)).toBe(true);
+  });
+});
+
+describe('OANDA v20 pricing stream', () => {
+  const symbols = { XAU_USD: 'XAUUSD', EUR_USD: 'EURUSD' };
+  const precision = (code: string) => ({ XAUUSD: 2, EURUSD: 5 })[code];
+  const NOW = Date.parse('2016-09-20T15:06:00.000Z');
+  // The line the documentation shows, verbatim.
+  const DOCUMENTED =
+    '{"asks":[{"liquidity":10000000,"price":"1.11704"},{"liquidity":10000000,"price":"1.11706"}],"bids":[{"liquidity":10000000,"price":"1.11690"},{"liquidity":10000000,"price":"1.11688"}],"closeoutAsk":"1.11708","closeoutBid":"1.11686","instrument":"EUR_USD","status":"tradeable","time":"2016-09-20T15:05:47.960449532Z"}';
+
+  it('takes the top of the book from the documented line, at its own time', () => {
+    expect(tickFromOandaPrice(DOCUMENTED, symbols, precision, NOW)).toEqual({
+      symbol: 'EURUSD',
+      bid: '1.11690',
+      ask: '1.11704',
+      timestamp: Date.parse('2016-09-20T15:05:47.960Z'),
+      volume: '0',
+    });
+  });
+
+  it('is nothing for a heartbeat, an unmapped instrument or a non-tradeable price', () => {
+    expect(
+      tickFromOandaPrice(
+        '{"time":"2016-09-20T15:05:50.163791738Z","type":"HEARTBEAT"}',
+        symbols,
+        precision,
+        NOW,
+      ),
+    ).toBeNull();
+    expect(
+      tickFromOandaPrice(DOCUMENTED.replace('EUR_USD', 'GBP_USD'), symbols, precision, NOW),
+    ).toBeNull();
+    expect(
+      tickFromOandaPrice(
+        DOCUMENTED.replace('"status":"tradeable"', '"status":"non-tradeable"'),
+        symbols,
+        precision,
+        NOW,
+      ),
+    ).toBeNull();
+    expect(
+      tickFromOandaPrice(
+        DOCUMENTED.replace('"status":"tradeable"', '"tradeable":false'),
+        symbols,
+        precision,
+        NOW,
+      ),
+    ).toBeNull();
+    expect(
+      tickFromOandaPrice('{"instrument":"EUR_USD","bids":[],"asks":[]}', symbols, precision, NOW),
+    ).toBeNull();
+  });
+
+  it('never dates a price after now', () => {
+    const later = DOCUMENTED.replace('2016-09-20T15:05:47', '2016-09-20T16:00:00');
+    expect(tickFromOandaPrice(later, symbols, precision, NOW)?.timestamp).toBe(NOW);
   });
 });

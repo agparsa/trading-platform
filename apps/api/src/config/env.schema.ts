@@ -190,6 +190,16 @@ export const envSchema = z
     MARKET_LIVE_TWELVEDATA: z.string().default(''),
     TWELVEDATA_API_KEY: z.string().default(''),
     /**
+     * OANDA v20 — the source TradingView's `OANDA:` symbols show, e.g.
+     * `XAUUSD:XAU_USD,EURUSD:EUR_USD`. Needs OANDA_API_KEY (the account's
+     * personal access token) and OANDA_ACCOUNT_ID.
+     */
+    MARKET_LIVE_OANDA: z.string().default(''),
+    OANDA_API_KEY: z.string().default(''),
+    OANDA_ACCOUNT_ID: z.string().default(''),
+    /** `practice` for a demo account's token, `live` for a real one's. */
+    OANDA_ENVIRONMENT: z.enum(['practice', 'live']).default('practice'),
+    /**
      * Reference levels for the simulated market: `XAUUSD:3350,BTCUSD:95000`.
      *
      * The prices shipped in code are plausible, not live, and they were plausible

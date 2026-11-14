@@ -58,6 +58,7 @@ export const FILE_BACKED_SECRETS: readonly string[] = [
   'EMAIL_SMTP_PASSWORD',
   /** The market-data vendor's key, when a live price source needs one. */
   'TWELVEDATA_API_KEY',
+  'OANDA_API_KEY',
 ];
 
 export interface FileSecretsOptions {

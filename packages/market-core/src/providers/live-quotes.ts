@@ -174,3 +174,65 @@ export class TickThrottle {
     return true;
   }
 }
+
+/**
+ * An OANDA v20 price, from `GET /v3/accounts/{accountID}/pricing/stream` — the
+ * feed TradingView's `OANDA:` symbols show, so a terminal following it agrees
+ * with a TradingView chart of the same instrument.
+ *
+ * Documented stream line (developer.oanda.com, pricing endpoint):
+ * `{"asks":[{"liquidity":10000000,"price":"1.11704"}],"bids":[{"liquidity":10000000,"price":"1.11690"}],"closeoutAsk":"1.11708","closeoutBid":"1.11686","instrument":"EUR_USD","status":"tradeable","time":"2016-09-20T15:05:47.960449532Z"}`.
+ * Heartbeats, `{"type":"HEARTBEAT","time":…}` every five seconds, are not
+ * quotes. The schema also lists `type: "PRICE"` and `tradeable`, which the
+ * documented stream lines omit, so neither is required: a line is a price if
+ * it has an instrument and a top-of-book bid and ask, and it is refused if it
+ * says it is not tradeable (`tradeable: false`, or a `status` other than
+ * `tradeable`). The best bucket is the first. The time is RFC 3339 with
+ * nanoseconds, cut to milliseconds and never later than now.
+ *
+ * PENDING VERIFICATION against a live stream: written from the published
+ * documentation, which disagrees with itself on `type` and `tradeable`.
+ */
+export function tickFromOandaPrice(
+  raw: string,
+  symbols: SymbolMap,
+  precisionOf: (code: string) => number | undefined,
+  now: number,
+): Tick | null {
+  let message: unknown;
+  try {
+    message = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof message !== 'object' || message === null) return null;
+  const m = message as {
+    type?: unknown;
+    instrument?: unknown;
+    time?: unknown;
+    status?: unknown;
+    tradeable?: unknown;
+    bids?: unknown;
+    asks?: unknown;
+  };
+  if (m.type !== undefined && m.type !== 'PRICE') return null;
+  if (typeof m.instrument !== 'string') return null;
+  if (m.tradeable === false) return null;
+  if (m.status !== undefined && m.status !== 'tradeable') return null;
+  const code = symbols[m.instrument];
+  if (code === undefined) return null;
+  const precision = precisionOf(code);
+  const best = (side: unknown): Decimal | null =>
+    Array.isArray(side) && typeof side[0] === 'object' && side[0] !== null
+      ? positive((side[0] as { price?: unknown }).price)
+      : null;
+  const bid = best(m.bids);
+  const ask = best(m.asks);
+  if (precision === undefined || bid === null || ask === null) return null;
+  let at = now;
+  if (typeof m.time === 'string') {
+    const parsed = Date.parse(m.time.replace(/(\.\d{3})\d+/, '$1'));
+    if (Number.isFinite(parsed)) at = Math.min(parsed, now);
+  }
+  return tick(code, bid, ask, precision, at);
+}

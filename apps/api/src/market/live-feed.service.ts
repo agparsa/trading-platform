@@ -4,11 +4,13 @@ import {
   TickThrottle,
   parseSymbolMap,
   tickFromBinanceBookTicker,
+  tickFromOandaPrice,
   tickFromTwelveDataPrice,
   type SymbolMap,
   type Tick,
 } from '@tp/market-core';
 import type { Env } from '../config/env.schema';
+import { httpLineStream } from './http-line-stream';
 
 /** The part of the standard WebSocket this needs — so a test can stand in for it. */
 export interface LiveSocket {
@@ -30,6 +32,8 @@ interface Source {
   /** Sent on a timer to keep the venue from closing an idle socket. */
   readonly heartbeat: string | null;
   readonly parse: (raw: string, now: number) => Tick | null;
+  /** Opens the connection, when it is not a WebSocket to `url`. */
+  readonly open?: () => LiveSocket;
 }
 
 /** A live price is at most this old; four a second per instrument. */
@@ -70,6 +74,11 @@ export class LiveFeedService {
   private running = false;
   /** Replaced in tests. The platform's own is Node's built-in WebSocket. */
   socketFactory: SocketFactory = (url) => new WebSocket(url) as unknown as LiveSocket;
+  /** Replaced in tests. An HTTP response read line by line (OANDA's stream). */
+  streamFactory: (url: string, headers: Readonly<Record<string, string>>) => LiveSocket = (
+    url,
+    headers,
+  ) => httpLineStream(url, headers);
 
   constructor(@Inject(ConfigService) private readonly config: ConfigService<Env, true>) {}
 
@@ -135,6 +144,44 @@ export class LiveFeedService {
         });
       }
     }
+
+    this.configureOanda(known, precisionOf);
+  }
+
+  /**
+   * OANDA v20: an HTTP stream of newline-separated JSON, authorised with the
+   * account's token, which goes in a header and nowhere else.
+   */
+  private configureOanda(
+    known: (map: SymbolMap, source: string) => SymbolMap,
+    precisionOf: (code: string) => number | undefined,
+  ): void {
+    const key = this.config.get('OANDA_API_KEY', { infer: true }) ?? '';
+    const account = this.config.get('OANDA_ACCOUNT_ID', { infer: true }) ?? '';
+    const mapped = parseSymbolMap(this.config.get('MARKET_LIVE_OANDA', { infer: true }) ?? '');
+    if (Object.keys(mapped).length === 0) return;
+    if (key === '' || account === '') {
+      this.logger.warn(
+        'oanda: MARKET_LIVE_OANDA is set but OANDA_API_KEY or OANDA_ACCOUNT_ID is not',
+      );
+      return;
+    }
+    const oanda = known(mapped, 'oanda');
+    if (Object.keys(oanda).length === 0) return;
+    const host =
+      this.config.get('OANDA_ENVIRONMENT', { infer: true }) === 'live'
+        ? 'https://stream-fxtrade.oanda.com'
+        : 'https://stream-fxpractice.oanda.com';
+    const url = `${host}/v3/accounts/${encodeURIComponent(account)}/pricing/stream?instruments=${encodeURIComponent(Object.keys(oanda).join(','))}`;
+    this.sources.push({
+      name: 'oanda',
+      url,
+      symbols: oanda,
+      hello: null,
+      heartbeat: null,
+      parse: (raw, now) => tickFromOandaPrice(raw, oanda, precisionOf, now),
+      open: () => this.streamFactory(url, { Authorization: `Bearer ${key}` }),
+    });
   }
 
   /** Whether a live source, up or down, is this instrument's price. */
@@ -174,7 +221,7 @@ export class LiveFeedService {
     if (!this.running) return;
     let socket: LiveSocket;
     try {
-      socket = this.socketFactory(source.url);
+      socket = source.open === undefined ? this.socketFactory(source.url) : source.open();
     } catch (error) {
       this.logger.error({ err: error }, `${source.name}: could not open the live feed`);
       this.reconnectLater(source);
