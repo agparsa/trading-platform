@@ -35,6 +35,7 @@ describe('toasts from trading frames', () => {
     expect(toast?.title).toBe(translate('en', 'toast.stopHit'));
     expect(toast?.tone).toBe('warning');
     expect(toast?.body).toContain('-100.00');
+    expect(toast?.body).toContain('0.10 XAUUSD at 3990.00');
   });
 
   it('calls a partial close partial, and keeps it apart from the final close', () => {

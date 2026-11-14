@@ -56,6 +56,7 @@ import {
 import { barKey, useRealtime } from '@/lib/realtime-store';
 import { EmptyState, inputClass } from './primitives';
 import { useT } from '@/lib/use-locale';
+import { useExplain } from '@/lib/error-words';
 import { useStale } from '@/lib/use-stale';
 import { useToasts } from '@/lib/toasts';
 import { playTradeSound } from '@/lib/trade-sounds';
@@ -397,6 +398,7 @@ function Candles({
    * themselves changing. See lib/chart-commands.ts.
    */
   const commands = useTradingCommands(accountId);
+  const explain = useExplain();
   const quote = useRealtime((state) => state.quotes[spec.code]);
   /**
    * A level released and sent, until the server answers. Drawn where it was
@@ -700,11 +702,11 @@ function Candles({
       sent
         .catch((error: unknown) => {
           playTradeSound('order_rejected', `level-refused:${key}:${Date.now()}`);
-          setRefusal(error instanceof Error ? error.message : t('chart.refused'));
+          setRefusal(explain(error, t('chart.refused')));
         })
         .finally(() => setPending(null));
     },
-    [commands, t],
+    [commands, t, explain],
   );
 
   const hasTarget = useCallback(
@@ -1000,10 +1002,19 @@ function PositionChips({
       setScale(chart.priceScale('right').width());
     };
     const frame = requestAnimationFrame(place);
+    /*
+     * And when the series gets its bars. A chart mounted again — the phone's
+     * Chart tab, opened a second time — has no price scale until its data is
+     * set, and nothing else moves until the next bar, so the chips stayed
+     * hidden. Placed after that frame is drawn, when the scale is the new one.
+     */
+    const afterData = () => requestAnimationFrame(place);
+    series.subscribeDataChanged(afterData);
     chart.timeScale().subscribeVisibleLogicalRangeChange(place);
     chart.subscribeCrosshairMove(place);
     return () => {
       cancelAnimationFrame(frame);
+      series.unsubscribeDataChanged(afterData);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(place);
       chart.unsubscribeCrosshairMove(place);
     };
@@ -1114,6 +1125,7 @@ function PositionChips({
  */
 function useCloser(accountId: string | null, t: ReturnType<typeof useT>) {
   const close = useClosePosition(accountId);
+  const explain = useExplain();
   const [closing, setClosing] = useState<ReadonlySet<string>>(new Set());
   const inFlight = useRef(new Set<string>());
   const run = (position: PositionRow, volume: string | null) => {
@@ -1130,7 +1142,7 @@ function useCloser(accountId: string | null, t: ReturnType<typeof useT>) {
           tone: 'danger',
           sticky: true,
           title: t('pos.closeFailed'),
-          ...(error instanceof Error ? { body: error.message } : {}),
+          body: explain(error, t('pos.closeFailed')),
         });
       })
       .finally(() => {
@@ -1178,6 +1190,7 @@ function LevelEditor({
 }) {
   const t = useT();
   const modify = useModifyPosition(accountId);
+  const explain = useExplain();
   const closer = useCloser(accountId, t);
   const [serverError, setServerError] = useState<string | null>(null);
   const errors = editErrors(spec, position, edit, reference);
@@ -1203,7 +1216,7 @@ function LevelEditor({
       .then(onDone)
       .catch((error: unknown) => {
         playTradeSound('order_rejected', `edit-refused:${position.id}:${Date.now()}`);
-        setServerError(error instanceof Error ? error.message : t('chart.refused'));
+        setServerError(explain(error, t('chart.refused')));
       });
   };
 

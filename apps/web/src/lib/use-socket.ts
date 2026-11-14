@@ -14,7 +14,7 @@ import {
 import { useToasts } from './toasts';
 import { soundFor, tradingToast } from './trading-toasts';
 import { playTradeSound } from './trade-sounds';
-import { useT } from './use-locale';
+import { useLocale, useT } from './use-locale';
 
 const WS_URL = process.env['NEXT_PUBLIC_WS_URL'] ?? 'http://localhost:4000';
 
@@ -76,6 +76,9 @@ export function useSocket(
   const t = useT();
   const tRef = useRef(t);
   tRef.current = t;
+  const { locale } = useLocale();
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
 
   useEffect(() => {
     const store = useRealtime.getState();
@@ -179,7 +182,7 @@ export function useSocket(
       }
 
       // Told from the server's own events only — see tradingToast.
-      const toast = tradingToast(frame.event, frame.data, tRef.current);
+      const toast = tradingToast(frame.event, frame.data, tRef.current, localeRef.current);
       if (toast !== null) {
         useToasts.getState().push(toast);
         // Keyed like the toast, so the order's answer and this frame are one sound.

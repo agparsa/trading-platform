@@ -246,7 +246,12 @@ popover), Account, Wallet, Verification, History, Analytics, Instruments,
 Security and Developer — and the codes the server sends, worded through the
 tables in `lib/server-words.ts` (order status, close reason, account status and
 type), which `client-vocabularies.test.ts` holds to the Prisma enums. CSV
-exports keep the codes. Still English: the server's own messages, the admin
+exports keep the codes. Refusals from the server are worded by their code
+(`lib/error-words.ts`): in Persian, the code's sentence comes first and the
+server's own English message follows, isolated left to right, so figures such
+as "must sit below 4584.6" are not lost. This applies to the chart's editor and
+refusal banner, closes from the chart, one-tap orders and `order.rejected`
+toasts. Still English: the rest of the server's own messages, the admin
 console and the phone; the language note says so on screen. The layout mirrors: every margin, padding,
 alignment and offset in the web app is a logical utility (`ms-`, `pe-`,
 `text-end`, `end-`), not a physical one, so start and end swap with the

@@ -1,5 +1,6 @@
 import type { MessageKey } from './messages';
 import type { Toast } from './toasts';
+import { explainError } from './error-words';
 
 type Translate = (
   key: MessageKey,
@@ -19,7 +20,12 @@ export type TradingToast = Omit<Toast, 'at'>;
  * arriving twice (the order's answer and its frame, or a reconnect replay)
  * replaces one toast rather than stacking two.
  */
-export function tradingToast(event: string, data: unknown, t: Translate): TradingToast | null {
+export function tradingToast(
+  event: string,
+  data: unknown,
+  t: Translate,
+  locale = 'en',
+): TradingToast | null {
   if (typeof data !== 'object' || data === null) return null;
   const d = data as Record<string, unknown>;
   const text = (key: string): string | null => (typeof d[key] === 'string' ? d[key] : null);
@@ -49,6 +55,7 @@ export function tradingToast(event: string, data: unknown, t: Translate): Tradin
       const partial = d['fullyClosed'] === false;
       const net = text('netPnl');
       const body = t('toast.closedBody', {
+        volume: text('closedVolume') ?? '',
         symbol: text('symbol') ?? '',
         price: text('exitPrice') ?? '—',
         pnl: net === null ? '—' : signed(net),
@@ -89,7 +96,7 @@ export function tradingToast(event: string, data: unknown, t: Translate): Tradin
         id: `pos-mod:${id}`,
         tone: 'info',
         sticky: false,
-        title: t('toast.levelsUpdated'),
+        title: t('toast.levelsUpdated', { symbol: text('symbol') ?? '' }),
         body: t('toast.levels', {
           sl: text('stopLoss') ?? '—',
           tp: text('takeProfit') ?? '—',
@@ -105,7 +112,13 @@ export function tradingToast(event: string, data: unknown, t: Translate): Tradin
         // An error stays until the trader has seen it.
         sticky: true,
         title: t('toast.rejected', { symbol: text('symbol') ?? '' }),
-        ...(text('reason') === null ? {} : { body: text('reason') ?? '' }),
+        ...(text('reason') === null
+          ? {}
+          : {
+              body: explainError(text('code') ?? undefined, text('reason') ?? '', locale, (key) =>
+                t(key),
+              ),
+            }),
       };
     }
     default:

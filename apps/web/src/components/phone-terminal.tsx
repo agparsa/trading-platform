@@ -20,6 +20,7 @@ import { useRealtime } from '@/lib/realtime-store';
 import { inlineStartVolume, stepVolume, volumeProblem } from '@/lib/ticket';
 import type { TradingPreferences } from '@/lib/trading-preferences';
 import { useT } from '@/lib/use-locale';
+import { useExplain } from '@/lib/error-words';
 import { useStale } from '@/lib/use-stale';
 import { ChartPanel } from './chart-panel';
 import { ConnectionBadge } from './connection-badge';
@@ -297,6 +298,7 @@ function QuickTrade({
   const quote = useRealtime((state) => state.quotes[symbol.code]);
   const [volume, setVolume] = useState(() => inlineStartVolume(symbol, defaultVolume));
   const open = useOpenPosition(accountId);
+  const explain = useExplain();
   const problem = volumeProblem(symbol, volume);
   const stale = useStale(quote?.timestamp, quote !== undefined && symbol.sessionOpen);
   const ready = problem === null && symbol.sessionOpen && quote !== undefined && !open.isPending;
@@ -332,7 +334,7 @@ function QuickTrade({
           tone: 'danger',
           sticky: true,
           title: t('toast.rejected', { symbol: symbol.code }),
-          ...(error instanceof Error ? { body: error.message } : {}),
+          body: explain(error, t('toast.rejected', { symbol: symbol.code })),
         });
       })
       .finally(() => {

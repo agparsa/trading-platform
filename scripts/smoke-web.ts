@@ -2331,6 +2331,13 @@ async function main(): Promise<void> {
         widest.push(`${tab} ${over}px`);
       }
       await phone.getByRole('button', { name: /^Chart/ }).click();
+      // Chart opened again: the positions are marked on it again.
+      const chipsAgain = await page
+        .getByTestId('position-chip')
+        .first()
+        .waitFor({ timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false);
       const buyVisible = await page
         .getByTestId('quick-trade')
         .getByRole('button', { name: /BUY/ })
@@ -2338,9 +2345,11 @@ async function main(): Promise<void> {
         .catch(() => false);
       await screenshot(page, 'terminal phone 320');
       ok(
-        widest.every((entry) => entry.endsWith(' 0px') || entry.includes(' -')) && buyVisible,
-        'on a 320-pixel phone nothing is wider than the screen, and Buy is on it',
-        `${widest.join(' · ')} · Buy visible ${buyVisible}`,
+        widest.every((entry) => entry.endsWith(' 0px') || entry.includes(' -')) &&
+          buyVisible &&
+          chipsAgain,
+        'on a 320-pixel phone nothing is wider than the screen, Buy is on it, and the positions are marked on a chart opened again',
+        `${widest.join(' · ')} · Buy visible ${buyVisible} · chips ${chipsAgain}`,
       );
 
       await page.setViewportSize({ width: 1440, height: 900 });
