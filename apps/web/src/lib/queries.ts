@@ -1451,6 +1451,39 @@ export function useNotificationPreferences() {
   });
 }
 
+/** The signed-in trader's profile, as `GET /users/me` serves it. */
+export interface ProfileDto {
+  id: string;
+  email: string;
+  displayName: string;
+  /** E.164, or `null`. */
+  phone: string | null;
+  role: string;
+  emailVerified: boolean;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export function useProfile() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['profile'],
+    queryFn: () => api.get<ProfileDto>('/users/me'),
+    enabled: accessToken !== null,
+  });
+}
+
+/** Name and contact number. The server normalises and validates the number. */
+export function useUpdateProfile() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: { displayName?: string; phone?: string | null }) =>
+      api.patch<ProfileDto>('/users/me', patch, { idempotencyKey: crypto.randomUUID() }),
+    onSuccess: (profile) => client.setQueryData(['profile'], profile),
+  });
+}
+
 /**
  * Changes the switches that apply to every category — trading notices on or
  * off, sound on or off, and the volume (0–100) every client plays at.

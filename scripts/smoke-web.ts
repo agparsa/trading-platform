@@ -927,6 +927,19 @@ async function main(): Promise<void> {
     });
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const page = await context.newPage();
+    /**
+     * The terminal's sockets, passed straight through to the server — held so
+     * the phone check below can drop them, as a lost network would, and
+     * watch the terminal say so and reconnect. Chromium's offline mode does
+     * not close an open WebSocket, so it cannot stand in for this.
+     */
+    const terminalSockets: Array<{ close: () => Promise<void> }> = [];
+    await page.routeWebSocket(/\/ws\//, (ws) => {
+      ws.connectToServer();
+      terminalSockets.push({
+        close: () => ws.close({ code: 4000, reason: 'smoke: network lost' }),
+      });
+    });
 
     console.log('\n  As a trader\n');
     await signIn(page, people.trader.email);
@@ -2228,6 +2241,11 @@ async function main(): Promise<void> {
         rows = await more.getByTestId('phone-account-row').count();
         if (rows !== accountsHeld) await page.waitForTimeout(250);
       }
+      await more
+        .getByTestId('phone-profile')
+        .getByText(people.trader.email)
+        .waitFor({ timeout: 10_000 })
+        .catch(() => undefined);
       const named = await more.getByTestId('phone-profile').innerText();
       const soundSwitch = more.getByTestId('sound-enabled');
       await soundSwitch.waitFor({ timeout: 10_000 });
@@ -2251,6 +2269,53 @@ async function main(): Promise<void> {
         rows === accountsHeld && named.includes(people.trader.email) && stored === !soundBefore,
         "the phone's account screen lists the trader's accounts and saves the sound switch to the server",
         `${rows} rows · ${accountsHeld} accounts · email shown ${named.includes(people.trader.email)} · sound ${soundBefore} → ${String(stored)}`,
+      );
+
+      // The profile: a number the server refuses is shown with its reason
+      // and not stored; a good one, typed with spaces, is stored in E.164.
+      await more.getByTestId('phone-profile').click();
+      const phoneField = more.getByTestId('profile-phone');
+      await phoneField.waitFor({ timeout: 10_000 });
+      await phoneField.fill('0912 123 4567');
+      await more.getByTestId('profile-save').click();
+      const refusedPhone = await more
+        .getByRole('alert')
+        .first()
+        .innerText({ timeout: 5_000 })
+        .catch(() => '');
+      const notStored =
+        (await prisma.user.findUniqueOrThrow({ where: { id: trader.id } })).phone === null ||
+        (await prisma.user.findUniqueOrThrow({ where: { id: trader.id } })).phone !== '09121234567';
+      await phoneField.fill('+98 912 123 4567');
+      await more.getByTestId('profile-save').click();
+      let phoneStored: string | null = null;
+      for (let attempt = 0; attempt < 40 && phoneStored !== '+989121234567'; attempt += 1) {
+        phoneStored = (await prisma.user.findUniqueOrThrow({ where: { id: trader.id } })).phone;
+        if (phoneStored !== '+989121234567') await page.waitForTimeout(150);
+      }
+      ok(
+        refusedPhone.includes('international') && notStored && phoneStored === '+989121234567',
+        'the profile refuses a number not in international form, and stores a good one as E.164',
+        `refusal "${refusedPhone}" · stored ${phoneStored ?? 'nothing'}`,
+      );
+
+      // The connection: lost, then back — said on screen both times.
+      for (const socket of terminalSockets.splice(0)) await socket.close();
+      const lostShown = await page
+        .getByText('Connection lost — reconnecting…')
+        .waitFor({ timeout: 30_000 })
+        .then(() => true)
+        .catch(() => false);
+      const backShown = await page
+        .getByText('Connection restored')
+        .waitFor({ timeout: 30_000 })
+        .then(() => true)
+        .catch(() => false);
+      await screenshot(page, 'terminal phone reconnected');
+      ok(
+        lostShown && backShown,
+        'losing the connection is said on screen, and so is getting it back',
+        `lost shown ${lostShown} · restored shown ${backShown}`,
       );
 
       await page.setViewportSize({ width: 1440, height: 900 });

@@ -6,6 +6,8 @@ export interface UserProfile {
   id: string;
   email: string;
   displayName: string;
+  /** E.164, or `null` when the trader has not given one. */
+  phone: string | null;
   role: string;
   emailVerified: boolean;
   createdAt: string;
@@ -27,6 +29,7 @@ export class UsersService {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
+      phone: user.phone,
       role: user.role,
       emailVerified: user.emailVerified,
       createdAt: user.createdAt.toISOString(),
@@ -34,8 +37,21 @@ export class UsersService {
     };
   }
 
-  async updateDisplayName(userId: string, displayName: string): Promise<UserProfile> {
-    await this.prisma.user.update({ where: { id: userId }, data: { displayName } });
+  /**
+   * The trader's own name and contact number. `undefined` leaves a field
+   * alone; a `null` phone removes it.
+   */
+  async updateProfile(
+    userId: string,
+    change: { displayName?: string; phone?: string | null },
+  ): Promise<UserProfile> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(change.displayName === undefined ? {} : { displayName: change.displayName }),
+        ...(change.phone === undefined ? {} : { phone: change.phone }),
+      },
+    });
     return this.profile(userId);
   }
 }

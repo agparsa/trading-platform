@@ -109,6 +109,13 @@ Request DTOs are Zod schemas, validated by a global `ZodValidationPipe`. The sam
 library validates the environment contract and the shared wire types, so a rule
 about a price format is written once instead of once per layer.
 
+A refused body answers `400 VALIDATION_ERROR` with the first issue in the
+message, field and rule, for example `Validation failed: phone: A phone number
+in international form, such as +989121234567`. The rule is written in the schema
+for people to read. The value that was sent is never repeated
+(`validationMessage` in `common/domain-exception.filter.ts`). Before this change
+every refusal read "Validation failed" and nothing more.
+
 ## Rate limits
 
 Per caller address, per minute. Trading actions are protected more tightly than

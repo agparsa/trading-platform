@@ -6,7 +6,29 @@ import { CurrentUser, type AuthenticatedUser } from '../common/decorators/curren
 import { SelfService } from '../common/decorators/self-service.decorator';
 import { UsersService } from './users.service';
 
-const updateProfileSchema = z.object({ displayName: z.string().trim().min(1).max(120) }).strict();
+/**
+ * E.164: a plus, a country code that does not start with 0, and at most fifteen
+ * digits in all. Spaces, dashes and brackets a person types are removed first,
+ * so "+98 912 123 4567" is accepted and stored as "+989121234567".
+ */
+export const E164 = /^\+[1-9]\d{6,14}$/;
+
+export const updateProfileSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(120).optional(),
+    phone: z
+      .string()
+      .transform((value) => value.replace(/[\s()-]/g, ''))
+      .refine((value) => E164.test(value), {
+        message: 'A phone number in international form, such as +989121234567',
+      })
+      .nullable()
+      .optional(),
+  })
+  .strict()
+  .refine((body) => body.displayName !== undefined || body.phone !== undefined, {
+    message: 'Nothing to change',
+  });
 class UpdateProfileDto extends createZodDto(updateProfileSchema) {}
 
 @ApiTags('users')
@@ -22,9 +44,12 @@ export class UsersController {
 
   @SelfService()
   @Patch('me')
-  @ApiOperation({ summary: 'Update your display name' })
+  @ApiOperation({ summary: 'Update your display name and contact number' })
   update(@CurrentUser() user: AuthenticatedUser, @Body() body: UpdateProfileDto) {
-    return this.users.updateDisplayName(user.id, body.displayName);
+    return this.users.updateProfile(user.id, {
+      ...(body.displayName === undefined ? {} : { displayName: body.displayName }),
+      ...(body.phone === undefined ? {} : { phone: body.phone }),
+    });
   }
 
   /*

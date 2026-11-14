@@ -4,6 +4,7 @@ import { AppShell } from '@/components/shell/app-shell';
 import { Panel } from '@/components/primitives';
 import { LanguageSettings } from '@/components/language-settings';
 import { NotificationSettings } from '@/components/notification-settings';
+import { ProfileSettings } from '@/components/profile-settings';
 import { SoundSettings } from '@/components/sound-settings';
 import { ThemeSettings } from '@/components/theme-settings';
 import { TradingSettings } from '@/components/trading-settings';
@@ -24,6 +25,9 @@ export default function SettingsPage() {
 
   return (
     <AppShell title={t('settings.title')} description={t('settings.description')}>
+      <Panel className="mb-3 max-w-md p-4">
+        <ProfileSettings />
+      </Panel>
       <Panel className="mb-3 max-w-md p-4">
         <LanguageSettings />
       </Panel>

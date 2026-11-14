@@ -282,6 +282,10 @@ model User {
   /// Argon2id hash. The plaintext password never reaches the database or a log.
   passwordHash  String    @map("password_hash")
   displayName   String    @map("display_name")
+  /// A contact number the trader gave on their profile, in E.164 form
+  /// (`+989121234567`). Optional and unverified: it is for support to call,
+  /// never a second factor or a login.
+  phone         String?   @map("phone")
   role          UserRole  @default(USER)
   emailVerified Boolean   @default(false) @map("email_verified")
   /// The TOTP shared secret, sealed with AES-256-GCM and bound to this row —

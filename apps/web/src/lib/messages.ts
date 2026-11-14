@@ -836,6 +836,13 @@ export const en = {
   'chart.offGrid': 'Must be a multiple of {tick}.',
   'quote.stale': 'Delayed',
   'quote.staleTitle': 'No new price for 10 seconds — the price shown may be out of date.',
+  'profile.title': 'Profile',
+  'profile.email': 'Email (your sign-in)',
+  'profile.name': 'Name',
+  'profile.phone': 'Phone number',
+  'profile.saved': 'Saved.',
+  'profile.failed': 'Your profile could not be loaded.',
+  'sound.notices': 'Trading notifications (bell and phone push)',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1663,6 +1670,13 @@ export const fa: Messages = {
   'chart.offGrid': 'باید مضربی از {tick} باشد.',
   'quote.stale': 'تأخیر',
   'quote.staleTitle': '10 ثانیه است قیمت جدیدی نرسیده — قیمت نمایش‌داده‌شده ممکن است قدیمی باشد.',
+  'profile.title': 'پروفایل',
+  'profile.email': 'ایمیل (نام کاربری ورود)',
+  'profile.name': 'نام',
+  'profile.phone': 'شمارهٔ تلفن',
+  'profile.saved': 'ذخیره شد.',
+  'profile.failed': 'پروفایل شما بارگیری نشد.',
+  'sound.notices': 'اعلان‌های معاملاتی (زنگوله و پوش گوشی)',
 };
 
 const TABLES: Record<Locale, Messages> = { en, fa };

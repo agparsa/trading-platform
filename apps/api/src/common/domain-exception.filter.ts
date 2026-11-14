@@ -181,7 +181,11 @@ export class DomainExceptionFilter implements ExceptionFilter {
         status,
         body: {
           ok: false,
-          error: { code: codeForStatus(status), message: exception.message, requestId },
+          error: {
+            code: codeForStatus(status),
+            message: validationMessage(exception) ?? exception.message,
+            requestId,
+          },
           ...(report === null ? {} : { data: report }),
         },
       };
@@ -304,4 +308,33 @@ function healthReport(response: unknown): HealthReport | null {
   if (status !== 'ok' && status !== 'error' && status !== 'shutting_down') return null;
   if (typeof candidate['details'] !== 'object' || candidate['details'] === null) return null;
   return candidate as unknown as HealthReport;
+}
+
+/**
+ * What a refused request body actually got wrong.
+ *
+ * The validation pipe throws "Validation failed" and keeps the schema's own
+ * words in the exception's issues, where a client never saw them: a trader who
+ * typed a phone number without its country code was told only that something,
+ * somewhere, was invalid. The first issue is appended — field and the schema's
+ * message, which are written for people — so the screen can say which field
+ * and why. Never the value itself: the message is about the rule, not the input.
+ */
+export function validationMessage(exception: HttpException): string | null {
+  const response = exception.getResponse();
+  if (typeof response !== 'object' || response === null) return null;
+  const errors = (response as { errors?: unknown }).errors;
+  const issues = Array.isArray(errors)
+    ? errors
+    : typeof errors === 'object' &&
+        errors !== null &&
+        Array.isArray((errors as { issues?: unknown }).issues)
+      ? (errors as { issues: unknown[] }).issues
+      : null;
+  const first = issues?.[0];
+  if (typeof first !== 'object' || first === null) return null;
+  const { message, path } = first as { message?: unknown; path?: unknown };
+  if (typeof message !== 'string' || message === '') return null;
+  const where = Array.isArray(path) && path.length > 0 ? `${path.join('.')}: ` : '';
+  return `${exception.message}: ${where}${message}`;
 }

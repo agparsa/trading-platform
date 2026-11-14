@@ -47,6 +47,17 @@ export function SoundSettings() {
         {t('sound.title')}
       </legend>
       <label className="flex min-h-8 items-center justify-between gap-3 text-sm text-terminal-text">
+        {t('sound.notices')}
+        <input
+          type="checkbox"
+          role="switch"
+          className="h-5 w-9"
+          checked={settings.data?.tradingEnabled ?? false}
+          onChange={(event) => update.mutate({ tradingEnabled: event.target.checked })}
+          data-testid="notices-enabled"
+        />
+      </label>
+      <label className="flex min-h-8 items-center justify-between gap-3 text-sm text-terminal-text">
         {t('sound.enabled')}
         <input
           type="checkbox"

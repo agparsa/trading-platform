@@ -420,6 +420,11 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
   await as.trader('DELETE', `/orders/${withdrawn.orderId}`);
 
   // --- The trader's other things.
+  // The profile's own fields — the web's profile form.
+  answers.record(
+    'PATCH /users/me',
+    await as.trader('PATCH', '/users/me', { phone: '+44 20 7946 0000' }),
+  );
   // The switches over every category — the web terminal's sound settings.
   answers.record(
     'PATCH /notifications/preferences',

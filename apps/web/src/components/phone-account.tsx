@@ -1,24 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { cn } from '@tp/ui';
 import { accountView } from '@/lib/account-view';
 import { money, percent } from '@/lib/format';
 import type { MessageKey } from '@/lib/messages';
-import { useAccounts, type AccountStateResponse } from '@/lib/queries';
+import { useAccounts, useProfile, type AccountStateResponse } from '@/lib/queries';
 import { useRealtime } from '@/lib/realtime-store';
 import { useSession } from '@/lib/session';
 import { useT } from '@/lib/use-locale';
 import { LanguageSettings } from './language-settings';
+import { ProfileSettings } from './profile-settings';
 import { SoundSettings } from './sound-settings';
 import { ThemeSettings } from './theme-settings';
-
-interface Profile {
-  displayName: string;
-  email: string;
-  emailVerified: boolean;
-}
 
 /**
  * Account and settings on a phone, laid out the way a trading app's is: who
@@ -29,8 +24,8 @@ interface Profile {
  * Every figure is the server's: the profile from `/users/me`, the accounts
  * from `/accounts`, balance through margin level from the account state the
  * terminal already holds, live from the socket. Nothing is shown that the
- * platform does not have — there is no phone number or photo on a profile,
- * so there is no field pretending there is.
+ * platform does not have — there is no photo on a profile, so there is no
+ * field pretending there is.
  */
 export function PhoneAccount({
   accountId,
@@ -42,12 +37,9 @@ export function PhoneAccount({
   onSignOut: () => void;
 }) {
   const t = useT();
-  const { api, accessToken, selectAccount } = useSession();
-  const profile = useQuery({
-    queryKey: ['profile'],
-    queryFn: () => api.get<Profile>('/users/me'),
-    enabled: accessToken !== null,
-  });
+  const { selectAccount } = useSession();
+  const profile = useProfile();
+  const [editing, setEditing] = useState(false);
   const accounts = useAccounts();
   const live = useRealtime((state) => state.account);
   const state = accountView(accountId, snapshot, live);
@@ -67,30 +59,44 @@ export function PhoneAccount({
       data-testid="phone-account"
     >
       {/* Who */}
-      <Link
-        href="/account"
-        className="flex items-center gap-3 rounded-xl bg-terminal-surface p-3"
-        data-testid="phone-profile"
-      >
-        <span
-          aria-hidden
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-terminal-raised text-sm font-medium text-terminal-text"
+      <div className="rounded-xl bg-terminal-surface">
+        <button
+          type="button"
+          onClick={() => setEditing((now) => !now)}
+          aria-expanded={editing}
+          className="flex w-full items-center gap-3 p-3 text-start"
+          data-testid="phone-profile"
         >
-          {initials}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-terminal-text">
-            {profile.isPending ? '…' : name}
+          <span
+            aria-hidden
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-terminal-raised text-sm font-medium text-terminal-text"
+          >
+            {initials}
           </span>
-          <span className="block truncate text-caption text-terminal-muted">
-            {profile.data?.email ?? ''}
-            {profile.data !== undefined && !profile.data.emailVerified
-              ? ` · ${t('more.unverified')}`
-              : ''}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium text-terminal-text">
+              {profile.isPending ? '…' : name}
+            </span>
+            <span className="block truncate text-caption text-terminal-muted">
+              {profile.data?.email ?? ''}
+              {profile.data !== undefined && !profile.data.emailVerified
+                ? ` · ${t('more.unverified')}`
+                : ''}
+            </span>
+            {profile.data?.phone == null ? null : (
+              <span className="numeric block truncate text-caption text-terminal-muted" dir="ltr">
+                {profile.data.phone}
+              </span>
+            )}
           </span>
-        </span>
-        <Chevron />
-      </Link>
+          <Chevron />
+        </button>
+        {editing ? (
+          <div className="border-t border-terminal-border px-3 pb-3 pt-2">
+            <ProfileSettings />
+          </div>
+        ) : null}
+      </div>
 
       {/* Trading accounts */}
       <section className="rounded-xl bg-terminal-surface p-1" aria-labelledby="more-accounts">

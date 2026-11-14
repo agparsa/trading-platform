@@ -100,3 +100,25 @@ browser cannot invent a rule the server does not have or miss one it does.
 The rendered terminal is verified by driving a real browser against a running
 stack: register, open a position, watch P&L move, close it, and check the trade
 row. See [testing.md](./testing.md).
+
+## Account and settings on a phone
+
+The phone's Account tab (`components/phone-account.tsx`) lays out, from top to
+bottom:
+
+- the profile: name, email, and phone. Tapping it opens the name-and-phone form.
+- the trading accounts, from `/accounts`. Tapping one switches the terminal to
+  it.
+- the selected account's balance, equity, margin, free margin and margin level.
+- deposit and withdrawal (the wallet), transaction history, analytics and
+  instruments.
+- security and active sessions, verification, and trading settings.
+- appearance, language, trading notifications, and trading sounds with a
+  preview of each.
+- help and status, developer, and sign out.
+
+The phone number is the user's own optional `phone` column, set through
+`PATCH /users/me` and stored in E.164 form (`+989121234567`). The server removes
+spaces and dashes and refuses anything else with the reason. The number is never
+a login or a second factor. No photo is shown, because a profile has none to
+show.

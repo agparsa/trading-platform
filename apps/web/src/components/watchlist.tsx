@@ -7,7 +7,6 @@ import { entrySideOf } from '@tp/financial-core';
 import { cn } from '@tp/ui';
 import { price as formatPrice, signedChange } from '@/lib/format';
 import { useMarketStats, useQuoteSnapshot, type SymbolRow } from '@/lib/queries';
-import { markClasses, markFor } from '@/lib/instrument-marks';
 import { useRealtime, type Quote } from '@/lib/realtime-store';
 import {
   TOP_MOVERS,
@@ -277,22 +276,6 @@ interface DailyStatsRow {
  * reader announcing "Gold XAUUSD" would be reading the row twice. Dropped below
  * `xl`, where the panel is too narrow for it and the four numbers at once.
  */
-function InstrumentBadge({ code }: { code: string }) {
-  const mark = markFor(code);
-  return (
-    <span
-      aria-hidden
-      title={mark.label}
-      className={cn(
-        'hidden h-4 w-6 shrink-0 items-center xl:inline-flex justify-center rounded-sm text-label font-semibold leading-none ring-1 ring-inset',
-        markClasses(mark.kind),
-      )}
-    >
-      {mark.glyph}
-    </span>
-  );
-}
-
 function WatchlistRow({
   symbol,
   quote,
@@ -388,7 +371,11 @@ function WatchlistRow({
               {icons ? (
                 <InstrumentIcon code={symbol.code} size={18} />
               ) : (
-                <InstrumentBadge code={symbol.code} />
+                // On a desktop panel the icon appears where it fits: it was
+                // a text badge, hidden below xl for the same reason.
+                <span className="hidden xl:inline-flex">
+                  <InstrumentIcon code={symbol.code} size={16} />
+                </span>
               )}
               <span className="font-medium text-terminal-text">{symbol.code}</span>
               {onTrade === undefined ? null : (
