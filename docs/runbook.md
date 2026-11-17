@@ -414,5 +414,10 @@ Run `./scripts/price-switch-impact.sh --price XAUUSD=<real price> …` on the
 host first. It is read-only and lists every open position in those instruments,
 its value at the real price, any stop or target the switch would cross, and
 what each account would be left with. Settle or tell the affected traders first,
-then set the source in `.env.production` (`MARKET_LIVE_FASTFOREX`, …) and
-recreate `api-ingest`. See `market-data.md`.
+then run `./scripts/enable-live-prices.sh` on the host. It asks for the
+fastFOREX key without echoing it, backs up `.env.production`, and sets
+`MARKET_LIVE_FASTFOREX`, `FASTFOREX_API_KEY` and `QUOTE_MAX_AGE_OVERRIDES`. It
+then recreates `api-ingest`, `api`, `api-ws` and `worker`, and prints the gold
+quote the platform holds along with the command that undoes it. Because it is
+one command, it can also be run from a cPanel terminal when SSH from outside is
+blocked. See `market-data.md`.
