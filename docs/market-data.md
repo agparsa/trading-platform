@@ -342,3 +342,52 @@ every open position on that instrument to the real price at once, which can
 trigger stops and stop-outs, and the stored candles before the switch are
 simulated history. Close or settle open positions on those instruments first,
 and decide what to do with the simulated candles, before the switch.
+
+## Watching the sources (admin and metrics)
+
+**Admin → Market data** (`/admin/market-data`, `INSTRUMENTS_READ`) refreshes
+every 5 s and has two tables:
+
+- **Sources.** Each live source with its state (connecting, connected or
+  disconnected), since when, its instruments, ticks, the time of the last tick,
+  the source lag (how old the tick's own time was on arrival), reconnections,
+  and the last error. The error is kept as a short reason with any address
+  replaced by `<url>`, so no key can appear.
+- **Instruments.** Every instrument with the source pricing it,
+  **simulator** when no live source covers it, or **none** when it has no price at
+  all (an instrument just added, before its source is configured). Its bid, ask, age, its own age
+  limit, and whether the price is fit to trade on — the engine's own judgement.
+
+The ingesting instance is the only one holding the sockets. It writes the
+sources' state to Redis (`market:providers`, expiring after 120 s) on every
+change of state, and at most every 2 s for traffic. Whichever instance serves the
+admin reads it from there. If nothing is written, the screen says so and does not
+invent a state.
+
+Metrics (Prometheus, same registry):
+
+- `tp_market_provider_up{provider}`: 1 while connected.
+- `tp_market_provider_reconnects{provider}`: reconnections since the ingester
+  started.
+- `tp_market_provider_last_tick_timestamp_seconds{provider}`. Alert on
+  `time() - tp_market_provider_last_tick_timestamp_seconds > 60` while the
+  market is open.
+
+Together with the existing `tp_market_ticks_total{symbol}` and
+`tp_quote_age_seconds{symbol,purpose}`, these cover connection health, quote age
+and reconnections.
+
+## Adding an instrument
+
+**Admin → Instruments → Add instrument** (`POST /admin/instruments`,
+`INSTRUMENTS_MANAGE`, platform only, audited as `instrument.created`) creates
+SOLUSD, a new pair, or similar, **suspended**. The form starts from a coin, a
+pair or a metal template, and every field can be edited. The server refuses a
+contract that does not hang together: a tick finer than the price decimals, a
+volume step finer than the volume decimals, a minimum above the maximum, or a
+margin rate above 1. The trading week is a preset. Crypto is always open; forex
+and metals run from Sunday 22:00 to Friday 21:00 UTC.
+
+Then give it a source, for example `MARKET_LIVE_BINANCE=…,SOLUSD:solusdt`, and
+restart the ingester. Resume trading from its row once **Market data** shows
+its price live.

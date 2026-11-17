@@ -1662,6 +1662,55 @@ async function main(): Promise<void> {
     }
     await visit(adminPage, '/admin/instruments', { url: '/admin/instruments' });
     await auditAccessibility(adminPage, 'the instruments screen');
+    // Adding an instrument from the screen: created suspended, in the database.
+    let addedInstrument: string | null = null;
+    {
+      // Six characters, like every instrument the watchlist is sized for.
+      const code = `S${Date.now().toString(36).slice(-5).toUpperCase()}`;
+      await adminPage.getByTestId('add-instrument-open').click();
+      const form = adminPage.getByTestId('add-instrument');
+      await form.getByRole('button', { name: 'Crypto (like BTCUSD)' }).click();
+      await form.getByTestId('add-instrument-code').fill(code);
+      await form.getByTestId('add-instrument-description').fill('Smoke coin vs US Dollar');
+      await form
+        .getByTestId('add-instrument-reason')
+        .fill('smoke: adding an instrument from the screen');
+      await form.getByTestId('add-instrument-save').click();
+      const said = await form
+        .getByRole('status')
+        .innerText({ timeout: 10_000 })
+        .catch(() => '');
+      const stored = await prisma.symbol.findUnique({ where: { code } });
+      ok(
+        said.includes(code) && stored !== null && !stored.enabled,
+        'an administrator adds an instrument from the screen, and it is stored suspended',
+        `${said} · stored ${stored === null ? 'no' : `enabled=${stored.enabled}`}`,
+      );
+      await auditAccessibility(adminPage, 'adding an instrument');
+      addedInstrument = code;
+    }
+    // Market data: every instrument, with where its price comes from. With no
+    // live source configured in the smoke run, each says "simulator".
+    await visit(adminPage, '/admin/market-data', { url: '/admin/market-data' });
+    {
+      const symbolsHeld = await prisma.symbol.count();
+      const rows = adminPage.getByTestId('market-data-row');
+      await rows.first().waitFor({ timeout: 10_000 });
+      const shown = await rows.count();
+      const simulated = await adminPage
+        .getByTestId('market-data-row')
+        .filter({ hasText: /simulator|none/ })
+        .count();
+      ok(
+        shown === symbolsHeld && simulated === shown,
+        'the market data screen lists every instrument and names its price source',
+        `${shown} rows · ${symbolsHeld} instruments · ${simulated} priced by the simulator`,
+      );
+    }
+    await auditAccessibility(adminPage, 'the market data screen');
+    // Removed again, once the market data screen has shown it: it would
+    // otherwise sit in every later run's watchlist.
+    if (addedInstrument !== null) await removeInstrument(prisma, addedInstrument);
     await visit(adminPage, '/admin/risk', { url: '/admin/risk' });
     await visit(adminPage, '/admin/reconciliation', { url: '/admin/reconciliation' });
     /**
@@ -2889,3 +2938,14 @@ main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.stack : String(error));
   process.exit(1);
 });
+
+/** Deletes an instrument a smoke run added, with its contract and week. Nothing else refers to it. */
+async function removeInstrument(prisma: PrismaClient, code: string): Promise<void> {
+  const symbol = await prisma.symbol.findUnique({ where: { code } });
+  if (symbol === null) return;
+  await prisma.$transaction([
+    prisma.marketSession.deleteMany({ where: { symbolId: symbol.id } }),
+    prisma.symbolSpec.deleteMany({ where: { symbolId: symbol.id } }),
+    prisma.symbol.delete({ where: { id: symbol.id } }),
+  ]);
+}

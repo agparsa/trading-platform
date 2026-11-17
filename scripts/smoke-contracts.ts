@@ -758,6 +758,36 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
       reason: 'contracts: unchanged sessions',
     }),
   );
+  // A new instrument, created suspended — a code that exists nowhere else —
+  // and removed again, so later runs do not find it in their watchlists.
+  const added = `C${Date.now().toString(36).slice(-5).toUpperCase()}`;
+  answers.record(
+    'POST /admin/instruments',
+    await as.admin('POST', '/admin/instruments', {
+      code: added,
+      description: 'Contracts check instrument',
+      category: 'Crypto',
+      quoteCurrency: 'USD',
+      contractSize: '1',
+      tickSize: '0.01',
+      pricePrecision: 2,
+      volumeStep: '0.01',
+      volumePrecision: 2,
+      minVolume: '0.01',
+      maxVolume: '10',
+      marginRate: '0.1',
+      session: 'none',
+      reason: 'contracts: response shape of a new instrument',
+    }),
+  );
+  {
+    const symbol = await prisma.symbol.findUniqueOrThrow({ where: { code: added } });
+    await prisma.$transaction([
+      prisma.marketSession.deleteMany({ where: { symbolId: symbol.id } }),
+      prisma.symbolSpec.deleteMany({ where: { symbolId: symbol.id } }),
+      prisma.symbol.delete({ where: { id: symbol.id } }),
+    ]);
+  }
 
   // Roles and people.
   const roles = (await as.admin('GET', '/permissions/roles')) as {

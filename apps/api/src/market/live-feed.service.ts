@@ -14,6 +14,7 @@ import {
 import type { Env } from '../config/env.schema';
 import { httpLineStream } from './http-line-stream';
 import { httpPoll, monthlyCalls } from './http-poll';
+import { ProviderStatusBook, type ProviderStatus } from './provider-status';
 
 /** The part of the standard WebSocket this needs — so a test can stand in for it. */
 export interface LiveSocket {
@@ -75,6 +76,15 @@ export class LiveFeedService {
   private readonly throttle = new TickThrottle(MIN_TICK_INTERVAL_MS);
   private sink: ((tick: Tick) => Promise<void>) | null = null;
   private running = false;
+  /** Each source's state, for the admin screen and the metrics. */
+  readonly status = new ProviderStatusBook();
+  /**
+   * Told when the status changes — at once on a change of state, at most every
+   * two seconds for traffic. Set by `MarketFeedService`, which owns Redis and
+   * the metrics; a listener that throws is not this service's problem.
+   */
+  onStatus: ((statuses: ProviderStatus[]) => void) | null = null;
+  private lastStatusAt = 0;
   /** Replaced in tests. The platform's own is Node's built-in WebSocket. */
   socketFactory: SocketFactory = (url) => new WebSocket(url) as unknown as LiveSocket;
   /** Replaced in tests. An HTTP response read line by line (OANDA's stream). */
@@ -269,6 +279,12 @@ export class LiveFeedService {
     if (this.running) return;
     this.running = true;
     this.sink = sink;
+    this.status.clear();
+    const now = Date.now();
+    for (const source of this.sources) {
+      this.status.register(source.name, Object.values(source.symbols), now);
+    }
+    this.report(true);
     for (const source of this.sources) this.connect(source);
   }
 
@@ -284,13 +300,29 @@ export class LiveFeedService {
     this.sockets.clear();
   }
 
+  /** Hands the status on: always on a change of state, at most every 2 s otherwise. */
+  private report(changed: boolean): void {
+    const now = Date.now();
+    if (!changed && now - this.lastStatusAt < 2_000) return;
+    this.lastStatusAt = now;
+    try {
+      this.onStatus?.(this.status.snapshot());
+    } catch (error) {
+      this.logger.warn({ err: error }, 'live feed status listener failed');
+    }
+  }
+
   private connect(source: Source): void {
     if (!this.running) return;
+    this.status.connecting(source.name, Date.now());
+    this.report(true);
     let socket: LiveSocket;
     try {
       socket = source.open === undefined ? this.socketFactory(source.url) : source.open();
     } catch (error) {
       this.logger.error({ err: error }, `${source.name}: could not open the live feed`);
+      this.status.disconnected(source.name, Date.now(), error);
+      this.report(true);
       this.reconnectLater(source);
       return;
     }
@@ -299,13 +331,19 @@ export class LiveFeedService {
     socket.onopen = () => {
       this.attempts.set(source.name, 0);
       this.logger.log(`${source.name}: live feed connected`);
+      this.status.connected(source.name, Date.now());
+      this.report(true);
       if (source.hello !== null) socket.send(source.hello);
       if (source.heartbeat !== null) this.beat(source, socket);
     };
     socket.onmessage = (event) => {
       if (typeof event.data !== 'string') return;
-      const parsed = source.parse(event.data, Date.now());
+      const received = Date.now();
+      this.status.message(source.name, received);
+      const parsed = source.parse(event.data, received);
       const ticks = parsed === null ? [] : Array.isArray(parsed) ? parsed : [parsed as Tick];
+      for (const tick of ticks) this.status.tick(source.name, tick.timestamp, received);
+      this.report(false);
       for (const tick of ticks) {
         if (!this.throttle.admit(tick)) continue;
         void this.sink?.(tick).catch((error: unknown) => {
@@ -313,13 +351,16 @@ export class LiveFeedService {
         });
       }
     };
-    socket.onerror = () => {
+    socket.onerror = (event) => {
       // The close that follows is what reconnects; this only says it happened.
       this.logger.warn(`${source.name}: live feed socket error`);
+      this.status.error(source.name, event instanceof Error ? event : 'socket error');
     };
     socket.onclose = () => {
       this.sockets.delete(source.name);
       if (!this.running) return;
+      this.status.disconnected(source.name, Date.now());
+      this.report(true);
       this.logger.warn(
         `${source.name}: live feed disconnected; its instruments hold their last price until it returns`,
       );

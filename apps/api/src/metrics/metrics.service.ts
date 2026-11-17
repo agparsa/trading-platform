@@ -15,6 +15,12 @@ export class MetricsService {
   readonly httpRequests: Counter<'method' | 'route' | 'status'>;
   readonly httpDuration: Histogram<'method' | 'route'>;
   readonly marketTicks: Counter<'symbol'>;
+  /** 1 while a live price source is connected, 0 otherwise. */
+  readonly marketProviderUp: Gauge<'provider'>;
+  /** Reconnections of a live price source since the ingester started. */
+  readonly marketProviderReconnects: Gauge<'provider'>;
+  /** When a live source last delivered a tick (Unix seconds); `time() - x` is its silence. */
+  readonly marketProviderLastTick: Gauge<'provider'>;
   readonly ordersSubmitted: Counter<'symbol' | 'type' | 'outcome'>;
   readonly executionLatency: Histogram<'symbol'>;
   readonly websocketConnections: Counter<'event'>;
@@ -90,6 +96,25 @@ export class MetricsService {
       name: 'tp_market_ticks_total',
       help: 'Market ticks ingested, by symbol.',
       labelNames: ['symbol'] as const,
+      registers: [this.registry],
+    });
+
+    this.marketProviderUp = new Gauge({
+      name: 'tp_market_provider_up',
+      help: 'Whether a live price source is connected (1) or not (0).',
+      labelNames: ['provider'] as const,
+      registers: [this.registry],
+    });
+    this.marketProviderReconnects = new Gauge({
+      name: 'tp_market_provider_reconnects',
+      help: 'Reconnections of a live price source since the ingester started.',
+      labelNames: ['provider'] as const,
+      registers: [this.registry],
+    });
+    this.marketProviderLastTick = new Gauge({
+      name: 'tp_market_provider_last_tick_timestamp_seconds',
+      help: 'When a live price source last delivered a tick, in Unix seconds.',
+      labelNames: ['provider'] as const,
       registers: [this.registry],
     });
 

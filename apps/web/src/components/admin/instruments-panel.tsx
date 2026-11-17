@@ -13,6 +13,7 @@ import {
 import { Button, inputClass } from '@/components/primitives';
 import { markClasses, markFor } from '@/lib/instrument-marks';
 import { ErrorLine, Head, Loading, Table } from './shared';
+import { AddInstrument } from './add-instrument';
 
 /**
  * What the platform trades, and on what terms.
@@ -74,6 +75,7 @@ export function InstrumentsPanel() {
         orders and closes nothing — the positions already open stay open, and stay the
         trader&apos;s.
       </p>
+      <AddInstrument />
     </div>
   );
 }
@@ -121,7 +123,8 @@ function InstrumentRow({
               'rounded px-1.5 py-0.5 text-label uppercase tracking-wider',
               row.enabled
                 ? 'bg-terminal-long/15 text-terminal-long'
-                : 'bg-terminal-short/15 text-terminal-short',
+                : // 10%, not 15%: at 15% the red on its own tint was 4.41:1.
+                  'bg-terminal-short/10 text-terminal-short',
             )}
           >
             {row.enabled ? 'Trading' : 'Suspended'}

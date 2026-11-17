@@ -21,6 +21,7 @@ import { RiskConsoleService } from './risk-console.service';
 import { AuditQueryService } from './audit-query.service';
 import type { SessionView } from './instruments.service';
 import { AdminInstrumentsService } from './instruments.service';
+import { MarketDataAdminService } from './market-data.service';
 import { InvitesService } from '../auth/invites.service';
 
 const decimal = z.string().regex(/^-?\d+(\.\d+)?$/, 'Must be a decimal number');
@@ -44,6 +45,43 @@ const instrumentTermsSchema = z
 
 class InstrumentEnabledDto extends createZodDto(instrumentEnabledSchema) {}
 class InstrumentTermsDto extends createZodDto(instrumentTermsSchema) {}
+
+/**
+ * A new instrument: the contract, the firm's terms, and a trading week from a
+ * preset. It is created **suspended**: it has no price until a live source is
+ * configured for it, and an administrator enables it once it does.
+ */
+export const createInstrumentSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z0-9]{3,12}$/, '3–12 letters or digits, e.g. SOLUSD'),
+    description: z.string().trim().min(3).max(120),
+    category: z.enum(['FX', 'Metals', 'Crypto', 'Indices', 'Commodities']),
+    quoteCurrency: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/),
+    contractSize: positiveDecimal,
+    tickSize: positiveDecimal,
+    pricePrecision: z.number().int().min(0).max(10),
+    volumeStep: positiveDecimal,
+    volumePrecision: z.number().int().min(0).max(8),
+    minVolume: positiveDecimal,
+    maxVolume: positiveDecimal,
+    marginRate: positiveDecimal,
+    commissionPerLot: positiveDecimal.optional(),
+    swapLongPerLot: decimal.optional(),
+    swapShortPerLot: decimal.optional(),
+    /** `fx` and `metals`: Sunday 22:00 to Friday 21:00 UTC; `crypto`: always; `none`: set it later. */
+    session: z.enum(['fx', 'metals', 'crypto', 'none']),
+    reason: z.string().trim().min(8).max(500),
+  })
+  .strict();
+class CreateInstrumentDto extends createZodDto(createInstrumentSchema) {}
 
 const mintInviteSchema = z
   .object({
@@ -242,6 +280,7 @@ export class AdminController {
     private readonly risk: RiskConsoleService,
     private readonly auditQuery: AuditQueryService,
     private readonly instruments: AdminInstrumentsService,
+    private readonly marketData: MarketDataAdminService,
     private readonly hierarchy: RiskHierarchyService,
     private readonly blotter: BlotterService,
     // Provided by AuthModule, which AdminModule imports. A service that is not
@@ -585,6 +624,19 @@ export class AdminController {
   auditActions() {
     return this.auditQuery.actions();
   }
+  // ─── Market data ─────────────────────────────────────────────────────────
+
+  /**
+   * Every live price source and its state, and every instrument with where its
+   * price comes from and how old it is. Read-only; no key or URL is in it.
+   */
+  @RequirePermissions(Permission.INSTRUMENTS_READ)
+  @Get('market-data')
+  @ApiOperation({ summary: 'Live price sources and the age of every price' })
+  marketDataView() {
+    return this.marketData.view();
+  }
+
   // ─── Instruments ─────────────────────────────────────────────────────────
 
   @RequirePermissions(Permission.INSTRUMENTS_READ)
@@ -630,6 +682,21 @@ export class AdminController {
   ) {
     const { reason, ...terms } = body;
     return this.instruments.setTerms(actor.id, code.toUpperCase(), terms, reason);
+  }
+
+  /**
+   * Add an instrument. Platform only, created suspended, audited. The contract
+   * is checked for consistency here — a tick finer than the precision, or a
+   * minimum above the maximum, is refused rather than stored.
+   */
+  @RequirePermissions(Permission.INSTRUMENTS_MANAGE)
+  @Post('instruments')
+  @ApiOperation({
+    summary: 'Add an instrument (suspended until it has a price source). Platform only.',
+  })
+  createInstrument(@CurrentUser() actor: AuthenticatedUser, @Body() body: CreateInstrumentDto) {
+    const { reason, ...instrument } = body;
+    return this.instruments.create(actor.id, instrument, reason);
   }
 
   @RequirePermissions(Permission.INSTRUMENTS_READ)

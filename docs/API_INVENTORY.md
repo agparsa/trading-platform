@@ -85,9 +85,11 @@ handler is responsible for scoping the result to that user — which for
 | `GET`  | `/admin/risk/events`                         | `riskEvents`            | RISK_READ          |
 | `GET`  | `/admin/audit`                               | `audit`                 | AUDIT_READ         |
 | `GET`  | `/admin/audit/actions`                       | `auditActions`          | AUDIT_READ         |
+| `GET`  | `/admin/market-data`                         | `marketDataView`        | INSTRUMENTS_READ   |
 | `GET`  | `/admin/instruments`                         | `listInstruments`       | INSTRUMENTS_READ   |
 | `POST` | `/admin/instruments/:code/enabled`           | `setInstrumentEnabled`  | INSTRUMENTS_MANAGE |
 | `POST` | `/admin/instruments/:code/terms`             | `setInstrumentTerms`    | INSTRUMENTS_MANAGE |
+| `POST` | `/admin/instruments`                         | `createInstrument`      | INSTRUMENTS_MANAGE |
 | `GET`  | `/admin/instruments/:code/sessions`          | `instrumentSessions`    | INSTRUMENTS_READ   |
 | `POST` | `/admin/instruments/:code/sessions`          | `setInstrumentSessions` | INSTRUMENTS_MANAGE |
 | `POST` | `/admin/invites`                             | `mintInvite`            | INVITES_MANAGE     |
@@ -510,7 +512,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**241 routes:** 125 `GET`, 99 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**243 routes:** 126 `GET`, 100 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

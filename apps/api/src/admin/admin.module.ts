@@ -1,3 +1,4 @@
+import { MarketDataAdminService } from './market-data.service';
 import { Module } from '@nestjs/common';
 import { AccountsModule } from '../accounts/accounts.module';
 import { AuthModule } from '../auth/auth.module';
@@ -24,6 +25,7 @@ import { AdminInstrumentsService } from './instruments.service';
     RiskHierarchyService,
     BlotterService,
     AdminInstrumentsService,
+    MarketDataAdminService,
   ],
   exports: [
     AdminService,

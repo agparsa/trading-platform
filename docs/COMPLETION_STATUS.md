@@ -41,12 +41,12 @@ reads as currency.
 
 **4 applications** (`api`, `web`, `worker`, `mobile`) and
 **21 workspace packages**, on **70 Prisma models**
-with **60 migrations** applied, serving **242 API routes**.
+with **60 migrations** applied, serving **244 API routes**.
 
-Roughly **183,000 lines** of TypeScript across
-939 files.
+Roughly **185,000 lines** of TypeScript across
+952 files.
 
-Counted at `c4c5a39` on 2026-11-14 by `pnpm measure`. The
+Counted at `43732e7` on 2026-11-15 by `pnpm measure`. The
 structural counts above are checked against the working tree on every build;
 the line and file counts move with every commit and are as old as the date
 beside them.
@@ -103,11 +103,11 @@ code" list named webhooks, KYC, the Security Centre and wallets — each built,
 tested and in production for weeks — and the admin panel was "13 sections"
 with 21 deployed. Nothing compared them to anything.
 
-| §   | Area        | What exists                                                                                                                                                                                                                                        | What is missing                                                                                                 |
-| --- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| 29  | Admin panel | 21 sections at their own addresses — overview, people, accounts, instruments, risk, book, desks, brokers, connections, credentials, features, payments, kyc, withdrawals, reconciliation, reports, notifications, security, webhooks, roles, audit | Fees, admin alert rules and Branding — the list `broker-panel.md` §5 keeps, which `panel-claims.test.ts` checks |
-| 6   | KYC         | records and documents, manual review with its own permission, identity re-checked before a withdrawal is approved                                                                                                                                  | an identity-verification provider                                                                               |
-| 35  | Finance     | wallets, transfers bounded by free margin, manual deposits and corrections, freeze, full audit, deposits through a provider port, withdrawals held at request and approved by FINANCE                                                              | a third-party payment provider (a commercial decision, see below) and a payout rail for withdrawals             |
+| §   | Area        | What exists                                                                                                                                                                                                                                                     | What is missing                                                                                                 |
+| --- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| 29  | Admin panel | 22 sections at their own addresses — overview, people, accounts, instruments, market-data, risk, book, desks, brokers, connections, credentials, features, payments, kyc, withdrawals, reconciliation, reports, notifications, security, webhooks, roles, audit | Fees, admin alert rules and Branding — the list `broker-panel.md` §5 keeps, which `panel-claims.test.ts` checks |
+| 6   | KYC         | records and documents, manual review with its own permission, identity re-checked before a withdrawal is approved                                                                                                                                               | an identity-verification provider                                                                               |
+| 35  | Finance     | wallets, transfers bounded by free margin, manual deposits and corrections, freeze, full audit, deposits through a provider port, withdrawals held at request and approved by FINANCE                                                                           | a third-party payment provider (a commercial decision, see below) and a payout rail for withdrawals             |
 
 ## Does not exist — zero code
 

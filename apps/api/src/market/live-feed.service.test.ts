@@ -239,3 +239,31 @@ describe('the fastFOREX source', () => {
     expect(live.covers('XAUUSD')).toBe(false);
   });
 });
+
+describe('the live sources’ status reports', () => {
+  it('reports each change of state at once, and traffic at most every two seconds', async () => {
+    const { live, sockets } = service({ MARKET_LIVE_BINANCE: 'BTCUSD:btcusdt' });
+    const reports: Array<Array<{ state: string; ticks: number }>> = [];
+    live.onStatus = (statuses) =>
+      reports.push(statuses.map((status) => ({ state: status.state, ticks: status.ticks })));
+    live.start(async () => undefined);
+    const socket = sockets[0]!;
+    socket.onopen?.({});
+    const quote = (bid: string) =>
+      JSON.stringify({
+        stream: 'btcusdt@bookTicker',
+        data: { s: 'BTCUSDT', b: bid, a: '65000.01' },
+      });
+    socket.onmessage?.({ data: quote('65000.00') });
+    socket.onmessage?.({ data: quote('64999.00') });
+    expect(reports.map((report) => report[0]?.state)).toEqual([
+      'connecting',
+      'connecting',
+      'connected',
+    ]);
+    expect(live.status.snapshot()[0]?.ticks).toBe(2);
+    socket.onclose?.({});
+    expect(reports.at(-1)?.[0]?.state).toBe('disconnected');
+    live.stop();
+  });
+});

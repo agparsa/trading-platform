@@ -234,4 +234,58 @@ suite('Administering instruments (integration)', () => {
       ).rejects.toMatchObject({ code: TradingErrorCode.VALIDATION_FAILED });
     });
   });
+
+  describe('adding an instrument', () => {
+    const SOL = {
+      code: 'SOLUSD',
+      description: 'Solana vs US Dollar',
+      category: 'Crypto',
+      quoteCurrency: 'USD',
+      contractSize: '1',
+      tickSize: '0.01',
+      pricePrecision: 2,
+      volumeStep: '0.01',
+      volumePrecision: 2,
+      minVolume: '0.01',
+      maxVolume: '1000',
+      marginRate: '0.1',
+      session: 'crypto' as const,
+    };
+
+    it('creates it suspended, with its contract and week, and audits it', async () => {
+      const result = await instruments.create(ADMIN, SOL, 'Solana requested by the desk');
+      expect(result).toEqual({ code: 'SOLUSD', enabled: false, sessionWindows: 7 });
+      const row = await prisma.symbol.findUniqueOrThrow({
+        where: { code: 'SOLUSD' },
+        include: { spec: true, sessions: true },
+      });
+      expect(row.enabled).toBe(false);
+      expect(row.spec?.tickSize.toString()).toBe('0.01');
+      expect(row.sessions).toHaveLength(7);
+      const audit = await prisma.auditLog.findFirst({
+        where: { action: 'instrument.created', resourceId: row.id },
+      });
+      expect(audit?.actorId).toBe(ADMIN);
+      expect((await instruments.list()).some((listed) => listed.code === 'SOLUSD')).toBe(true);
+    });
+
+    it('refuses a duplicate and a contract that does not hang together, creating nothing', async () => {
+      await expect(
+        instruments.create(ADMIN, { ...SOL, code: 'XAUUSD' }, 'a second gold, please'),
+      ).rejects.toMatchObject({
+        code: TradingErrorCode.VALIDATION_FAILED,
+      });
+      await expect(
+        instruments.create(ADMIN, { ...SOL, tickSize: '0.001' }, 'too fine a tick'),
+      ).rejects.toMatchObject({
+        code: TradingErrorCode.VALIDATION_FAILED,
+      });
+      await expect(
+        instruments.create(ADMIN, { ...SOL, minVolume: '5', maxVolume: '1' }, 'min above max'),
+      ).rejects.toMatchObject({
+        code: TradingErrorCode.VALIDATION_FAILED,
+      });
+      expect(await prisma.symbol.count({ where: { code: 'SOLUSD' } })).toBe(0);
+    });
+  });
 });

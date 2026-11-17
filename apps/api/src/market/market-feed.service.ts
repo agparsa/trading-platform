@@ -1,3 +1,4 @@
+import { PROVIDER_STATUS_KEY, PROVIDER_STATUS_TTL_SECONDS } from './provider-status';
 import {
   Inject,
   Injectable,
@@ -155,6 +156,32 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
       (code) => this.symbols.find(code)?.spec.pricePrecision,
       (code) => SIMULATOR_HALF_SPREAD[code],
     );
+    // Each source's state to Redis, for whichever instance answers the admin,
+    // and to the metrics. Best effort: a status that cannot be written is a
+    // blank admin screen, never a stopped feed.
+    this.live.onStatus = (statuses) => {
+      for (const status of statuses) {
+        this.metrics.marketProviderUp.set(
+          { provider: status.name },
+          status.state === 'connected' ? 1 : 0,
+        );
+        this.metrics.marketProviderReconnects.set({ provider: status.name }, status.reconnects);
+        if (status.lastTickAt !== null) {
+          this.metrics.marketProviderLastTick.set(
+            { provider: status.name },
+            status.lastTickAt / 1000,
+          );
+        }
+      }
+      void this.redis.client
+        .set(
+          PROVIDER_STATUS_KEY,
+          JSON.stringify({ at: Date.now(), providers: statuses }),
+          'EX',
+          PROVIDER_STATUS_TTL_SECONDS,
+        )
+        .catch(() => undefined);
+    };
     this.live.start((tick) => this.ingest(tick));
     this.logger.log(
       `Market feed started: ${this.provider.name}, ${this.symbols.codes().length} instrument(s), resolutions ${this.resolutions.join(',')}; live sources: ${this.live.describe()}`,

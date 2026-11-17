@@ -241,6 +241,78 @@ export class AdminInstrumentsService {
     return { code: symbol.code, timezone, windows };
   }
 
+  /**
+   * A new instrument, suspended, with its contract, the platform's terms and a
+   * trading week from a preset — in one transaction, so a half-created
+   * instrument (a symbol with no specification) cannot exist.
+   */
+  async create(
+    actorId: string,
+    input: NewInstrument,
+    reason: string,
+  ): Promise<{ code: string; enabled: false; sessionWindows: number }> {
+    await this.assertPlatform();
+    const problem = newInstrumentProblem(input);
+    if (problem !== null) throw new DomainError(TradingErrorCode.VALIDATION_FAILED, problem);
+    const existing = await this.prisma.symbol.findUnique({ where: { code: input.code } });
+    if (existing !== null) {
+      throw new DomainError(TradingErrorCode.VALIDATION_FAILED, `${input.code} already exists.`, {
+        code: input.code,
+      });
+    }
+    const windows = SESSION_PRESETS[input.session];
+    const symbol = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.symbol.create({
+        data: {
+          code: input.code,
+          description: input.description,
+          category: input.category,
+          quoteCurrency: input.quoteCurrency,
+          enabled: false,
+        },
+      });
+      await tx.symbolSpec.create({
+        data: {
+          symbolId: created.id,
+          contractSize: input.contractSize,
+          tickSize: input.tickSize,
+          pricePrecision: input.pricePrecision,
+          volumeStep: input.volumeStep,
+          volumePrecision: input.volumePrecision,
+          minVolume: input.minVolume,
+          maxVolume: input.maxVolume,
+          marginRate: input.marginRate,
+          commissionPerLot: input.commissionPerLot ?? '0',
+          swapLongPerLot: input.swapLongPerLot ?? '0',
+          swapShortPerLot: input.swapShortPerLot ?? '0',
+        },
+      });
+      if (windows.length > 0) {
+        await tx.marketSession.createMany({
+          data: windows.map(([dayOfWeek, openMinute, closeMinute]) => ({
+            symbolId: created.id,
+            timezone: 'UTC',
+            dayOfWeek,
+            openMinute,
+            closeMinute,
+          })),
+        });
+      }
+      return created;
+    });
+    await this.audit.record({
+      actorId,
+      actorType: 'ADMIN',
+      action: 'instrument.created',
+      resourceType: 'Symbol',
+      resourceId: symbol.id,
+      after: { ...input, enabled: false, reason: reason.trim() } as never,
+    });
+    await this.symbols.reload();
+    this.logger.warn(`${input.code} created (suspended) by ${actorId}: ${reason.trim()}`);
+    return { code: input.code, enabled: false, sessionWindows: windows.length };
+  }
+
   /** Sessions are the venue's week, so only the platform sets them. */
   private async assertPlatform(): Promise<void> {
     const tenant = await this.prisma.tenant.findFirst({
@@ -543,4 +615,58 @@ export function normaliseWindows(windows: readonly SessionWindow[]): SessionWind
     }
   }
   return sorted;
+}
+
+export interface NewInstrument {
+  readonly code: string;
+  readonly description: string;
+  readonly category: string;
+  readonly quoteCurrency: string;
+  readonly contractSize: string;
+  readonly tickSize: string;
+  readonly pricePrecision: number;
+  readonly volumeStep: string;
+  readonly volumePrecision: number;
+  readonly minVolume: string;
+  readonly maxVolume: string;
+  readonly marginRate: string;
+  readonly commissionPerLot?: string | undefined;
+  readonly swapLongPerLot?: string | undefined;
+  readonly swapShortPerLot?: string | undefined;
+  readonly session: 'fx' | 'metals' | 'crypto' | 'none';
+}
+
+/** Windows in UTC minutes, by weekday (0 = Sunday) — the same weeks the seed gives its instruments. */
+const WEEKDAY_FX: Array<[number, number, number]> = [
+  [0, 22 * 60, 24 * 60],
+  [1, 0, 24 * 60],
+  [2, 0, 24 * 60],
+  [3, 0, 24 * 60],
+  [4, 0, 24 * 60],
+  [5, 0, 21 * 60],
+];
+export const SESSION_PRESETS: Readonly<
+  Record<NewInstrument['session'], ReadonlyArray<[number, number, number]>>
+> = {
+  fx: WEEKDAY_FX,
+  metals: WEEKDAY_FX,
+  crypto: [0, 1, 2, 3, 4, 5, 6].map((day) => [day, 0, 24 * 60] as [number, number, number]),
+  none: [],
+};
+
+/** Why a new instrument's contract does not hang together, or `null`. */
+export function newInstrumentProblem(input: NewInstrument): string | null {
+  const places = (value: string) => (value.split('.')[1] ?? '').replace(/0+$/, '').length;
+  if (places(input.tickSize) > input.pricePrecision) {
+    return `The tick ${input.tickSize} is finer than ${input.pricePrecision} decimal place(s).`;
+  }
+  if (places(input.volumeStep) > input.volumePrecision) {
+    return `The volume step ${input.volumeStep} is finer than ${input.volumePrecision} decimal place(s).`;
+  }
+  if (toDecimal(input.minVolume).greaterThan(toDecimal(input.maxVolume))) {
+    return 'The minimum volume is above the maximum.';
+  }
+  if (toDecimal(input.marginRate).greaterThan(1))
+    return 'The margin rate is a fraction of notional, at most 1.';
+  return null;
 }

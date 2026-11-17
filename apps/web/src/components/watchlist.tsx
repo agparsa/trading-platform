@@ -309,7 +309,10 @@ function WatchlistRow({
   const direction = useTickDirection(quote?.bid);
   const t = useT();
   const changePercent = stats?.changePercent ?? null;
-  const change = signedChange(changePercent, 2);
+  // Fewer decimals as the move grows, so the column keeps one width: "+0.01%",
+  // "+20.6%", "+168%". The last column is the one a narrow panel cuts off.
+  const changeSize = Math.abs(Number(changePercent ?? 0));
+  const change = signedChange(changePercent, changeSize >= 100 ? 0 : changeSize >= 10 ? 1 : 2);
   const changeTone =
     change.direction === 'up'
       ? 'text-terminal-long'

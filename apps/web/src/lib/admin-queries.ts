@@ -657,6 +657,83 @@ export function useRequestReconciliation() {
   );
 }
 
+export interface MarketProviderRow {
+  name: string;
+  symbols: string[];
+  state: 'connecting' | 'connected' | 'disconnected';
+  since: number;
+  lastMessageAt: number | null;
+  lastTickAt: number | null;
+  lastSourceTime: number | null;
+  ticks: number;
+  reconnects: number;
+  lastError: string | null;
+}
+
+export interface MarketDataInstrumentRow {
+  symbol: string;
+  source: string;
+  bid: string | null;
+  ask: string | null;
+  quoteAt: number | null;
+  ageMs: number | null;
+  maxAgeMs: number;
+  stale: boolean;
+}
+
+export interface MarketDataView {
+  at: number;
+  reportedAt: number | null;
+  providers: MarketProviderRow[];
+  instruments: MarketDataInstrumentRow[];
+}
+
+/** Live price sources and the age of every price. Refreshed every 5 s while open. */
+export function useMarketData() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'market-data'] as const,
+    queryFn: () => api.get<MarketDataView>('/admin/market-data'),
+    enabled: accessToken !== null,
+    refetchInterval: 5_000,
+  });
+}
+
+export interface NewInstrumentInput {
+  code: string;
+  description: string;
+  category: 'FX' | 'Metals' | 'Crypto' | 'Indices' | 'Commodities';
+  quoteCurrency: string;
+  contractSize: string;
+  tickSize: string;
+  pricePrecision: number;
+  volumeStep: string;
+  volumePrecision: number;
+  minVolume: string;
+  maxVolume: string;
+  marginRate: string;
+  session: 'fx' | 'metals' | 'crypto' | 'none';
+  reason: string;
+}
+
+/** Add an instrument — created suspended, platform only, audited. */
+export function useCreateInstrument() {
+  const { api } = useSession();
+  const invalidate = useAdminInvalidate();
+  return useGated(
+    Permission.INSTRUMENTS_MANAGE,
+    useMutation({
+      mutationFn: (input: NewInstrumentInput) =>
+        api.post<{ code: string; enabled: false; sessionWindows: number }>(
+          '/admin/instruments',
+          input,
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
+    }),
+  );
+}
+
 /** What the platform trades, and on what terms. */
 export function useAdminInstruments() {
   const { api, accessToken } = useSession();

@@ -33,6 +33,7 @@ Every screen has an address now. The terminal did not change.
 | `/admin/accounts/:id`   | one account, with its owner one click away                                                                          |
 | `/admin/book`           | orders, positions and closed trades across the firm, with an order's own event history                              |
 | `/admin/instruments`    | what the platform trades, and on what terms                                                                         |
+| `/admin/market-data`    | every live price source and its state; every instrument's price source, age and limit                               |
 | `/admin/risk`           | accounts at risk, exposure, risk events                                                                             |
 | `/admin/desks`          | master accounts and who may act on which account, by delegation preset                                              |
 | `/admin/payments`       | deposits waiting for a person, and every one before them                                                            |
