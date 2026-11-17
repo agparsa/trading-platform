@@ -865,6 +865,9 @@ export const en = {
   'err.CONCURRENT_MODIFICATION': 'The account was busy; nothing changed. Try again.',
   'err.SERVICE_UNAVAILABLE': 'The service is unavailable; nothing changed.',
   'err.FEATURE_DISABLED': 'This feature is switched off.',
+  'chart.simulated': 'Simulated',
+  'chart.simulatedTitle':
+    'Some or all of these bars were made by the platform simulator, not a market.',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1721,6 +1724,8 @@ export const fa: Messages = {
   'err.CONCURRENT_MODIFICATION': 'حساب مشغول بود؛ تغییری انجام نشد. دوباره امتحان کنید.',
   'err.SERVICE_UNAVAILABLE': 'سرویس در دسترس نیست؛ تغییری انجام نشد.',
   'err.FEATURE_DISABLED': 'این قابلیت خاموش است.',
+  'chart.simulated': 'شبیه‌سازی',
+  'chart.simulatedTitle': 'بخشی یا همهٔ این کندل‌ها را شبیه‌ساز پلتفرم ساخته است، نه بازار.',
 };
 
 const TABLES: Record<Locale, Messages> = { en, fa };

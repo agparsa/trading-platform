@@ -37,13 +37,13 @@ export class CandleAggregator {
     const volume = toDecimal(tick.volume);
 
     if (this.current === null) {
-      this.current = this.open(start, price, volume);
+      this.current = this.open(start, price, volume, tick.source);
       return null;
     }
 
     if (start > this.current.time) {
       const completed = this.freeze(this.current);
-      this.current = this.open(start, price, volume);
+      this.current = this.open(start, price, volume, tick.source);
       return completed;
     }
 
@@ -57,6 +57,7 @@ export class CandleAggregator {
     if (price.lt(this.current.low)) this.current.low = price;
     this.current.close = price;
     this.current.volume = this.current.volume.plus(volume);
+    if (this.current.source !== tick.source) this.current.source = 'mixed';
     return null;
   }
 
@@ -73,8 +74,13 @@ export class CandleAggregator {
     return completed;
   }
 
-  private open(time: number, price: Decimal, volume: Decimal): MutableCandle {
-    return { time, open: price, high: price, low: price, close: price, volume };
+  private open(
+    time: number,
+    price: Decimal,
+    volume: Decimal,
+    source: string | undefined,
+  ): MutableCandle {
+    return { time, open: price, high: price, low: price, close: price, volume, source };
   }
 
   private freeze(c: MutableCandle): Candle {
@@ -87,6 +93,7 @@ export class CandleAggregator {
       low: c.low.toString(),
       close: c.close.toString(),
       volume: c.volume.toString(),
+      ...(c.source === undefined ? {} : { source: c.source }),
     };
   }
 }
@@ -98,6 +105,7 @@ interface MutableCandle {
   low: Decimal;
   close: Decimal;
   volume: Decimal;
+  source: string | undefined;
 }
 
 /** Batch-aggregate ticks, e.g. when backfilling history. */

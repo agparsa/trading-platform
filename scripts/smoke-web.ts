@@ -1075,6 +1075,21 @@ async function main(): Promise<void> {
       }
     }
 
+    // The smoke run is priced by the simulator, and the chart says so.
+    {
+      const labelled = await page
+        .getByTestId('chart-simulated')
+        .first()
+        .waitFor({ timeout: 15_000 })
+        .then(() => true)
+        .catch(() => false);
+      ok(
+        labelled,
+        'a chart of simulated prices is labelled as simulated',
+        `label shown ${labelled}`,
+      );
+    }
+
     /**
      * Every watchlist column fits its panel, at each width the terminal lays
      * out three columns. The change column is last and was the one cut off —

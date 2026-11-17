@@ -344,7 +344,8 @@ export class LiveFeedService {
       const ticks = parsed === null ? [] : Array.isArray(parsed) ? parsed : [parsed as Tick];
       for (const tick of ticks) this.status.tick(source.name, tick.timestamp, received);
       this.report(false);
-      for (const tick of ticks) {
+      for (const parsedTick of ticks) {
+        const tick: Tick = { ...parsedTick, source: source.name };
         if (!this.throttle.admit(tick)) continue;
         void this.sink?.(tick).catch((error: unknown) => {
           this.logger.error({ err: error }, `${source.name}: a live tick failed to ingest`);

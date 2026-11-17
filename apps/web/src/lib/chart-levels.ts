@@ -564,3 +564,12 @@ export function editChanges(
   }
   return out;
 }
+
+/**
+ * Whether any bar on screen was made by the simulator rather than a market —
+ * so the chart can say so instead of passing simulated history off as real.
+ * A bar whose source was not recorded is not counted either way.
+ */
+export function showsSimulatedBars(bars: ReadonlyArray<{ source?: string }>): boolean {
+  return bars.some((bar) => bar.source === 'internal-simulator' || bar.source === 'mixed');
+}

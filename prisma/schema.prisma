@@ -642,6 +642,10 @@ model Candle {
   low        Decimal  @db.Decimal(28, 10)
   close      Decimal  @db.Decimal(28, 10)
   volume     Decimal  @db.Decimal(28, 10)
+  /// Where the bar's prices came from: a live source (`binance`, `fastforex`…),
+  /// the simulator (`internal-simulator`), or `mixed` for the bucket a switch
+  /// landed in. Null for bars written before this was recorded.
+  source     String?
 
   @@id([symbolCode, resolution, time])
   @@index([symbolCode, resolution, time(sort: Desc)])

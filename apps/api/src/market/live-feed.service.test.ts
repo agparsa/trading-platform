@@ -223,7 +223,7 @@ describe('the fastFOREX source', () => {
     socket.onmessage?.({ data: FX });
     await Promise.resolve();
     expect(ticks).toEqual([
-      expect.objectContaining({ symbol: 'BTCUSD', bid: '1.10', ask: '1.11' }),
+      expect.objectContaining({ symbol: 'BTCUSD', bid: '1.10', ask: '1.11', source: 'fastforex' }),
     ]);
     live.stop();
   });

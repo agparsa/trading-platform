@@ -268,7 +268,8 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
       // An instrument with a live source is never simulated — not even while
       // that source is down. See `LiveFeedService`.
       if (this.live.covers(tick.symbol)) continue;
-      await this.ingest(tick);
+      // Named, so every bar it ends up in says it was simulated.
+      await this.ingest({ ...tick, source: this.provider?.name ?? 'simulator' });
     }
   }
 
@@ -409,12 +410,15 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
         low: candle.low,
         close: candle.close,
         volume: candle.volume,
+        source: candle.source ?? null,
       },
       update: {
         high: candle.high,
         low: candle.low,
         close: candle.close,
         volume: candle.volume,
+        // A bucket written again after a restart keeps what it says now.
+        source: candle.source ?? null,
       },
     });
   }

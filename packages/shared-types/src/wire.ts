@@ -28,6 +28,11 @@ export interface CandleDto {
   low: DecimalString;
   close: DecimalString;
   volume: DecimalString;
+  /**
+   * Where the bar's prices came from — a live source, the simulator
+   * (`internal-simulator`), or `mixed`. Absent when not recorded.
+   */
+  source?: string;
 }
 
 export interface AccountStateDto {

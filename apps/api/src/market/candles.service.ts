@@ -49,6 +49,7 @@ export class CandlesService {
       low: row.low.toString(),
       close: row.close.toString(),
       volume: row.volume.toString(),
+      ...(row.source === null ? {} : { source: row.source }),
     }));
 
     const live = this.feed.currentCandle(symbol, resolution);

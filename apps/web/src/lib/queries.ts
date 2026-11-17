@@ -636,6 +636,8 @@ export interface CandleRow {
   low: string;
   close: string;
   volume: string;
+  /** Where the bar's prices came from; absent when not recorded. */
+  source?: string;
 }
 
 /**

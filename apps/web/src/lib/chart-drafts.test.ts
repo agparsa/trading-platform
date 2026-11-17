@@ -7,6 +7,7 @@ import {
   editFrom,
   halfVolume,
   riskReward,
+  showsSimulatedBars,
   stackChips,
 } from './chart-levels';
 import type { PositionRow, SymbolRow } from './queries';
@@ -116,5 +117,15 @@ describe('editing a position’s stop and target', () => {
       stopLoss: null,
       takeProfit: null,
     });
+  });
+});
+
+describe('saying when bars are simulated', () => {
+  it('flags simulated and mixed bars, and nothing else', () => {
+    expect(showsSimulatedBars([{ source: 'binance' }, { source: 'internal-simulator' }])).toBe(
+      true,
+    );
+    expect(showsSimulatedBars([{ source: 'fastforex' }, { source: 'mixed' }])).toBe(true);
+    expect(showsSimulatedBars([{ source: 'binance' }, {}])).toBe(false);
   });
 });

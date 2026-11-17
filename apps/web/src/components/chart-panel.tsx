@@ -33,6 +33,7 @@ import {
   halfVolume,
   levelsFor,
   riskReward,
+  showsSimulatedBars,
   stackChips,
   outcomeAt,
   pendingLevelsFor,
@@ -116,6 +117,16 @@ export function ChartPanel({
   );
 
   const empty = !history.isLoading && bars.length === 0;
+  const simulated = useMemo(() => showsSimulatedBars(bars as Array<{ source?: string }>), [bars]);
+  const simulatedBadge = simulated ? (
+    <span
+      className="shrink-0 rounded bg-terminal-warning/15 px-1 text-micro uppercase tracking-wider text-terminal-warning"
+      title={t('chart.simulatedTitle')}
+      data-testid="chart-simulated"
+    >
+      {t('chart.simulated')}
+    </span>
+  ) : null;
   const range = useMemo(() => (compact ? rangeOf(bars) : null), [compact, bars]);
 
   return (
@@ -131,6 +142,7 @@ export function ChartPanel({
                 <span className="text-terminal-short">{range.low}</span>
               </>
             )}
+            {simulatedBadge === null ? null : <> {simulatedBadge}</>}
           </span>
         ) : (
           <div className="flex items-center gap-2">
@@ -157,6 +169,7 @@ export function ChartPanel({
                 ? ''
                 : `${currencySymbol(symbol.quoteCurrency)} ${formatPrice(quote.bid, symbol.pricePrecision)}`}
             </span>
+            {simulatedBadge}
             {stale ? (
               <span
                 className="rounded bg-terminal-warning/15 px-1 text-micro uppercase tracking-wider text-terminal-warning"

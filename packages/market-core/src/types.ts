@@ -9,6 +9,11 @@ export interface Tick {
   readonly timestamp: number;
   /** Traded volume attributed to this tick, in lots. '0' when unknown. */
   readonly volume: string;
+  /**
+   * Where the price came from: a live source's name (`binance`, `fastforex`…)
+   * or the simulator's. Absent on ticks made before sources were recorded.
+   */
+  readonly source?: string;
 }
 
 export interface Candle {
@@ -21,6 +26,12 @@ export interface Candle {
   readonly low: string;
   readonly close: string;
   readonly volume: string;
+  /**
+   * The source of the bucket's prices; `mixed` when it changed inside the
+   * bucket — the bar a switch from the simulator to a real feed lands in.
+   * Absent when not recorded.
+   */
+  readonly source?: string;
 }
 
 /**

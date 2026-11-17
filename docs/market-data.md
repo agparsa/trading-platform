@@ -391,3 +391,19 @@ and metals run from Sunday 22:00 to Friday 21:00 UTC.
 Then give it a source, for example `MARKET_LIVE_BINANCE=…,SOLUSD:solusdt`, and
 restart the ingester. Resume trading from its row once **Market data** shows
 its price live.
+
+## Where a bar came from
+
+Every tick carries its source. A live feed's is the feed's name (`binance`,
+`fastforex`, `oanda`, `twelvedata`), and the simulator's is
+`internal-simulator`. Each bar records it in `candles.source`, which is
+`mixed` for the bucket in which the source changed — the bar a switch from the
+simulator to a real feed lands in. Bars written before the column existed have
+`null` ("not recorded"); nothing is backfilled by guesswork. `GET
+/market/candles` returns `source` when it is known.
+
+The chart shows **Simulated** when any bar on screen came from the simulator or
+is mixed, so simulated history is never shown as if it were a market's.
+Deleting the simulated history of an instrument that has been switched to a
+real feed is an operator's decision, taken with a backup. It is not done
+automatically.
