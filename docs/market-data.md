@@ -336,6 +336,17 @@ log read "fastforex: 6 instrument(s), 2 call(s) every 6000 ms (about 864000 of
 1000000 a month)" and "fastforex: live feed connected". XAUUSD became
 3881.93 / 3886.08, Friday's close. The key appeared nowhere in the log.
 
+**What the switch would do — measured first.**
+`./scripts/price-switch-impact.sh --price XAUUSD=3884.01 --price EURUSD=1.10232`
+is read-only and runs on the host, in the migrate image. For each position open
+in the named instruments, it prints the position's value at the stored price
+and at the given one, and whether its stop loss or take profit would be
+crossed. Per account, it prints the balance against the balance plus those
+figures, and marks any account left with nothing. The given price serves as the
+exit price for both sides, so every figure is an estimate within a spread. A
+cross that is not a USDxxx pair in a USD account gets no figure rather than a
+guessed conversion.
+
 **Before switching an instrument from the simulator to a real source:** the
 simulator's gold stood near 4583 and the real price near 3884. Switching moves
 every open position on that instrument to the real price at once, which can

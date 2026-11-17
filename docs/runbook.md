@@ -407,3 +407,12 @@ there, or a stale file, is the first thing to check. The restore, in order and w
 to be **rehearsed** (`pnpm restore:rehearse`), and the rehearsal has to include
 replaying the ledger against the restored `accounts` table. A backup nobody has
 restored is a hope, not a backup.
+
+## Before switching instruments to a real price
+
+Run `./scripts/price-switch-impact.sh --price XAUUSD=<real price> …` on the
+host first. It is read-only and lists every open position in those instruments,
+its value at the real price, any stop or target the switch would cross, and
+what each account would be left with. Settle or tell the affected traders first,
+then set the source in `.env.production` (`MARKET_LIVE_FASTFOREX`, …) and
+recreate `api-ingest`. See `market-data.md`.
