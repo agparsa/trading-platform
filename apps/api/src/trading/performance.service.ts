@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DomainError, Permission, TradingErrorCode } from '@tp/shared-types';
 import type { CurrencyCode } from '@tp/financial-core';
-import { performanceOf, type Performance } from '@tp/trading-core';
+import { equityCurve, performanceOf, type EquityCurve, type Performance } from '@tp/trading-core';
 import type { Env } from '../config/env.schema';
 import { AccountAccessService } from '../accounts/account-access.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -81,6 +81,75 @@ export class PerformanceService {
       timeZone,
     };
   }
+
+  /**
+   * The dashboard's equity chart: `equityCurve` over the account's recorded
+   * snapshots in the period. Recorded only — the snapshot pass is the one
+   * place equity is written down, so a day it did not record is a gap here.
+   */
+  async equityCurveFor(
+    userId: string,
+    accountId: string,
+    period: EquityCurvePeriod,
+    now: Date = new Date(),
+  ): Promise<
+    EquityCurve & {
+      period: EquityCurvePeriod;
+      currency: string;
+      from: string;
+      to: string;
+      timeZone: string;
+    }
+  > {
+    const grant = await this.access.resolve(userId, accountId, Permission.POSITIONS_READ);
+    const from = curveStart(period, now);
+    const timeZone = this.config.getOrThrow('TRADING_SERVER_TIMEZONE', { infer: true });
+    const rows = await this.prisma.accountSnapshot.findMany({
+      where: { accountId, takenAt: { gte: from, lte: now } },
+      select: { takenAt: true, balance: true, equity: true },
+      orderBy: { takenAt: 'asc' },
+      take: EQUITY_CURVE_SNAPSHOT_LIMIT + 1,
+    });
+    if (rows.length > EQUITY_CURVE_SNAPSHOT_LIMIT) {
+      throw new DomainError(
+        TradingErrorCode.VALIDATION_FAILED,
+        `More than ${EQUITY_CURVE_SNAPSHOT_LIMIT} snapshots in this period. Choose a shorter one.`,
+      );
+    }
+    const curve = equityCurve(
+      rows.map((row) => ({
+        takenAt: row.takenAt,
+        balance: row.balance.toString(),
+        equity: row.equity.toString(),
+      })),
+      timeZone,
+    );
+    return {
+      ...curve,
+      period,
+      currency: grant.account.currency,
+      from: from.toISOString(),
+      to: now.toISOString(),
+      timeZone,
+    };
+  }
+}
+
+export const EQUITY_CURVE_PERIODS = ['1W', '1M', '3M'] as const;
+export type EquityCurvePeriod = (typeof EQUITY_CURVE_PERIODS)[number];
+
+/**
+ * More snapshots than this in one period are refused rather than thinned. At
+ * the default five-minute interval three months is about 26,000.
+ */
+export const EQUITY_CURVE_SNAPSHOT_LIMIT = 40_000;
+
+/** The first instant of an equity-curve period ending now. */
+export function curveStart(period: EquityCurvePeriod, now: Date): Date {
+  const start = new Date(now);
+  if (period === '1W') start.setUTCDate(start.getUTCDate() - 7);
+  else start.setUTCMonth(start.getUTCMonth() - (period === '1M' ? 1 : 3));
+  return start;
 }
 
 /** The first instant of a period ending now. */

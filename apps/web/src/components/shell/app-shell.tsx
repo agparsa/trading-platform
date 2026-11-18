@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useSession } from '@/lib/session';
+import { cn } from '@tp/ui';
 import { Button } from '@/components/primitives';
 import { NotificationBell } from '@/components/notification-bell';
 import { useT } from '@/lib/use-locale';
@@ -23,10 +24,13 @@ export function AppShell({
   title,
   description,
   children,
+  wide = false,
 }: {
   title: string;
   description?: string;
   children: ReactNode;
+  /** The dashboard's grid wants the room; reading pages keep a measure. */
+  wide?: boolean;
 }) {
   const { user, signOut } = useSession();
   const t = useT();
@@ -36,7 +40,7 @@ export function AppShell({
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-y-2 border-b border-terminal-border px-4 py-2">
         <div className="flex items-center gap-3">
           <Link
-            href="/terminal"
+            href="/dashboard"
             className="text-sm font-semibold tracking-tight text-terminal-text"
           >
             {t('shell.brand')}
@@ -60,7 +64,7 @@ export function AppShell({
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+      <main className={cn('mx-auto w-full flex-1 px-4 py-6', wide ? 'max-w-7xl' : 'max-w-5xl')}>
         <div className="mb-5">
           <h1 className="text-base font-semibold tracking-tight text-terminal-text">{title}</h1>
           {description === undefined ? null : (

@@ -943,7 +943,48 @@ async function main(): Promise<void> {
 
     console.log('\n  As a trader\n');
     await signIn(page, people.trader.email);
-    await visit(page, '/', { url: '/terminal' });
+    await visit(page, '/', { url: '/dashboard' });
+    await visit(page, '/dashboard', { url: '/dashboard' });
+    {
+      /**
+       * The dashboard is the trader's home. Its balance card is the server's
+       * figure for the account the database holds, and each section is
+       * present — empty sections say they are empty, they do not vanish.
+       */
+      const account = await prisma.account.findFirst({
+        where: { user: { email: people.trader.email } },
+        orderBy: { createdAt: 'asc' },
+        select: { balance: true },
+      });
+      await page.getByTestId('dashboard').waitFor({ timeout: 15_000 });
+      const sections = await Promise.all(
+        [
+          'dashboard-equity',
+          'dashboard-checklist',
+          'dashboard-positions',
+          'dashboard-performance',
+          'dashboard-trades',
+          'dashboard-notices',
+        ].map((id) => page.getByTestId(id).count()),
+      );
+      ok(
+        sections.every((n) => n === 1),
+        'the dashboard shows every section',
+        sections.join(','),
+      );
+      const figures = (await page.getByTestId('dashboard').innerText()).replace(/[\s,]/g, '');
+      const whole = account === null ? '' : account.balance.toFixed(2);
+      ok(
+        account !== null && figures.includes(whole),
+        "the dashboard's balance is the database's",
+        `${whole} not in the figures`,
+      );
+      await checkSectionLinks(page, 'the dashboard header');
+      await auditAccessibility(page, 'the dashboard');
+      await page.getByTestId('dashboard-open-terminal').click();
+      await page.waitForURL(/\/terminal$/, { timeout: 15_000 });
+      ok(true, 'the dashboard opens the terminal');
+    }
     await visit(page, '/terminal', { url: '/terminal' });
     await checkSectionLinks(page, 'the terminal header');
 

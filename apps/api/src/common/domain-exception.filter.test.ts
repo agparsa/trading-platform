@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HttpStatus, ServiceUnavailableException } from '@nestjs/common';
+import { ThrottlerException } from '@nestjs/throttler';
 import { TradingErrorCode } from '@tp/shared-types';
 import { DomainExceptionFilter, statusForCode } from './domain-exception.filter';
 import type { ApiFailure } from '@tp/shared-types';
@@ -186,5 +187,15 @@ describe('DomainExceptionFilter, on a health probe that reports down', () => {
     const plain = respond(new ServiceUnavailableException('shutting down'));
     expect(plain.body.data).toBeUndefined();
     expect(plain.body.error.message).toBe('shutting down');
+  });
+});
+
+describe('a throttled request', () => {
+  it('says what to do, not the name of the class that refused it', () => {
+    const { status, body } = respond(new ThrottlerException());
+    expect(status).toBe(HttpStatus.TOO_MANY_REQUESTS);
+    expect(body.error.code).toBe(TradingErrorCode.RATE_LIMITED);
+    expect(body.error.message).not.toContain('Throttler');
+    expect(body.error.message).toContain('Wait a minute');
   });
 });

@@ -7,6 +7,7 @@ import { useSession } from '@/lib/session';
 import { Button, Field, inputClass } from '@/components/primitives';
 import { LanguageSettings } from '@/components/language-settings';
 import { useLocale, useT } from '@/lib/use-locale';
+import { explainError } from '@/lib/error-words';
 
 /**
  * Sign in and registration.
@@ -74,7 +75,11 @@ export default function LoginPage() {
       }
       // No navigation here — see the effect above.
     } catch (caught) {
-      setError(caught instanceof DomainError ? caught.message : t('login.unreachable'));
+      setError(
+        caught instanceof DomainError
+          ? explainError(caught.code, caught.message, locale, t)
+          : t('login.unreachable'),
+      );
     } finally {
       setBusy(false);
     }

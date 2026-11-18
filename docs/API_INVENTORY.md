@@ -419,9 +419,10 @@ handler is responsible for scoping the result to that user — which for
 
 ### `trading/performance.controller.ts` — base `/`
 
-| Verb  | Path                        | Handler      | Requires       |
-| ----- | --------------------------- | ------------ | -------------- |
-| `GET` | `/accounts/:id/performance` | `forAccount` | POSITIONS_READ |
+| Verb  | Path                         | Handler       | Requires       |
+| ----- | ---------------------------- | ------------- | -------------- |
+| `GET` | `/accounts/:id/performance`  | `forAccount`  | POSITIONS_READ |
+| `GET` | `/accounts/:id/equity-curve` | `equityCurve` | POSITIONS_READ |
 
 ### `trading/trading.controller.ts` — base `/`
 
@@ -512,7 +513,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**243 routes:** 126 `GET`, 100 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**244 routes:** 127 `GET`, 100 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

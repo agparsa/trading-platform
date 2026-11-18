@@ -906,6 +906,7 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
 const QUERY_BY_CALL: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   'GET /admin/kyc': { status: 'VERIFIED' },
   'GET /accounts/*/performance': { period: 'ALL' },
+  'GET /accounts/*/equity-curve': { period: '3M' },
   'GET /admin/payments': { status: 'SUCCEEDED' },
   'GET /admin/withdrawals': { status: 'PAID' },
 };
@@ -939,6 +940,7 @@ function pathValues(key: string, world: World): string[] | undefined {
     'GET /accounts/*/ledger': [world.accountId],
     'GET /accounts/*/order-events': [world.accountId],
     'GET /accounts/*/performance': [world.accountId],
+    'GET /accounts/*/equity-curve': [world.accountId],
     'GET /symbols/*': [world.ids['symbol'] ?? 'EURUSD'],
     'GET /admin/users/*': [world.traderId],
     'GET /admin/users/*/devices': [world.traderId],

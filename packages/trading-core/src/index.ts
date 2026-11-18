@@ -6,3 +6,4 @@ export * from './price-range';
 export * from './price-alerts';
 export * from './levels';
 export * from './performance';
+export * from './equity-curve';

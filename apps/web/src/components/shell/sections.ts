@@ -14,6 +14,7 @@ import type { NavItem } from './nav';
  * exist, and a page reading "Balance: —" is a promise the platform cannot keep.
  */
 export const TRADER_SECTIONS: readonly NavItem[] = [
+  { href: '/dashboard', label: 'Dashboard', key: 'nav.dashboard' },
   { href: '/terminal', label: 'Terminal', key: 'nav.terminal' },
   { href: '/account', label: 'Account', key: 'nav.account' },
   { href: '/wallet', label: 'Wallet', key: 'nav.wallet' },

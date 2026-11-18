@@ -183,7 +183,12 @@ export class DomainExceptionFilter implements ExceptionFilter {
           ok: false,
           error: {
             code: codeForStatus(status),
-            message: validationMessage(exception) ?? exception.message,
+            message:
+              status === HttpStatus.TOO_MANY_REQUESTS
+                ? // The throttler's own text is "ThrottlerException: Too Many
+                  // Requests" — a class name, shown to a person at a sign-in form.
+                  'Too many attempts. Wait a minute and try again.'
+                : (validationMessage(exception) ?? exception.message),
             requestId,
           },
           ...(report === null ? {} : { data: report }),

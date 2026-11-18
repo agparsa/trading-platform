@@ -9,6 +9,7 @@ import type { PrismaService } from '../../src/prisma/prisma.service';
 import {
   createAccount,
   createTestClient,
+  DEFAULT_TENANT_ID,
   hasTestDatabase,
   resetDatabase,
   seedTradingSymbols,
@@ -147,6 +148,52 @@ suite("An account's performance (integration)", () => {
 
     await expect(
       controller.forAccount(asUser(mallory.userId), alice.accountId, { period: '3M' } as never),
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof DomainError && error.code === TradingErrorCode.RESOURCE_NOT_FOUND,
+    );
+  });
+
+  it('draws the equity curve from recorded snapshots only, for the owner only', async () => {
+    const alice = await createAccount(prisma, { balance: '10000' });
+    const mallory = await createAccount(prisma, { balance: '10000' });
+    const day = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const snap = (ago: number, equity: string) =>
+      prisma.accountSnapshot.create({
+        data: {
+          tenantId: DEFAULT_TENANT_ID,
+          accountId: alice.accountId,
+          takenAt: new Date(now - ago),
+          balance: '10000',
+          equity,
+          usedMargin: '0',
+          freeMargin: equity,
+          floatingPnl: '0',
+          openPositions: 0,
+        },
+      });
+    await snap(40 * day, '50000'); // outside a month: not in the curve
+    await snap(3 * day, '10000');
+    await snap(2 * day, '10500');
+    await snap(1 * day, '9450');
+
+    const curve = await controller.equityCurve(asUser(alice.userId), alice.accountId, {
+      period: '1M',
+    } as never);
+    expect(curve.points).toHaveLength(3);
+    expect(curve.peakEquity).toBe('10500');
+    expect(curve.maxDrawdown).toBe('1050');
+    expect(curve.maxDrawdownPercent).toBe('10.00');
+    expect(curve.currency).toBe('USD');
+
+    const empty = await controller.equityCurve(asUser(mallory.userId), mallory.accountId, {
+      period: '1W',
+    } as never);
+    expect(empty.points).toEqual([]);
+
+    await expect(
+      controller.equityCurve(asUser(mallory.userId), alice.accountId, { period: '1M' } as never),
     ).rejects.toSatisfy(
       (error: unknown) =>
         error instanceof DomainError && error.code === TradingErrorCode.RESOURCE_NOT_FOUND,

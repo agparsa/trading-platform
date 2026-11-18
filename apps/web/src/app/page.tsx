@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
 
 /**
- * The root moved to `/terminal`.
+ * The root is the trader's home, `/dashboard` (it was `/terminal` until the
+ * dashboard existed).
  *
  * A redirect rather than a re-export, because the point of this phase is that
  * every screen has an address an operator can be sent. Two URLs rendering the
@@ -12,5 +13,5 @@ import { redirect } from 'next/navigation';
  * today all point here.
  */
 export default function Root() {
-  redirect('/terminal');
+  redirect('/dashboard');
 }

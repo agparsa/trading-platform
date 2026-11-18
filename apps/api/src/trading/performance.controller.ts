@@ -9,12 +9,21 @@ import {
   type AuthenticatedUser,
 } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
-import { PERFORMANCE_PERIODS, PerformanceService } from './performance.service';
+import {
+  EQUITY_CURVE_PERIODS,
+  PERFORMANCE_PERIODS,
+  PerformanceService,
+} from './performance.service';
 
 const performanceQuerySchema = z
   .object({ period: z.enum(PERFORMANCE_PERIODS).default('3M') })
   .strict();
 class PerformanceQueryDto extends createZodDto(performanceQuerySchema) {}
+
+const equityCurveQuerySchema = z
+  .object({ period: z.enum(EQUITY_CURVE_PERIODS).default('1M') })
+  .strict();
+class EquityCurveQueryDto extends createZodDto(equityCurveQuerySchema) {}
 
 @ApiTags('trading')
 @Controller()
@@ -30,5 +39,18 @@ export class PerformanceController {
     @Query() query: PerformanceQueryDto,
   ) {
     return this.performance.forAccount(subjectOf(user), id, query.period);
+  }
+
+  @RequirePermissions(Permission.POSITIONS_READ)
+  @Get('accounts/:id/equity-curve')
+  @ApiOperation({
+    summary: "An account's daily balance and equity, and its worst drawdown, from its snapshots",
+  })
+  equityCurve(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: EquityCurveQueryDto,
+  ) {
+    return this.performance.equityCurveFor(subjectOf(user), id, query.period);
   }
 }

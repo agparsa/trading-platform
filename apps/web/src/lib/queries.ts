@@ -366,12 +366,18 @@ export function useAccounts() {
   });
 }
 
-export function useAccountState(accountId: string | null) {
+/**
+ * An account's state. `pollMs` re-reads it on a schedule, for a screen with no
+ * socket (the dashboard); the terminal leaves it off and takes the socket's
+ * frames instead.
+ */
+export function useAccountState(accountId: string | null, pollMs?: number) {
   const { api } = useSession();
   return useQuery({
     queryKey: queryKeys.accountState(accountId ?? 'none'),
     queryFn: () => api.get<AccountStateResponse>(`/accounts/${accountId ?? ''}/state`),
     enabled: accountId !== null,
+    ...(pollMs === undefined ? {} : { refetchInterval: pollMs }),
   });
 }
 
@@ -1597,5 +1603,52 @@ export function useOrderPreview(request: Omit<OpenPositionInput, 'commandId'> | 
     enabled: request !== null,
     staleTime: 2_000,
     retry: false,
+  });
+}
+
+export type EquityCurvePeriod = '1W' | '1M' | '3M';
+
+/** What `GET /accounts/:id/equity-curve` answers. */
+export interface EquityCurveRow {
+  period: EquityCurvePeriod;
+  currency: string;
+  from: string;
+  to: string;
+  timeZone: string;
+  points: Array<{ day: string; balance: string; equity: string; lowEquity: string }>;
+  peakEquity: string | null;
+  maxDrawdown: string;
+  maxDrawdownPercent: string | null;
+}
+
+/**
+ * An account's balance and equity by trading day, from the platform's own
+ * snapshots, with its worst drawdown. Days nothing was recorded are absent.
+ */
+export function useEquityCurve(accountId: string | null, period: EquityCurvePeriod) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: ['equity-curve', accountId ?? 'none', period],
+    queryFn: () =>
+      api.get<EquityCurveRow>(`/accounts/${accountId ?? ''}/equity-curve`, { query: { period } }),
+    enabled: accountId !== null,
+    staleTime: 60_000,
+  });
+}
+
+export interface TwoFactorStatusRow {
+  enabled: boolean;
+  enabledAt: string | null;
+  pending: boolean;
+  recoveryCodesRemaining: number;
+}
+
+/** Whether the signed-in person has two-factor authentication on. */
+export function useTwoFactorStatus() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['two-factor'],
+    queryFn: () => api.get<TwoFactorStatusRow>('/auth/2fa'),
+    enabled: accessToken !== null,
   });
 }

@@ -12,7 +12,8 @@ Every screen has an address now. The terminal did not change.
 
 | Route                   | What it is                                                                                                          |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `/`                     | redirects to `/terminal`                                                                                            |
+| `/`                     | redirects to `/dashboard`                                                                                           |
+| `/dashboard`            | the trader's home: account figures, equity curve and drawdown, open positions, results, setup checklist             |
 | `/terminal`             | the trading terminal, full height                                                                                   |
 | `/account`              | balances, margin, the terms an account trades on                                                                    |
 | `/wallet`               | money held for you, and moving it to and from an account                                                            |
