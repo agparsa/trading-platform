@@ -22,6 +22,14 @@ The Zod constrained-collection memory exhaustion advisory was reached only throu
 
 Overrides affect all packages in the workspace, so each has a recorded reason and is included in the package audit test.
 
+## Ignored advisories
+
+`pnpm.auditConfig.ignoreGhsas` in `package.json`, accepted by the repository owner on 2026-11-18 as temporary:
+
+| Advisory              | Package     | Reason                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GHSA-fc5q-39xc-vjpf` | `picomatch` | Rated high on 2026-11-17 (CVE-2026-112366: ReDoS from a crafted extglob such as `+(*)`). Every release up to 4.0.7, the latest, is affected and no patched version exists, so neither an update nor an override can clear it. Both copies are developer tooling: `typescript-eslint -> @typescript-eslint/typescript-estree -> tinyglobby -> picomatch` (lint) and `apps/mobile -> expo -> @expo/cli -> @expo/metro-file-map -> jest-worker -> jest-util -> picomatch` (the Expo CLI). Each matches globs written in this repository, never a pattern from a request, and neither is in the API, worker or web runtime. **Remove this entry once a patched picomatch is published and the tree resolves to it.** |
+
 ## Remaining advisories
 
-No high or critical advisories remain. The eight moderate and one low findings are below the CI threshold and remain visible in `pnpm audit`; none are silenced with `auditConfig` ignores. Review them during normal dependency updates.
+No other high or critical advisories remain. The ten moderate and one low findings are below the CI threshold and remain visible in `pnpm audit`. Review them during normal dependency updates.
