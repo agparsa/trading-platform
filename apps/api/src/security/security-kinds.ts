@@ -57,6 +57,12 @@ export const SECURITY_KINDS: Readonly<Record<string, SecurityKind>> = {
   'user.suspended': { kind: 'USER_SUSPENDED', severity: 'WARNING', subject: 'resource' },
   'user.reinstated': { kind: 'USER_REINSTATED', severity: 'NOTICE', subject: 'resource' },
   'user.unlocked': { kind: 'USER_UNLOCKED', severity: 'NOTICE', subject: 'resource' },
+  /** A password set by an operator at the host (`set-password` CLI): the owner's feed says so. */
+  'user.password_set_from_host': {
+    kind: 'PASSWORD_RESET',
+    severity: 'WARNING',
+    subject: 'resource',
+  },
   /**
    * `resource`, so the event lands in the *subject's* feed rather than the
    * staff member's. "Somebody looked at your account" is a thing the account
