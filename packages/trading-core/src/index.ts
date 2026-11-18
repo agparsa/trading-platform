@@ -7,3 +7,4 @@ export * from './price-alerts';
 export * from './levels';
 export * from './performance';
 export * from './equity-curve';
+export * from './challenge-rules';

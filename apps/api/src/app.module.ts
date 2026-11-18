@@ -14,6 +14,7 @@ import { HealthModule } from './health/health.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { LeadershipModule } from './leadership/leadership.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { ChallengesModule } from './challenges/challenges.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { AuditModule } from './common/audit/audit.module';
 import { EmailModule } from './auth/email/email.module';
@@ -112,6 +113,7 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
     MetricsModule,
     LeadershipModule,
     AlertsModule,
+    ChallengesModule,
     AuthModule,
     AccountsModule,
     UsersModule,

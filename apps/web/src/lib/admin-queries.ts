@@ -2,7 +2,12 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type KillSwitchState, Permission } from '@tp/shared-types';
-import { usePermissions } from './queries';
+import {
+  usePermissions,
+  type ChallengePlanRow,
+  type ChallengeRow,
+  type ChallengeStatus,
+} from './queries';
 import { useSession } from './session';
 
 /**
@@ -2694,6 +2699,78 @@ export function useRequestReport() {
       mutationFn: (input: { kind: string; from: string; to: string; accountId?: string }) =>
         api.post<ReportRow>('/reports', input, { idempotencyKey: crypto.randomUUID() }),
       onSuccess: () => void client.invalidateQueries({ queryKey: ['admin', 'reports'] }),
+    }),
+  );
+}
+
+// ------------------------------------------------------------ challenges
+
+export type ChallengePlanInput = Omit<ChallengePlanRow, 'id' | 'paymentAddress' | 'isActive'> & {
+  paymentAddress: string | null;
+  isActive: boolean;
+};
+
+export function useAdminChallengePlans() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'challenge-plans'],
+    queryFn: () => api.get<ChallengePlanRow[]>('/admin/challenges/plans'),
+    enabled: accessToken !== null,
+  });
+}
+
+export function useAdminChallenges(status: ChallengeStatus | null) {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'challenges', status ?? 'all'],
+    queryFn: () =>
+      api.get<ChallengeRow[]>('/admin/challenges', {
+        query: status === null ? {} : { status },
+      }),
+    enabled: accessToken !== null,
+    refetchInterval: 15_000,
+  });
+}
+
+export function useAdminChallenge(id: string | null) {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'challenge', id ?? 'none'],
+    queryFn: () => api.get<ChallengeRow>(`/admin/challenges/${id ?? ''}`),
+    enabled: accessToken !== null && id !== null,
+  });
+}
+
+export function useSaveChallengePlan() {
+  const { api } = useSession();
+  const invalidate = useAdminInvalidate();
+  return useGated(
+    Permission.PAYMENTS_CONFIRM,
+    useMutation({
+      mutationFn: (input: { id: string | null; plan: ChallengePlanInput }) =>
+        input.id === null
+          ? api.post<ChallengePlanRow>('/admin/challenges/plans', input.plan, {
+              idempotencyKey: crypto.randomUUID(),
+            })
+          : api.put<ChallengePlanRow>(`/admin/challenges/plans/${input.id}`, input.plan),
+      onSuccess: invalidate,
+    }),
+  );
+}
+
+export function useDecideChallengePayment() {
+  const { api } = useSession();
+  const invalidate = useAdminInvalidate();
+  return useGated(
+    Permission.PAYMENTS_CONFIRM,
+    useMutation({
+      mutationFn: (input: { id: string; confirmed: boolean; reason: string | null }) =>
+        api.post<ChallengeRow>(
+          `/admin/challenges/${input.id}/payment-decision`,
+          { confirmed: input.confirmed, reason: input.reason },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: invalidate,
     }),
   );
 }

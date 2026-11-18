@@ -1599,6 +1599,63 @@ async function main(): Promise<void> {
       await page.getByRole('radio', { name: 'English' }).click();
     }
 
+    /**
+     * A challenge bought from the screen and paid for: the trader's side of
+     * the path. The plan is the firm's configuration, written here as the
+     * admin screen would; the purchase and the payment go through the page.
+     * Nothing is opened until a person confirms the fee — checked below.
+     */
+    let challengeId: string | null = null;
+    {
+      const trader = await prisma.user.findFirstOrThrow({
+        where: { email: people.trader.email },
+        select: { id: true, tenantId: true },
+      });
+      const planName = `Smoke ${Date.now().toString(36)}`;
+      await prisma.challengePlan.create({
+        data: {
+          tenantId: trader.tenantId,
+          name: planName,
+          steps: 2,
+          accountSize: '25000',
+          price: '149',
+          paymentAsset: 'USDT',
+          paymentNetwork: 'TRC20',
+          paymentAddress: 'TSmokeCheckAddress0000000000000001',
+          phaseOneTargetPct: '8',
+          phaseTwoTargetPct: '5',
+          dailyLossPct: '5',
+          maxLossPct: '10',
+          minTradingDays: 4,
+          profitSplitPct: '80',
+          isActive: true,
+        },
+      });
+      await visit(page, '/challenges', { url: '/challenges' });
+      const card = page.getByTestId('challenge-plan').filter({ hasText: planName });
+      ok((await card.count()) === 1, 'the challenges screen offers the plan on sale', planName);
+      await card.getByTestId('challenge-buy').click();
+      const bought = page.getByTestId('challenge-card').filter({ hasText: planName });
+      await bought.waitFor({ timeout: 15_000 });
+      await bought.getByPlaceholder(/Transaction hash/i).fill(`smoke${Date.now()}`.padEnd(64, 'f'));
+      await bought.getByRole('button', { name: 'I have paid' }).click();
+      await bought
+        .getByText(/being checked/i)
+        .first()
+        .waitFor({ timeout: 15_000 });
+      const row = await prisma.challenge.findFirst({
+        where: { userId: trader.id, planName },
+        select: { id: true, status: true },
+      });
+      challengeId = row?.id ?? null;
+      ok(
+        row?.status === 'PAYMENT_REVIEW',
+        'a challenge bought on the screen waits for a person to check the fee',
+        `status ${row?.status ?? 'none'}`,
+      );
+      await auditAccessibility(page, 'the challenges screen');
+    }
+
     console.log('\n  As an administrator\n');
     const adminContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const adminPage = await adminContext.newPage();
@@ -1799,6 +1856,57 @@ async function main(): Promise<void> {
     await auditAccessibility(adminPage, 'the accounts screen');
     await auditAccessibility(adminPage, 'the reconciliation screen');
     await auditAccessibility(adminPage, 'the risk console');
+    await visit(adminPage, '/admin/challenges', { url: '/admin/challenges' });
+    if (challengeId !== null) {
+      const id = challengeId;
+      const accountsBefore = await prisma.account.count({
+        where: { user: { email: people.trader.email } },
+      });
+      const row = adminPage
+        .getByTestId('admin-challenge-row')
+        .filter({ hasText: people.trader.email })
+        .first();
+      await row.getByRole('button', { name: 'Confirm paid' }).click();
+      let after = await prisma.challenge.findUniqueOrThrow({ where: { id } });
+      for (let i = 0; i < 30 && after.status !== 'ACTIVE'; i += 1) {
+        await adminPage.waitForTimeout(300);
+        after = await prisma.challenge.findUniqueOrThrow({ where: { id } });
+      }
+      const accountsAfter = await prisma.account.count({
+        where: { user: { email: people.trader.email } },
+      });
+      ok(
+        after.status === 'ACTIVE' &&
+          after.accountId !== null &&
+          accountsAfter === accountsBefore + 1,
+        'confirming the fee opens the phase 1 account',
+        `${after.status} · accounts ${accountsBefore} → ${accountsAfter}`,
+      );
+      await auditAccessibility(adminPage, 'the challenges desk');
+      // A certificate, as passing a phase writes one, shown at its address.
+      const code = `PF-SMOKE${Date.now().toString(36).toUpperCase()}`.slice(0, 32);
+      await prisma.challengeCertificate.create({
+        data: {
+          tenantId: after.tenantId,
+          challengeId: id,
+          code,
+          phase: 'PHASE_ONE',
+          traderName: 'Smoke Trader',
+          accountSize: after.accountSize,
+          currency: after.accountCurrency,
+        },
+      });
+      await visit(adminPage, `/challenges/certificate/${code}`, {
+        url: `/challenges/certificate/${code}`,
+        text: /Smoke Trader/,
+      });
+      await prisma.challengePlan.updateMany({
+        where: { id: after.planId },
+        data: { isActive: false },
+      });
+    } else {
+      ok(false, 'the challenge desk has a payment to confirm', 'no challenge was bought');
+    }
     await visit(adminPage, '/admin/kyc', { url: '/admin/kyc', text: /Awaiting review/i });
     await visit(adminPage, '/admin/withdrawals', {
       url: '/admin/withdrawals',

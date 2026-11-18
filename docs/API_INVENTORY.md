@@ -156,6 +156,29 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/admin/brokers`            | `create`    | SESSION-ONLY (class), TENANTS_MANAGE |
 | `POST` | `/admin/brokers/:id/status` | `setStatus` | SESSION-ONLY (class), TENANTS_MANAGE |
 
+### `challenges/challenges.controller.ts` — base `/challenges`
+
+| Verb   | Path                             | Handler       | Requires          |
+| ------ | -------------------------------- | ------------- | ----------------- |
+| `GET`  | `/challenges/plans`              | `plans`       | ACCOUNTS_READ     |
+| `GET`  | `/challenges`                    | `mine`        | ACCOUNTS_READ     |
+| `GET`  | `/challenges/certificates/:code` | `certificate` | PUBLIC, throttled |
+| `GET`  | `/challenges/:id`                | `one`         | ACCOUNTS_READ     |
+| `POST` | `/challenges`                    | `purchase`    | PAYMENTS_CREATE   |
+| `POST` | `/challenges/:id/payment`        | `payment`     | PAYMENTS_CREATE   |
+| `POST` | `/challenges/:id/cancel`         | `cancel`      | PAYMENTS_CREATE   |
+
+### `challenges/challenges.controller.ts` — base `/admin/challenges`
+
+| Verb   | Path                                     | Handler      | Requires          |
+| ------ | ---------------------------------------- | ------------ | ----------------- |
+| `GET`  | `/admin/challenges/plans`                | `plans`      | PAYMENTS_READ_ANY |
+| `POST` | `/admin/challenges/plans`                | `createPlan` | PAYMENTS_CONFIRM  |
+| `PUT`  | `/admin/challenges/plans/:id`            | `updatePlan` | PAYMENTS_CONFIRM  |
+| `GET`  | `/admin/challenges`                      | `list`       | ACCOUNTS_READ_ANY |
+| `GET`  | `/admin/challenges/:id`                  | `one`        | ACCOUNTS_READ_ANY |
+| `POST` | `/admin/challenges/:id/payment-decision` | `decide`     | PAYMENTS_CONFIRM  |
+
 ### `charts/charts.controller.ts` — base `/charts`
 
 | Verb     | Path                       | Handler          | Requires             |
@@ -513,7 +536,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**244 routes:** 127 `GET`, 100 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**257 routes:** 134 `GET`, 105 `POST`, 10 `DELETE`, 5 `PATCH`, 3 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

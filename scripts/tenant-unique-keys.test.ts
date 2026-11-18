@@ -71,6 +71,8 @@ const GLOBAL_ON_PURPOSE: Readonly<Record<string, string>> = {
   'RefreshToken.tokenHash': 'a hash of a token this platform issued.',
   'TotpRecoveryCode.codeHash': 'a hash of a recovery code this platform generated.',
   'InviteCode.codeHash': 'a hash of an invite code this platform generated.',
+  'ChallengeCertificate.code':
+    'a code this platform minted from 60 random bits; it is how anyone checks a certificate, so it must name one.',
   'ApiKey.fingerprint':
     'a fingerprint of a key this platform generated; it identifies the key itself.',
   'ServiceToken.fingerprint': 'likewise, for service tokens.',

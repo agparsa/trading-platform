@@ -1652,3 +1652,168 @@ export function useTwoFactorStatus() {
     enabled: accessToken !== null,
   });
 }
+
+// ------------------------------------------------------------ challenges
+
+export interface ChallengePlanRow {
+  id: string;
+  name: string;
+  steps: number;
+  accountSize: string;
+  accountCurrency: string;
+  leverage: number;
+  price: string;
+  paymentAsset: string;
+  paymentNetwork: string;
+  phaseOneTargetPct: string;
+  phaseTwoTargetPct: string | null;
+  dailyLossPct: string;
+  maxLossPct: string;
+  drawdownMode: 'STATIC' | 'TRAILING';
+  trailingLock: boolean;
+  dailyBasis: 'BALANCE' | 'EQUITY' | 'HIGHER';
+  minTradingDays: number;
+  maxDays: number | null;
+  profitSplitPct: string;
+  /** Staff only. */
+  paymentAddress?: string | null;
+  isActive?: boolean;
+}
+
+/** The evaluator's last figures; see `challenge-rules.ts` for each one. */
+export interface ChallengeMetricsRow {
+  dailyReference: string;
+  dailyLossLimit: string;
+  dailyFloor: string;
+  dailyLoss: string;
+  maxLossLimit: string;
+  highWaterEquity: string;
+  maxLossFloor: string;
+  targetBalance: string | null;
+  targetProgressPct: string | null;
+  tradingDays: number;
+  minTradingDays: number;
+  dayNumber: number;
+  maxDays: number | null;
+  balance: string;
+  equity: string;
+  openPositions: number;
+}
+
+export type ChallengeStatus =
+  'AWAITING_PAYMENT' | 'PAYMENT_REVIEW' | 'ACTIVE' | 'FUNDED' | 'FAILED' | 'CANCELLED';
+export type ChallengePhase = 'PHASE_ONE' | 'PHASE_TWO' | 'FUNDED';
+
+export interface ChallengeRow {
+  id: string;
+  status: ChallengeStatus;
+  phase: ChallengePhase;
+  planName: string;
+  steps: number;
+  accountSize: string;
+  accountCurrency: string;
+  leverage: number;
+  price: string;
+  payment: { asset: string; network: string; address: string; transactionHash: string | null };
+  rules: {
+    profitTargetPct: string | null;
+    dailyLossPct: string;
+    maxLossPct: string;
+    drawdownMode: 'STATIC' | 'TRAILING';
+    trailingLock: boolean;
+    dailyBasis: 'BALANCE' | 'EQUITY' | 'HIGHER';
+    minTradingDays: number;
+    maxDays: number | null;
+  };
+  profitSplitPct: string;
+  accountId: string | null;
+  accountNumber: string | null;
+  phaseStartedAt: string | null;
+  metrics: ChallengeMetricsRow | null;
+  lastEvaluatedAt: string | null;
+  failedRule: string | null;
+  failedAt: string | null;
+  fundedAt: string | null;
+  certificates: Array<{ code: string; phase: ChallengePhase; issuedAt: string }>;
+  createdAt: string;
+  trader?: { email: string; displayName: string };
+  events?: Array<{ kind: string; phase: ChallengePhase; details: unknown; at: string }>;
+}
+
+export interface CertificateRow {
+  code: string;
+  phase: ChallengePhase;
+  traderName: string;
+  accountSize: string;
+  currency: string;
+  issuedAt: string;
+}
+
+export function useChallengePlans() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['challenge-plans'],
+    queryFn: () => api.get<ChallengePlanRow[]>('/challenges/plans'),
+    enabled: accessToken !== null,
+  });
+}
+
+/** Your challenges, re-read while one is running so its meters move. */
+export function useChallenges() {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['challenges'],
+    queryFn: () => api.get<ChallengeRow[]>('/challenges'),
+    enabled: accessToken !== null,
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((row) =>
+        ['ACTIVE', 'FUNDED', 'PAYMENT_REVIEW'].includes(row.status),
+      )
+        ? 10_000
+        : false,
+  });
+}
+
+export function useCertificate(code: string) {
+  const { api, accessToken } = useSession();
+  return useQuery({
+    queryKey: ['certificate', code],
+    queryFn: () => api.get<CertificateRow>(`/challenges/certificates/${encodeURIComponent(code)}`),
+    enabled: accessToken !== null && code !== '',
+    retry: false,
+  });
+}
+
+function useChallengeMutation<I>(call: (api: ApiClient, input: I) => Promise<ChallengeRow>) {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: I) => call(api, input),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['challenges'] });
+      void client.invalidateQueries({ queryKey: queryKeys.accounts });
+    },
+  });
+}
+
+export function useBuyChallenge() {
+  return useChallengeMutation((api, planId: string) =>
+    api.post<ChallengeRow>('/challenges', { planId }, { idempotencyKey: crypto.randomUUID() }),
+  );
+}
+
+export function useSubmitChallengePayment() {
+  return useChallengeMutation((api, input: { id: string; transactionHash: string }) =>
+    api.post<ChallengeRow>(
+      `/challenges/${input.id}/payment`,
+      { transactionHash: input.transactionHash },
+      { idempotencyKey: crypto.randomUUID() },
+    ),
+  );
+}
+
+export function useCancelChallenge() {
+  return useChallengeMutation((api, id: string) =>
+    api.post<ChallengeRow>(`/challenges/${id}/cancel`, {}, { idempotencyKey: crypto.randomUUID() }),
+  );
+}

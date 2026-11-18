@@ -45,6 +45,7 @@ Kept as history; several things they call missing now exist.
 - [risk.md](./risk.md) — rule contract, default rules, the future-product seam
 - [desks-and-risk-hierarchy.md](./desks-and-risk-hierarchy.md) — master accounts, what a delegation confers, and the four layers of ceilings
 - [external-execution.md](./external-execution.md) — how an order reaches a venue, and what happens when the answer does not come
+- [challenges.md](./challenges.md) — prop-firm evaluations: plans, the fee, the rules and how they are decided
 - [price-alerts.md](./price-alerts.md) — "tell me when gold reaches 4600", and when it fires
 
 **Interfaces**

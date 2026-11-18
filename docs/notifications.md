@@ -57,26 +57,30 @@ notification's own id is used: still stable, still unique, still processed once.
 
 ## What raises one today
 
-| Kind                     | When                                              | Category          |
-| ------------------------ | ------------------------------------------------- | ----------------- |
-| `position.opened`        | a position opens                                  | `TRADE_OPENED`    |
-| `position.closed`        | a position closes manually                        | `TRADE_CLOSED`    |
-| `position.partial_close` | part of a position closes                         | `TRADE_CLOSED`    |
-| `position.stop_loss`     | a stop loss or trailing stop fires                | `STOP_LOSS`       |
-| `position.take_profit`   | a take profit fires                               | `TAKE_PROFIT`     |
-| `position.modified`      | SL or TP changed                                  | `TRADE_MODIFIED`  |
-| `order.cancelled`        | a resting order is cancelled or expires           | `ORDER_CANCELLED` |
-| `risk.margin_call`       | an account crosses into margin call               | `RISK_ALERT`      |
-| `risk.stop_out`          | an account reaches its stop-out level             | `RISK_ALERT`      |
-| `price.alert`            | a price alert the trader set is reached           | `PRICE_ALERT`     |
-| `kyc.verified`           | identity documents accepted                       | `SYSTEM`          |
-| `kyc.rejected`           | identity documents not accepted                   | `SYSTEM`          |
-| `kyc.revoked`            | a verification already granted is taken back      | `SYSTEM`          |
-| `withdrawal.rejected`    | a withdrawal is refused, money back in the wallet | `SYSTEM`          |
-| `withdrawal.paid`        | a withdrawal has been paid                        | `SYSTEM`          |
-| `withdrawal.failed`      | a payout was attempted and did not complete       | `SYSTEM`          |
-| `api_key.minted`         | a key was created on the holder's account         | `SYSTEM`          |
-| `api_key.revoked`        | a key was revoked                                 | `SYSTEM`          |
+| Kind                         | When                                                   | Category          |
+| ---------------------------- | ------------------------------------------------------ | ----------------- |
+| `position.opened`            | a position opens                                       | `TRADE_OPENED`    |
+| `position.closed`            | a position closes manually                             | `TRADE_CLOSED`    |
+| `position.partial_close`     | part of a position closes                              | `TRADE_CLOSED`    |
+| `position.stop_loss`         | a stop loss or trailing stop fires                     | `STOP_LOSS`       |
+| `position.take_profit`       | a take profit fires                                    | `TAKE_PROFIT`     |
+| `position.modified`          | SL or TP changed                                       | `TRADE_MODIFIED`  |
+| `order.cancelled`            | a resting order is cancelled or expires                | `ORDER_CANCELLED` |
+| `risk.margin_call`           | an account crosses into margin call                    | `RISK_ALERT`      |
+| `risk.stop_out`              | an account reaches its stop-out level                  | `RISK_ALERT`      |
+| `price.alert`                | a price alert the trader set is reached                | `PRICE_ALERT`     |
+| `kyc.verified`               | identity documents accepted                            | `SYSTEM`          |
+| `kyc.rejected`               | identity documents not accepted                        | `SYSTEM`          |
+| `kyc.revoked`                | a verification already granted is taken back           | `SYSTEM`          |
+| `withdrawal.rejected`        | a withdrawal is refused, money back in the wallet      | `SYSTEM`          |
+| `withdrawal.paid`            | a withdrawal has been paid                             | `SYSTEM`          |
+| `withdrawal.failed`          | a payout was attempted and did not complete            | `SYSTEM`          |
+| `api_key.minted`             | a key was created on the holder's account              | `SYSTEM`          |
+| `api_key.revoked`            | a key was revoked                                      | `SYSTEM`          |
+| `challenge.started`          | a challenge fee was confirmed and phase 1 is open      | `SYSTEM`          |
+| `challenge.payment_rejected` | a challenge fee was not accepted                       | `SYSTEM`          |
+| `challenge.passed`           | a phase was passed; the next account is open           | `SYSTEM`          |
+| `challenge.failed`           | a challenge rule was broken; the account is close-only | `RISK_ALERT`      |
 
 The last nine rows were missing from this table for as long as they have been
 raised. The heading says _today_, which made the omission read as a deliberate

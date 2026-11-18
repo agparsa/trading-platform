@@ -120,6 +120,7 @@ services:
       MARKET_INGEST_ENABLED: 'true'
       TRIGGER_ENGINE_ENABLED: 'true'
       PRICE_ALERTS_ENABLED: 'true'
+      CHALLENGE_EVALUATION_ENABLED: 'true'
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -163,6 +164,7 @@ services:
       MARKET_INGEST_ENABLED: 'false'
       TRIGGER_ENGINE_ENABLED: 'false'
       PRICE_ALERTS_ENABLED: 'false'
+      CHALLENGE_EVALUATION_ENABLED: 'false'
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -203,6 +205,7 @@ services:
       MARKET_INGEST_ENABLED: 'false'
       TRIGGER_ENGINE_ENABLED: 'false'
       PRICE_ALERTS_ENABLED: 'false'
+      CHALLENGE_EVALUATION_ENABLED: 'false'
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }

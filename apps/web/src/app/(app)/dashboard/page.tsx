@@ -5,12 +5,14 @@ import { useEffect, useState } from 'react';
 import { cn } from '@tp/ui';
 import { AppShell } from '@/components/shell/app-shell';
 import { EquityChart } from '@/components/dashboard/equity-chart';
+import { ChallengeCard } from '@/components/challenges/challenge-card';
 import { SideBadge } from '@/components/primitives';
 import { money, percent, signedMoney, toneClass, toneOf, utcTime } from '@/lib/format';
 import { wordsFor, type MessageKey } from '@/lib/messages';
 import {
   useAccountState,
   useAccounts,
+  useChallenges,
   useKyc,
   useNotifications,
   usePerformance,
@@ -79,6 +81,8 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
+
+        <RunningChallenges />
 
         {accounts.isError ? (
           <Notice tone="error">{t('more.accountsFailed')}</Notice>
@@ -648,6 +652,22 @@ function Notice({ children, tone }: { children: React.ReactNode; tone?: 'error' 
       )}
     >
       {children}
+    </div>
+  );
+}
+
+/** A challenge in progress is the first thing a prop trader wants to see. */
+function RunningChallenges() {
+  const challenges = useChallenges();
+  const running = (challenges.data ?? []).filter((row) =>
+    ['ACTIVE', 'FUNDED', 'PAYMENT_REVIEW', 'AWAITING_PAYMENT'].includes(row.status),
+  );
+  if (running.length === 0) return null;
+  return (
+    <div className="grid gap-4 lg:grid-cols-2" data-testid="dashboard-challenges">
+      {running.map((row) => (
+        <ChallengeCard key={row.id} row={row} />
+      ))}
     </div>
   );
 }
