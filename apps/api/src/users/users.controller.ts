@@ -16,8 +16,15 @@ export const E164 = /^\+[1-9]\d{6,14}$/;
 export const updateProfileSchema = z
   .object({
     displayName: z.string().trim().min(1).max(120).optional(),
+    // The description does more than describe. Without a keyword on the
+    // string, Zod writes `string | null` as `type: ['string', 'null']`, and
+    // @nestjs/swagger reads a list of types as "an array of the first one": the
+    // published schema said `phone` was an array of strings, and
+    // `pnpm smoke:contracts` failed the web's PATCH for sending a string or
+    // null. With it, Zod writes `anyOf: [string, null]`, which survives.
     phone: z
       .string()
+      .describe('A phone number in international form, such as +989121234567, or null to remove it')
       .transform((value) => value.replace(/[\s()-]/g, ''))
       .refine((value) => E164.test(value), {
         message: 'A phone number in international form, such as +989121234567',
