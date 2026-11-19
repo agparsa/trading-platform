@@ -6,6 +6,7 @@ import { DomainError } from '@tp/shared-types';
 import { useSession } from '@/lib/session';
 import { Button, Field, inputClass } from '@/components/primitives';
 import { LanguageSettings } from '@/components/language-settings';
+import { NavIcon } from '@/components/shell/nav-icons';
 import { useLocale, useT } from '@/lib/use-locale';
 import { explainError } from '@/lib/error-words';
 
@@ -86,10 +87,17 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
+    <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_rgb(59_130_246/0.12),_transparent_55%)] px-4 py-8">
       <div className="w-full max-w-sm">
-        <h1 className="text-lg font-semibold text-terminal-text">{t('shell.brand')}</h1>
-        <p className="mt-1 text-xs text-terminal-muted">
+        <div className="flex flex-col items-center text-center">
+          <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-terminal-accent text-terminal-bg shadow-lg">
+            <NavIcon name="terminal" className="h-6 w-6" />
+          </span>
+          <h1 className="text-xl font-semibold tracking-tight text-terminal-text">
+            {t('shell.brand')}
+          </h1>
+        </div>
+        <p className="mt-1 text-center text-sm text-terminal-muted">
           {challengeToken !== null
             ? t('login.lead.code')
             : mode === 'sign-in'
@@ -99,7 +107,7 @@ export default function LoginPage() {
 
         <form
           onSubmit={(event) => void submit(event)}
-          className="mt-6 space-y-3 rounded-lg border border-terminal-border bg-terminal-surface p-5"
+          className="mt-6 space-y-3 rounded-xl border border-terminal-border bg-terminal-surface p-6 shadow-xl"
         >
           {challengeToken !== null ? (
             <>
@@ -168,7 +176,12 @@ export default function LoginPage() {
             </p>
           )}
 
-          <Button type="submit" variant="neutral" disabled={busy} className="w-full py-2">
+          <Button
+            type="submit"
+            variant="neutral"
+            disabled={busy}
+            className="w-full border-transparent bg-terminal-accent py-2 font-medium text-terminal-bg hover:border-transparent hover:opacity-90"
+          >
             {busy
               ? t('login.working')
               : challengeToken !== null

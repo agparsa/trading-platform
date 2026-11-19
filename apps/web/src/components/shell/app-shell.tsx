@@ -2,77 +2,144 @@
 
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { useSession } from '@/lib/session';
 import { cn } from '@tp/ui';
-import { Button } from '@/components/primitives';
+import { useSession } from '@/lib/session';
 import { NotificationBell } from '@/components/notification-bell';
-import { useT } from '@/lib/use-locale';
-import { Nav } from './nav';
-import { TRADER_SECTIONS } from './sections';
+import { useLocale, useT } from '@/lib/use-locale';
+import { NavIcon } from './nav-icons';
+import { TRADER_GROUPS } from './sections';
+import { MenuButton, Sidebar } from './sidebar';
 
 /**
  * The frame around everything that is not the terminal.
  *
- * The terminal keeps its own full-height chrome and is deliberately not wrapped
- * in this: it is a single dense screen where every pixel of vertical space is a
- * row of the order book, and putting a second header above it would cost that
- * space on the one screen that cannot spare it. It does carry the same row of
- * section links as this header, from `TRADER_SECTIONS`, so nothing is reachable
- * from here that is not reachable from there.
+ * A menu down the side, grouped, and a bar along the top with the page's name,
+ * the notices, the language and the person. The terminal keeps its own
+ * full-height chrome and is deliberately not wrapped in this: it is a single
+ * dense screen where every pixel of vertical space is a row of the order book.
+ * It carries the same sections, from `TRADER_SECTIONS`, so nothing is
+ * reachable from here that is not reachable from there.
  */
 export function AppShell({
   title,
   description,
   children,
   wide = false,
+  hideHeading = false,
 }: {
   title: string;
   description?: string;
   children: ReactNode;
   /** The dashboard's grid wants the room; reading pages keep a measure. */
   wide?: boolean;
+  /** For a page whose own header says what the page is. */
+  hideHeading?: boolean;
 }) {
   const { user, signOut } = useSession();
   const t = useT();
+  const { locale, setLocale } = useLocale();
+  const initial = (user?.email ?? '?').slice(0, 1).toUpperCase();
 
   return (
-    <div className="flex min-h-screen flex-col bg-terminal-bg">
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-y-2 border-b border-terminal-border px-4 py-2">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/dashboard"
-            className="text-sm font-semibold tracking-tight text-terminal-text"
-          >
+    <Sidebar
+      brand={
+        <Link href="/dashboard" className="flex items-center gap-2.5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-terminal-accent text-terminal-bg">
+            <NavIcon name="terminal" className="h-[18px] w-[18px]" />
+          </span>
+          <span className="text-sm font-semibold tracking-tight text-terminal-text">
             {t('shell.brand')}
-          </Link>
-          <Nav items={TRADER_SECTIONS} />
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <NotificationBell />
+          </span>
+        </Link>
+      }
+      groups={TRADER_GROUPS}
+      footer={
+        <div className="space-y-2">
           {user !== null && user.role !== 'USER' ? (
             <Link
               href="/admin"
-              className="text-caption text-terminal-muted transition-colors hover:text-terminal-text"
+              className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-terminal-muted hover:bg-terminal-raised hover:text-terminal-text"
             >
+              <NavIcon name="admin" />
               {t('shell.administration')}
             </Link>
           ) : null}
-          <span className="text-caption text-terminal-muted">{user?.email ?? ''}</span>
-          <Button variant="ghost" onClick={() => void signOut()}>
-            {t('shell.signOut')}
-          </Button>
+          <div className="flex items-center gap-2.5 px-2">
+            <span
+              aria-hidden
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-terminal-raised text-xs font-semibold text-terminal-text"
+            >
+              {initial}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-caption text-terminal-muted">
+              {user?.email ?? ''}
+            </span>
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              title={t('shell.signOut')}
+              aria-label={t('shell.signOut')}
+              className="rounded p-1 text-terminal-muted hover:text-terminal-short"
+            >
+              <NavIcon name="logout" />
+            </button>
+          </div>
         </div>
-      </header>
-
-      <main className={cn('mx-auto w-full flex-1 px-4 py-6', wide ? 'max-w-7xl' : 'max-w-5xl')}>
-        <div className="mb-5">
-          <h1 className="text-base font-semibold tracking-tight text-terminal-text">{title}</h1>
-          {description === undefined ? null : (
-            <p className="mt-1 text-caption text-terminal-muted">{description}</p>
+      }
+    >
+      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-terminal-border bg-terminal-bg/90 px-4 backdrop-blur">
+        <MenuButton />
+        <div className="min-w-0 flex-1">
+          {hideHeading ? null : (
+            <p className="truncate text-sm font-semibold text-terminal-text lg:hidden">{title}</p>
           )}
         </div>
+        <div
+          role="radiogroup"
+          aria-label={t('settings.language')}
+          className="flex rounded-md border border-terminal-border p-0.5"
+        >
+          {(['en', 'fa'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              lang={value}
+              aria-checked={locale === value}
+              onClick={() => setLocale(value)}
+              className={cn(
+                'rounded px-2 py-0.5 text-caption transition-colors',
+                locale === value
+                  ? 'bg-terminal-raised text-terminal-text'
+                  : 'text-terminal-muted hover:text-terminal-text',
+              )}
+            >
+              {value === 'en' ? 'EN' : 'فا'}
+            </button>
+          ))}
+        </div>
+        <NotificationBell />
+        <Link
+          href="/terminal"
+          className="hidden rounded-md bg-terminal-accent px-3 py-1.5 text-caption font-medium text-terminal-bg hover:opacity-90 sm:inline-flex"
+        >
+          {t('nav.terminal')}
+        </Link>
+      </header>
+
+      <main
+        className={cn('mx-auto w-full flex-1 px-4 py-6 sm:px-6', wide ? 'max-w-7xl' : 'max-w-5xl')}
+      >
+        {hideHeading ? null : (
+          <div className="mb-6">
+            <h1 className="text-xl font-semibold tracking-tight text-terminal-text">{title}</h1>
+            {description === undefined ? null : (
+              <p className="mt-1 max-w-3xl text-sm text-terminal-muted">{description}</p>
+            )}
+          </div>
+        )}
         {children}
       </main>
-    </div>
+    </Sidebar>
   );
 }

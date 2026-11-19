@@ -906,6 +906,9 @@ export const en = {
   'dash.allHistory': 'All history',
   'dash.notices': 'Notifications',
   'dash.noNotices': 'Nothing new.',
+  'nav.group.trading': 'Trading',
+  'nav.group.money': 'Money',
+  'nav.group.you': 'Your account',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1802,6 +1805,9 @@ export const fa: Messages = {
   'dash.allHistory': 'همه‌ی تاریخچه',
   'dash.notices': 'اعلان‌ها',
   'dash.noNotices': 'خبر تازه‌ای نیست.',
+  'nav.group.trading': 'معاملات',
+  'nav.group.money': 'پول',
+  'nav.group.you': 'حساب کاربری',
 };
 
 const TABLES: Record<Locale, Messages> = { en, fa };

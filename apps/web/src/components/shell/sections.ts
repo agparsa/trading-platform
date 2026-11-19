@@ -1,4 +1,5 @@
 import type { NavItem } from './nav';
+import type { SidebarGroup } from './sidebar';
 
 /**
  * Every screen a trader has, in the order the header shows them.
@@ -26,3 +27,48 @@ export const TRADER_SECTIONS: readonly NavItem[] = [
   { href: '/developer', label: 'Developer', key: 'nav.developer' },
   { href: '/settings', label: 'Settings', key: 'nav.settings' },
 ];
+
+/**
+ * The same sections, grouped and given icons, for the menu down the side of
+ * every page but the terminal. Built from `TRADER_SECTIONS`, not beside it, so
+ * the two cannot list different screens.
+ */
+const GROUPING: ReadonlyArray<{
+  titleKey?: SidebarGroup['titleKey'];
+  items: ReadonlyArray<[string, SidebarGroup['items'][number]['icon']]>;
+}> = [
+  {
+    items: [
+      ['/dashboard', 'dashboard'],
+      ['/terminal', 'terminal'],
+    ],
+  },
+  {
+    titleKey: 'nav.group.trading',
+    items: [
+      ['/account', 'account'],
+      ['/history', 'history'],
+      ['/analytics', 'analytics'],
+      ['/instruments', 'instruments'],
+    ],
+  },
+  { titleKey: 'nav.group.money', items: [['/wallet', 'wallet']] },
+  {
+    titleKey: 'nav.group.you',
+    items: [
+      ['/verification', 'verification'],
+      ['/security', 'security'],
+      ['/settings', 'settings'],
+      ['/developer', 'developer'],
+    ],
+  },
+];
+
+export const TRADER_GROUPS: readonly SidebarGroup[] = GROUPING.map((group) => ({
+  ...(group.titleKey === undefined ? {} : { titleKey: group.titleKey }),
+  items: group.items.map(([href, icon]) => {
+    const section = TRADER_SECTIONS.find((item) => item.href === href);
+    if (section === undefined) throw new Error(`${href} is not a trader section`);
+    return { ...section, icon };
+  }),
+}));
