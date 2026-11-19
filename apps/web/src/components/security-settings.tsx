@@ -154,9 +154,7 @@ export function SecuritySettings({
    */
   const body = (
     <>
-      <p className="mb-2 text-label uppercase tracking-wider text-terminal-muted">
-        {t('sec.twoFactor')}
-      </p>
+      <p className="mb-2 text-sm font-semibold text-terminal-text">{t('sec.twoFactor')}</p>
 
       {status === null ? (
         <p className="text-caption text-terminal-muted">{t('common.loading')}</p>
@@ -274,7 +272,7 @@ export function SecuritySettings({
 
       {error === null ? null : <p className="mt-2 text-caption text-terminal-short">{error}</p>}
 
-      <p className="mb-2 mt-4 border-t border-terminal-border pt-3 text-label uppercase tracking-wider text-terminal-muted">
+      <p className="mb-2 mt-4 border-t border-terminal-border pt-3 text-sm font-semibold text-terminal-text">
         {t('sec.sessions')}
       </p>
       {sessions === null ? (

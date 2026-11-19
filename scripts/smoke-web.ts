@@ -941,6 +941,56 @@ async function main(): Promise<void> {
       });
     });
 
+    console.log('\n  Registering\n');
+    {
+      /**
+       * A visitor opens an account through the form, as one would. Every other
+       * check signs in people the script seeded through the API, so nothing
+       * pressed the form's own Register button — and registration reached
+       * production broken without a check noticing.
+       */
+      const fresh = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const visitor = await fresh.newPage();
+      await visitor.goto(`${WEB}/login`, { waitUntil: 'domcontentloaded' });
+      await visitor.locator('input[type="email"]').waitFor({ state: 'visible', timeout: 20_000 });
+      await visitor.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => undefined);
+      await visitor.getByRole('button', { name: /need an account/i }).click();
+      const invite = await visitor.getByLabel(/invitation code/i).count();
+      ok(invite === 1, 'the register form offers an invitation code field', `${invite} found`);
+      await visitor.getByLabel(/display name/i).fill('Smoke Registrant');
+      const address = `smoke-register-${Date.now()}@test.local`;
+      await visitor.locator('input[type="email"]').fill(address);
+      await visitor.locator('input[type="password"]').fill('short');
+      await visitor.getByRole('button', { name: /^create account$/i }).click();
+      const refused = await visitor
+        .getByText(/at least 12 characters/i)
+        .first()
+        .isVisible();
+      const stayed = new URL(visitor.url()).pathname.startsWith('/login');
+      ok(
+        refused && stayed,
+        'a short password is refused with the rule, before the server',
+        visitor.url(),
+      );
+      await visitor.locator('input[type="password"]').fill(PASSWORD);
+      await visitor.getByRole('button', { name: /^create account$/i }).click();
+      try {
+        await visitor.waitForURL((url) => !url.pathname.startsWith('/login'), {
+          timeout: 30_000,
+          waitUntil: 'commit',
+        });
+        ok(true, 'registering through the form signs the new trader in');
+      } catch {
+        const shown = (await visitor.locator('body').innerText())
+          .replace(/\s+/g, ' ')
+          .slice(0, 300);
+        ok(false, 'registering through the form signs the new trader in', shown);
+      }
+      const created = await prisma.user.count({ where: { email: address } });
+      ok(created === 1, 'the registration is a user in the database', `${created} rows`);
+      await fresh.close();
+    }
+
     console.log('\n  As a trader\n');
     await signIn(page, people.trader.email);
     await visit(page, '/', { url: '/dashboard' });
@@ -1463,140 +1513,17 @@ async function main(): Promise<void> {
     }
 
     /**
-     * Persian, chosen in settings the way a trader chooses it: the page is
-     * right-to-left from its first paint after a reload, the section links are
-     * Persian, a figure stays left-to-right inside it, and the settings screen,
-     * the terminal, Analytics, the wallet and verification are audited in it. Put back to English afterwards.
+     * English only, by the owner's decision (19 November): the Persian
+     * dictionary stays in the code, unoffered, and no screen offers a choice.
      */
     {
-      await page.getByRole('radio', { name: 'فارسی' }).click();
-      await page.reload();
-      const dir = await page.locator('html').getAttribute('dir');
+      const offered = await page.getByRole('radio', { name: 'فارسی' }).count();
       const lang = await page.locator('html').getAttribute('lang');
-      await page
-        .getByRole('link', { name: 'تنظیمات' })
-        .first()
-        .waitFor({ timeout: 10_000 })
-        .catch(() => undefined);
-      const settingsLink = await page.getByRole('link', { name: 'تنظیمات' }).count();
       ok(
-        dir === 'rtl' && lang === 'fa' && settingsLink > 0,
-        'Persian is chosen in settings, survives a reload, and lays the page out right to left',
-        `dir ${dir} · lang ${lang} · Persian settings link ${settingsLink}`,
+        offered === 0 && lang === 'en',
+        'the interface is English and offers no other language',
+        `${offered} switch(es), lang ${lang}`,
       );
-      await auditAccessibility(page, 'the settings screen, Persian');
-      await visit(page, '/terminal', { url: '/terminal' });
-      const figure = await page.evaluate<string>(
-        "(() => { const n = document.querySelector('.numeric'); return n === null ? 'none' : getComputedStyle(n).direction; })()",
-      );
-      ok(
-        figure === 'ltr',
-        'a figure stays left-to-right on a right-to-left page',
-        `computed direction of the first .numeric: ${figure}`,
-      );
-      /**
-       * And sits where the page says, not where its own direction says: the
-       * account strip's figures had been pinned to the left of their cells,
-       * under labels on the right, because `direction: ltr` turned "start"
-       * left for the figure itself.
-       */
-      const alignment = await page.evaluate<string>(
-        `(() => {
-          const value = [...document.querySelectorAll('p.numeric')].find(
-            (node) => node.previousElementSibling !== null && node.textContent.trim() !== '',
-          );
-          if (value === undefined) return 'none';
-          const edge = (node) => {
-            const range = document.createRange();
-            range.selectNodeContents(node);
-            return range.getBoundingClientRect().right;
-          };
-          return String(Math.round(Math.abs(edge(value) - edge(value.previousElementSibling))));
-        })()`,
-      );
-      ok(
-        alignment !== 'none' && Number(alignment) <= 4,
-        "a figure lines up with its Persian label's start, on the right",
-        `distance between the right edges of a label and its figure: ${alignment}px`,
-      );
-      await screenshot(page, 'terminal-persian');
-      await auditAccessibility(page, 'the terminal, Persian');
-      await visit(page, '/analytics', { url: '/analytics' });
-      const analyticsHeading = await page
-        .getByRole('heading', { name: 'تحلیل عملکرد' })
-        .first()
-        .waitFor({ timeout: 10_000 })
-        .then(() => true)
-        .catch(() => false);
-      const analyticsWords = await page
-        .getByText(/در این بازه معامله‌ای بسته نشده است|نتیجهٔ خالص/)
-        .first()
-        .waitFor({ timeout: 10_000 })
-        .then(() => true)
-        .catch(() => false);
-      ok(
-        analyticsHeading && analyticsWords,
-        'the Analytics page is Persian: its title and its figures or its empty state',
-        `heading ${analyticsHeading} · figures or empty state ${analyticsWords}`,
-      );
-      await screenshot(page, 'analytics-persian');
-      await auditAccessibility(page, 'Analytics, Persian');
-      for (const [path, heading, words, view] of [
-        ['/wallet', 'کیف پول', /افزودن پول/, 'the wallet screen, Persian'],
-        ['/verification', 'احراز هویت', /وضعیت/, 'the verification screen, Persian'],
-        ['/security', 'امنیت', /تأیید دومرحله‌ای/, 'the security screen, Persian'],
-      ] as const) {
-        await visit(page, path, { url: path });
-        const seen = await page
-          .getByRole('heading', { name: heading })
-          .first()
-          .waitFor({ timeout: 10_000 })
-          .then(() => page.getByText(words).first().waitFor({ timeout: 10_000 }))
-          .then(() => true)
-          .catch(() => false);
-        ok(
-          seen,
-          `${path} is Persian: its title and its own words`,
-          `heading ${heading} · ${words}`,
-        );
-        await auditAccessibility(page, view);
-      }
-      // And on a phone, in Persian: the tab bar in Persian, nothing wider
-      // than the screen, laid out right to left.
-      await page.setViewportSize({ width: 390, height: 844 });
-      await visit(page, '/terminal', { url: '/terminal' });
-      const phoneTab = await page
-        .getByTestId('phone')
-        .getByRole('button', { name: 'نمودار' })
-        .waitFor({ timeout: 10_000 })
-        .then(() => true)
-        .catch(() => false);
-      const phoneOverflow = await page.evaluate<number>(
-        '(() => document.documentElement.scrollWidth - window.innerWidth)()',
-      );
-      const sellBox = await page
-        .getByTestId('quick-trade')
-        .getByRole('button', { name: /فروش/ })
-        .boundingBox();
-      const buyBox = await page
-        .getByTestId('quick-trade')
-        .getByRole('button', { name: /خرید/ })
-        .boundingBox();
-      ok(
-        sellBox !== null && buyBox !== null && sellBox.x < buyBox.x,
-        'Sell stays on the left and Buy on the right in Persian too, as a price ladder reads',
-        `sell at x=${sellBox?.x ?? '?'} · buy at x=${buyBox?.x ?? '?'}`,
-      );
-      ok(
-        phoneTab && phoneOverflow <= 0,
-        'the phone terminal is Persian and no wider than the screen',
-        `Persian chart tab ${phoneTab} · ${phoneOverflow}px wider than the screen`,
-      );
-      await screenshot(page, 'terminal-phone-persian');
-      await auditAccessibility(page, 'the terminal on a phone, Persian');
-      await page.setViewportSize({ width: 1440, height: 900 });
-      await visit(page, '/settings', { url: '/settings' });
-      await page.getByRole('radio', { name: 'English' }).click();
     }
 
     console.log('\n  As an administrator\n');

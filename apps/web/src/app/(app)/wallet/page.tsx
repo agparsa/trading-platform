@@ -124,13 +124,24 @@ export default function WalletPage() {
                 ) : null}
               </Panel>
 
-              <DepositForm
-                providers={providers.data?.providers ?? []}
-                currency={wallet.currency}
-                busy={startPayment.isPending}
-                error={startPayment.error}
-                onSubmit={(input) => startPayment.mutate(input)}
-              />
+              <div className="grid items-start gap-4 lg:grid-cols-2">
+                <DepositForm
+                  providers={providers.data?.providers ?? []}
+                  currency={wallet.currency}
+                  busy={startPayment.isPending}
+                  error={startPayment.error}
+                  onSubmit={(input) => startPayment.mutate(input)}
+                />
+                <TransferForm
+                  wallet={wallet}
+                  accounts={(accounts.data ?? []).filter(
+                    (account) => account.currency === wallet.currency,
+                  )}
+                  busy={transfer.isPending}
+                  error={transfer.error}
+                  onSubmit={(input) => transfer.mutate(input)}
+                />
+              </div>
 
               <PaymentHistory
                 payments={(payments.data?.payments ?? []).filter(
@@ -147,16 +158,6 @@ export default function WalletPage() {
                 error={requestWithdrawal.error ?? cancelWithdrawal.error}
                 onRequest={(input) => requestWithdrawal.mutate(input)}
                 onCancel={(id) => cancelWithdrawal.mutate({ id })}
-              />
-
-              <TransferForm
-                wallet={wallet}
-                accounts={(accounts.data ?? []).filter(
-                  (account) => account.currency === wallet.currency,
-                )}
-                busy={transfer.isPending}
-                error={transfer.error}
-                onSubmit={(input) => transfer.mutate(input)}
               />
 
               <Panel className="overflow-auto">
@@ -270,8 +271,8 @@ function TransferForm({
   }, [wallet, accounts, accountId, amount, t]);
 
   return (
-    <Panel className="max-w-lg space-y-3 p-4">
-      <p className="text-label uppercase tracking-wider text-terminal-muted">{t('wallet.move')}</p>
+    <Panel className="space-y-3 p-4">
+      <h2 className="text-sm font-semibold text-terminal-text">{t('wallet.move')}</h2>
 
       <Field label={t('wallet.direction')}>
         <select
@@ -388,9 +389,7 @@ function DepositForm({
   if (providers.length === 0) {
     return (
       <Panel className="max-w-lg p-4">
-        <p className="text-label uppercase tracking-wider text-terminal-muted">
-          {t('wallet.addMoney')}
-        </p>
+        <h2 className="text-sm font-semibold text-terminal-text">{t('wallet.addMoney')}</h2>
         <p className="mt-2 text-caption leading-relaxed text-terminal-muted">
           {t('wallet.noProviders')}
         </p>
@@ -399,10 +398,8 @@ function DepositForm({
   }
 
   return (
-    <Panel className="max-w-lg space-y-3 p-4">
-      <p className="text-label uppercase tracking-wider text-terminal-muted">
-        {t('wallet.addMoney')}
-      </p>
+    <Panel className="space-y-3 p-4">
+      <h2 className="text-sm font-semibold text-terminal-text">{t('wallet.addMoney')}</h2>
 
       <Field label={t('wallet.how')}>
         <select
@@ -470,9 +467,9 @@ function PaymentHistory({ payments }: { payments: readonly PaymentRow[] }) {
       {awaiting.map((row) =>
         row.instructions === null ? null : (
           <Panel key={row.id} className="max-w-lg p-4">
-            <p className="text-label uppercase tracking-wider text-terminal-muted">
+            <h2 className="text-sm font-semibold text-terminal-text">
               {t('wallet.awaitingTransfer', { amount: money(row.amount, row.currency) })}
-            </p>
+            </h2>
             <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-caption leading-relaxed text-terminal-text">
               {row.instructions}
             </pre>
@@ -573,11 +570,9 @@ function WithdrawSection({
   }, [wallet, terms.data, amount, destination, t]);
 
   return (
-    <div className="space-y-4">
-      <Panel className="max-w-lg space-y-3 p-4">
-        <p className="text-label uppercase tracking-wider text-terminal-muted">
-          {t('wallet.withdraw')}
-        </p>
+    <div className="grid items-start gap-4 lg:grid-cols-2">
+      <Panel className="space-y-3 p-4">
+        <h2 className="text-sm font-semibold text-terminal-text">{t('wallet.withdraw')}</h2>
 
         {terms.data === undefined ? null : (
           <p className="text-caption leading-relaxed text-terminal-muted">
@@ -656,7 +651,7 @@ function WithdrawSection({
       </Panel>
 
       {withdrawals.length === 0 ? null : (
-        <Panel className="overflow-auto">
+        <Panel className="overflow-auto lg:col-span-2">
           <table className="w-full text-caption">
             <thead>
               <tr className="text-start text-label uppercase tracking-wider text-terminal-muted">

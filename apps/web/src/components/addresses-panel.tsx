@@ -26,7 +26,7 @@ export function AddressesPanel() {
   return (
     <div className="space-y-3" data-testid="addresses">
       <div>
-        <p className="text-label uppercase tracking-wider text-terminal-muted">{t('addr.title')}</p>
+        <p className="text-sm font-semibold text-terminal-text">{t('addr.title')}</p>
         <p className="mt-1 text-caption leading-relaxed text-terminal-muted">{t('addr.lead')}</p>
       </div>
 

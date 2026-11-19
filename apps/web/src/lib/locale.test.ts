@@ -33,7 +33,8 @@ describe('the interface language', () => {
       applyLocale(fromBundle as unknown as HTMLElement, locale);
       expect(fromScript, String(stored)).toEqual(fromBundle);
     }
-    expect(boot('fa')).toEqual({ lang: 'fa', dir: 'rtl' });
+    // English only is offered: a stored Persian choice is read as English.
+    expect(boot('fa')).toEqual({ lang: 'en', dir: 'ltr' });
     expect(boot(null)).toEqual({ lang: 'en', dir: 'ltr' });
   });
 

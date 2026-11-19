@@ -8,6 +8,13 @@ export { translate, type Translate };
 
 const STORED = 'tp.locale';
 
+/** The languages the app offers. */
+export const OFFERED: readonly Locale[] = ['en'];
+
+function offered(locale: Locale): Locale {
+  return OFFERED.includes(locale) ? locale : 'en';
+}
+
 interface LocaleContextValue {
   readonly locale: Locale;
   readonly rtl: boolean;
@@ -35,21 +42,26 @@ const LocaleContext = createContext<LocaleContextValue>({
  * language decides.
  */
 export function LocaleProvider({ children }: { children: React.ReactNode }): React.ReactElement {
+  /**
+   * English only, by the owner's decision (19 November). The Persian
+   * dictionary stays complete and tested; offering it again is `OFFERED`.
+   * A choice stored before then, or a Persian phone, reads as English.
+   */
   const [locale, setLocaleState] = useState<Locale>(() =>
-    deviceLocale(Localization.getLocales()[0]?.languageTag),
+    offered(deviceLocale(Localization.getLocales()[0]?.languageTag)),
   );
 
   useEffect(() => {
     void secureStore
       .get(STORED)
       .then((stored) => {
-        if (stored === 'fa' || stored === 'en') setLocaleState(stored);
+        if (stored === 'fa' || stored === 'en') setLocaleState(offered(stored));
       })
       .catch(() => undefined);
   }, []);
 
   const setLocale = useCallback((next: Locale) => {
-    setLocaleState(next);
+    setLocaleState(offered(next));
     void secureStore.set(STORED, next).catch(() => undefined);
   }, []);
 

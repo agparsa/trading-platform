@@ -18,22 +18,31 @@ export function Panel({
   className?: string;
   bodyClassName?: string;
 }) {
+  /**
+   * Spacing between children belongs to the body, which is what holds them.
+   * On the section it spaced the header from the body and nothing else, so
+   * every form written as `<Panel className="space-y-3 p-4">` had its
+   * fields touching.
+   */
+  const classes = (className ?? '').split(/\s+/).filter(Boolean);
+  const between = classes.filter((one) => /^(space-[xy]-|gap-)/.test(one));
+  const outer = classes.filter((one) => !between.includes(one));
   return (
     <section
       className={cn(
         'flex min-h-0 flex-col overflow-hidden rounded-lg border border-terminal-border bg-terminal-surface',
-        className,
+        outer.join(' '),
       )}
     >
       {title === undefined ? null : (
         <header className="flex shrink-0 items-center justify-between gap-2 border-b border-terminal-border px-3 py-2">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-terminal-muted">
-            {title}
-          </h2>
+          <h2 className="text-xs font-semibold text-terminal-text">{title}</h2>
           {actions}
         </header>
       )}
-      <div className={cn('min-h-0 flex-1 overflow-auto', bodyClassName)}>{children}</div>
+      <div className={cn('min-h-0 flex-1 overflow-auto', between.join(' '), bodyClassName)}>
+        {children}
+      </div>
     </section>
   );
 }

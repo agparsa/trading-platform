@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DomainError } from '@tp/shared-types';
 import { useSession } from '@/lib/session';
-import { Button, Field, inputClass } from '@/components/primitives';
-import { LanguageSettings } from '@/components/language-settings';
+import { Button, Field, inputClass, wordInputClass } from '@/components/primitives';
 import { NavIcon } from '@/components/shell/nav-icons';
 import { useLocale, useT } from '@/lib/use-locale';
 import { explainError } from '@/lib/error-words';
@@ -17,6 +16,9 @@ import { explainError } from '@/lib/error-words';
  * exactly what the server said and nothing more: an invented reassurance here
  * would be a trader locked out of a position with no idea why.
  */
+/** The server's own minimum (the register DTO); shown before it is enforced. */
+const PASSWORD_MIN = 12;
+
 export default function LoginPage() {
   const router = useRouter();
   const { signIn, completeTwoFactor, register, ready, user } = useSession();
@@ -35,6 +37,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -72,7 +75,13 @@ export default function LoginPage() {
           return;
         }
       } else {
-        await register(email.trim(), password, displayName.trim());
+        // Checked here as well as by the server, so the rule is read before a
+        // round trip rather than after one.
+        if (password.length < PASSWORD_MIN) {
+          setError(t('login.passwordShort', { min: String(PASSWORD_MIN) }));
+          return;
+        }
+        await register(email.trim(), password, displayName.trim(), inviteCode.trim());
       }
       // No navigation here — see the effect above.
     } catch (caught) {
@@ -131,7 +140,7 @@ export default function LoginPage() {
           ) : mode === 'register' ? (
             <Field label={t('login.displayName')}>
               <input
-                className={inputClass}
+                className={wordInputClass}
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
                 autoComplete="name"
@@ -144,7 +153,7 @@ export default function LoginPage() {
             <>
               <Field label={t('login.email')}>
                 <input
-                  className={inputClass}
+                  className={wordInputClass}
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
@@ -160,9 +169,39 @@ export default function LoginPage() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
+                  minLength={mode === 'register' ? PASSWORD_MIN : undefined}
+                  aria-describedby={mode === 'register' ? 'password-rule' : undefined}
                   required
                 />
               </Field>
+              {mode === 'register' ? (
+                <>
+                  <p
+                    id="password-rule"
+                    className={
+                      password.length === 0 || password.length >= PASSWORD_MIN
+                        ? '-mt-1 text-label text-terminal-muted'
+                        : '-mt-1 text-label text-terminal-warning'
+                    }
+                  >
+                    {t('login.passwordRule', { min: String(PASSWORD_MIN) })}
+                    {password.length > 0 ? ` · ${password.length}/${PASSWORD_MIN}` : ''}
+                  </p>
+                  <Field label={t('login.inviteCode')}>
+                    <input
+                      className={inputClass}
+                      value={inviteCode}
+                      onChange={(event) => setInviteCode(event.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                      aria-describedby="invite-hint"
+                    />
+                  </Field>
+                  <p id="invite-hint" className="-mt-1 text-label text-terminal-muted">
+                    {t('login.inviteHint')}
+                  </p>
+                </>
+              ) : null}
             </>
           )}
 
@@ -218,10 +257,6 @@ export default function LoginPage() {
         <p className="mt-4 text-center text-label leading-relaxed text-terminal-muted">
           {t('login.cookieNote')}
         </p>
-        {/* Before signing in, so a Persian reader need not find Settings in English first. */}
-        <div className="mt-4 flex justify-center">
-          <LanguageSettings showNote={false} />
-        </div>
       </div>
     </main>
   );

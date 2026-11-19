@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,7 +12,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/icons';
 import { Button, ErrorNote, Segmented } from '../components/ui';
-import { useLocale } from '../lib/i18n';
+import { useT } from '../lib/i18n';
 import { useSession } from '../lib/session';
 import { signInErrorText } from '../lib/sign-in-error';
 import { theme } from '../lib/theme';
@@ -23,12 +22,12 @@ import { theme } from '../lib/theme';
  *
  * Registration is the server's own — `POST /auth/register` — and leaves the
  * person to sign in: the server sends the address a confirmation link, and
- * nothing here pretends the address is confirmed. The language can be chosen
- * before anything else, because a Persian speaker should not have to read
- * English to find the switch.
+ * nothing here pretends the address is confirmed. A platform open by
+ * invitation asks for its code; the field is offered, never required here,
+ * because only the server knows which kind of platform it is.
  */
 export default function Login(): React.ReactElement {
-  const { t, locale, setLocale } = useLocale();
+  const t = useT();
   const { api, signIn, completeTwoFactor } = useSession();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -37,6 +36,7 @@ export default function Login(): React.ReactElement {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -73,24 +73,6 @@ export default function Login(): React.ReactElement {
     />
   );
 
-  const languageSwitch = (
-    <View style={styles.languages}>
-      {(['fa', 'en'] as const).map((one) => (
-        <Pressable
-          key={one}
-          accessibilityRole="radio"
-          accessibilityState={{ selected: locale === one }}
-          onPress={() => setLocale(one)}
-          style={[styles.language, locale === one ? styles.languageActive : null]}
-        >
-          <Text style={[styles.languageLabel, locale === one ? styles.languageLabelActive : null]}>
-            {one === 'fa' ? t('more.persian') : t('more.english')}
-          </Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -100,11 +82,6 @@ export default function Login(): React.ReactElement {
         contentContainerStyle={[styles.content, { paddingTop: insets.top + theme.spacing(2) }]}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.top}>
-          <Icon name="globe" color={theme.colors.textMuted} size={18} />
-          {languageSwitch}
-        </View>
-
         <View style={styles.brand}>
           <View style={styles.logo}>
             <Icon name="chart" color="#FFFFFF" size={30} />
@@ -180,7 +157,23 @@ export default function Login(): React.ReactElement {
               autoComplete: mode === 'register' ? 'new-password' : 'current-password',
             })}
             {mode === 'register' ? (
-              <Text style={styles.hint}>{t('login.passwordRule')}</Text>
+              <>
+                <Text
+                  style={[
+                    styles.hint,
+                    styles.rule,
+                    password.length > 0 && password.length < 12 ? styles.ruleShort : null,
+                  ]}
+                >
+                  {t('login.passwordRule')}
+                  {password.length > 0 ? `  ·  ${password.length}/12` : ''}
+                </Text>
+                {field(inviteCode, setInviteCode, t('login.inviteCode'), {
+                  autoCapitalize: 'none',
+                  autoCorrect: false,
+                })}
+                <Text style={[styles.hint, styles.rule]}>{t('login.inviteHint')}</Text>
+              </>
             ) : null}
             <Button
               label={mode === 'register' ? t('login.register') : t('login.signIn')}
@@ -195,7 +188,14 @@ export default function Login(): React.ReactElement {
                   if (mode === 'register') {
                     await api.post(
                       '/auth/register',
-                      { email: email.trim(), password, displayName: name.trim() },
+                      {
+                        email: email.trim(),
+                        password,
+                        displayName: name.trim(),
+                        // Sent only when typed: on an open platform an empty
+                        // code is no code.
+                        ...(inviteCode.trim() === '' ? {} : { inviteCode: inviteCode.trim() }),
+                      },
                       { idempotencyKey: `register:${email.trim()}:${Date.now()}` },
                     );
                     setNotice(t('login.registered', { email: email.trim() }));
@@ -222,19 +222,7 @@ export default function Login(): React.ReactElement {
 
 const styles = StyleSheet.create({
   content: { padding: theme.spacing(2.5), paddingBottom: theme.spacing(6) },
-  top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 },
-  languages: { flexDirection: 'row', gap: 4 },
-  language: {
-    paddingHorizontal: theme.spacing(1.5),
-    minHeight: 30,
-    justifyContent: 'center',
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.surface,
-  },
-  languageActive: { backgroundColor: theme.colors.surfaceRaised },
-  languageLabel: { color: theme.colors.textMuted, fontSize: 13 },
-  languageLabelActive: { color: theme.colors.text, fontWeight: '700' },
-  brand: { alignItems: 'center', marginTop: theme.spacing(5), marginBottom: theme.spacing(4) },
+  brand: { alignItems: 'center', marginTop: theme.spacing(7), marginBottom: theme.spacing(4) },
   logo: {
     width: 64,
     height: 64,
@@ -255,6 +243,8 @@ const styles = StyleSheet.create({
   },
   heading: { color: theme.colors.text, fontSize: 18, fontWeight: '700', marginBottom: 6 },
   hint: { color: theme.colors.textMuted, fontSize: 12, marginBottom: theme.spacing(1) },
+  rule: { marginTop: -theme.spacing(0.75), marginBottom: theme.spacing(1.5) },
+  ruleShort: { color: theme.colors.warning },
   input: {
     backgroundColor: theme.colors.background,
     borderRadius: theme.radius.md,

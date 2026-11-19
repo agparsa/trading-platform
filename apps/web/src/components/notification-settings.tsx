@@ -54,9 +54,7 @@ export function NotificationSettings() {
 
   return (
     <fieldset className="space-y-2">
-      <legend className="mb-1 text-label uppercase tracking-wider text-terminal-muted">
-        Notifications
-      </legend>
+      <legend className="mb-1 text-sm font-semibold text-terminal-text">Notifications</legend>
       {preferences.isError ? (
         <p className="text-caption text-terminal-muted">
           Your notification settings could not be loaded. They will retry.

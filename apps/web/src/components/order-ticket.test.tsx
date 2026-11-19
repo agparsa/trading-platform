@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { DomainError, Permission } from '@tp/shared-types';
+import { OFFERED } from '@/lib/locale';
 
 /**
  * The first rendering test of a component in this repository.
@@ -428,7 +429,8 @@ describe('the order ticket, rendered', () => {
   });
 });
 
-describe('the order ticket in Persian', () => {
+// Persian is not offered for now (English only); these wake when it is.
+describe.skipIf(!OFFERED.includes('fa'))('the order ticket in Persian', () => {
   it('names the order types, the sides and the send button in Persian', async () => {
     window.localStorage.setItem('tp:locale', 'fa');
     try {

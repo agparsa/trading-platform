@@ -113,7 +113,7 @@ bottom:
 - deposit and withdrawal (the wallet), transaction history, analytics and
   instruments.
 - security and active sessions, verification, and trading settings.
-- appearance, language, trading notifications, and trading sounds with a
+- appearance, trading notifications, and trading sounds with a
   preview of each.
 - help and status, developer, and sign out.
 

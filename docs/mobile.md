@@ -24,7 +24,7 @@ seen yet.
 **Every screen has now been opened — in a browser, not on a phone (19
 November).** `pnpm preview:mobile` exports the app for the web (react-native-web
 renders the same components), runs it against a local API, signs a fresh trader
-in, presses every tab in English and in Persian, opens the order ticket, and
+in, presses every tab, opens the register form, opens the order ticket, and
 photographs each screen at a phone's size. The first run found that **every
 request after sign-in went out with no token**: the REST client's token cache
 started empty and only a `TOKEN_EXPIRED` answer refreshed it, while a missing

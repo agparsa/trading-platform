@@ -50,9 +50,7 @@ export function ProfileSettings() {
       }}
       data-testid="profile-settings"
     >
-      <p className="text-label uppercase tracking-wider text-terminal-muted">
-        {t('profile.title')}
-      </p>
+      <p className="text-sm font-semibold text-terminal-text">{t('profile.title')}</p>
       <label className="block text-caption text-terminal-muted">
         {t('profile.email')}
         <input className={inputClass} value={data?.email ?? ''} readOnly disabled />

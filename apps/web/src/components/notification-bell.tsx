@@ -6,6 +6,7 @@ import { useMarkAllRead, useMarkRead, useNotifications } from '@/lib/queries';
 import { relativeTime } from '@/lib/format';
 import { Button } from './primitives';
 import { useT } from '@/lib/use-locale';
+import { NavIcon } from './shell/nav-icons';
 
 /**
  * What the platform has told this trader, whether or not they were looking.
@@ -42,11 +43,11 @@ export function NotificationBell() {
         aria-expanded={open}
         aria-label={unread === 0 ? t('bell.title') : t('bell.unread', { unread }, false)}
         className={cn(
-          'relative rounded px-1.5 py-0.5 text-body leading-none transition-colors',
+          'relative flex items-center rounded p-1 leading-none transition-colors',
           unread > 0 ? 'text-terminal-warning' : 'text-terminal-muted hover:text-terminal-text',
         )}
       >
-        ●
+        <NavIcon name="notifications" className="h-4 w-4" />
         {unread === 0 ? null : (
           <span className="numeric absolute -end-1 -top-1 rounded-full bg-terminal-warning px-1 text-micro font-medium text-terminal-bg">
             {unread > 9 ? '9+' : unread}

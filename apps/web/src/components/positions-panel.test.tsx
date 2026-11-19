@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { PositionRow } from '@/lib/queries';
+import { OFFERED } from '@/lib/locale';
 
 /**
  * The position editor, rendered.
@@ -311,7 +312,8 @@ describe('the position editor, rendered', () => {
  * Persian, chosen: the buttons a trader presses are in it, and the figures in
  * a sentence keep their own direction.
  */
-describe('the open positions in Persian', () => {
+// Persian is not offered for now (English only); these wake when it is.
+describe.skipIf(!OFFERED.includes('fa'))('the open positions in Persian', () => {
   it('names the actions in Persian and keeps the figures left to right', async () => {
     window.localStorage.setItem('tp:locale', 'fa');
     try {

@@ -77,9 +77,7 @@ export function ApiKeysPanel() {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-label uppercase tracking-wider text-terminal-muted">
-          {t('apikeys.title')}
-        </p>
+        <p className="text-sm font-semibold text-terminal-text">{t('apikeys.title')}</p>
         <p className="mt-1 text-caption leading-relaxed text-terminal-muted">{t('apikeys.lead')}</p>
       </div>
 

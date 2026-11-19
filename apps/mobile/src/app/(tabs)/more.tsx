@@ -3,7 +3,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { Icon, type IconName } from '../../components/icons';
 import { useAccounts } from '../../lib/accounts';
-import { useLocale } from '../../lib/i18n';
+import { groupDigits } from '../../lib/format';
+import { useT } from '../../lib/i18n';
 import type { MessageKey } from '../../lib/messages';
 import { useSession } from '../../lib/session';
 import { theme } from '../../lib/theme';
@@ -15,11 +16,11 @@ interface Me {
 
 /**
  * Everything that is not a price or a trade: who you are, which account you
- * are on, your notices, security and settings, the language — and signing
+ * are on, your notices, security and settings — and signing
  * out, at the bottom where it is not pressed by accident.
  */
 export default function More(): React.ReactElement {
-  const { t, locale, setLocale } = useLocale();
+  const t = useT();
   const { api, signOut } = useSession();
   const router = useRouter();
   const { accounts, selected, select } = useAccounts();
@@ -49,9 +50,7 @@ export default function More(): React.ReactElement {
     >
       <Icon name={icon} color={theme.colors.textMuted} />
       <Text style={styles.rowLabel}>{t(label)}</Text>
-      <View style={{ transform: [{ scaleX: locale === 'fa' ? -1 : 1 }] }}>
-        <Icon name="chevron" color={theme.colors.textMuted} size={18} />
-      </View>
+      <Icon name="chevron" color={theme.colors.textMuted} size={18} />
     </Pressable>
   );
 
@@ -108,7 +107,7 @@ export default function More(): React.ReactElement {
                 <Text style={styles.rowLabel}>
                   #{account.number} · {account.currency}
                 </Text>
-                <Text style={styles.balance}>{account.balance}</Text>
+                <Text style={styles.balance}>{groupDigits(account.balance)}</Text>
                 {active ? <Text style={styles.check}>✓</Text> : null}
               </Pressable>
             );
@@ -121,30 +120,6 @@ export default function More(): React.ReactElement {
         {row('bell', 'screen.notifications', '/(tabs)/notifications')}
         {row('shield', 'screen.profile', '/(tabs)/profile')}
         {row('gear', 'screen.settings', '/(tabs)/settings')}
-      </View>
-
-      <View style={styles.group}>
-        <View style={styles.row}>
-          <Icon name="globe" color={theme.colors.textMuted} />
-          <Text style={styles.rowLabel}>{t('more.language')}</Text>
-          <View style={styles.languages}>
-            {(['fa', 'en'] as const).map((one) => (
-              <Pressable
-                key={one}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: locale === one }}
-                onPress={() => setLocale(one)}
-                style={[styles.language, locale === one ? styles.languageActive : null]}
-              >
-                <Text
-                  style={[styles.languageLabel, locale === one ? styles.languageLabelActive : null]}
-                >
-                  {one === 'fa' ? t('more.persian') : t('more.english')}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
       </View>
 
       <Pressable
@@ -212,15 +187,4 @@ const styles = StyleSheet.create({
   check: { color: theme.colors.accent, fontSize: 16 },
   badge: { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   badgeText: { fontSize: 11, fontWeight: '700' },
-  languages: { flexDirection: 'row', gap: 4 },
-  language: {
-    paddingHorizontal: theme.spacing(1.5),
-    minHeight: 32,
-    justifyContent: 'center',
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.surfaceRaised,
-  },
-  languageActive: { backgroundColor: theme.colors.accent },
-  languageLabel: { color: theme.colors.textMuted, fontSize: 13 },
-  languageLabelActive: { color: '#FFFFFF', fontWeight: '700' },
 });

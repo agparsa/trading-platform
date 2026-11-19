@@ -20,6 +20,14 @@ export type Locale = 'en' | 'fa';
 export const LOCALE_STORAGE_KEY = 'tp:locale';
 export const LOCALES: readonly Locale[] = ['en', 'fa'];
 
+/**
+ * The languages the interface offers. English only, by the owner's decision
+ * (19 November): the Persian dictionary is kept, complete and tested, so
+ * offering it again is this one line — and a choice stored before then is
+ * read as English, not honoured.
+ */
+export const OFFERED: readonly Locale[] = ['en'];
+
 export function isLocale(value: unknown): value is Locale {
   return value === 'en' || value === 'fa';
 }
@@ -32,7 +40,7 @@ export function loadLocale(storage: Pick<Storage, 'getItem'> | undefined): Local
   if (storage === undefined) return 'en';
   try {
     const raw = storage.getItem(LOCALE_STORAGE_KEY);
-    return isLocale(raw) ? raw : 'en';
+    return isLocale(raw) && OFFERED.includes(raw) ? raw : 'en';
   } catch {
     return 'en';
   }
@@ -57,4 +65,4 @@ export function applyLocale(root: HTMLElement, locale: Locale): void {
  * The same rule as `loadLocale` + `applyLocale`, in the only form that runs
  * before the bundle. `locale.test.ts` runs it against every stored value.
  */
-export const LOCALE_BOOT_SCRIPT = `(function(){try{var l=localStorage.getItem('${LOCALE_STORAGE_KEY}');l=l==='fa'?'fa':'en';var e=document.documentElement;e.lang=l;e.dir=l==='fa'?'rtl':'ltr';}catch(x){}})();`;
+export const LOCALE_BOOT_SCRIPT = `(function(){try{var l=localStorage.getItem('${LOCALE_STORAGE_KEY}');l=l==='fa'&&${String(OFFERED.includes('fa'))}?'fa':'en';var e=document.documentElement;e.lang=l;e.dir=l==='fa'?'rtl':'ltr';}catch(x){}})();`;

@@ -219,6 +219,15 @@ of a long ledger read the ledger. It now orders by `(created_at, id)`, which
 becomes a bounded keyset query; `scripts/cursor-order.test.ts` holds every
 cursor query in the API to that.
 
+**Language: English only, for now (owner's decision, 19 November 2026).**
+No screen offers a language choice: `OFFERED` in `lib/locale.ts` (web) and
+`lib/i18n.tsx` (mobile) lists English alone, and a Persian choice stored
+before then is read as English. The Persian dictionaries below are kept
+complete and their parity tests still run, so offering Persian again is one
+line in each `OFFERED` plus restoring the switch; the component tests that
+render Persian are skipped until then, not deleted. What follows describes
+how Persian works when it is offered.
+
 **Language: English or Persian.** Settings (and the sign-in page, so a
 Persian reader need not find Settings in English first) offers English and
 فارسی, per browser like the theme. A script in the document head sets

@@ -70,9 +70,7 @@ export function SecurityEventsPanel() {
   return (
     <div className="space-y-3" data-testid="security-events">
       <div>
-        <p className="text-label uppercase tracking-wider text-terminal-muted">
-          {t('secev.title')}
-        </p>
+        <p className="text-sm font-semibold text-terminal-text">{t('secev.title')}</p>
         <p className="mt-1 text-caption leading-relaxed text-terminal-muted">{t('secev.lead')}</p>
       </div>
 

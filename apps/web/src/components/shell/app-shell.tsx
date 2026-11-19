@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { cn } from '@tp/ui';
 import { useSession } from '@/lib/session';
 import { NotificationBell } from '@/components/notification-bell';
-import { useLocale, useT } from '@/lib/use-locale';
+import { useT } from '@/lib/use-locale';
 import { NavIcon } from './nav-icons';
 import { TRADER_GROUPS } from './sections';
 import { MenuButton, Sidebar } from './sidebar';
@@ -37,7 +37,6 @@ export function AppShell({
 }) {
   const { user, signOut } = useSession();
   const t = useT();
-  const { locale, setLocale } = useLocale();
   const initial = (user?.email ?? '?').slice(0, 1).toUpperCase();
 
   return (
@@ -93,30 +92,6 @@ export function AppShell({
           {hideHeading ? null : (
             <p className="truncate text-sm font-semibold text-terminal-text lg:hidden">{title}</p>
           )}
-        </div>
-        <div
-          role="radiogroup"
-          aria-label={t('settings.language')}
-          className="flex rounded-md border border-terminal-border p-0.5"
-        >
-          {(['en', 'fa'] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              lang={value}
-              aria-checked={locale === value}
-              onClick={() => setLocale(value)}
-              className={cn(
-                'rounded px-2 py-0.5 text-caption transition-colors',
-                locale === value
-                  ? 'bg-terminal-raised text-terminal-text'
-                  : 'text-terminal-muted hover:text-terminal-text',
-              )}
-            >
-              {value === 'en' ? 'EN' : 'فا'}
-            </button>
-          ))}
         </div>
         <NotificationBell />
         <Link

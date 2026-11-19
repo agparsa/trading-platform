@@ -41,9 +41,7 @@ export function TradingSettings({
    */
   const body = (
     <>
-      <p className="mb-2 text-label uppercase tracking-wider text-terminal-muted">
-        {t('trade.oneClick')}
-      </p>
+      <p className="mb-2 text-sm font-semibold text-terminal-text">{t('trade.oneClick')}</p>
 
       {oneClickAllowed ? null : (
         <p className="mb-2 text-caption text-terminal-warning" data-testid="one-click-off">
@@ -92,9 +90,7 @@ export function TradingSettings({
         </Field>
       </div>
 
-      <p className="mb-2 mt-4 text-label uppercase tracking-wider text-terminal-muted">
-        {t('trade.keyboard')}
-      </p>
+      <p className="mb-2 mt-4 text-sm font-semibold text-terminal-text">{t('trade.keyboard')}</p>
       <Toggle
         label={t('trade.enableShortcuts')}
         checked={preferences.keyboard}

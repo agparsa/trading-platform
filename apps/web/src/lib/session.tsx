@@ -67,7 +67,12 @@ interface SessionValue {
   accessToken: string | null;
   signIn: (email: string, password: string) => Promise<SignInResult>;
   completeTwoFactor: (challengeToken: string, code: string) => Promise<void>;
-  register: (email: string, password: string, displayName: string) => Promise<void>;
+  register: (
+    email: string,
+    password: string,
+    displayName: string,
+    inviteCode?: string,
+  ) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -207,10 +212,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const register = useCallback(
-    async (email: string, password: string, displayName: string) => {
+    async (email: string, password: string, displayName: string, inviteCode = '') => {
       await api.post(
         '/auth/register',
-        { email, password, displayName },
+        // Sent only when typed: on an open platform an empty code is no code.
+        { email, password, displayName, ...(inviteCode === '' ? {} : { inviteCode }) },
         { idempotencyKey: crypto.randomUUID() },
       );
       // A brand-new account cannot have a second factor yet, so this always

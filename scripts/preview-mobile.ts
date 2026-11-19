@@ -174,16 +174,26 @@ async function main(): Promise<void> {
       await page.getByText(label, { exact: true }).first().click();
       await shot(`03-more-${index}-${label.toLowerCase().replace(/[^a-z]+/g, '-')}`);
     }
-    // The same screens in Persian, chosen where a trader chooses it.
+    // Registration, as a new trader sees it.
     await page.getByText('More', { exact: true }).last().click();
-    await page.getByText('فارسی', { exact: true }).first().click();
-    await shot('05-fa-more');
-    for (const [index, label] of ['قیمت‌ها', 'معامله', 'تاریخچه'].entries()) {
-      await page.getByText(label, { exact: true }).last().click();
-      await shot(`05-fa-${index}`);
-    }
-    await page.getByText('بیشتر', { exact: true }).last().click();
-    await page.getByText('English', { exact: true }).first().click();
+    await page.waitForTimeout(500);
+    await page.getByText('Sign out', { exact: true }).first().click();
+    await page.waitForTimeout(1_500);
+    await page.getByText('Create account', { exact: true }).first().click();
+    await page.locator('input').nth(2).fill('short');
+    await shot('05-register');
+    await page.locator('input').nth(2).fill(PASSWORD);
+    await page.locator('input').nth(1).fill(email);
+    await page.locator('input').nth(0).fill('Preview Trader');
+    await page.locator('input').nth(1).fill(`preview-mobile-new-${Date.now()}@test.local`);
+    await page.getByText('Create account', { exact: true }).last().click();
+    await shot('06-registered');
+    await page.locator('input').nth(1).fill(PASSWORD);
+    await page
+      .getByText(/^sign in$/i)
+      .last()
+      .click();
+    await page.waitForTimeout(3_000);
 
     // One instrument's trade screen and chart.
     // The order ticket, opened from a price as a trader opens it.

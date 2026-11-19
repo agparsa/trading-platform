@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { OFFERED } from '@/lib/locale';
 
 /**
  * The Analytics page's figures, rendered against a stand-in for the query.
@@ -94,19 +95,23 @@ describe('the Analytics figures', () => {
     expect(screen.getByText('No trades closed in this period.')).toBeTruthy();
   });
 
-  it('speaks Persian when chosen, and leaves the figures as the server gave them', async () => {
-    window.localStorage.setItem('tp:locale', 'fa');
-    try {
-      state.data = figures();
-      render(<PerformanceView accountId="acc-1" />);
-      expect(await screen.findAllByText('نتیجهٔ خالص')).toHaveLength(2);
-      expect(
-        screen.getByText('\u20663\u2069 خرید · \u20662\u2069 سودده · \u20661\u2069 زیان‌ده'),
-      ).toBeTruthy();
-      expect(screen.getByText('+0.50%')).toBeTruthy();
-      expect(screen.queryByText('Net result')).toBeNull();
-    } finally {
-      window.localStorage.removeItem('tp:locale');
-    }
-  });
+  // Persian is not offered for now (English only); this wakes when it is.
+  it.skipIf(!OFFERED.includes('fa'))(
+    'speaks Persian when chosen, and leaves the figures as the server gave them',
+    async () => {
+      window.localStorage.setItem('tp:locale', 'fa');
+      try {
+        state.data = figures();
+        render(<PerformanceView accountId="acc-1" />);
+        expect(await screen.findAllByText('نتیجهٔ خالص')).toHaveLength(2);
+        expect(
+          screen.getByText('\u20663\u2069 خرید · \u20662\u2069 سودده · \u20661\u2069 زیان‌ده'),
+        ).toBeTruthy();
+        expect(screen.getByText('+0.50%')).toBeTruthy();
+        expect(screen.queryByText('Net result')).toBeNull();
+      } finally {
+        window.localStorage.removeItem('tp:locale');
+      }
+    },
+  );
 });

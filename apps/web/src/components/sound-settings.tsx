@@ -43,9 +43,7 @@ export function SoundSettings() {
 
   return (
     <fieldset className="space-y-3" disabled={settings.data === undefined}>
-      <legend className="mb-1 text-label uppercase tracking-wider text-terminal-muted">
-        {t('sound.title')}
-      </legend>
+      <legend className="mb-1 text-sm font-semibold text-terminal-text">{t('sound.title')}</legend>
       <label className="flex min-h-8 items-center justify-between gap-3 text-sm text-terminal-text">
         {t('sound.notices')}
         <input

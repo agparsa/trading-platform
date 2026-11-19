@@ -110,9 +110,7 @@ export default function VerificationPage() {
 
           {view.canSubmit ? (
             <Panel className="max-w-lg space-y-3 p-4">
-              <p className="text-label uppercase tracking-wider text-terminal-muted">
-                {t('kyc.addDocument')}
-              </p>
+              <h2 className="text-sm font-semibold text-terminal-text">{t('kyc.addDocument')}</h2>
               <p className="text-caption leading-relaxed text-terminal-muted">
                 {t('kyc.addDocument.hint')}
               </p>
@@ -167,9 +165,7 @@ export default function VerificationPage() {
 
           {view.canSubmit ? (
             <Panel className="max-w-lg space-y-2 p-4">
-              <p className="text-label uppercase tracking-wider text-terminal-muted">
-                {t('kyc.submit')}
-              </p>
+              <h2 className="text-sm font-semibold text-terminal-text">{t('kyc.submit')}</h2>
               {view.missing.length > 0 ? (
                 <p className="text-caption text-terminal-muted">
                   {t('kyc.stillNeeded', { missing: view.missing.join(' · ') })}

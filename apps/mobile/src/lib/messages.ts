@@ -55,6 +55,8 @@ const en = {
   'login.registered':
     'Account created. We sent a link to {email} to confirm your address. You can sign in now.',
   'login.passwordRule': 'At least 12 characters.',
+  'login.inviteCode': 'Invitation code (optional)',
+  'login.inviteHint': 'Needed only if sign-up here is by invitation.',
   'login.twoFactor': 'Two-factor code',
   'login.twoFactorHint': 'Enter the six-digit code from your authenticator app.',
   'login.verify': 'Verify',
@@ -428,6 +430,8 @@ const fa: Messages = {
   'login.registered':
     'حساب ساخته شد. برای تأیید آدرس، لینکی به {email} فرستادیم. حالا می‌توانی وارد شوی.',
   'login.passwordRule': 'دست‌کم 12 نویسه.',
+  'login.inviteCode': 'کد دعوت (اختیاری)',
+  'login.inviteHint': 'فقط اگر ثبت‌نام اینجا با دعوت باشد لازم است.',
   'login.twoFactor': 'کد دومرحله‌ای',
   'login.twoFactorHint': 'کد شش‌رقمی برنامه‌ی احراز هویت را وارد کن.',
   'login.verify': 'تأیید',

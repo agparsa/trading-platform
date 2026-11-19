@@ -23,7 +23,7 @@ export function ThemeSettings() {
   const t = useT();
   return (
     <fieldset className="space-y-2">
-      <legend className="mb-1 text-label uppercase tracking-wider text-terminal-muted">
+      <legend className="mb-1 text-sm font-semibold text-terminal-text">
         {t('settings.appearance')}
       </legend>
       <div role="radiogroup" aria-label={t('settings.appearance')} className="flex flex-wrap gap-1">

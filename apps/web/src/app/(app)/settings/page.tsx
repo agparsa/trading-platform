@@ -2,7 +2,6 @@
 
 import { AppShell } from '@/components/shell/app-shell';
 import { Panel } from '@/components/primitives';
-import { LanguageSettings } from '@/components/language-settings';
 import { NotificationSettings } from '@/components/notification-settings';
 import { ProfileSettings } from '@/components/profile-settings';
 import { SoundSettings } from '@/components/sound-settings';
@@ -25,29 +24,33 @@ export default function SettingsPage() {
 
   return (
     <AppShell title={t('settings.title')} description={t('settings.description')}>
-      <Panel className="mb-3 max-w-md p-4">
-        <ProfileSettings />
-      </Panel>
-      <Panel className="mb-3 max-w-md p-4">
-        <LanguageSettings />
-      </Panel>
-      <Panel className="mb-3 max-w-md p-4">
-        <ThemeSettings />
-      </Panel>
-      <Panel className="mb-3 max-w-md p-4">
-        <TradingSettings
-          preferences={preferences}
-          onChange={update}
-          presentation="page"
-          oneClickAllowed={oneClickAllowed}
-        />
-      </Panel>
-      <Panel className="mb-3 max-w-md p-4">
-        <SoundSettings />
-      </Panel>
-      <Panel className="max-w-md p-4">
-        <NotificationSettings />
-      </Panel>
+      {/* Two columns where there is room: who you are and how it looks, then how it trades. */}
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
+          <Panel className="p-4">
+            <ProfileSettings />
+          </Panel>
+          <Panel className="p-4">
+            <ThemeSettings />
+          </Panel>
+          <Panel className="p-4">
+            <SoundSettings />
+          </Panel>
+        </div>
+        <div className="space-y-4">
+          <Panel className="p-4">
+            <TradingSettings
+              preferences={preferences}
+              onChange={update}
+              presentation="page"
+              oneClickAllowed={oneClickAllowed}
+            />
+          </Panel>
+          <Panel className="p-4">
+            <NotificationSettings />
+          </Panel>
+        </div>
+      </div>
     </AppShell>
   );
 }

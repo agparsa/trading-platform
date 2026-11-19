@@ -165,3 +165,14 @@ summary {
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/*
+ * A header cell lines up with the cells under it. Browsers centre <th> by
+ * default, and a `text-start` on the row does not reach it — every table's
+ * left-hand headings sat in the middle of their columns.
+ */
+@layer base {
+  th {
+    text-align: start;
+  }
+}

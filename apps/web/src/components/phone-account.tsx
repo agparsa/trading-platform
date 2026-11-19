@@ -10,7 +10,6 @@ import { useAccounts, useProfile, type AccountStateResponse } from '@/lib/querie
 import { useRealtime } from '@/lib/realtime-store';
 import { useSession } from '@/lib/session';
 import { useT } from '@/lib/use-locale';
-import { LanguageSettings } from './language-settings';
 import { ProfileSettings } from './profile-settings';
 import { SoundSettings } from './sound-settings';
 import { ThemeSettings } from './theme-settings';
@@ -19,7 +18,7 @@ import { ThemeSettings } from './theme-settings';
  * Account and settings on a phone, laid out the way a trading app's is: who
  * you are, your trading accounts (tap one to trade it), the selected
  * account's figures, money in and out, history, security, and the settings
- * — appearance, language, sound — then sign out.
+ * — appearance and sound — then sign out.
  *
  * Every figure is the server's: the profile from `/users/me`, the accounts
  * from `/accounts`, balance through margin level from the account state the
@@ -208,7 +207,6 @@ export function PhoneAccount({
 
       <section className="space-y-4 rounded-xl bg-terminal-surface p-3">
         <ThemeSettings />
-        <LanguageSettings showNote={false} />
         <SoundSettings />
       </section>
 

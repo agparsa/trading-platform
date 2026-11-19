@@ -32,7 +32,7 @@ export const en = {
 
   'settings.title': 'Settings',
   'settings.description':
-    'One-click trading, confirmations, default order size, appearance, language and notifications.',
+    'Your profile, one-click trading, confirmations, default order size, appearance, sounds and notifications.',
   'settings.language': 'Language',
   'settings.language.note':
     "For this browser only. Persian covers every trader screen: navigation, sign-in, Settings, the terminal, Account, Wallet, Verification, History, Analytics, Instruments, Security and Developer, and the codes the server sends (order status, close reason, account status). Still in English: the server's own messages, the admin console and the phone app.",
@@ -909,6 +909,10 @@ export const en = {
   'nav.group.trading': 'Trading',
   'nav.group.money': 'Money',
   'nav.group.you': 'Your account',
+  'login.passwordRule': 'At least {min} characters.',
+  'login.passwordShort': 'The password needs at least {min} characters.',
+  'login.inviteCode': 'Invitation code (optional)',
+  'login.inviteHint': 'Required only if this platform is open by invitation.',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -932,7 +936,8 @@ export const fa: Messages = {
   'shell.signOut': 'خروج',
 
   'settings.title': 'تنظیمات',
-  'settings.description': 'معامله با یک کلیک، تأییدها، حجم پیش‌فرض سفارش، ظاهر، زبان و اعلان‌ها.',
+  'settings.description':
+    'نمایه، معامله با یک کلیک، تأییدها، حجم پیش‌فرض سفارش، ظاهر، صداها و اعلان‌ها.',
   'settings.language': 'زبان',
   'settings.language.note':
     'فقط برای همین مرورگر. فارسی همهٔ صفحه‌های معامله‌گر را پوشش می‌دهد: منو، ورود، تنظیمات، ترمینال، حساب، کیف پول، احراز هویت، تاریخچه، تحلیل عملکرد، نمادها، امنیت و توسعه‌دهنده، و کدهایی که سرور می‌فرستد (وضعیت سفارش، دلیل بسته شدن، وضعیت حساب). هنوز انگلیسی: پیام‌های خود سرور، پنل ادمین و اپ موبایل.',
@@ -1808,6 +1813,10 @@ export const fa: Messages = {
   'nav.group.trading': 'معاملات',
   'nav.group.money': 'پول',
   'nav.group.you': 'حساب کاربری',
+  'login.passwordRule': 'دست‌کم {min} نویسه.',
+  'login.passwordShort': 'رمز عبور باید دست‌کم {min} نویسه باشد.',
+  'login.inviteCode': 'کد دعوت (اختیاری)',
+  'login.inviteHint': 'فقط اگر ثبت‌نام این پلتفرم با دعوت باشد لازم است.',
 };
 
 const TABLES: Record<Locale, Messages> = { en, fa };
