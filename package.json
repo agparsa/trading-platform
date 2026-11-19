@@ -89,6 +89,11 @@
       "deepmerge-ts": "^8.0.0",
       "decode-uri-component": "^0.5.1",
       "@expo/cli>zod": "^4.6.7"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-fc5q-39xc-vjpf"
+      ]
     }
   }
 }

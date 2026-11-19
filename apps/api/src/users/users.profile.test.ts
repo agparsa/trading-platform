@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { updateProfileSchema } from './users.controller';
 import { UsersService } from './users.service';
 
@@ -14,6 +15,18 @@ describe('PATCH /users/me — what it accepts', () => {
     for (const phone of ['09121234567', '+0912123456', '+98abc', '+1234', '+1234567890123456']) {
       expect(updateProfileSchema.safeParse({ phone }).success, phone).toBe(false);
     }
+  });
+
+  it('publishes `phone` as a string or null, not as an array', () => {
+    // nestjs-zod hands this JSON Schema to @nestjs/swagger, which turns a list
+    // in `type` into `type: 'array'`. `anyOf` is what reaches the document
+    // intact; see the comment on the schema.
+    const published = z.toJSONSchema(updateProfileSchema, { io: 'input' }) as {
+      properties: Record<string, { type?: unknown; anyOf?: Array<{ type?: unknown }> }>;
+    };
+    const phone = published.properties.phone!;
+    expect(Array.isArray(phone.type), 'a list of types becomes an array in Swagger').toBe(false);
+    expect(phone.anyOf?.map((alternative) => alternative.type)).toEqual(['string', 'null']);
   });
 
   it('refuses an empty change and fields it does not know', () => {
