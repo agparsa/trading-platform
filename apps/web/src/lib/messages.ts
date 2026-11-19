@@ -913,6 +913,31 @@ export const en = {
   'login.passwordShort': 'The password needs at least {min} characters.',
   'login.inviteCode': 'Invitation code (optional)',
   'login.inviteHint': 'Required only if this platform is open by invitation.',
+  'login.lead.forgot': 'We will email you a link to choose a new password.',
+  'login.forgot': 'Forgot password?',
+  'login.sendReset': 'Send reset link',
+  'login.forgotSent':
+    'If {email} has an account, a link to choose a new password is on its way. It works once and expires.',
+  'verify.lead': 'Confirming your email address.',
+  'verify.working': 'Confirming…',
+  'verify.done': 'Your email address is confirmed.',
+  'verify.toDashboard': 'Go to the dashboard',
+  'verify.missing': 'This link has no confirmation code in it.',
+  'verify.again': 'Links work once and expire. Signed in, you can ask for a new one in Settings.',
+  'reset.lead': 'Choose a new password.',
+  'reset.missing': 'This link has no reset code in it.',
+  'reset.requestAgain': 'Ask for a new link',
+  'reset.done':
+    'Your password is changed. Every session was signed out — sign in with the new password.',
+  'reset.mismatch': 'The two passwords are not the same.',
+  'reset.new': 'New password',
+  'reset.again': 'New password, again',
+  'reset.submit': 'Change password',
+  'profile.emailConfirmed': 'Confirmed',
+  'profile.emailPending': 'Not confirmed yet — check your inbox and spam folder.',
+  'profile.resend': 'Send a new link',
+  'profile.resent': 'Sent. Only the newest link works.',
+  'dash.check.emailPending': 'Not yet — check your inbox',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1817,6 +1842,31 @@ export const fa: Messages = {
   'login.passwordShort': 'رمز عبور باید دست‌کم {min} نویسه باشد.',
   'login.inviteCode': 'کد دعوت (اختیاری)',
   'login.inviteHint': 'فقط اگر ثبت‌نام این پلتفرم با دعوت باشد لازم است.',
+  'login.lead.forgot': 'لینکی برای انتخاب رمز جدید برایتان ایمیل می‌کنیم.',
+  'login.forgot': 'رمز را فراموش کرده‌اید؟',
+  'login.sendReset': 'ارسال لینک',
+  'login.forgotSent':
+    'اگر {email} حساب داشته باشد، لینک انتخاب رمز جدید در راه است. یک‌بار مصرف است و منقضی می‌شود.',
+  'verify.lead': 'تأیید نشانی ایمیل.',
+  'verify.working': 'در حال تأیید…',
+  'verify.done': 'نشانی ایمیل شما تأیید شد.',
+  'verify.toDashboard': 'رفتن به داشبورد',
+  'verify.missing': 'این لینک کد تأیید ندارد.',
+  'verify.again':
+    'لینک‌ها یک‌بار مصرف‌اند و منقضی می‌شوند. پس از ورود، در تنظیمات لینک تازه بخواهید.',
+  'reset.lead': 'رمز جدید را انتخاب کنید.',
+  'reset.missing': 'این لینک کد بازنشانی ندارد.',
+  'reset.requestAgain': 'درخواست لینک تازه',
+  'reset.done': 'رمز عوض شد و همهٔ نشست‌ها بسته شدند — با رمز جدید وارد شوید.',
+  'reset.mismatch': 'دو رمز یکسان نیستند.',
+  'reset.new': 'رمز جدید',
+  'reset.again': 'تکرار رمز جدید',
+  'reset.submit': 'تغییر رمز',
+  'profile.emailConfirmed': 'تأییدشده',
+  'profile.emailPending': 'هنوز تأیید نشده — صندوق ورودی و هرزنامه را ببینید.',
+  'profile.resend': 'ارسال لینک تازه',
+  'profile.resent': 'ارسال شد. فقط تازه‌ترین لینک کار می‌کند.',
+  'dash.check.emailPending': 'هنوز نه — صندوق ورودی را ببینید',
 };
 
 const TABLES: Record<Locale, Messages> = { en, fa };

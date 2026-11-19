@@ -15,6 +15,7 @@
  *
  *   pnpm smoke:web
  */
+import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -988,8 +989,99 @@ async function main(): Promise<void> {
       }
       const created = await prisma.user.count({ where: { email: address } });
       ok(created === 1, 'the registration is a user in the database', `${created} rows`);
+
+      /**
+       * The emailed links. The server mails `/verify-email?token=…` and
+       * `/reset-password?token=…`, and for months no page answered either —
+       * every confirmation link was a 404. The script cannot read the mail, so
+       * it gives the new user a token it knows (stored as the server stores
+       * one: its SHA-256) and follows the link as the email would.
+       */
+      await visitor.goto(`${WEB}/settings`, { waitUntil: 'domcontentloaded' });
+      const pending = await visitor
+        .getByTestId('email-pending')
+        .waitFor({ timeout: 15_000 })
+        .then(() => true)
+        .catch(() => false);
+      ok(pending, 'settings says the address is not confirmed and offers a new link');
+      await visitor.getByTestId('email-resend').click();
+      const resent = await visitor
+        .getByText(/only the newest link works/i)
+        .waitFor({ timeout: 15_000 })
+        .then(() => true)
+        .catch(() => false);
+      ok(resent, 'asking for a new confirmation link is answered');
+
+      const known = `smoke-verify-${Date.now()}`;
+      await prisma.user.updateMany({
+        where: { email: address },
+        data: {
+          emailVerificationTokenHash: createHash('sha256').update(known).digest('hex'),
+          emailVerificationExpiresAt: new Date(Date.now() + 3_600_000),
+        },
+      });
+      await visitor.goto(`${WEB}/verify-email?token=${known}`, { waitUntil: 'domcontentloaded' });
+      const confirmed = await visitor
+        .getByTestId('verify-done')
+        .waitFor({ timeout: 15_000 })
+        .then(() => true)
+        .catch(() => false);
+      const row = await prisma.user.findFirst({
+        where: { email: address },
+        select: { emailVerified: true },
+      });
+      ok(
+        confirmed && row?.emailVerified === true,
+        "the email's confirmation link confirms the address",
+        `page ${String(confirmed)}, database ${String(row?.emailVerified)}`,
+      );
+      await visitor.goto(`${WEB}/verify-email?token=${known}`, { waitUntil: 'domcontentloaded' });
+      const spent = await visitor
+        .getByTestId('verify-failed')
+        .waitFor({ timeout: 15_000 })
+        .then(() => true)
+        .catch(() => false);
+      ok(spent, 'a confirmation link works once');
       await fresh.close();
+
+      // Forgot password, signed out, and the reset link's page.
+      const lost = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const stranger = await lost.newPage();
+      await stranger.goto(`${WEB}/login?mode=forgot`, { waitUntil: 'domcontentloaded' });
+      await stranger.locator('input[type="email"]').waitFor({ state: 'visible', timeout: 20_000 });
+      await stranger.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => undefined);
+      const passwordFields = await stranger.locator('input[type="password"]').count();
+      await stranger.locator('input[type="email"]').fill(address);
+      await stranger.getByRole('button', { name: /^send reset link$/i }).click();
+      const told = await stranger
+        .getByText(/a link to choose a new password is on its way/i)
+        .waitFor({ timeout: 15_000 })
+        .then(() => true)
+        .catch(() => false);
+      ok(
+        passwordFields === 0 && told,
+        'forgot password asks only for the address and says a link is on its way',
+        `${passwordFields} password field(s), told ${String(told)}`,
+      );
+      await stranger.goto(`${WEB}/reset-password?token=not-a-real-token`, {
+        waitUntil: 'domcontentloaded',
+      });
+      await stranger.locator('input[type="password"]').first().waitFor({ timeout: 15_000 });
+      await stranger.locator('input[type="password"]').nth(0).fill(PASSWORD);
+      await stranger.locator('input[type="password"]').nth(1).fill(PASSWORD);
+      await stranger.getByRole('button', { name: /^change password$/i }).click();
+      const refusedReset = await stranger
+        .getByRole('alert')
+        .waitFor({ timeout: 15_000 })
+        .then(() => true)
+        .catch(() => false);
+      ok(refusedReset, 'the reset page shows the server refusing a bad link');
+      await lost.close();
     }
+
+    // The emailed links' pages, opened bare: each says what is missing.
+    await visit(page, '/verify-email', { text: /no confirmation code/i });
+    await visit(page, '/reset-password', { text: /no reset code/i });
 
     console.log('\n  As a trader\n');
     await signIn(page, people.trader.email);

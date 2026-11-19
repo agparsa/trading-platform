@@ -1481,6 +1481,15 @@ export function useProfile() {
   });
 }
 
+/** A new email-confirmation link for the signed-in person. */
+export function useResendVerification() {
+  const { api } = useSession();
+  return useMutation({
+    mutationFn: () =>
+      api.post('/auth/verify-email/resend', {}, { idempotencyKey: crypto.randomUUID() }),
+  });
+}
+
 /** Name and contact number. The server normalises and validates the number. */
 export function useUpdateProfile() {
   const { api } = useSession();

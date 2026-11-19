@@ -338,6 +338,20 @@ suite('Auth (integration)', () => {
       });
       await expect(auth.verifyEmail(token)).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     });
+
+    it('resends a new link that replaces the old one, and sends nothing once confirmed', async () => {
+      const { userId } = await register();
+      const first = email.tokenFrom(/verify-email\?token=([\w-]+)/);
+      await auth.resendVerification(userId);
+      const second = email.tokenFrom(/verify-email\?token=([\w-]+)/);
+      expect(second).not.toBe(first);
+      await expect(auth.verifyEmail(first)).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+      await auth.verifyEmail(second);
+
+      const before = email.sent.length;
+      await auth.resendVerification(userId);
+      expect(email.sent).toHaveLength(before);
+    });
   });
 
   describe('password reset', () => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useProfile, useUpdateProfile } from '@/lib/queries';
+import { useProfile, useResendVerification, useUpdateProfile } from '@/lib/queries';
 import { useT } from '@/lib/use-locale';
 import { inputClass } from './primitives';
 
@@ -15,6 +15,7 @@ export function ProfileSettings() {
   const t = useT();
   const profile = useProfile();
   const update = useUpdateProfile();
+  const resend = useResendVerification();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [saved, setSaved] = useState(false);
@@ -55,6 +56,37 @@ export function ProfileSettings() {
         {t('profile.email')}
         <input className={inputClass} value={data?.email ?? ''} readOnly disabled />
       </label>
+      {data === undefined ? null : data.emailVerified ? (
+        <p className="-mt-1 text-label text-terminal-long" data-testid="email-confirmed">
+          {t('profile.emailConfirmed')}
+        </p>
+      ) : (
+        <div className="-mt-1 space-y-1" data-testid="email-pending">
+          <p className="text-label leading-relaxed text-terminal-warning">
+            {t('profile.emailPending')}
+          </p>
+          {resend.isSuccess ? (
+            <p className="text-label text-terminal-long" role="status">
+              {t('profile.resent')}
+            </p>
+          ) : (
+            <button
+              type="button"
+              disabled={resend.isPending}
+              onClick={() => resend.mutate()}
+              className="text-label text-terminal-accent hover:underline disabled:opacity-50"
+              data-testid="email-resend"
+            >
+              {resend.isPending ? t('login.working') : t('profile.resend')}
+            </button>
+          )}
+          {resend.isError ? (
+            <p className="text-label text-terminal-short" role="alert">
+              {resend.error instanceof Error ? resend.error.message : t('profile.failed')}
+            </p>
+          ) : null}
+        </div>
+      )}
       <label className="block text-caption text-terminal-muted">
         {t('profile.name')}
         <input

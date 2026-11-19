@@ -24,7 +24,9 @@ Every screen has an address now. The terminal did not change.
 | `/security`             | two-factor, recovery codes, active sessions, your API keys, and what has happened to your account                   |
 | `/developer`            | the API as it describes itself: every route, authentication, idempotency, verifying a webhook                       |
 | `/settings`             | one-click trading, confirmations, default size                                                                      |
-| `/login`                | sign in and register                                                                                                |
+| `/login`                | sign in, register, and ask for a password-reset link (`?mode=register`, `?mode=forgot`)                             |
+| `/verify-email`         | where the registration email's confirmation link lands; works signed out                                            |
+| `/reset-password`       | where the password-reset email's link lands: a new password, twice                                                  |
 | `/status`               | build and deployment status                                                                                         |
 | `/admin`                | redirects to `/admin/overview`                                                                                      |
 | `/admin/overview`       | platform figures                                                                                                    |

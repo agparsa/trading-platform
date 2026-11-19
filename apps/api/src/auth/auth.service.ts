@@ -163,11 +163,7 @@ export class AuthService {
       return { user: created, inviteFingerprint: null };
     });
 
-    await this.email.send({
-      to: input.email,
-      subject: 'Verify your trading account',
-      text: `Confirm your email address:\n\n${this.config.get('APP_PUBLIC_URL', { infer: true })}/verify-email?token=${verificationToken}`,
-    });
+    await this.sendVerificationLink(input.email, verificationToken);
 
     await this.audit.record({
       actorId: user.id,
@@ -356,6 +352,39 @@ export class AuthService {
       requestId: context.requestId ?? null,
       ipAddress: context.ipAddress ?? null,
       userAgent: context.userAgent ?? null,
+    });
+  }
+
+  /**
+   * A fresh confirmation link for someone signed in whose address is not
+   * confirmed yet: the first email was lost, filtered, or has expired.
+   *
+   * A new token replaces the old one, so only the newest link works. Nothing
+   * happens for an address already confirmed — and the caller is told the same
+   * either way, so this says nothing an attacker holding a session could not
+   * already read from the profile.
+   */
+  async resendVerification(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user === null || user.emailVerified) return;
+    const token = randomBytes(32).toString('base64url');
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerificationTokenHash: this.hashToken(token),
+        emailVerificationExpiresAt: new Date(
+          Date.now() + this.config.get('EMAIL_VERIFICATION_TTL_HOURS', { infer: true }) * 3_600_000,
+        ),
+      },
+    });
+    await this.sendVerificationLink(user.email, token);
+  }
+
+  private async sendVerificationLink(to: string, token: string): Promise<void> {
+    await this.email.send({
+      to,
+      subject: 'Verify your trading account',
+      text: `Confirm your email address:\n\n${this.config.get('APP_PUBLIC_URL', { infer: true })}/verify-email?token=${token}`,
     });
   }
 

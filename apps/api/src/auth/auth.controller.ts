@@ -347,6 +347,17 @@ export class AuthController {
     await this.auth.verifyEmail(body.token);
   }
 
+  /** A new confirmation link for the signed-in caller; nothing if already confirmed. */
+  @SelfService()
+  @Throttle({ default: { limit: rateLimits.login, ttl: RATE_LIMIT_WINDOW_MS } })
+  @Post('verify-email/resend')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Send a new email-confirmation link to the signed-in user' })
+  async resendVerification(@CurrentUser() user: AuthenticatedUser): Promise<{ status: string }> {
+    await this.auth.resendVerification(user.id);
+    return { status: 'if this address is not confirmed yet, a new link has been sent' };
+  }
+
   /** Always 202, registered or not — see AuthService.requestPasswordReset. */
   @Public()
   @Throttle({ default: { limit: rateLimits.login, ttl: RATE_LIMIT_WINDOW_MS } })

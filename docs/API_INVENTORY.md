@@ -121,6 +121,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST`   | `/auth/refresh`                | `refresh`                 | PUBLIC, throttled       |
 | `POST`   | `/auth/logout`                 | `logout`                  | PUBLIC                  |
 | `POST`   | `/auth/verify-email`           | `verifyEmail`             | PUBLIC                  |
+| `POST`   | `/auth/verify-email/resend`    | `resendVerification`      | SELF-SERVICE, throttled |
 | `POST`   | `/auth/password-reset`         | `requestPasswordReset`    | PUBLIC, throttled       |
 | `POST`   | `/auth/password-reset/confirm` | `resetPassword`           | PUBLIC, throttled       |
 | `POST`   | `/auth/password`               | `changePassword`          | SELF-SERVICE            |
@@ -513,7 +514,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**244 routes:** 127 `GET`, 100 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**245 routes:** 127 `GET`, 101 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
 
 <!-- END GENERATED ROUTES -->
 

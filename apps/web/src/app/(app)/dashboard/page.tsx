@@ -277,7 +277,7 @@ function Checklist({ emailVerified }: { emailVerified: boolean | undefined }) {
         label: 'dash.check.email',
         done: emailVerified,
         href: '/settings',
-        note: emailVerified === false ? t('more.unverified') : '',
+        note: emailVerified === false ? t('dash.check.emailPending') : '',
       },
       {
         label: 'dash.check.kyc',

@@ -8,6 +8,7 @@ import { Button, Field, inputClass, wordInputClass } from '@/components/primitiv
 import { NavIcon } from '@/components/shell/nav-icons';
 import { useLocale, useT } from '@/lib/use-locale';
 import { explainError } from '@/lib/error-words';
+import { PASSWORD_MIN } from '@/lib/password';
 
 /**
  * Sign in and registration.
@@ -16,16 +17,20 @@ import { explainError } from '@/lib/error-words';
  * exactly what the server said and nothing more: an invented reassurance here
  * would be a trader locked out of a position with no idea why.
  */
-/** The server's own minimum (the register DTO); shown before it is enforced. */
-const PASSWORD_MIN = 12;
-
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn, completeTwoFactor, register, ready, user } = useSession();
+  const { api, signIn, completeTwoFactor, register, ready, user } = useSession();
   const t = useT();
   const { locale } = useLocale();
 
-  const [mode, setMode] = useState<'sign-in' | 'register'>('sign-in');
+  const [mode, setMode] = useState<'sign-in' | 'register' | 'forgot'>('sign-in');
+  const [notice, setNotice] = useState<string | null>(null);
+  // `?mode=register` or `?mode=forgot` opens that form — what an emailed link
+  // or a "forgot password" button elsewhere points at.
+  useEffect(() => {
+    const asked = new URLSearchParams(window.location.search).get('mode');
+    if (asked === 'register' || asked === 'forgot') setMode(asked);
+  }, []);
   /**
    * Set when the password was accepted and a code is still owed.
    *
@@ -63,10 +68,20 @@ export default function LoginPage() {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    setNotice(null);
     setBusy(true);
     try {
       if (challengeToken !== null) {
         await completeTwoFactor(challengeToken, code);
+      } else if (mode === 'forgot') {
+        await api.post(
+          '/auth/password-reset',
+          { email: email.trim() },
+          { idempotencyKey: crypto.randomUUID() },
+        );
+        // The same words whether or not the address is registered: the server
+        // will not say, and neither does this page.
+        setNotice(t('login.forgotSent', { email: email.trim() }));
       } else if (mode === 'sign-in') {
         const result = await signIn(email.trim(), password);
         if (result.kind === 'twoFactorRequired') {
@@ -111,7 +126,9 @@ export default function LoginPage() {
             ? t('login.lead.code')
             : mode === 'sign-in'
               ? t('login.lead.signIn')
-              : t('login.lead.register')}
+              : mode === 'forgot'
+                ? t('login.lead.forgot')
+                : t('login.lead.register')}
         </p>
 
         <form
@@ -162,18 +179,33 @@ export default function LoginPage() {
                 />
               </Field>
 
-              <Field label={t('login.password')}>
-                <input
-                  className={inputClass}
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
-                  minLength={mode === 'register' ? PASSWORD_MIN : undefined}
-                  aria-describedby={mode === 'register' ? 'password-rule' : undefined}
-                  required
-                />
-              </Field>
+              {mode === 'forgot' ? null : (
+                <Field label={t('login.password')}>
+                  <input
+                    className={inputClass}
+                    type="password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
+                    minLength={mode === 'register' ? PASSWORD_MIN : undefined}
+                    aria-describedby={mode === 'register' ? 'password-rule' : undefined}
+                    required
+                  />
+                </Field>
+              )}
+              {mode === 'sign-in' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('forgot');
+                    setError(null);
+                    setNotice(null);
+                  }}
+                  className="-mt-1 block text-label text-terminal-muted transition-colors hover:text-terminal-text"
+                >
+                  {t('login.forgot')}
+                </button>
+              ) : null}
               {mode === 'register' ? (
                 <>
                   <p
@@ -205,8 +237,13 @@ export default function LoginPage() {
             </>
           )}
 
+          {notice === null ? null : (
+            <p className="text-caption leading-relaxed text-terminal-long" role="status">
+              {notice}
+            </p>
+          )}
           {error === null ? null : (
-            <p className="text-caption text-terminal-short">
+            <p className="text-caption text-terminal-short" role="alert">
               {error}
               {/* The server's own words are English; say so rather than leave a reader guessing. */}
               {locale === 'fa' ? (
@@ -227,7 +264,9 @@ export default function LoginPage() {
                 ? t('login.verify')
                 : mode === 'sign-in'
                   ? t('login.signIn')
-                  : t('login.createAccount')}
+                  : mode === 'forgot'
+                    ? t('login.sendReset')
+                    : t('login.createAccount')}
           </Button>
 
           <button
@@ -243,6 +282,7 @@ export default function LoginPage() {
                 setMode(mode === 'sign-in' ? 'register' : 'sign-in');
               }
               setError(null);
+              setNotice(null);
             }}
             className="w-full text-center text-caption text-terminal-muted transition-colors hover:text-terminal-text"
           >
