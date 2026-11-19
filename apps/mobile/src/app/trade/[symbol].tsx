@@ -2,12 +2,11 @@ import { AccountPicker } from '../../components/account-picker';
 import { useAccounts } from '../../lib/accounts';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { DomainError, type OrderSide } from '@tp/shared-types';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import type { OrderSide } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
 import { useFeatures, useMobileTrading } from '../../lib/features';
 import {
-  ORDER_KIND_LABEL,
   offeredOrderKinds,
   offersTrailing,
   orderRequest,
@@ -18,6 +17,8 @@ import {
 } from '../../lib/order-request';
 import { Button, Card, ErrorNote, Figure, Screen } from '../../components/ui';
 import { theme } from '../../lib/theme';
+import { useT } from '../../lib/i18n';
+import { refusalText } from '../../lib/messages';
 
 interface OrderPreview {
   symbol: string;
@@ -68,7 +69,8 @@ interface OrderPreview {
  * price belongs on is the server's rule; its refusal is shown in its words.
  */
 export default function OrderTicket(): React.ReactElement {
-  const { symbol } = useLocalSearchParams<{ symbol: string }>();
+  const { symbol, side: askedSide } = useLocalSearchParams<{ symbol: string; side?: string }>();
+  const t = useT();
   const { api } = useSession();
   /**
    * The firm's `mobile_trading` flag, which this screen is the whole reason
@@ -81,7 +83,7 @@ export default function OrderTicket(): React.ReactElement {
   // The account this ticket sends to — the one the app is on, not whichever
   // the server listed first. See lib/accounts.tsx.
   const { selected: account, error: accountError } = useAccounts();
-  const [side, setSide] = useState<OrderSide>('BUY');
+  const [side, setSide] = useState<OrderSide>(askedSide === 'SELL' ? 'SELL' : 'BUY');
   const [volume, setVolume] = useState('0.10');
   const [stopLoss, setStopLoss] = useState('');
   const [takeProfit, setTakeProfit] = useState('');
@@ -149,7 +151,7 @@ export default function OrderTicket(): React.ReactElement {
       timeInForce,
     ],
   );
-  const restingProblem = restingFieldsProblem(kind, restingPrice, stopTrigger);
+  const restingProblem = restingFieldsProblem(kind, restingPrice, stopTrigger, t);
   /**
    * Whether the ticket may go to review. A market order needs the preview's
    * yes; a resting one needs its prices, and a preview at all (no price means
@@ -182,7 +184,7 @@ export default function OrderTicket(): React.ReactElement {
       setError(null);
     } catch (caught) {
       setPreview(null);
-      setError(caught instanceof DomainError ? caught.message : 'Could not price that order.');
+      setError(refusalText(caught, 'ticket.priceFailed', t));
     }
   }, [api, request]);
 
@@ -210,7 +212,7 @@ export default function OrderTicket(): React.ReactElement {
         await api.post('/orders/pending', resting, {
           idempotencyKey: `pending:${account?.id}:${symbol}:${side}:${resting.type}:${Date.now()}`,
         });
-        router.replace('/(tabs)/orders');
+        router.replace('/(tabs)/trade');
         return;
       }
       await api.post('/orders', request, {
@@ -219,9 +221,9 @@ export default function OrderTicket(): React.ReactElement {
         // result.
         idempotencyKey: `order:${account?.id}:${symbol}:${side}:${volume}:${Date.now()}`,
       });
-      router.replace('/(tabs)/positions');
+      router.replace('/(tabs)/trade');
     } catch (caught) {
-      setError(caught instanceof DomainError ? caught.message : 'The order was not placed.');
+      setError(refusalText(caught, 'ticket.placeFailed', t));
       setConfirming(false);
     } finally {
       setBusy(false);
@@ -231,30 +233,34 @@ export default function OrderTicket(): React.ReactElement {
   return (
     <Screen>
       <ScrollView keyboardShouldPersistTaps="handled">
-        <Text style={styles.heading}>{String(symbol)}</Text>
+        <Stack.Screen options={{ title: t('screen.ticket', { symbol: String(symbol) }) }} />
         <AccountPicker />
         {error === null ? null : <ErrorNote message={error} />}
         {accountError === null ? null : <ErrorNote message={accountError} />}
 
         <View style={styles.sides}>
-          <Button
-            label={`Sell ${preview?.bid ?? ''}`}
-            variant={side === 'SELL' ? 'danger' : 'quiet'}
-            onPress={() => setSide('SELL')}
-          />
+          <View style={{ flex: 1 }}>
+            <Button
+              label={`${t('common.sell')} ${preview?.bid ?? ''}`}
+              variant={side === 'SELL' ? 'danger' : 'quiet'}
+              onPress={() => setSide('SELL')}
+            />
+          </View>
           <View style={{ width: theme.spacing(1) }} />
-          <Button
-            label={`Buy ${preview?.ask ?? ''}`}
-            variant={side === 'BUY' ? 'primary' : 'quiet'}
-            onPress={() => setSide('BUY')}
-          />
+          <View style={{ flex: 1 }}>
+            <Button
+              label={`${t('common.buy')} ${preview?.ask ?? ''}`}
+              variant={side === 'BUY' ? 'buy' : 'quiet'}
+              onPress={() => setSide('BUY')}
+            />
+          </View>
         </View>
 
         <View style={styles.sides} accessibilityRole="tablist">
           {kinds.map((value) => (
             <View key={value} style={styles.kind}>
               <Button
-                label={ORDER_KIND_LABEL[value]}
+                label={t(`orders.kind.${value}`)}
                 variant={value === kind ? 'primary' : 'quiet'}
                 onPress={() => {
                   setKind(value);
@@ -265,33 +271,38 @@ export default function OrderTicket(): React.ReactElement {
           ))}
         </View>
 
-        <Card title="Order">
-          <Field label="Volume (lots)" value={volume} onChange={setVolume} keyboard="decimal-pad" />
+        <Card title={t('ticket.order')}>
+          <Field
+            label={t('ticket.volume')}
+            value={volume}
+            onChange={setVolume}
+            keyboard="decimal-pad"
+          />
           {kind === 'STOP_LIMIT' ? (
             <Field
-              label="Stop price — activates it"
+              label={t('ticket.stopActivates')}
               value={stopTrigger}
               onChange={setStopTrigger}
               keyboard="decimal-pad"
-              placeholder={side === 'BUY' ? 'above the ask' : 'below the bid'}
+              placeholder={side === 'BUY' ? t('ticket.aboveAsk') : t('ticket.belowBid')}
             />
           ) : null}
           {kind === 'MARKET' ? null : (
             <Field
-              label={kind === 'STOP' ? 'Stop price' : 'Limit price'}
+              label={kind === 'STOP' ? t('orders.stopPrice') : t('orders.limitPrice')}
               value={restingPrice}
               onChange={setRestingPrice}
               keyboard="decimal-pad"
               placeholder={
                 kind === 'STOP_LIMIT'
-                  ? 'fills here or better'
+                  ? t('ticket.fillsHere')
                   : kind === 'LIMIT'
                     ? side === 'BUY'
-                      ? 'below the ask'
-                      : 'above the bid'
+                      ? t('ticket.belowAsk')
+                      : t('ticket.aboveBid')
                     : side === 'BUY'
-                      ? 'above the ask'
-                      : 'below the bid'
+                      ? t('ticket.aboveAsk')
+                      : t('ticket.belowBid')
               }
             />
           )}
@@ -300,7 +311,7 @@ export default function OrderTicket(): React.ReactElement {
               {(['GTC', 'DAY'] as const).map((value) => (
                 <View key={value} style={styles.kind}>
                   <Button
-                    label={value === 'GTC' ? 'Until cancelled' : 'Today only'}
+                    label={value === 'GTC' ? t('ticket.gtc') : t('ticket.day')}
                     variant={value === timeInForce ? 'primary' : 'quiet'}
                     onPress={() => setTimeInForce(value)}
                   />
@@ -309,18 +320,18 @@ export default function OrderTicket(): React.ReactElement {
             </View>
           )}
           <Field
-            label="Stop loss"
+            label={t('positions.stopLoss')}
             value={stopLoss}
             onChange={setStopLoss}
             keyboard="decimal-pad"
-            placeholder="optional"
+            placeholder={t('common.optional')}
           />
           <Field
-            label="Take profit"
+            label={t('positions.takeProfit')}
             value={takeProfit}
             onChange={setTakeProfit}
             keyboard="decimal-pad"
-            placeholder="optional"
+            placeholder={t('common.optional')}
           />
           {/*
             A trail from the fill onward, in price units: the stop follows the
@@ -330,43 +341,49 @@ export default function OrderTicket(): React.ReactElement {
           */}
           {trailingOffered ? (
             <Field
-              label="Trailing distance"
+              label={t('ticket.trailing')}
               value={trailing}
               onChange={setTrailing}
               keyboard="decimal-pad"
-              placeholder="optional"
+              placeholder={t('common.optional')}
             />
           ) : null}
         </Card>
 
         {preview === null ? null : (
-          <Card title={kind === 'MARKET' ? 'Before you place it' : 'At today’s market'}>
-            <Figure label="Symbol" value={preview.symbol} />
-            <Figure label="Side" value={preview.side} />
+          <Card title={kind === 'MARKET' ? t('ticket.before') : t('ticket.atMarket')}>
+            <Figure label={t('ticket.symbol')} value={preview.symbol} />
+            <Figure
+              label={t('ticket.side')}
+              value={t(preview.side === 'BUY' ? 'common.BUY' : 'common.SELL')}
+            />
             {/* The snapped volume, not what was typed. They differ whenever the
                 requested size is off the lot grid, and the ticket must show
                 what will actually trade. */}
-            <Figure label="Volume" value={preview.volume} />
-            <Figure label="Price" value={preview.price} />
-            <Figure label="Spread" value={preview.spread} />
-            <Figure label="Notional" value={`${preview.notional} ${preview.accountCurrency}`} />
+            <Figure label={t('orders.volume')} value={preview.volume} />
+            <Figure label={t('ticket.price')} value={preview.price} />
+            <Figure label={t('ticket.spread')} value={preview.spread} />
             <Figure
-              label="Required margin"
+              label={t('ticket.notional')}
+              value={`${preview.notional} ${preview.accountCurrency}`}
+            />
+            <Figure
+              label={t('ticket.margin')}
               value={`${preview.requiredMargin} ${preview.accountCurrency}`}
             />
             <Figure
-              label="Estimated commission"
+              label={t('ticket.commission')}
               value={`${preview.estimatedCommission} ${preview.accountCurrency}`}
             />
-            <Figure label="Free margin after" value={preview.freeMarginAfter} />
-            <Figure label="Margin level after" value={preview.marginLevelAfter ?? '—'} />
+            <Figure label={t('ticket.freeAfter')} value={preview.freeMarginAfter} />
+            <Figure label={t('ticket.levelAfter')} value={preview.marginLevelAfter ?? '—'} />
           </Card>
         )}
 
         {preview !== null && (preview.warnings.length > 0 || preview.violations.length > 0) ? (
           <ErrorNote
             message={
-              (kind === 'MARKET' ? '' : 'If it filled at today’s price:\n') +
+              (kind === 'MARKET' ? '' : `${t('ticket.ifFilled')}\n`) +
               [...preview.warnings, ...preview.violations].join('\n')
             }
           />
@@ -378,28 +395,41 @@ export default function OrderTicket(): React.ReactElement {
         {mobileTrading.mayOpen ? null : <ErrorNote message={mobileTrading.reason ?? ''} />}
 
         {confirming ? (
-          <Card title="Confirm">
+          <Card title={t('ticket.confirm')}>
             <Text style={styles.confirm}>
               {preview === null
-                ? 'Pricing…'
+                ? t('ticket.pricing')
                 : resting !== null
-                  ? `${restingSummary(resting)} No margin is held while it rests; ` +
-                    'it is checked again when the order fires.'
-                  : `${preview.side} ${preview.volume} ${preview.symbol} at ${preview.price}. ` +
-                    `Margin ${preview.requiredMargin} ${preview.accountCurrency}, ` +
-                    `commission ${preview.estimatedCommission} ${preview.accountCurrency}.`}
+                  ? `${restingSummary(resting, t)} ${t('ticket.noMarginHeld')}`
+                  : t('ticket.marketSummary', {
+                      side: t(preview.side === 'BUY' ? 'common.BUY' : 'common.SELL'),
+                      volume: preview.volume,
+                      symbol: preview.symbol,
+                      price: preview.price,
+                      margin: preview.requiredMargin,
+                      commission: preview.estimatedCommission,
+                      currency: preview.accountCurrency,
+                    })}
             </Text>
             <Button
-              label="Place order"
-              variant={side === 'SELL' ? 'danger' : 'primary'}
+              label={t('ticket.place')}
+              variant={side === 'SELL' ? 'danger' : 'buy'}
               busy={busy}
               disabled={!reviewable}
               onPress={() => void submit()}
             />
-            <Button label="Cancel" variant="quiet" onPress={() => setConfirming(false)} />
+            <Button
+              label={t('common.cancel')}
+              variant="quiet"
+              onPress={() => setConfirming(false)}
+            />
           </Card>
         ) : (
-          <Button label="Review order" disabled={!reviewable} onPress={() => setConfirming(true)} />
+          <Button
+            label={t('ticket.review')}
+            disabled={!reviewable}
+            onPress={() => setConfirming(true)}
+          />
         )}
       </ScrollView>
     </Screen>

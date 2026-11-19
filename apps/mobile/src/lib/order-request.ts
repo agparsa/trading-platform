@@ -1,4 +1,5 @@
 import type { OrderSide } from '@tp/shared-types';
+import { english, type Translate } from './messages';
 
 /**
  * The body the phone sends to `POST /orders` (and to `/orders/preview`, which
@@ -124,25 +125,34 @@ export function restingFieldsProblem(
   kind: OrderKind,
   price: string,
   stopPrice: string,
+  t: Translate = english,
 ): string | null {
   if (kind === 'MARKET') return null;
-  const check = (value: string, name: string): string | null => {
+  const check = (value: string, which: 'stop' | 'limit'): string | null => {
+    const name = t(which === 'stop' ? 'ticket.name.stop' : 'ticket.name.limit');
     const trimmed = value.trim();
-    if (trimmed === '') return `Enter the ${name}.`;
-    if (!DECIMAL.test(trimmed)) return `The ${name} must be a number.`;
+    if (trimmed === '') return t('ticket.enter', { name });
+    if (!DECIMAL.test(trimmed)) return t('ticket.number', { name });
     return null;
   };
   if (kind === 'STOP_LIMIT') {
-    return check(stopPrice, 'stop price') ?? check(price, 'limit price');
+    return check(stopPrice, 'stop') ?? check(price, 'limit');
   }
-  return check(price, kind === 'LIMIT' ? 'limit price' : 'stop price');
+  return check(price, kind === 'LIMIT' ? 'limit' : 'stop');
 }
 
 /** The order in one sentence, for the confirmation. */
-export function restingSummary(request: RestingRequest): string {
+export function restingSummary(request: RestingRequest, t: Translate = english): string {
   const where =
     request.type === 'STOP_LIMIT'
-      ? `stop ${request.stopPrice ?? '—'}, then limit ${request.price}`
-      : `at ${request.price}`;
-  return `${request.side} ${request.volume} ${request.symbol} ${ORDER_KIND_LABEL[request.type].toLowerCase()} ${where}, ${request.timeInForce === 'DAY' ? 'until the end of the trading day' : 'until cancelled'}.`;
+      ? t('orders.stopThenLimit', { stop: request.stopPrice ?? '—', price: request.price })
+      : t('orders.at', { price: request.price });
+  return t('ticket.restingSummary', {
+    side: t(request.side === 'BUY' ? 'common.BUY' : 'common.SELL'),
+    volume: request.volume,
+    symbol: request.symbol,
+    kind: t(`orders.kind.${request.type}`).toLowerCase(),
+    where,
+    until: request.timeInForce === 'DAY' ? t('ticket.untilDay') : t('ticket.untilCancelled'),
+  });
 }

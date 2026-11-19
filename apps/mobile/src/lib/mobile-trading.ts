@@ -1,4 +1,5 @@
 import { Feature } from '@tp/shared-types';
+import { english, type Translate } from './messages';
 
 /**
  * Whether this app may open a position, and what to say when it may not.
@@ -27,10 +28,6 @@ export interface MobileTradingDecision {
   readonly reason: string | null;
 }
 
-const REFUSAL =
-  'Your firm has switched off trading from the mobile app. You can still close ' +
-  'and modify your open positions here, and trade from the web terminal.';
-
 /**
  * Decides from the effective flags the API returned.
  *
@@ -45,6 +42,7 @@ const REFUSAL =
  */
 export function mobileTradingDecision(
   features: Readonly<Record<string, boolean>> | undefined,
+  t: Translate = english,
 ): MobileTradingDecision {
   const allowed = features?.[Feature.MOBILE_TRADING] !== false;
   return {
@@ -57,6 +55,6 @@ export function mobileTradingDecision(
      * not remove the way out.
      */
     mayClose: true,
-    reason: allowed ? null : REFUSAL,
+    reason: allowed ? null : t('ticket.mobileOff'),
   };
 }

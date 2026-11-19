@@ -1,3 +1,4 @@
+import { english, type Translate } from './messages';
 /**
  * How a resting order is described on the phone, in one line.
  *
@@ -19,9 +20,11 @@ export function orderTypeLabel(type: string): string {
   return type === 'STOP_LIMIT' ? 'STOP LMT' : type;
 }
 
-export function restingPriceLine(order: RestingOrderLine): string {
-  if (order.type !== 'STOP_LIMIT' || order.stopPrice == null) return `at ${order.price}`;
+export function restingPriceLine(order: RestingOrderLine, t: Translate = english): string {
+  if (order.type !== 'STOP_LIMIT' || order.stopPrice == null) {
+    return t('orders.at', { price: order.price });
+  }
   return order.activatedAt == null
-    ? `stop ${order.stopPrice}, then limit ${order.price}`
-    : `stop reached · resting at limit ${order.price}`;
+    ? t('orders.stopThenLimit', { stop: order.stopPrice, price: order.price })
+    : t('orders.stopReached', { price: order.price });
 }

@@ -1,3 +1,4 @@
+import { english, type Translate } from './messages';
 /**
  * Turning a form into a patch for stop loss and take profit.
  *
@@ -82,23 +83,23 @@ export function sameLevel(a: string | null, b: string | null): boolean {
  * confirmation of anything — it does not say what is about to happen. Removing
  * a stop loss in particular deserves a sentence that says so in those words.
  */
-export function describePatch(patch: ProtectivePatch): string {
+export function describePatch(patch: ProtectivePatch, t: Translate = english): string {
   const parts: string[] = [];
   if ('stopLoss' in patch) {
     parts.push(
       patch.stopLoss === null
-        ? 'remove the stop loss, leaving this position unprotected'
-        : `move the stop loss to ${patch.stopLoss}`,
+        ? t('levels.removeSl')
+        : t('levels.moveSl', { price: patch.stopLoss }),
     );
   }
   if ('takeProfit' in patch) {
     parts.push(
       patch.takeProfit === null
-        ? 'remove the take profit'
-        : `move the take profit to ${patch.takeProfit}`,
+        ? t('levels.removeTp')
+        : t('levels.moveTp', { price: patch.takeProfit }),
     );
   }
-  return parts.join(' and ');
+  return parts.join(t('levels.and'));
 }
 
 /**
@@ -172,22 +173,25 @@ export function pendingOrderPatch(
  * the row said nothing, which on a phone reads as "unprotected". The trail
  * is its own protection and is named as such.
  */
-export function protectionLine(levels: {
-  readonly stopLoss: string | null;
-  readonly takeProfit: string | null;
-  readonly trailingStopDistance?: string | null;
-}): string | null {
+export function protectionLine(
+  levels: {
+    readonly stopLoss: string | null;
+    readonly takeProfit: string | null;
+    readonly trailingStopDistance?: string | null;
+  },
+  t: Translate = english,
+): string | null {
   const trail = levels.trailingStopDistance ?? null;
   if (levels.stopLoss === null && levels.takeProfit === null && trail === null) return null;
   const parts = [
-    levels.stopLoss === null ? 'no SL' : `SL ${levels.stopLoss}`,
-    levels.takeProfit === null ? 'no TP' : `TP ${levels.takeProfit}`,
+    levels.stopLoss === null ? t('levels.noSl') : t('levels.sl', { price: levels.stopLoss }),
+    levels.takeProfit === null ? t('levels.noTp') : t('levels.tp', { price: levels.takeProfit }),
   ];
   if (trail !== null) {
     parts.push(
       levels.stopLoss === null
-        ? `trailing ${trail} — first stop on the next move in your favour`
-        : `trailing ${trail}`,
+        ? t('levels.trailFirst', { distance: trail })
+        : t('levels.trail', { distance: trail }),
     );
   }
   return parts.join(' · ');

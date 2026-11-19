@@ -17,6 +17,9 @@ export default tseslint.config(
       'apps/mobile/android/**',
       'apps/mobile/ios/**',
       'apps/mobile/.expo/**',
+      // The browser preview's export (scripts/preview-mobile.ts).
+      'apps/mobile/dist-web/**',
+      '.mobile-preview/**',
       'prisma/migrations/**',
     ],
   },

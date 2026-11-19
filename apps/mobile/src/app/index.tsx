@@ -29,5 +29,5 @@ export default function Index(): React.ReactElement {
     );
   }
 
-  return <Redirect href={signedIn ? '/(tabs)' : '/login'} />;
+  return <Redirect href={signedIn ? '/(tabs)/market' : '/login'} />;
 }

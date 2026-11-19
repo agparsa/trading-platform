@@ -42,3 +42,7 @@ backups/
 
 # A Firebase project's Android client config: the firm's, not the repository's.
 apps/mobile/google-services.json
+
+# The mobile app's browser preview build (scripts/preview-mobile.ts)
+apps/mobile/dist-web/
+.mobile-preview/

@@ -1,10 +1,12 @@
-import { AccountPicker } from '../../components/account-picker';
 import { useAccounts } from '../../lib/accounts';
+import { AccountPicker } from '../../components/account-picker';
 import { useLiveBook } from '../../lib/live';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useSession } from '../../lib/session';
 import { Empty, ErrorNote, Screen } from '../../components/ui';
+import { useT } from '../../lib/i18n';
+import { MESSAGES, type MessageKey, type Translate } from '../../lib/messages';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
 import { formatSigned, signColor, theme } from '../../lib/theme';
 import { performanceSummary, type PerformanceSummaryInput } from '../../lib/performance-summary';
@@ -25,16 +27,6 @@ interface Trade {
   exitTime: string;
 }
 
-const REASON_LABEL: Record<string, string> = {
-  MANUAL: 'closed',
-  STOP_LOSS: 'stopped out',
-  TRAILING_STOP: 'trailing stop',
-  TAKE_PROFIT: 'take profit',
-  LIQUIDATION: 'liquidated',
-  REVERSE: 'reversed',
-  SYSTEM: 'closed by the system',
-};
-
 /**
  * Closed trades, with the costs shown separately.
  *
@@ -44,6 +36,7 @@ const REASON_LABEL: Record<string, string> = {
  * a strategy that does not work and a size that does not.
  */
 export default function History(): React.ReactElement {
+  const t = useT();
   const { api } = useSession();
   // One account for the whole app, chosen by the trader rather than by the
   // order the server happened to list them in. See lib/accounts.tsx.
@@ -74,9 +67,9 @@ export default function History(): React.ReactElement {
       );
       setError(null);
     } catch {
-      setError('Could not load trade history.');
+      setError(t('history.loadFailed'));
     }
-  }, [api, account]);
+  }, [api, account, t]);
 
   useEffect(() => {
     void load();
@@ -103,12 +96,14 @@ export default function History(): React.ReactElement {
             <Summary input={performance} />
           )
         }
-        ListEmptyComponent={<Empty message={trades === null ? 'Loading…' : 'No closed trades.'} />}
+        ListEmptyComponent={
+          <Empty message={trades === null ? t('common.loading') : t('history.none')} />
+        }
         renderItem={({ item }) => (
           <View style={styles.row}>
             <View style={styles.top}>
               <Text style={styles.symbol}>
-                {item.symbol} {item.side} {item.volume}
+                {item.symbol} {t(item.side === 'BUY' ? 'common.BUY' : 'common.SELL')} {item.volume}
               </Text>
               <Text
                 style={[
@@ -120,13 +115,16 @@ export default function History(): React.ReactElement {
               </Text>
             </View>
             <Text style={[styles.detail, { writingDirection: NUMERIC_DIRECTION }]}>
-              {item.entryPrice} → {item.exitPrice} ·{' '}
-              {REASON_LABEL[item.closeReason] ?? item.closeReason}
+              {item.entryPrice} → {item.exitPrice} · {reasonWords(item.closeReason, t)}
             </Text>
             {/* Where the net came from. Hiding the costs hides the difference
                 between a strategy that does not work and a size that does not. */}
             <Text style={[styles.costs, { writingDirection: NUMERIC_DIRECTION }]}>
-              gross {formatSigned(item.grossPnl)} · commission {item.commission} · swap {item.swap}
+              {t('history.costs', {
+                gross: formatSigned(item.grossPnl),
+                commission: item.commission,
+                swap: item.swap,
+              })}
             </Text>
             <Text style={styles.when}>{new Date(item.exitTime).toLocaleString()}</Text>
           </View>
@@ -136,12 +134,18 @@ export default function History(): React.ReactElement {
   );
 }
 
+function reasonWords(reason: string, t: Translate): string {
+  const key = `reason.${reason}`;
+  return key in MESSAGES.en ? t(key as MessageKey) : reason;
+}
+
 /** The last three months, as the server counts them. */
 function Summary({ input }: { input: PerformanceSummaryInput }): React.ReactElement {
-  const { lines, notes } = performanceSummary(input);
+  const t = useT();
+  const { lines, notes } = performanceSummary(input, t);
   return (
     <View style={styles.summary}>
-      <Text style={styles.summaryTitle}>Last 3 months</Text>
+      <Text style={styles.summaryTitle}>{t('history.summary')}</Text>
       {lines.map((line) => (
         <View key={line.label} style={styles.top}>
           <Text style={styles.detail}>{line.label}</Text>

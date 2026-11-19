@@ -166,4 +166,20 @@ describe('toTokens, against what the API actually sends', () => {
   it('refuses a response with no refresh token instead of storing undefined', () => {
     expect(() => toTokens({ accessToken: 'a', expiresIn: 900 }, 1_000)).toThrow(/refresh token/);
   });
+
+  it('hands out the saved access token at once, expired or not', async () => {
+    const store = new TokenStore(
+      new MemoryStore(),
+      async () => {
+        throw new Error('no refresh');
+      },
+      () => 10_000,
+    );
+    expect(store.peek()).toBeNull();
+    await store.save({ accessToken: 'a1', refreshToken: 'r1', accessTokenExpiresAt: 1 });
+    // Expired, and still sent: the server's TOKEN_EXPIRED is what triggers a refresh.
+    expect(store.peek()).toBe('a1');
+    await store.clear();
+    expect(store.peek()).toBeNull();
+  });
 });

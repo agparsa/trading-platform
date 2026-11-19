@@ -26,6 +26,17 @@ function withFirebase(config, file) {
   return { ...config, android: { ...config.android, googleServicesFile: file } };
 }
 
-module.exports = ({ config }) => withFirebase(config, googleServicesFile());
+/**
+ * `EXPO_PUBLIC_API_URL`, when set, replaces the server the app talks to — a
+ * local API for the browser preview (`scripts/preview-web.sh`), or a staging
+ * host. Unset, the app talks to the one in `app.json`.
+ */
+function withApiUrl(config, url = process.env.EXPO_PUBLIC_API_URL) {
+  if (url === undefined || url === '') return config;
+  return { ...config, extra: { ...config.extra, apiBaseUrl: url } };
+}
+
+module.exports = ({ config }) => withApiUrl(withFirebase(config, googleServicesFile()));
+module.exports.withApiUrl = withApiUrl;
 module.exports.googleServicesFile = googleServicesFile;
 module.exports.withFirebase = withFirebase;

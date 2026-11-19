@@ -1,4 +1,3 @@
-import { AccountPicker } from '../../components/account-picker';
 import { useAccounts } from '../../lib/accounts';
 import { useLiveBook } from '../../lib/live';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -11,13 +10,14 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { DomainError } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
 import { Button, Empty, ErrorNote, Screen } from '../../components/ui';
 import { pendingOrderPatch } from '../../lib/protective-levels';
-import { orderTypeLabel, restingPriceLine } from '../../lib/pending-order-line';
+import { restingPriceLine } from '../../lib/pending-order-line';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
 import { theme } from '../../lib/theme';
+import { useT } from '../../lib/i18n';
+import { refusalText, type MessageKey } from '../../lib/messages';
 
 interface PendingOrder {
   orderId: string;
@@ -46,6 +46,7 @@ interface PendingOrder {
  * that matters: the price it was waiting for may not come back.
  */
 export default function Orders(): React.ReactElement {
+  const t = useT();
   const { api } = useSession();
   // One account for the whole app, chosen by the trader rather than by the
   // order the server happened to list them in. See lib/accounts.tsx.
@@ -71,9 +72,9 @@ export default function Orders(): React.ReactElement {
       );
       setError(null);
     } catch {
-      setError('Could not load resting orders.');
+      setError(t('orders.loadFailed'));
     }
-  }, [api, account]);
+  }, [api, account, t]);
 
   useEffect(() => {
     void load();
@@ -89,7 +90,7 @@ export default function Orders(): React.ReactElement {
       setCancelling(null);
       await load();
     } catch (caught) {
-      setError(caught instanceof DomainError ? caught.message : 'The order was not cancelled.');
+      setError(refusalText(caught, 'orders.cancelFailed', t));
     } finally {
       setBusy(false);
     }
@@ -124,7 +125,7 @@ export default function Orders(): React.ReactElement {
       setEditing(null);
       await load();
     } catch (caught) {
-      setError(caught instanceof DomainError ? caught.message : 'The order was not changed.');
+      setError(refusalText(caught, 'orders.changeFailed', t));
     } finally {
       setBusy(false);
     }
@@ -132,7 +133,6 @@ export default function Orders(): React.ReactElement {
 
   return (
     <Screen>
-      <AccountPicker />
       {error === null ? null : <ErrorNote message={error} />}
       <FlatList
         data={orders ?? []}
@@ -146,7 +146,9 @@ export default function Orders(): React.ReactElement {
             }}
           />
         }
-        ListEmptyComponent={<Empty message={orders === null ? 'Loading…' : 'No resting orders.'} />}
+        ListEmptyComponent={
+          <Empty message={orders === null ? t('common.loading') : t('orders.none')} />
+        }
         renderItem={({ item }) => (
           <View style={styles.row}>
             <View style={styles.top}>
@@ -159,62 +161,77 @@ export default function Orders(): React.ReactElement {
                   },
                 ]}
               >
-                {orderTypeLabel(item.type)} {item.side} {item.volume}
+                {t(`orders.kind.${item.type}` as MessageKey)}{' '}
+                {t(item.side === 'BUY' ? 'common.BUY' : 'common.SELL')} {item.volume}
               </Text>
             </View>
             <Text style={[styles.detail, { writingDirection: NUMERIC_DIRECTION }]}>
-              {restingPriceLine(item)} · {item.timeInForce}
+              {restingPriceLine(item, t)} ·{' '}
+              {item.timeInForce === 'GTC' || item.timeInForce === 'DAY'
+                ? t(`tif.${item.timeInForce}`)
+                : item.timeInForce}
               {item.expiresAt === null
                 ? ''
-                : ` · expires ${new Date(item.expiresAt).toLocaleString()}`}
+                : ` · ${t('orders.expires', { when: new Date(item.expiresAt).toLocaleString() })}`}
             </Text>
             {item.stopLoss === null && item.takeProfit === null ? null : (
               <Text style={styles.detail}>
-                {item.stopLoss === null ? 'no SL' : `SL ${item.stopLoss}`} ·{' '}
-                {item.takeProfit === null ? 'no TP' : `TP ${item.takeProfit}`}
+                {item.stopLoss === null
+                  ? t('levels.noSl')
+                  : t('levels.sl', { price: item.stopLoss })}{' '}
+                ·{' '}
+                {item.takeProfit === null
+                  ? t('levels.noTp')
+                  : t('levels.tp', { price: item.takeProfit })}
               </Text>
             )}
 
             {cancelling === item.orderId ? (
               <View style={styles.confirm}>
                 <Text style={styles.confirmText}>
-                  Cancel this {orderTypeLabel(item.type).toLowerCase()} order? It will stop waiting
-                  ({restingPriceLine(item)}).
+                  {t('orders.cancelQuestion', {
+                    kind: t(`orders.kind.${item.type}` as MessageKey),
+                    line: restingPriceLine(item, t),
+                  })}
                 </Text>
                 <Button
-                  label="Cancel order"
+                  label={t('orders.cancelOrder')}
                   variant="danger"
                   busy={busy}
                   onPress={() => void cancel(item)}
                 />
-                <Button label="Leave it" variant="quiet" onPress={() => setCancelling(null)} />
+                <Button
+                  label={t('orders.leaveIt')}
+                  variant="quiet"
+                  onPress={() => setCancelling(null)}
+                />
               </View>
             ) : editing === item.orderId ? (
               <View style={styles.confirm}>
                 <Field
-                  label={item.type === 'STOP_LIMIT' ? 'Limit price' : 'Price'}
+                  label={item.type === 'STOP_LIMIT' ? t('orders.limitPrice') : t('orders.price')}
                   value={form.price}
                   onChange={(value) => setForm((c) => ({ ...c, price: value }))}
                 />
                 <Field
-                  label="Volume"
+                  label={t('orders.volume')}
                   value={form.volume}
                   onChange={(value) => setForm((c) => ({ ...c, volume: value }))}
                 />
                 <Field
-                  label="Stop loss"
+                  label={t('positions.stopLoss')}
                   value={form.stopLoss}
-                  placeholder="empty to remove"
+                  placeholder={t('common.emptyToRemove')}
                   onChange={(value) => setForm((c) => ({ ...c, stopLoss: value }))}
                 />
                 <Field
-                  label="Take profit"
+                  label={t('positions.takeProfit')}
                   value={form.takeProfit}
-                  placeholder="empty to remove"
+                  placeholder={t('common.emptyToRemove')}
                   onChange={(value) => setForm((c) => ({ ...c, takeProfit: value }))}
                 />
                 <Button
-                  label="Save changes"
+                  label={t('orders.save')}
                   busy={busy}
                   disabled={
                     pendingOrderPatch(form, {
@@ -226,7 +243,11 @@ export default function Orders(): React.ReactElement {
                   }
                   onPress={() => void save(item)}
                 />
-                <Button label="Cancel" variant="quiet" onPress={() => setEditing(null)} />
+                <Button
+                  label={t('common.cancel')}
+                  variant="quiet"
+                  onPress={() => setEditing(null)}
+                />
               </View>
             ) : (
               <View style={styles.actions}>
@@ -244,7 +265,7 @@ export default function Orders(): React.ReactElement {
                   }}
                   style={styles.affordance}
                 >
-                  <Text style={styles.affordanceLabel}>Change</Text>
+                  <Text style={styles.affordanceLabel}>{t('orders.change')}</Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
@@ -252,7 +273,7 @@ export default function Orders(): React.ReactElement {
                   onPress={() => setCancelling(item.orderId)}
                   style={styles.affordance}
                 >
-                  <Text style={styles.affordanceLabel}>Cancel</Text>
+                  <Text style={styles.affordanceLabel}>{t('common.cancel')}</Text>
                 </Pressable>
               </View>
             )}

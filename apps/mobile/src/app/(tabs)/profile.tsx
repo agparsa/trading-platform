@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { DomainError } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
 import { Button, Card, Empty, ErrorNote, Figure, Screen } from '../../components/ui';
 import { KycCard } from '../../components/kyc-card';
 import type { KycView } from '../../lib/kyc-upload';
 import { theme } from '../../lib/theme';
+import { refusalText } from '../../lib/messages';
+import { useT } from '../../lib/i18n';
 
 interface Profile {
   id: string;
@@ -78,6 +79,7 @@ interface DeviceSummary {
  */
 
 export default function ProfileScreen(): React.ReactElement {
+  const t = useT();
   const { api, signOut } = useSession();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [totp, setTotp] = useState<TotpStatus | null>(null);
@@ -106,7 +108,7 @@ export default function ProfileScreen(): React.ReactElement {
       setDevices(deviceList);
       setError(null);
     } catch {
-      setError('Could not load your profile.');
+      setError(t('profile.loadFailed'));
     }
   }, [api]);
 
@@ -123,7 +125,7 @@ export default function ProfileScreen(): React.ReactElement {
       });
       await load();
     } catch (caught) {
-      setError(caught instanceof DomainError ? caught.message : 'The session was not ended.');
+      setError(refusalText(caught, 'profile.endFailed', t));
     } finally {
       setBusy(null);
     }
@@ -136,7 +138,7 @@ export default function ProfileScreen(): React.ReactElement {
       await api.delete(`/devices/${device.id}`, { idempotencyKey: `revoke-device:${device.id}` });
       await load();
     } catch (caught) {
-      setError(caught instanceof DomainError ? caught.message : 'The device was not removed.');
+      setError(refusalText(caught, 'profile.revokeFailed', t));
     } finally {
       setBusy(null);
     }
@@ -146,7 +148,7 @@ export default function ProfileScreen(): React.ReactElement {
     return (
       <Screen>
         {error === null ? null : <ErrorNote message={error} />}
-        <Empty message="Loading…" />
+        <Empty message={t('common.loading')} />
       </Screen>
     );
   }
@@ -166,13 +168,16 @@ export default function ProfileScreen(): React.ReactElement {
       >
         {error === null ? null : <ErrorNote message={error} />}
 
-        <Card title="You">
-          <Figure label="Name" value={profile.displayName} />
-          <Figure label="Email" value={profile.email} />
-          <Figure label="Email verified" value={profile.emailVerified ? 'Yes' : 'No'} />
-          <Figure label="Role" value={profile.role} />
+        <Card title={t('profile.you')}>
+          <Figure label={t('profile.name')} value={profile.displayName} />
+          <Figure label={t('profile.email')} value={profile.email} />
           <Figure
-            label="Last signed in"
+            label={t('profile.verified')}
+            value={profile.emailVerified ? t('common.yes') : t('common.no')}
+          />
+          <Figure label={t('profile.role')} value={profile.role} />
+          <Figure
+            label={t('profile.lastSignIn')}
             value={
               profile.lastLoginAt === null ? '—' : new Date(profile.lastLoginAt).toLocaleString()
             }
@@ -181,21 +186,19 @@ export default function ProfileScreen(): React.ReactElement {
 
         {kyc === null ? null : <KycCard view={kyc} onChanged={load} />}
 
-        <Card title="Two-factor authentication">
-          <Figure label="Status" value={totp?.enabled === true ? 'On' : 'Off'} />
+        <Card title={t('profile.twoFactor')}>
+          <Figure
+            label={t('profile.status')}
+            value={totp?.enabled === true ? t('common.on') : t('common.off')}
+          />
           {totp?.pending === true ? (
-            <Text style={styles.warning}>
-              Enrolment was started and never completed. Until you enter a code, two-factor is off.
-            </Text>
+            <Text style={styles.warning}>{t('profile.pending')}</Text>
           ) : null}
           {totp?.enabled === true ? (
-            <Figure label="Recovery codes left" value={String(totp.recoveryCodesRemaining)} />
+            <Figure label={t('profile.codesLeft')} value={String(totp.recoveryCodesRemaining)} />
           ) : null}
           {totp?.enabled === true && totp.recoveryCodesRemaining === 0 ? (
-            <Text style={styles.warning}>
-              No recovery codes remain. If you lose your authenticator you will not be able to sign
-              in.
-            </Text>
+            <Text style={styles.warning}>{t('profile.noCodes')}</Text>
           ) : null}
           {/*
             Enrolment is deliberately not offered here. It shows a shared secret
@@ -203,28 +206,28 @@ export default function ProfileScreen(): React.ReactElement {
             screen that can be shoulder-surfed. It belongs on the web terminal,
             where it can be printed.
           */}
-          <Text style={styles.note}>Set up or change two-factor from the web terminal.</Text>
+          <Text style={styles.note}>{t('profile.setUpOnWeb')}</Text>
         </Card>
 
-        <Card title="Where you are signed in">
+        <Card title={t('profile.sessions')}>
           {sessions.length === 0 ? (
-            <Text style={styles.note}>No other sessions.</Text>
+            <Text style={styles.note}>{t('profile.noSessions')}</Text>
           ) : (
             sessions.map((session) => (
               <View key={session.id} style={styles.entry}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.entryTitle}>
                     {session.device}
-                    {session.current ? ' · this device' : ''}
+                    {session.current ? ` · ${t('profile.thisDevice')}` : ''}
                   </Text>
                   <Text style={styles.entryDetail}>
-                    {session.ipAddress ?? 'unknown address'} · last seen{' '}
-                    {new Date(session.lastSeenAt).toLocaleString()}
+                    {session.ipAddress ?? t('profile.unknownAddress')} ·{' '}
+                    {t('profile.lastSeen', { when: new Date(session.lastSeenAt).toLocaleString() })}
                   </Text>
                 </View>
                 {session.current ? null : (
                   <Button
-                    label="End"
+                    label={t('profile.end')}
                     variant="quiet"
                     busy={busy === session.id}
                     onPress={() => void revokeSession(session)}
@@ -235,28 +238,28 @@ export default function ProfileScreen(): React.ReactElement {
           )}
         </Card>
 
-        <Card title="Devices with access">
+        <Card title={t('profile.devices')}>
           {devices.length === 0 ? (
-            <Text style={styles.note}>No devices registered.</Text>
+            <Text style={styles.note}>{t('profile.noDevices')}</Text>
           ) : (
             devices.map((device) => (
               <View key={device.id} style={styles.entry}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.entryTitle}>
                     {device.model ?? device.platform}
-                    {device.isActive ? '' : ' · removed'}
+                    {device.isActive ? '' : ` · ${t('profile.removed')}`}
                   </Text>
                   <Text style={styles.entryDetail}>
                     {device.hasPushToken
-                      ? `notifications on · ${device.pushTokenFingerprint ?? '????'}`
-                      : 'notifications off'}
-                    {device.pushTokenRejectedAt === null ? '' : ' · token rejected'}
+                      ? t('profile.pushOn', { fingerprint: device.pushTokenFingerprint ?? '????' })
+                      : t('profile.pushOff')}
+                    {device.pushTokenRejectedAt === null ? '' : ` · ${t('profile.tokenRejected')}`}
                     {device.appVersion === null ? '' : ` · v${device.appVersion}`}
                   </Text>
                 </View>
                 {device.isActive ? (
                   <Button
-                    label="Revoke"
+                    label={t('profile.revoke')}
                     variant="quiet"
                     busy={busy === device.id}
                     onPress={() => void revokeDevice(device)}
@@ -267,7 +270,7 @@ export default function ProfileScreen(): React.ReactElement {
           )}
         </Card>
 
-        <Button label="Sign out" variant="danger" onPress={() => void signOut()} />
+        <Button label={t('common.signOut')} variant="danger" onPress={() => void signOut()} />
       </ScrollView>
     </Screen>
   );

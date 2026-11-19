@@ -21,6 +21,33 @@ second APK, from `f5e5d0f` on 29 October, fixes that and shows the cause of a
 failure rather than one sentence for all of them. Nothing past sign-in has been
 seen yet.
 
+**Every screen has now been opened — in a browser, not on a phone (19
+November).** `pnpm preview:mobile` exports the app for the web (react-native-web
+renders the same components), runs it against a local API, signs a fresh trader
+in, presses every tab in English and in Persian, opens the order ticket, and
+photographs each screen at a phone's size. The first run found that **every
+request after sign-in went out with no token**: the REST client's token cache
+started empty and only a `TOKEN_EXPIRED` answer refreshed it, while a missing
+token gets `UNAUTHENTICATED`, which nothing retries — so on a phone, signing in
+would have led to screens of "could not load". Fixed in `token-store.ts`
+(`peek`), with a test. What the browser cannot show: push, haptics, sounds, the
+keychain, the camera, and native layout details; `secure-store.web.ts` and
+`chart-frame.web.tsx` are the preview's stand-ins.
+
+**The app is bilingual (19 November).** Persian and English, every sentence in
+`src/lib/messages.ts` (a test holds the two to the same keys and placeholders,
+and Persian to Latin digits, as on the web). Persian lays the whole tree out
+right to left with Yoga's `direction: 'rtl'`, so switching needs no restart.
+The phone's language picks the first one; More and the sign-in screen switch
+it, and the choice is remembered. Server refusals are shown by their code in
+the reader's language, with the server's own (English) specifics after it in
+Persian — the web terminal's rule.
+
+**Five tabs (19 November):** Quotes, Chart, Trade (the account's figures over
+positions and orders), History, More (accounts, account details,
+notifications, profile and security, settings, language, sign out). Eight tabs
+left each one an unreadable label.
+
 **Nothing past the sign-in screen has been verified on a device.** Compiling
 and running are different claims. What is verified is that it typechecks under the same strict
 configuration as the rest of the repository, that it lints, that the logic

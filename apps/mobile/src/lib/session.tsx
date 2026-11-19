@@ -313,5 +313,11 @@ async function installationIdentifier(): Promise<string> {
    * new installation, and the old device row's token is dead anyway.
    */
   const ios = await Application.getIosIdForVendorAsync().catch(() => null);
-  return ios ?? Application.getAndroidId() ?? 'unknown-installation';
+  if (ios !== null) return ios;
+  try {
+    return Application.getAndroidId() ?? 'unknown-installation';
+  } catch {
+    // The browser preview has neither; a phone always has one of the two.
+    return 'unknown-installation';
+  }
 }

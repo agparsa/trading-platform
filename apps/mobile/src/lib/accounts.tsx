@@ -25,6 +25,11 @@ export interface Account extends SelectableAccount {
   readonly id: string;
   readonly number: string;
   readonly currency: string;
+  /** As `/accounts` answers: DEMO or LIVE. */
+  readonly type: string;
+  /** The balance when the list was read; the live figure is the account state's. */
+  readonly balance: string;
+  readonly leverage: number;
 }
 
 interface AccountsValue {

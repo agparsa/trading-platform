@@ -1,4 +1,5 @@
 import { isDomainError } from '@tp/shared-types';
+import { english, serverWords, type Translate } from './messages';
 
 /**
  * What the sign-in screen says when signing in fails.
@@ -14,13 +15,11 @@ import { isDomainError } from '@tp/shared-types';
  * `isDomainError` rather than `instanceof`: a class checked across two
  * bundled copies of a package is not the same class.
  */
-export function signInErrorText(caught: unknown): string {
-  if (isDomainError(caught)) return caught.message;
+export function signInErrorText(caught: unknown, t: Translate = english): string {
+  if (isDomainError(caught)) return serverWords(caught.code, caught.message, t);
   const detail =
     caught instanceof Error && caught.message.trim() !== ''
       ? caught.message.trim().slice(0, 160)
       : null;
-  return detail === null
-    ? 'Could not reach the server. Try again.'
-    : `Could not reach the server. Try again. (${detail})`;
+  return detail === null ? t('login.unreachable') : t('login.unreachableDetail', { detail });
 }

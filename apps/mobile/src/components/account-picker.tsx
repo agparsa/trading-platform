@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../lib/theme';
 import { shouldOfferChoice } from '../lib/account-selection';
 import { useAccounts } from '../lib/accounts';
+import { useT } from '../lib/i18n';
 
 /**
  * Which account this screen is acting on, and a way to change it.
@@ -13,11 +14,12 @@ import { useAccounts } from '../lib/accounts';
  * is the answer to "where is this order going".
  */
 export function AccountPicker(): React.ReactElement | null {
+  const t = useT();
   const { accounts, selected, select } = useAccounts();
   if (!shouldOfferChoice(accounts)) return null;
 
   return (
-    <View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel="Trading account">
+    <View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel={t('more.accounts')}>
       {accounts.map((account) => {
         const active = account.id === selected?.id;
         return (
@@ -26,7 +28,10 @@ export function AccountPicker(): React.ReactElement | null {
             onPress={() => select(account.id)}
             accessibilityRole="radio"
             accessibilityState={{ selected: active }}
-            accessibilityLabel={`Account ${account.number}, ${account.currency}`}
+            accessibilityLabel={t('account.picker', {
+              number: account.number,
+              currency: account.currency,
+            })}
             style={({ pressed }) => [
               styles.chip,
               active ? styles.active : null,

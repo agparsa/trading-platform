@@ -39,7 +39,9 @@ export function createApi(tokens: TokenStore): ApiClient {
   return new ApiClient({
     // The REST root, not the origin: see api-root.ts.
     baseUrl: apiRoot(apiBaseUrl()),
-    getAccessToken: () => cached,
+    // The store's token first: it is set the moment a sign-in or refresh
+    // saves one. `cached` alone started empty and stayed so until a refresh.
+    getAccessToken: () => tokens.peek() ?? cached,
     onTokenExpired: async () => {
       const renewed = await tokens.current();
       cached = renewed?.accessToken ?? null;

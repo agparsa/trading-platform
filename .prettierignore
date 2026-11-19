@@ -10,3 +10,7 @@ prisma/migrations
 # `--write` over it rewrites artefacts nobody owns.
 apps/mobile/android/
 apps/mobile/ios/
+
+# The mobile app's browser-preview export (scripts/preview-mobile.ts).
+apps/mobile/dist-web/
+.mobile-preview/

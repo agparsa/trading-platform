@@ -1,30 +1,75 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
+import { Icon, type IconName } from '../../components/icons';
+import { BackButton } from '../../components/ui';
+import { useT } from '../../lib/i18n';
+import type { MessageKey } from '../../lib/messages';
 import { theme } from '../../lib/theme';
 
+/**
+ * Five tabs, the way a phone trading terminal has them: prices, a chart,
+ * what is open, what has closed, and everything else.
+ *
+ * The screens that used to be tabs of their own — the account, positions,
+ * orders, notifications, profile, settings — are still routes (`href: null`
+ * keeps them out of the bar): Trade shows positions and orders together under
+ * the account's figures, and More leads to the rest. Eight tabs on a phone
+ * left each one a label nobody could read.
+ */
+const VISIBLE: ReadonlyArray<{ name: string; title: MessageKey; icon: IconName }> = [
+  { name: 'market', title: 'tab.quotes', icon: 'quotes' },
+  { name: 'chart', title: 'tab.chart', icon: 'chart' },
+  { name: 'trade', title: 'tab.trade', icon: 'trade' },
+  { name: 'history', title: 'tab.history', icon: 'history' },
+  { name: 'more', title: 'tab.more', icon: 'more' },
+];
+
+const HIDDEN: ReadonlyArray<{ name: string; title: MessageKey }> = [
+  { name: 'index', title: 'screen.account' },
+  { name: 'positions', title: 'screen.positions' },
+  { name: 'orders', title: 'screen.orders' },
+  { name: 'notifications', title: 'screen.notifications' },
+  { name: 'profile', title: 'screen.profile' },
+  { name: 'settings', title: 'screen.settings' },
+];
+
 export default function TabsLayout(): React.ReactElement {
+  const t = useT();
   return (
     <Tabs
+      initialRouteName="market"
       screenOptions={{
         headerStyle: { backgroundColor: theme.colors.surface },
         headerTintColor: theme.colors.text,
+        headerShadowVisible: false,
+        headerTitleStyle: { fontWeight: '700' },
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border,
         },
         tabBarActiveTintColor: theme.colors.accent,
         tabBarInactiveTintColor: theme.colors.textMuted,
+        tabBarLabelStyle: { fontSize: 11 },
         sceneStyle: { backgroundColor: theme.colors.background },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Account' }} />
-      <Tabs.Screen name="market" options={{ title: 'Market' }} />
-      <Tabs.Screen name="positions" options={{ title: 'Positions' }} />
-      <Tabs.Screen name="orders" options={{ title: 'Orders' }} />
-      <Tabs.Screen name="history" options={{ title: 'History' }} />
-      <Tabs.Screen name="notifications" options={{ title: 'Alerts' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
-      <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
+      {VISIBLE.map((tab) => (
+        <Tabs.Screen
+          key={tab.name}
+          name={tab.name}
+          options={{
+            title: t(tab.title),
+            tabBarIcon: ({ color }) => <Icon name={tab.icon} color={String(color)} />,
+          }}
+        />
+      ))}
+      {HIDDEN.map((tab) => (
+        <Tabs.Screen
+          key={tab.name}
+          name={tab.name}
+          options={{ title: t(tab.title), href: null, headerLeft: () => <BackButton /> }}
+        />
+      ))}
     </Tabs>
   );
 }

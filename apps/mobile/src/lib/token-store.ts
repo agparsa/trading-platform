@@ -75,6 +75,20 @@ export class TokenStore {
     return this.cached;
   }
 
+  /**
+   * The access token held in memory, as it is, for a request about to go out.
+   *
+   * Synchronous because the REST client asks for its header synchronously.
+   * Returned even when expired: the server then answers `TOKEN_EXPIRED`, which
+   * is the answer that makes the client refresh and retry. Sending no token
+   * gets `UNAUTHENTICATED`, which nothing retries — and that is what every
+   * request after sign-in did until 19 November, when the app was first
+   * opened in a browser and every screen came back 401.
+   */
+  peek(): string | null {
+    return this.cached?.accessToken ?? null;
+  }
+
   async save(tokens: Tokens): Promise<void> {
     this.cached = tokens;
     await Promise.all([

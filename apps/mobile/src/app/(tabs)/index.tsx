@@ -4,6 +4,8 @@ import { useSession } from '../../lib/session';
 import { useLiveBook } from '../../lib/live';
 import { applyAccount } from '../../lib/live-book';
 import { Card, Empty, ErrorNote, Figure, Screen } from '../../components/ui';
+import { MESSAGES, type MessageKey, type Translate } from '../../lib/messages';
+import { useT } from '../../lib/i18n';
 
 interface AccountSummary {
   id: string;
@@ -56,6 +58,7 @@ interface AccountState {
  * convincing and most dangerous: a trader acts on the equity they can see.
  */
 export default function AccountScreen(): React.ReactElement {
+  const t = useT();
   const { api } = useSession();
   /**
    * The valuation each tick sends, laid over the snapshot below; and a counter
@@ -92,9 +95,9 @@ export default function AccountScreen(): React.ReactElement {
       // The previous figures stay on screen. Blanking them would replace known
       // numbers with nothing, which is worse than known numbers plus a warning
       // that they may be a minute old.
-      setError('Could not refresh. The figures below may be out of date.');
+      setError(t('account.refreshFailed'));
     }
-  }, [api]);
+  }, [api, t]);
 
   useEffect(() => {
     void load();
@@ -115,24 +118,35 @@ export default function AccountScreen(): React.ReactElement {
       >
         {error === null ? null : <ErrorNote message={error} />}
         {accounts === null ? (
-          <Empty message="Loading…" />
+          <Empty message={t('common.loading')} />
         ) : accounts.length === 0 ? (
-          <Empty message="No trading accounts yet." />
+          <Empty message={t('account.none')} />
         ) : (
           accounts.map((account) => {
             const state = applyAccount(states[account.id], live.accounts[account.id]);
             return (
               <Card key={account.id} title={`${account.number} · ${account.currency}`}>
-                <Figure label="Balance" value={state?.balance ?? account.balance} />
-                <Figure label="Equity" value={state?.equity ?? '—'} />
-                <Figure label="Floating P&L" value={state?.floatingPnl ?? '—'} signed />
-                <Figure label="Realised today" value={state?.realizedPnlToday ?? '—'} signed />
-                <Figure label="Realised, all time" value={state?.realizedPnlTotal ?? '—'} signed />
-                <Figure label="Used margin" value={state?.usedMargin ?? '—'} />
-                <Figure label="Free margin" value={state?.freeMargin ?? '—'} />
-                <Figure label="Margin level" value={state?.marginLevel ?? '—'} />
-                <Figure label="Leverage" value={`1:${account.leverage}`} />
-                <Figure label="Status" value={account.status} />
+                <Figure label={t('account.balance')} value={state?.balance ?? account.balance} />
+                <Figure label={t('account.equity')} value={state?.equity ?? '—'} />
+                <Figure label={t('account.floating')} value={state?.floatingPnl ?? '—'} signed />
+                <Figure
+                  label={t('account.realizedToday')}
+                  value={state?.realizedPnlToday ?? '—'}
+                  signed
+                />
+                <Figure
+                  label={t('account.realizedTotal')}
+                  value={state?.realizedPnlTotal ?? '—'}
+                  signed
+                />
+                <Figure label={t('account.margin')} value={state?.usedMargin ?? '—'} />
+                <Figure label={t('account.freeMargin')} value={state?.freeMargin ?? '—'} />
+                <Figure
+                  label={t('account.marginLevel')}
+                  value={state?.marginLevel == null ? '—' : `${state.marginLevel}%`}
+                />
+                <Figure label={t('account.leverage')} value={`1:${account.leverage}`} />
+                <Figure label={t('account.status')} value={statusWords(account.status, t)} />
               </Card>
             );
           })
@@ -141,4 +155,9 @@ export default function AccountScreen(): React.ReactElement {
       </ScrollView>
     </Screen>
   );
+}
+
+function statusWords(status: string, t: Translate): string {
+  const key = `account.status.${status}`;
+  return key in MESSAGES.en ? t(key as MessageKey) : status;
 }

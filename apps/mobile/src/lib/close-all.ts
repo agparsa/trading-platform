@@ -1,3 +1,4 @@
+import { english, type Translate } from './messages';
 /**
  * "Close all" on the phone: the same server command the terminal sends
  * (`POST /positions/close-all`), one intent and one report, never a loop of
@@ -36,15 +37,15 @@ export function closeAllKey(accountId: string, askedAt: number, nonce: string): 
  * positions the trader ticked rather than the whole book — the same command,
  * narrowed, with the same promise about the ones that cannot close.
  */
-export function closeAllQuestion(count: number, selected = false): string {
-  const noun = count === 1 ? 'position' : 'positions';
-  return (
-    (selected
-      ? `Close the ${count} selected ${noun} at market? `
-      : `Close all ${count} ${noun} at market? `) +
-    'Each closes at its own price. ' +
-    'Any that cannot be closed right now stays open and is listed.'
-  );
+export function closeAllQuestion(count: number, selected = false, t: Translate = english): string {
+  const question = selected
+    ? count === 1
+      ? t('closeAll.questionSelectedOne')
+      : t('closeAll.questionSelected', { n: count })
+    : count === 1
+      ? t('closeAll.questionOne')
+      : t('closeAll.question', { n: count });
+  return `${question} ${t('closeAll.detail')}`;
 }
 
 /**
@@ -90,7 +91,7 @@ export interface CloseAllReport {
  * What the server reported, in words. Not atomic, and the words say so: a
  * `200` means the command ran, not that everything shut.
  */
-export function closeAllReport(outcome: CloseAllOutcome): CloseAllReport {
+export function closeAllReport(outcome: CloseAllOutcome, t: Translate = english): CloseAllReport {
   const closed = outcome.closed.length;
   const stillOpen = outcome.refused.map((one) => ({
     positionId: one.positionId,
@@ -100,17 +101,19 @@ export function closeAllReport(outcome: CloseAllOutcome): CloseAllReport {
     return {
       tone: 'done',
       message:
-        closed === 0 ? 'Nothing was open to close.' : `Closed ${closed} of ${outcome.asked}.`,
+        closed === 0
+          ? t('closeAll.nothing')
+          : t('closeAll.closed', { closed, asked: outcome.asked }),
       stillOpen,
     };
   }
   return {
     tone: 'partial',
     message:
-      `Closed ${closed} of ${outcome.asked}. ` +
+      `${t('closeAll.closed', { closed, asked: outcome.asked })} ` +
       (stillOpen.length === 1
-        ? `One is still open: ${stillOpen[0]!.reason}`
-        : `${stillOpen.length} are still open — each is listed with its reason.`),
+        ? t('closeAll.oneOpen', { reason: stillOpen[0]!.reason })
+        : t('closeAll.manyOpen', { n: stillOpen.length })),
     stillOpen,
   };
 }

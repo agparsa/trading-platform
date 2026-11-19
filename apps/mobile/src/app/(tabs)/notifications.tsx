@@ -3,6 +3,7 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'rea
 import { useSession } from '../../lib/session';
 import { Empty, ErrorNote, Screen } from '../../components/ui';
 import { theme } from '../../lib/theme';
+import { useT } from '../../lib/i18n';
 
 interface Notice {
   id: string;
@@ -22,6 +23,7 @@ const severityColor = (severity: Notice['severity']): string =>
       : theme.colors.accent;
 
 export default function NotificationCentre(): React.ReactElement {
+  const t = useT();
   const { api } = useSession();
   const [notices, setNotices] = useState<Notice[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +34,7 @@ export default function NotificationCentre(): React.ReactElement {
       setNotices(await api.get<Notice[]>('/notifications', { query: { limit: 100 } }));
       setError(null);
     } catch {
-      setError('Could not load notifications.');
+      setError(t('notices.loadFailed'));
     }
   }, [api]);
 
@@ -72,7 +74,7 @@ export default function NotificationCentre(): React.ReactElement {
           />
         }
         ListEmptyComponent={
-          <Empty message={notices === null ? 'Loading…' : 'Nothing to report.'} />
+          <Empty message={notices === null ? t('common.loading') : t('notices.none')} />
         }
         renderItem={({ item }) => (
           <Pressable

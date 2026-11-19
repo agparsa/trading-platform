@@ -9,23 +9,16 @@ import type {
 import { useSession } from '../../lib/session';
 import { Button, Card, Empty, ErrorNote, Screen } from '../../components/ui';
 import { theme } from '../../lib/theme';
+import { MESSAGES, type MessageKey, type Translate } from '../../lib/messages';
+import { useT } from '../../lib/i18n';
 
-const LABELS: Record<string, string> = {
-  TRADE_OPENED: 'Trade opened',
-  TRADE_CLOSED: 'Trade closed',
-  TRADE_MODIFIED: 'Trade changed',
-  ORDER_FILLED: 'Order filled',
-  ORDER_CANCELLED: 'Order cancelled',
-  STOP_LOSS: 'Stop loss',
-  TAKE_PROFIT: 'Take profit',
-  RISK_ALERT: 'Risk alerts',
-  // Missing until 24 September: the switch was labelled PRICE_ALERT.
-  PRICE_ALERT: 'Price alerts',
-  SECURITY_ALERT: 'Security alerts',
-  SYSTEM: 'System',
-};
+function label(category: string, t: Translate): string {
+  const key = `category.${category}`;
+  return key in MESSAGES.en ? t(key as MessageKey) : category;
+}
 
 export default function Settings(): React.ReactElement {
+  const t = useT();
   const { api, preferences, refreshPreferences, signOut } = useSession();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +36,7 @@ export default function Settings(): React.ReactElement {
       });
       await refreshPreferences();
     } catch {
-      setError('Could not save that. Nothing was changed.');
+      setError(t('settings.saveFailed'));
     }
   };
 
@@ -65,7 +58,7 @@ export default function Settings(): React.ReactElement {
        * and the reason is shown — instead of sitting there off while the
        * notifications keep arriving.
        */
-      setError('Risk and security alerts cannot be turned off.');
+      setError(t('settings.cannotMute'));
       await refreshPreferences();
     }
   };
@@ -73,7 +66,7 @@ export default function Settings(): React.ReactElement {
   if (preferences === null) {
     return (
       <Screen>
-        <Empty message="Loading settings…" />
+        <Empty message={t('settings.loading')} />
       </Screen>
     );
   }
@@ -83,37 +76,37 @@ export default function Settings(): React.ReactElement {
       <ScrollView>
         {error === null ? null : <ErrorNote message={error} />}
 
-        <Card title="Notifications">
+        <Card title={t('settings.notifications')}>
           <Row
-            label="Trading notifications"
+            label={t('settings.trading')}
             value={preferences.tradingEnabled}
             onChange={(value) => void patchSettings({ tradingEnabled: value })}
           />
           <Row
-            label="Push notifications"
+            label={t('settings.push')}
             value={preferences.pushEnabled}
             onChange={(value) => void patchSettings({ pushEnabled: value })}
           />
           <Row
-            label="Sound"
+            label={t('settings.sound')}
             value={preferences.soundEnabled}
             onChange={(value) => void patchSettings({ soundEnabled: value })}
           />
           <Row
-            label="Vibration"
+            label={t('settings.vibration')}
             value={preferences.vibrationEnabled}
             onChange={(value) => void patchSettings({ vibrationEnabled: value })}
           />
         </Card>
 
-        <Card title="What to be told about">
+        <Card title={t('settings.what')}>
           {preferences.categories.map((category) => (
             <Row
               key={category.category}
-              label={LABELS[category.category] ?? category.category}
+              label={label(category.category, t)}
               value={category.push}
               disabled={category.unmutable}
-              {...(category.unmutable ? { hint: 'Always on' } : {})}
+              {...(category.unmutable ? { hint: t('settings.alwaysOn') } : {})}
               onChange={(value) =>
                 void patchCategory(category.category, { push: value, inApp: value })
               }
@@ -126,26 +119,26 @@ export default function Settings(): React.ReactElement {
           use when push cannot, which on Android without Firebase is always.
           Every category has a switch; risk alerts start on.
         */}
-        <Card title="By email">
+        <Card title={t('settings.email')}>
           {preferences.categories
             .filter((category) => category.category !== 'SYSTEM')
             .map((category) => (
               <Row
                 key={`email-${category.category}`}
-                label={LABELS[category.category] ?? category.category}
+                label={label(category.category, t)}
                 value={category.email}
                 onChange={(value) => void patchCategory(category.category, { email: value })}
               />
             ))}
         </Card>
 
-        <Card title="Sounds">
+        <Card title={t('settings.sounds')}>
           {preferences.categories
             .filter((category) => category.category !== 'SYSTEM')
             .map((category) => (
               <Row
                 key={`sound-${category.category}`}
-                label={LABELS[category.category] ?? category.category}
+                label={label(category.category, t)}
                 value={category.sound}
                 onChange={(value) => void patchCategory(category.category, { sound: value })}
               />
@@ -153,7 +146,7 @@ export default function Settings(): React.ReactElement {
         </Card>
 
         <Button
-          label="Sign out"
+          label={t('common.signOut')}
           variant="danger"
           onPress={() => {
             void signOut().then(() => router.replace('/login'));

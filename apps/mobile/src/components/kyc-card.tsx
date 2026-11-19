@@ -12,15 +12,14 @@ import {
 import { useSession } from '../lib/session';
 import { theme } from '../lib/theme';
 import { Button, Card, ErrorNote, Figure } from './ui';
+import { useT } from '../lib/i18n';
+import { MESSAGES, serverWords, type MessageKey, type Translate } from '../lib/messages';
 
-const KYC_LABELS: Record<string, string> = {
-  NOT_STARTED: 'Not started',
-  PENDING: 'Submitted, waiting for review',
-  UNDER_REVIEW: 'Being reviewed',
-  VERIFIED: 'Verified',
-  REJECTED: 'Not accepted',
-  EXPIRED: 'Expired',
-};
+/** A server word, in the reader's language when there is a message for it. */
+function words(prefix: string, value: string, t: Translate): string {
+  const key = `${prefix}.${value}`;
+  return key in MESSAGES.en ? t(key as MessageKey) : value;
+}
 
 /**
  * Identity verification on the phone: the status, and — while the record is
@@ -39,20 +38,21 @@ export function KycCard({
   view: KycView;
   onChanged: () => Promise<void>;
 }): React.ReactElement {
+  const t = useT();
   const { api } = useSession();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const slots = documentSlots(view);
 
   const say = (caught: unknown, fallback: string) =>
-    setError(isDomainError(caught) ? caught.message : fallback);
+    setError(isDomainError(caught) ? serverWords(caught.code, caught.message, t) : fallback);
 
   const send = async (slot: DocumentSlot, source: 'camera' | 'library') => {
     setError(null);
     if (source === 'camera') {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        setError('The camera was not allowed. Choose a photo instead, or allow it in settings.');
+        setError(t('kyc.cameraDenied'));
         return;
       }
     }
@@ -78,7 +78,7 @@ export function KycCard({
       });
       await onChanged();
     } catch (caught) {
-      say(caught, `${slot.label} could not be sent. Try again.`);
+      say(caught, t('kyc.sendFailed', { document: words('kyc.kind', slot.kind, t) }));
     } finally {
       setBusy(null);
     }
@@ -91,37 +91,35 @@ export function KycCard({
       await api.post('/kyc/submit', {}, { idempotencyKey: `kyc-submit:${Date.now()}` });
       await onChanged();
     } catch (caught) {
-      say(caught, 'The documents could not be submitted. Try again.');
+      say(caught, t('kyc.submitFailed'));
     } finally {
       setBusy(null);
     }
   };
 
   return (
-    <Card title="Identity verification">
-      <Figure label="Status" value={KYC_LABELS[view.status] ?? view.status} />
+    <Card title={t('kyc.title')}>
+      <Figure label={t('kyc.status')} value={words('kyc.status', view.status, t)} />
       {view.reason === null ? null : <Text style={styles.warning}>{view.reason}</Text>}
       {view.expiresAt === null ? null : (
-        <Figure label="Valid until" value={new Date(view.expiresAt).toLocaleDateString()} />
+        <Figure label={t('kyc.validUntil')} value={new Date(view.expiresAt).toLocaleDateString()} />
       )}
       {error === null ? null : <ErrorNote message={error} />}
       {slots.length === 0 ? null : (
         <>
-          <Text style={styles.note}>
-            Send one identity document and a photo of you holding it. Proof of address is optional.
-          </Text>
+          <Text style={styles.note}>{t('kyc.intro')}</Text>
           {slots.map((slot) => (
             <View key={slot.kind} style={styles.slot}>
               <View style={styles.slotHead}>
-                <Text style={styles.slotTitle}>{slot.label}</Text>
+                <Text style={styles.slotTitle}>{words('kyc.kind', slot.kind, t)}</Text>
                 <Text style={slot.sent ? styles.sent : styles.notSent}>
-                  {slot.sent ? 'Sent' : 'Not sent'}
+                  {slot.sent ? t('kyc.sent') : t('kyc.notSent')}
                 </Text>
               </View>
               <View style={styles.actions}>
                 <View style={styles.action}>
                   <Button
-                    label="Take photo"
+                    label={t('kyc.takePhoto')}
                     variant="quiet"
                     busy={busy === slot.kind}
                     disabled={busy !== null}
@@ -130,7 +128,7 @@ export function KycCard({
                 </View>
                 <View style={styles.action}>
                   <Button
-                    label="Choose photo"
+                    label={t('kyc.choosePhoto')}
                     variant="quiet"
                     disabled={busy !== null}
                     onPress={() => void send(slot, 'library')}
@@ -140,10 +138,14 @@ export function KycCard({
             </View>
           ))}
           {view.missing.length > 0 ? (
-            <Text style={styles.note}>Still needed: {view.missing.join(' and ')}.</Text>
+            <Text style={styles.note}>
+              {t('kyc.stillNeeded', {
+                list: view.missing.map((kind) => words('kyc.kind', kind, t)).join(t('levels.and')),
+              })}
+            </Text>
           ) : null}
           <Button
-            label="Submit for review"
+            label={t('kyc.submit')}
             busy={busy === 'submit'}
             disabled={!canSubmitNow(view) || busy !== null}
             onPress={() => void submit()}

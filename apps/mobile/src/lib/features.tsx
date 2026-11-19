@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useSession } from './session';
 import { mobileTradingDecision, type MobileTradingDecision } from './mobile-trading';
+import { useT } from './i18n';
 
 /**
  * The firm's effective feature flags, as this app sees them.
@@ -59,5 +60,6 @@ export function useFeatures(): Readonly<Record<string, boolean>> | undefined {
 /** Whether this app may open a position, and what to tell the trader if not. */
 export function useMobileTrading(): MobileTradingDecision {
   const features = useFeatures();
-  return useMemo(() => mobileTradingDecision(features), [features]);
+  const t = useT();
+  return useMemo(() => mobileTradingDecision(features, t), [features, t]);
 }

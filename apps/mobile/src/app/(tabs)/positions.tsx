@@ -8,7 +8,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { DomainError } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
 import { useAccounts } from '../../lib/accounts';
 import { useLiveBook } from '../../lib/live';
@@ -27,6 +26,8 @@ import {
 } from '../../lib/close-all';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
 import { formatSigned, signColor, theme } from '../../lib/theme';
+import { useT } from '../../lib/i18n';
+import { refusalText, type Translate } from '../../lib/messages';
 
 interface Position {
   id: string;
@@ -46,6 +47,7 @@ interface Position {
 }
 
 export default function Positions(): React.ReactElement {
+  const t = useT();
   const { api } = useSession();
   // The account whose book this is — the one the trader chose, as on every tab.
   const { selected: account } = useAccounts();
@@ -97,9 +99,9 @@ export default function Positions(): React.ReactElement {
       setPositions(await api.get<Position[]>('/positions', { query: { accountId: account.id } }));
       setError(null);
     } catch {
-      setError('Could not refresh positions.');
+      setError(t('positions.refreshFailed'));
     }
-  }, [api, account]);
+  }, [api, account, t]);
 
   useEffect(() => {
     void load();
@@ -126,7 +128,7 @@ export default function Positions(): React.ReactElement {
       setClosing(null);
       await load();
     } catch (caught) {
-      setError(caught instanceof DomainError ? caught.message : 'The position was not closed.');
+      setError(refusalText(caught, 'positions.closeFailed', t));
     } finally {
       setBusy(false);
     }
@@ -149,16 +151,12 @@ export default function Positions(): React.ReactElement {
         closeAllBody(account.id, closingAll.positionIds),
         { idempotencyKey: closingAll.key },
       );
-      setAllReport(closeAllReport(outcome));
+      setAllReport(closeAllReport(outcome, t));
       setClosingAll(null);
       setTicked([]);
       await load();
     } catch (caught) {
-      setError(
-        caught instanceof DomainError
-          ? caught.message
-          : 'Close all did not reach the server. Nothing was closed; the list is unchanged.',
-      );
+      setError(refusalText(caught, 'positions.closeAllFailed', t));
     } finally {
       setBusy(false);
     }
@@ -191,7 +189,7 @@ export default function Positions(): React.ReactElement {
       setEditing(null);
       await load();
     } catch (caught) {
-      setError(caught instanceof DomainError ? caught.message : 'The levels were not changed.');
+      setError(refusalText(caught, 'positions.levelsFailed', t));
     } finally {
       setBusy(false);
     }
@@ -204,7 +202,7 @@ export default function Positions(): React.ReactElement {
         <Pressable
           onPress={() => setAllReport(null)}
           accessibilityRole="button"
-          accessibilityLabel="Dismiss the close-all report"
+          accessibilityLabel={t('positions.dismissReport')}
           style={[styles.report, allReport.tone === 'partial' ? styles.reportPartial : null]}
         >
           <Text style={styles.confirmText}>{allReport.message}</Text>
@@ -226,8 +224,8 @@ export default function Positions(): React.ReactElement {
         <View style={styles.bookBar}>
           <Text style={styles.detail}>
             {selected.length === 0
-              ? `${(positions ?? []).length} open`
-              : `${selected.length} of ${(positions ?? []).length} selected`}
+              ? t('positions.open', { n: (positions ?? []).length })
+              : t('positions.selected', { n: selected.length, total: (positions ?? []).length })}
           </Text>
           {selected.length === 0 ? null : (
             <Pressable
@@ -236,7 +234,7 @@ export default function Positions(): React.ReactElement {
               style={styles.closeAffordance}
               onPress={() => setTicked([])}
             >
-              <Text style={styles.closeLabel}>Clear</Text>
+              <Text style={styles.closeLabel}>{t('positions.clear')}</Text>
             </Pressable>
           )}
           <Pressable
@@ -257,27 +255,31 @@ export default function Positions(): React.ReactElement {
           >
             <Text style={styles.closeLabel}>
               {selected.length === 0
-                ? `Close all (${(positions ?? []).length})`
-                : `Close (${selected.length})`}
+                ? t('positions.closeAllCount', { n: (positions ?? []).length })
+                : t('positions.closeCount', { n: selected.length })}
             </Text>
           </Pressable>
         </View>
       ) : (
         <View style={styles.confirm}>
           <Text style={styles.confirmText}>
-            {closeAllQuestion(closingAll.count, closingAll.positionIds !== null)}
+            {closeAllQuestion(closingAll.count, closingAll.positionIds !== null, t)}
           </Text>
           <Button
             label={
               closingAll.positionIds === null
-                ? `Close all ${closingAll.count}`
-                : `Close ${closingAll.count} selected`
+                ? t('positions.closeAllConfirm', { n: closingAll.count })
+                : t('positions.closeSelectedConfirm', { n: closingAll.count })
             }
             variant="danger"
             busy={busy}
             onPress={() => void closeAll()}
           />
-          <Button label="Keep them open" variant="quiet" onPress={() => setClosingAll(null)} />
+          <Button
+            label={t('positions.keepThemOpen')}
+            variant="quiet"
+            onPress={() => setClosingAll(null)}
+          />
         </View>
       )}
       <FlatList
@@ -293,7 +295,7 @@ export default function Positions(): React.ReactElement {
           />
         }
         ListEmptyComponent={
-          <Empty message={positions === null ? 'Loading…' : 'No open positions.'} />
+          <Empty message={positions === null ? t('common.loading') : t('positions.none')} />
         }
         renderItem={({ item }) => (
           <View style={styles.row}>
@@ -307,7 +309,7 @@ export default function Positions(): React.ReactElement {
                   },
                 ]}
               >
-                {item.side} {item.volume}
+                {t(item.side === 'BUY' ? 'common.BUY' : 'common.SELL')} {item.volume}
               </Text>
             </View>
             <View style={styles.rowBottom}>
@@ -332,38 +334,45 @@ export default function Positions(): React.ReactElement {
               </Text>
             </View>
             {item.stale === true ? (
-              <Text style={styles.staleNote}>No fresh price — this mark may be out of date.</Text>
+              <Text style={styles.staleNote}>{t('positions.stale')}</Text>
             ) : null}
-            {protectionLine(item) === null ? null : (
-              <Text style={styles.protection}>{protectionLine(item)}</Text>
+            {protectionLine(item, t) === null ? null : (
+              <Text style={styles.protection}>{protectionLine(item, t)}</Text>
             )}
 
             {closing === item.id ? (
               <View style={styles.confirm}>
                 <Text style={styles.confirmText}>
-                  Close {item.volume} {item.symbol} and realise{' '}
-                  {item.netFloatingPnl === null
-                    ? 'an unknown amount'
-                    : formatSigned(item.netFloatingPnl)}
-                  ?
+                  {t('positions.closeQuestion', {
+                    volume: item.volume,
+                    symbol: item.symbol,
+                    pnl:
+                      item.netFloatingPnl === null
+                        ? t('positions.unknownAmount')
+                        : formatSigned(item.netFloatingPnl),
+                  })}
                 </Text>
                 <Button
-                  label="Close position"
+                  label={t('positions.closePosition')}
                   variant="danger"
                   busy={busy}
                   onPress={() => void close(item)}
                 />
-                <Button label="Keep it open" variant="quiet" onPress={() => setClosing(null)} />
+                <Button
+                  label={t('positions.keepItOpen')}
+                  variant="quiet"
+                  onPress={() => setClosing(null)}
+                />
               </View>
             ) : editing === item.id ? (
               <View style={styles.confirm}>
                 <LevelField
-                  label="Stop loss"
+                  label={t('positions.stopLoss')}
                   value={form.stopLoss}
                   onChange={(value) => setForm((current) => ({ ...current, stopLoss: value }))}
                 />
                 <LevelField
-                  label="Take profit"
+                  label={t('positions.takeProfit')}
                   value={form.takeProfit}
                   onChange={(value) => setForm((current) => ({ ...current, takeProfit: value }))}
                 />
@@ -371,15 +380,19 @@ export default function Positions(): React.ReactElement {
                     nothing, and removing a stop deserves a sentence that names
                     the consequence. */}
                 <Text style={styles.confirmText}>
-                  {describeChange(form, item) ?? 'Nothing has changed.'}
+                  {describeChange(form, item, t) ?? t('positions.nothingChanged')}
                 </Text>
                 <Button
-                  label="Save levels"
+                  label={t('positions.saveLevels')}
                   busy={busy}
-                  disabled={describeChange(form, item) === null}
+                  disabled={describeChange(form, item, t) === null}
                   onPress={() => void saveLevels(item)}
                 />
-                <Button label="Cancel" variant="quiet" onPress={() => setEditing(null)} />
+                <Button
+                  label={t('common.cancel')}
+                  variant="quiet"
+                  onPress={() => setEditing(null)}
+                />
               </View>
             ) : (
               <View style={styles.actions}>
@@ -392,7 +405,9 @@ export default function Positions(): React.ReactElement {
                     style={styles.closeAffordance}
                   >
                     <Text style={styles.closeLabel}>
-                      {selected.includes(item.id) ? '☑ Selected' : '☐ Select'}
+                      {selected.includes(item.id)
+                        ? `☑ ${t('positions.selectedMark')}`
+                        : `☐ ${t('positions.select')}`}
                     </Text>
                   </Pressable>
                 )}
@@ -408,7 +423,7 @@ export default function Positions(): React.ReactElement {
                   }}
                   style={styles.closeAffordance}
                 >
-                  <Text style={styles.closeLabel}>SL / TP</Text>
+                  <Text style={styles.closeLabel}>{t('positions.levels')}</Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
@@ -416,7 +431,7 @@ export default function Positions(): React.ReactElement {
                   onPress={() => setClosing(item.id)}
                   style={styles.closeAffordance}
                 >
-                  <Text style={styles.closeLabel}>Close</Text>
+                  <Text style={styles.closeLabel}>{t('positions.close')}</Text>
                 </Pressable>
               </View>
             )}
@@ -431,12 +446,13 @@ export default function Positions(): React.ReactElement {
 function describeChange(
   form: { stopLoss: string; takeProfit: string },
   position: Position,
+  t: Translate,
 ): string | null {
   const patch = protectivePatch(form, {
     stopLoss: position.stopLoss,
     takeProfit: position.takeProfit,
   });
-  return patch === null ? null : `This will ${describePatch(patch)}.`;
+  return patch === null ? null : t('positions.willDo', { change: describePatch(patch, t) });
 }
 
 function LevelField({
@@ -448,6 +464,7 @@ function LevelField({
   value: string;
   onChange: (value: string) => void;
 }): React.ReactElement {
+  const t = useT();
   return (
     <View style={styles.levelField}>
       <Text style={styles.levelLabel}>{label}</Text>
@@ -457,7 +474,7 @@ function LevelField({
         onChangeText={onChange}
         keyboardType="decimal-pad"
         accessibilityLabel={label}
-        placeholder="empty to remove"
+        placeholder={t('common.emptyToRemove')}
         placeholderTextColor={theme.colors.textMuted}
       />
     </View>

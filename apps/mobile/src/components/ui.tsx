@@ -1,5 +1,8 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Icon } from './icons';
+import { useLocale } from '../lib/i18n';
 import { NUMERIC_DIRECTION } from '../lib/direction';
 import { formatSigned, signColor, theme } from '../lib/theme';
 
@@ -71,16 +74,18 @@ export function Button({
 }: {
   label: string;
   onPress: () => void;
-  variant?: 'primary' | 'danger' | 'quiet';
+  variant?: 'primary' | 'danger' | 'quiet' | 'buy';
   busy?: boolean;
   disabled?: boolean;
 }): React.ReactElement {
   const background =
     variant === 'danger'
       ? theme.colors.negative
-      : variant === 'quiet'
-        ? theme.colors.surfaceRaised
-        : theme.colors.accent;
+      : variant === 'buy'
+        ? theme.colors.positive
+        : variant === 'quiet'
+          ? theme.colors.surfaceRaised
+          : theme.colors.accent;
 
   return (
     <Pressable
@@ -120,7 +125,78 @@ export function ErrorNote({ message }: { message: string }): React.ReactElement 
   );
 }
 
+/**
+ * Choices side by side, one active — Positions | Orders, Sign in | Register.
+ */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: ReadonlyArray<{ value: T; label: string }>;
+  value: T;
+  onChange: (value: T) => void;
+}): React.ReactElement {
+  return (
+    <View style={styles.segmented} accessibilityRole="tablist">
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            onPress={() => onChange(option.value)}
+            style={[styles.segment, active ? styles.segmentActive : null]}
+          >
+            <Text style={[styles.segmentLabel, active ? styles.segmentLabelActive : null]}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * The back arrow for a screen reached from More. Those screens live among the
+ * tabs (so the tab bar stays), and a tab has no back button of its own.
+ */
+export function BackButton(): React.ReactElement {
+  const router = useRouter();
+  const { rtl } = useLocale();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+      hitSlop={12}
+      onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/more'))}
+      style={{ paddingHorizontal: 12, transform: [{ scaleX: rtl ? 1 : -1 }] }}
+    >
+      <Icon name="chevron" color={theme.colors.text} />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  segmented: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: 3,
+    gap: 3,
+  },
+  segment: {
+    flex: 1,
+    minHeight: 36,
+    borderRadius: theme.radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentActive: { backgroundColor: theme.colors.surfaceRaised },
+  segmentLabel: { color: theme.colors.textMuted, fontSize: 14, fontWeight: '500' },
+  segmentLabelActive: { color: theme.colors.text, fontWeight: '700' },
   screen: { flex: 1, backgroundColor: theme.colors.background, padding: theme.spacing(2) },
   card: {
     backgroundColor: theme.colors.surface,

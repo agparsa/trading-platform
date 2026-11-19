@@ -1,3 +1,4 @@
+import { english, type Translate } from './messages';
 /**
  * The History tab's summary of the last three months, from
  * `GET /accounts/:id/performance?period=3M` — the same figures the web's
@@ -30,7 +31,10 @@ export interface SummaryLine {
 
 const signed = (value: string) => (value.startsWith('-') ? value : `+${value}`);
 
-export function performanceSummary(input: PerformanceSummaryInput): {
+export function performanceSummary(
+  input: PerformanceSummaryInput,
+  t: Translate = english,
+): {
   lines: SummaryLine[];
   notes: string[];
 } {
@@ -38,28 +42,32 @@ export function performanceSummary(input: PerformanceSummaryInput): {
   const lost = input.trades.buys.losing + input.trades.sells.losing;
   const notes: string[] = [];
   if (input.returnPercent === null) {
-    notes.push('No return: the account had no balance before these three months.');
+    notes.push(t('perf.noReturn'));
   }
   if (input.profitFactor === null && input.trades.total > 0) {
-    notes.push('No profit factor: no trade lost money.');
+    notes.push(t('perf.noFactor'));
   }
   return {
     lines: [
-      { label: 'Net result', value: signed(input.netPnl), signOf: input.netPnl },
+      { label: t('perf.net'), value: signed(input.netPnl), signOf: input.netPnl },
       {
-        label: 'Return',
+        label: t('perf.return'),
         value: input.returnPercent === null ? '—' : `${signed(input.returnPercent)}%`,
         signOf: input.returnPercent,
       },
-      { label: 'Trades', value: `${input.trades.total} (${won} won, ${lost} lost)`, signOf: null },
-      { label: 'Profit factor', value: input.profitFactor ?? '—', signOf: null },
       {
-        label: 'Average win',
+        label: t('perf.trades'),
+        value: t('perf.tradesValue', { total: input.trades.total, won, lost }),
+        signOf: null,
+      },
+      { label: t('perf.profitFactor'), value: input.profitFactor ?? '—', signOf: null },
+      {
+        label: t('perf.avgWin'),
         value: input.averageWin === null ? '—' : signed(input.averageWin),
         signOf: input.averageWin,
       },
       {
-        label: 'Average loss',
+        label: t('perf.avgLoss'),
         value: input.averageLoss === null ? '—' : signed(input.averageLoss),
         signOf: input.averageLoss,
       },
