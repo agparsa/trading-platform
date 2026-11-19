@@ -64,7 +64,6 @@ export const PROTECTED_TABLES = [
   'service_tokens',
   'broker_credentials',
   'kyc_documents',
-  'challenge_events',
   'payment_events',
   'resolution_records',
   'wallet_transactions',

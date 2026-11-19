@@ -191,11 +191,6 @@ const FINGERPRINTS: ReadonlyArray<{ name: string; sql: string }> = [
     name: 'withdrawal_requests (id, status, amount, currency)',
     sql: `SELECT md5(string_agg(id::text || status::text || amount::text || currency, '|' ORDER BY id)) AS f FROM withdrawal_requests`,
   },
-  {
-    // A fee somebody paid, and the size of the account it bought them.
-    name: 'challenges (id, status, phase, price, account_size)',
-    sql: `SELECT md5(string_agg(id::text || status::text || phase::text || price::text || account_size::text, '|' ORDER BY id)) AS f FROM challenges`,
-  },
 ];
 
 /**
@@ -215,8 +210,6 @@ export const NOT_MONEY: Record<string, string> = {
   account_settings: 'per-account risk settings',
   candles: 'market history, re-derivable from the feed',
   price_alerts: 'a price somebody asked to be told about',
-  challenge_plans: 'what a firm offers for sale — configuration, copied into each challenge bought',
-  challenge_certificates: 'a record that a phase was passed; the size is a label, not a balance',
   account_snapshots: 'derived end-of-day figures; counted, and recomputable from the ledger',
 };
 

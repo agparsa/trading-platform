@@ -40,17 +40,7 @@ export class AccountsService {
   async openAccount(
     tx: Prisma.TransactionClient,
     userId: string,
-    options: {
-      type: AccountType;
-      currency?: string;
-      leverage?: number;
-      /**
-       * A demo account's opening funds when the platform default is not the
-       * point — a challenge's account opens with the size that was bought.
-       */
-      initialBalance?: string;
-      openingDescription?: string;
-    } = { type: 'DEMO' },
+    options: { type: AccountType; currency?: string; leverage?: number } = { type: 'DEMO' },
   ): Promise<AccountSummary> {
     // getOrThrow rather than get: these have schema defaults, so a missing
     // value means the config was not validated, and opening an account with an
@@ -76,10 +66,7 @@ export class AccountsService {
       },
     });
 
-    const initial =
-      options.initialBalance ??
-      this.config.get('DEMO_ACCOUNT_INITIAL_BALANCE', { infer: true }) ??
-      '0';
+    const initial = this.config.get('DEMO_ACCOUNT_INITIAL_BALANCE', { infer: true });
     if (options.type === 'DEMO' && toDecimal(initial).gt(0)) {
       await this.ledger.post(tx, {
         accountId: account.id,
@@ -88,7 +75,7 @@ export class AccountsService {
         referenceType: 'ACCOUNT_OPENING',
         referenceId: account.id,
         idempotencyKey: `account-opening:${account.id}`,
-        description: options.openingDescription ?? 'Demo account opening balance',
+        description: 'Demo account opening balance',
       });
     }
 

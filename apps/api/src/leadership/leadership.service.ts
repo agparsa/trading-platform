@@ -10,7 +10,6 @@ export const LeaderLoop = {
   TRIGGER_ENGINE: 'trigger-engine',
   MARKET_INGEST: 'market-ingest',
   PRICE_ALERTS: 'price-alerts',
-  CHALLENGES: 'challenge-evaluator',
 } as const;
 export type LeaderLoopName = (typeof LeaderLoop)[keyof typeof LeaderLoop];
 

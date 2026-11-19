@@ -230,12 +230,6 @@ export const CATEGORY_FOR_KIND: Readonly<Record<string, NotificationCategory>> =
   // their preferences: the first is how they learn of one they did not mint.
   'api_key.minted': NotificationCategory.SYSTEM,
   'api_key.revoked': NotificationCategory.SYSTEM,
-  // A challenge ending on a rule is the same news as a stop-out: the account
-  // can no longer add risk. The others are about the challenge, not a trade.
-  'challenge.started': NotificationCategory.SYSTEM,
-  'challenge.payment_rejected': NotificationCategory.SYSTEM,
-  'challenge.passed': NotificationCategory.SYSTEM,
-  'challenge.failed': NotificationCategory.RISK_ALERT,
 };
 
 export function categoryForKind(kind: string): NotificationCategory {

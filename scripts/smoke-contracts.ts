@@ -886,79 +886,6 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
     }),
   );
 
-  // --- Challenges: a plan made and put on sale, bought and cancelled, bought
-  // again and paid, the fee confirmed — the whole path a firm and a trader take.
-  const planBody = {
-    name: 'Contracts 10K',
-    steps: 2,
-    accountSize: '10000',
-    accountCurrency: 'USD',
-    leverage: 100,
-    price: '99',
-    paymentAsset: 'USDT',
-    paymentNetwork: 'TRC20',
-    paymentAddress: 'TContractsCheckAddress000000000001',
-    phaseOneTargetPct: '8',
-    phaseTwoTargetPct: '5',
-    dailyLossPct: '5',
-    maxLossPct: '10',
-    drawdownMode: 'STATIC',
-    trailingLock: false,
-    dailyBasis: 'BALANCE',
-    minTradingDays: 4,
-    maxDays: null,
-    profitSplitPct: '80',
-    isActive: false,
-  };
-  const plan = answers.record(
-    'POST /admin/challenges/plans',
-    await as.admin('POST', '/admin/challenges/plans', planBody),
-  ) as { id: string };
-  answers.record(
-    'PUT /admin/challenges/plans/*',
-    await as.admin('PUT', `/admin/challenges/plans/${plan.id}`, { ...planBody, isActive: true }),
-  );
-  const firstTry = answers.record(
-    'POST /challenges',
-    await as.trader('POST', '/challenges', { planId: plan.id }),
-  ) as { id: string };
-  answers.record(
-    'POST /challenges/*/cancel',
-    await as.trader('POST', `/challenges/${firstTry.id}/cancel`, {}),
-  );
-  const bought = (await as.trader('POST', '/challenges', { planId: plan.id })) as { id: string };
-  answers.record(
-    'POST /challenges/*/payment',
-    await as.trader('POST', `/challenges/${bought.id}/payment`, {
-      transactionHash: `contracts${Date.now().toString(16)}`.padEnd(64, '0'),
-    }),
-  );
-  answers.record(
-    'POST /admin/challenges/*/payment-decision',
-    await as.admin('POST', `/admin/challenges/${bought.id}/payment-decision`, {
-      confirmed: true,
-    }),
-  );
-  ids['challenge'] = bought.id;
-  // A certificate is earned by passing a phase, which takes trading days; the
-  // contract of the page that shows one is checked against a row written here.
-  {
-    const row = await prisma.challenge.findUniqueOrThrow({ where: { id: bought.id } });
-    const code = `PF-CONTRACTS${Date.now().toString(36).toUpperCase()}`.slice(0, 32);
-    await prisma.challengeCertificate.create({
-      data: {
-        tenantId: row.tenantId,
-        challengeId: row.id,
-        code,
-        phase: 'PHASE_ONE',
-        traderName: 'Contracts Trader',
-        accountSize: row.accountSize,
-        currency: row.accountCurrency,
-      },
-    });
-    ids['certificate'] = code;
-  }
-
   // Notifications are written by the worker from the outbox: wait for them.
   for (const deadline = Date.now() + 30_000; Date.now() < deadline; await sleep(1_000)) {
     const notices = (await request(traderToken, 'GET', '/notifications')) as unknown[];
@@ -1013,8 +940,6 @@ function pathValues(key: string, world: World): string[] | undefined {
     'GET /accounts/*/ledger': [world.accountId],
     'GET /accounts/*/order-events': [world.accountId],
     'GET /accounts/*/performance': [world.accountId],
-    'GET /admin/challenges/*': [world.ids['challenge'] ?? ''],
-    'GET /challenges/certificates/*': [world.ids['certificate'] ?? ''],
     'GET /accounts/*/equity-curve': [world.accountId],
     'GET /symbols/*': [world.ids['symbol'] ?? 'EURUSD'],
     'GET /admin/users/*': [world.traderId],

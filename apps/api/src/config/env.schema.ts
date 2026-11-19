@@ -447,28 +447,6 @@ export const envSchema = z
     PRICE_ALERT_SWEEP_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1_000),
 
     /**
-     * Whether this instance may contend to evaluate prop-firm challenges. Its
-     * own lease, like price alerts: a challenge evaluated twice is two reads
-     * deciding the same thing under one version check, and tying it to the
-     * trigger engine would stop evaluation whenever stop-losses lose theirs.
-     */
-    CHALLENGE_EVALUATION_ENABLED: z
-      .union([z.boolean(), z.enum(['true', 'false'])])
-      .default(true)
-      .transform((value) => value === true || value === 'true'),
-    /**
-     * How often every running challenge is checked against its rules. The
-     * check is equity marked to the latest quote, so the gap between passes is
-     * the longest a breach can go unrecorded.
-     */
-    CHALLENGE_EVALUATION_INTERVAL_MS: z.coerce
-      .number()
-      .int()
-      .min(1_000)
-      .max(300_000)
-      .default(5_000),
-
-    /**
      * The longest a break-glass grant may live, whatever anybody asks for.
      *
      * A grant is an errand, not a mode somebody leaves switched on. An hour is

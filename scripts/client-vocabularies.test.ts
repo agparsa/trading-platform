@@ -40,7 +40,6 @@ const MAPS: Readonly<Record<string, Vocabulary | { none: string }>> = {
     none: "the same derived key status as the trader's own panel",
   },
   'apps/web/src/components/alerts-panel.tsx:STATUS_WORDS': 'prisma.PriceAlertStatus',
-  'apps/web/src/components/challenges/challenge-card.tsx:STATUS_TONE': 'prisma.ChallengeStatus',
   'apps/web/src/lib/error-words.ts:ERROR_WORDS': {
     none: "a deliberate subset of TradingErrorCode — the refusals a trader meets; any other code falls back to the server's own message, and error-words.test.ts holds each key to words in both languages",
   },

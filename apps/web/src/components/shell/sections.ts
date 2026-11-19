@@ -16,7 +16,6 @@ import type { NavItem } from './nav';
 export const TRADER_SECTIONS: readonly NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', key: 'nav.dashboard' },
   { href: '/terminal', label: 'Terminal', key: 'nav.terminal' },
-  { href: '/challenges', label: 'Challenges', key: 'nav.challenges' },
   { href: '/account', label: 'Account', key: 'nav.account' },
   { href: '/wallet', label: 'Wallet', key: 'nav.wallet' },
   { href: '/verification', label: 'Verification', key: 'nav.verification' },

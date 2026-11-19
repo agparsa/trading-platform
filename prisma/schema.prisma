@@ -221,10 +221,6 @@ model Tenant {
   serviceTokens            ServiceToken[]
   credentialUsage          CredentialUsage[]
   priceAlerts              PriceAlert[]
-  challengePlans           ChallengePlan[]
-  challenges               Challenge[]
-  challengeEvents          ChallengeEvent[]
-  challengeCertificates    ChallengeCertificate[]
   reconciliationItems      ReconciliationItem[]
   resolutionRecords        ResolutionRecord[]
   breakGlassGrants         BreakGlassGrant[]
@@ -349,7 +345,6 @@ model User {
   brokerCredentialsCreated BrokerCredential[]  @relation("BrokerCredentialCreator")
   tenant                   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   priceAlerts              PriceAlert[]
-  challenges               Challenge[]
   resolutions              ResolutionRecord[]
   breakGlassAsActor        BreakGlassGrant[]   @relation("BreakGlassActor")
   breakGlassAsSubject      BreakGlassGrant[]   @relation("BreakGlassSubject")
@@ -488,7 +483,6 @@ model Account {
   trades                 Trade[]
   ledger                 BalanceLedger[]
   snapshots              AccountSnapshot[]
-  challenge              Challenge?
   riskEvents             RiskEvent[]
   masterLinks            MasterAccountLink[]
   integritySignals       IntegritySignal[]
@@ -3550,185 +3544,4 @@ model ScheduledJobRun {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("scheduled_job_runs")
-}
-
-// ---------------------------------------------------------------------------
-// Prop-firm evaluations
-// ---------------------------------------------------------------------------
-
-enum ChallengeStatus {
-  AWAITING_PAYMENT
-  PAYMENT_REVIEW
-  ACTIVE
-  FUNDED
-  FAILED
-  CANCELLED
-}
-
-enum ChallengePhase {
-  PHASE_ONE
-  PHASE_TWO
-  FUNDED
-}
-
-enum ChallengeDrawdownMode {
-  STATIC
-  TRAILING
-}
-
-enum ChallengeDailyBasis {
-  BALANCE
-  EQUITY
-  HIGHER
-}
-
-/// A challenge a firm sells: its size, price and rules. Rules are copied into
-/// each purchase, so editing a plan never changes a challenge already bought.
-/// See `@tp/trading-core` `challenge-rules.ts` for what each rule means.
-model ChallengePlan {
-  id       String @id @default(uuid()) @db.Uuid
-  tenantId String @map("tenant_id") @db.Uuid
-
-  name              String
-  /// 1: one evaluation phase then funded; 2: two phases then funded.
-  steps             Int                   @default(2)
-  accountSize       Decimal               @map("account_size") @db.Decimal(28, 10)
-  accountCurrency   String                @default("USD") @map("account_currency") @db.VarChar(3)
-  leverage          Int                   @default(100)
-  price             Decimal               @db.Decimal(28, 10)
-  /// What the fee is paid in and on which chain, e.g. USDT on TRC20.
-  paymentAsset      String                @map("payment_asset") @db.VarChar(12)
-  paymentNetwork    String                @map("payment_network") @db.VarChar(40)
-  /// No address, no sale: a plan without one is not offered.
-  paymentAddress    String?               @map("payment_address") @db.VarChar(256)
-  phaseOneTargetPct Decimal               @map("phase_one_target_pct") @db.Decimal(8, 4)
-  phaseTwoTargetPct Decimal?              @map("phase_two_target_pct") @db.Decimal(8, 4)
-  dailyLossPct      Decimal               @map("daily_loss_pct") @db.Decimal(8, 4)
-  maxLossPct        Decimal               @map("max_loss_pct") @db.Decimal(8, 4)
-  drawdownMode      ChallengeDrawdownMode @default(STATIC) @map("drawdown_mode")
-  trailingLock      Boolean               @default(false) @map("trailing_lock")
-  dailyBasis        ChallengeDailyBasis   @default(BALANCE) @map("daily_basis")
-  minTradingDays    Int                   @default(0) @map("min_trading_days")
-  maxDays           Int?                  @map("max_days")
-  profitSplitPct    Decimal               @map("profit_split_pct") @db.Decimal(8, 4)
-  isActive          Boolean               @default(false) @map("is_active")
-
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  challenges Challenge[]
-
-  @@index([tenantId, isActive])
-  @@map("challenge_plans")
-}
-
-/// One challenge a trader bought, through its phases. The account it is
-/// evaluated on changes at each phase; the history is in `ChallengeEvent`.
-model Challenge {
-  id       String @id @default(uuid()) @db.Uuid
-  tenantId String @map("tenant_id") @db.Uuid
-  userId   String @map("user_id") @db.Uuid
-  planId   String @map("plan_id") @db.Uuid
-
-  status ChallengeStatus @default(AWAITING_PAYMENT)
-  phase  ChallengePhase  @default(PHASE_ONE)
-
-  // The plan's terms as bought.
-  planName          String                @map("plan_name")
-  steps             Int
-  accountSize       Decimal               @map("account_size") @db.Decimal(28, 10)
-  accountCurrency   String                @map("account_currency") @db.VarChar(3)
-  leverage          Int
-  price             Decimal               @db.Decimal(28, 10)
-  paymentAsset      String                @map("payment_asset") @db.VarChar(12)
-  paymentNetwork    String                @map("payment_network") @db.VarChar(40)
-  paymentAddress    String                @map("payment_address") @db.VarChar(256)
-  phaseOneTargetPct Decimal               @map("phase_one_target_pct") @db.Decimal(8, 4)
-  phaseTwoTargetPct Decimal?              @map("phase_two_target_pct") @db.Decimal(8, 4)
-  dailyLossPct      Decimal               @map("daily_loss_pct") @db.Decimal(8, 4)
-  maxLossPct        Decimal               @map("max_loss_pct") @db.Decimal(8, 4)
-  drawdownMode      ChallengeDrawdownMode @map("drawdown_mode")
-  trailingLock      Boolean               @map("trailing_lock")
-  dailyBasis        ChallengeDailyBasis   @map("daily_basis")
-  minTradingDays    Int                   @map("min_trading_days")
-  maxDays           Int?                  @map("max_days")
-  profitSplitPct    Decimal               @map("profit_split_pct") @db.Decimal(8, 4)
-
-  /// The chain transaction the trader says paid the fee. Unique per tenant,
-  /// so one transfer cannot be offered for two challenges.
-  transactionHash String? @map("transaction_hash") @db.VarChar(128)
-
-  // The current phase.
-  accountId       String?   @unique @map("account_id") @db.Uuid
-  phaseStartedAt  DateTime? @map("phase_started_at") @db.Timestamptz(6)
-  phaseStartDay   String?   @map("phase_start_day") @db.VarChar(10)
-  dayKey          String?   @map("day_key") @db.VarChar(10)
-  dayStartBalance Decimal?  @map("day_start_balance") @db.Decimal(28, 10)
-  dayStartEquity  Decimal?  @map("day_start_equity") @db.Decimal(28, 10)
-  highWaterEquity Decimal?  @map("high_water_equity") @db.Decimal(28, 10)
-  /// The evaluator's last verdict's figures, for the dashboard.
-  lastMetrics     Json?     @map("last_metrics")
-  lastEvaluatedAt DateTime? @map("last_evaluated_at") @db.Timestamptz(6)
-
-  failedRule String?   @map("failed_rule") @db.VarChar(32)
-  failedAt   DateTime? @map("failed_at") @db.Timestamptz(6)
-  fundedAt   DateTime? @map("funded_at") @db.Timestamptz(6)
-  version    Int       @default(0)
-
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  tenant       Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  user         User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
-  plan         ChallengePlan          @relation(fields: [planId], references: [id], onDelete: Restrict)
-  account      Account?               @relation(fields: [accountId], references: [id], onDelete: Restrict)
-  events       ChallengeEvent[]
-  certificates ChallengeCertificate[]
-
-  @@unique([tenantId, transactionHash])
-  @@index([tenantId, userId, createdAt(sort: Desc)])
-  @@index([status])
-  @@map("challenges")
-}
-
-/// What happened to a challenge, in order. Append-only: the database refuses
-/// an update or a delete.
-model ChallengeEvent {
-  id          String         @id @default(uuid()) @db.Uuid
-  tenantId    String         @map("tenant_id") @db.Uuid
-  challengeId String         @map("challenge_id") @db.Uuid
-  kind        String         @db.VarChar(40)
-  phase       ChallengePhase
-  accountId   String?        @map("account_id") @db.Uuid
-  actorId     String?        @map("actor_id") @db.Uuid
-  details     Json           @default("{}")
-  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Restrict)
-
-  @@index([challengeId, createdAt])
-  @@index([tenantId])
-  @@map("challenge_events")
-}
-
-/// A passed phase, with a code anyone can check.
-model ChallengeCertificate {
-  id          String         @id @default(uuid()) @db.Uuid
-  tenantId    String         @map("tenant_id") @db.Uuid
-  challengeId String         @map("challenge_id") @db.Uuid
-  code        String         @unique @db.VarChar(32)
-  phase       ChallengePhase
-  traderName  String         @map("trader_name")
-  accountSize Decimal        @map("account_size") @db.Decimal(28, 10)
-  currency    String         @db.VarChar(3)
-  issuedAt    DateTime       @default(now()) @map("issued_at") @db.Timestamptz(6)
-
-  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Restrict)
-
-  @@unique([challengeId, phase])
-  @@index([tenantId])
-  @@map("challenge_certificates")
 }
