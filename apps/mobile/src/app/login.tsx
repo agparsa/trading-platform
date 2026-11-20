@@ -32,7 +32,7 @@ export default function Login(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [mode, setMode] = useState<'signIn' | 'register'>('signIn');
+  const [mode, setMode] = useState<'signIn' | 'register' | 'forgot'>('signIn');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -125,7 +125,7 @@ export default function Login(): React.ReactElement {
         ) : (
           <View style={styles.card}>
             <Segmented
-              value={mode}
+              value={mode === 'forgot' ? 'signIn' : mode}
               onChange={(next) => {
                 setMode(next);
                 setError(null);
@@ -152,10 +152,12 @@ export default function Login(): React.ReactElement {
               keyboardType: 'email-address',
               textContentType: 'emailAddress',
             })}
-            {field(password, setPassword, t('login.password'), {
-              secureTextEntry: true,
-              autoComplete: mode === 'register' ? 'new-password' : 'current-password',
-            })}
+            {mode === 'forgot'
+              ? null
+              : field(password, setPassword, t('login.password'), {
+                  secureTextEntry: true,
+                  autoComplete: mode === 'register' ? 'new-password' : 'current-password',
+                })}
             {mode === 'register' ? (
               <>
                 <Text
@@ -176,15 +178,32 @@ export default function Login(): React.ReactElement {
               </>
             ) : null}
             <Button
-              label={mode === 'register' ? t('login.register') : t('login.signIn')}
+              label={
+                mode === 'register'
+                  ? t('login.register')
+                  : mode === 'forgot'
+                    ? t('login.sendReset')
+                    : t('login.signIn')
+              }
               busy={busy}
               disabled={
                 email.trim() === '' ||
-                password === '' ||
+                (mode !== 'forgot' && password === '') ||
                 (mode === 'register' && (name.trim() === '' || password.length < 12))
               }
               onPress={() => {
                 void attempt(async () => {
+                  if (mode === 'forgot') {
+                    await api.post(
+                      '/auth/password-reset',
+                      { email: email.trim() },
+                      { idempotencyKey: `reset:${email.trim()}:${Date.now()}` },
+                    );
+                    // The same words whether or not the address is registered.
+                    setNotice(t('login.forgotSent', { email: email.trim() }));
+                    setMode('signIn');
+                    return;
+                  }
                   if (mode === 'register') {
                     await api.post(
                       '/auth/register',
@@ -213,6 +232,17 @@ export default function Login(): React.ReactElement {
                 });
               }}
             />
+            {mode === 'register' ? null : (
+              <Button
+                label={mode === 'forgot' ? t('login.backToSignIn') : t('login.forgot')}
+                variant="quiet"
+                onPress={() => {
+                  setMode(mode === 'forgot' ? 'signIn' : 'forgot');
+                  setError(null);
+                  setNotice(null);
+                }}
+              />
+            )}
           </View>
         )}
       </ScrollView>

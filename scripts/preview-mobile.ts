@@ -147,6 +147,9 @@ async function main(): Promise<void> {
     await page.goto(WEB);
     await page.waitForTimeout(2_000);
     await shot('01-login');
+    await page.getByText('Forgot password?', { exact: true }).first().click();
+    await shot('01b-forgot');
+    await page.getByText('Back to sign in', { exact: true }).first().click();
     await page.locator('input').nth(0).fill(email);
     await page.locator('input').nth(1).fill(PASSWORD);
     await page

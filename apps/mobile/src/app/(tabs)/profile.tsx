@@ -84,6 +84,7 @@ export default function ProfileScreen(): React.ReactElement {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [totp, setTotp] = useState<TotpStatus | null>(null);
   const [kyc, setKyc] = useState<KycView | null>(null);
+  const [resend, setResend] = useState<'idle' | 'busy' | 'sent'>('idle');
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -175,6 +176,36 @@ export default function ProfileScreen(): React.ReactElement {
             label={t('profile.verified')}
             value={profile.emailVerified ? t('common.yes') : t('common.no')}
           />
+          {profile.emailVerified ? null : (
+            <View style={styles.pending}>
+              <Text style={styles.pendingText}>{t('profile.emailPending')}</Text>
+              {resend === 'sent' ? (
+                <Text style={styles.sentText}>{t('profile.resent')}</Text>
+              ) : (
+                <Button
+                  label={t('profile.resend')}
+                  variant="quiet"
+                  busy={resend === 'busy'}
+                  onPress={() => {
+                    setResend('busy');
+                    api
+                      .post(
+                        '/auth/verify-email/resend',
+                        {},
+                        {
+                          idempotencyKey: `resend-verification:${Date.now()}`,
+                        },
+                      )
+                      .then(() => setResend('sent'))
+                      .catch((caught: unknown) => {
+                        setResend('idle');
+                        setError(caught instanceof Error ? caught.message : String(caught));
+                      });
+                  }}
+                />
+              )}
+            </View>
+          )}
           <Figure label={t('profile.role')} value={profile.role} />
           <Figure
             label={t('profile.lastSignIn')}
@@ -277,6 +308,14 @@ export default function ProfileScreen(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
+  pending: {
+    marginTop: theme.spacing(1),
+    padding: theme.spacing(1.5),
+    borderRadius: theme.radius.sm,
+    backgroundColor: 'rgba(240, 167, 10, 0.10)',
+  },
+  pendingText: { color: theme.colors.warning, fontSize: 13, marginBottom: theme.spacing(1) },
+  sentText: { color: theme.colors.positive, fontSize: 13 },
   entry: {
     flexDirection: 'row',
     alignItems: 'center',
