@@ -621,6 +621,58 @@ async function setUp(prisma: PrismaClient, answers: Answers): Promise<World> {
     await as.admin('POST', `/admin/webhooks/${hook.endpoint.id}/rotate-secret`, {}),
   );
 
+  // Branding, written and put back.
+  answers.record(
+    'PUT /admin/branding',
+    await as.admin('PUT', '/admin/branding', {
+      name: 'Contracts',
+      supportEmail: 'help@example.com',
+    }),
+  );
+  await as.admin('PUT', '/admin/branding', { name: null, supportEmail: null });
+
+  // A commission schedule, created and then changed.
+  const schedule = answers.record(
+    'POST /admin/fees/schedules',
+    await as.admin('POST', '/admin/fees/schedules', {
+      name: `contracts ${Date.now()}`,
+      defaultCommissionPerLot: '2',
+      rules: [{ symbol: 'XAUUSD', commissionPerLot: '1.5' }],
+    }),
+  ) as { id: string; name: string };
+  ids['feeSchedule'] = schedule.id;
+  answers.record(
+    'PUT /admin/fees/schedules/*',
+    await as.admin('PUT', `/admin/fees/schedules/${schedule.id}`, {
+      name: schedule.name,
+      defaultCommissionPerLot: null,
+      rules: [{ symbol: 'XAUUSD', commissionPerLot: '1.25' }],
+    }),
+  );
+
+  // An alert rule, and one alert it raised — the worker raises them on a
+  // schedule this run does not wait for, so the row is written as it would.
+  const rule = (await as.admin('POST', '/admin/alerts/rules', {
+    name: `contracts ${Date.now()}`,
+    metric: 'REGISTRATIONS_24H',
+    comparator: 'ABOVE',
+    threshold: 0,
+    cooldownMinutes: 60,
+    enabled: true,
+  })) as { id: string; name: string };
+  const ruleRow = await prisma.adminAlertRule.findUniqueOrThrow({ where: { id: rule.id } });
+  await prisma.adminAlert.create({
+    data: {
+      tenantId: ruleRow.tenantId,
+      ruleId: rule.id,
+      ruleName: rule.name,
+      metric: ruleRow.metric,
+      comparator: ruleRow.comparator,
+      threshold: ruleRow.threshold,
+      value: 3,
+    },
+  });
+
   const connection = answers.record(
     'POST /admin/broker-connections',
     await as.admin('POST', '/admin/broker-connections', {
@@ -909,6 +961,11 @@ const QUERY_BY_CALL: Readonly<Record<string, Readonly<Record<string, string>>>> 
   'GET /accounts/*/equity-curve': { period: '3M' },
   'GET /admin/payments': { status: 'SUCCEEDED' },
   'GET /admin/withdrawals': { status: 'PAID' },
+  'GET /admin/fees/report': {
+    from: new Date(Date.now() - 7 * 86_400_000).toISOString(),
+    to: new Date(Date.now() + 86_400_000).toISOString(),
+  },
+  'GET /admin/alerts': { state: 'all', limit: '50' },
 };
 
 /** A value for each query key a call site sends without writing a literal. */

@@ -73,6 +73,8 @@ suite('the restore rehearsal covers the money', () => {
     'account_snapshots',
     'broker_instrument_mappings',
     'candles',
+    'fee_rules',
+    'fee_schedules',
     'price_alerts',
     'risk_limit_sets',
     'symbol_specs',

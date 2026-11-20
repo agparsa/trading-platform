@@ -4,7 +4,15 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { AccountRow } from '@/components/admin/accounts-panel';
 import { ErrorLine, Head, Loading, Table } from '@/components/admin/shared';
-import { useAdminAccount, useSetAccountStatus } from '@/lib/admin-queries';
+import { useState } from 'react';
+import { cn } from '@tp/ui';
+import { Button, inputClass, wordInputClass } from '@/components/primitives';
+import {
+  useAdminAccount,
+  useAssignFeeSchedule,
+  useFeeSchedules,
+  useSetAccountStatus,
+} from '@/lib/admin-queries';
 
 /**
  * One account, at an address.
@@ -74,6 +82,90 @@ export default function Page() {
           </tbody>
         </Table>
       )}
+      {account.data === undefined ? null : (
+        <FeeScheduleControl
+          accountId={account.data.id}
+          current={account.data.feeSchedule ?? null}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Which commission this account pays. A change applies from its next order
+ * and is audited with the reason given; what was charged stays charged.
+ */
+function FeeScheduleControl({
+  accountId,
+  current,
+}: {
+  accountId: string;
+  current: { id: string; name: string } | null;
+}) {
+  const schedules = useFeeSchedules();
+  const assign = useAssignFeeSchedule();
+  const [choice, setChoice] = useState<string>(current?.id ?? '');
+  const [reason, setReason] = useState('');
+  const changed = choice !== (current?.id ?? '');
+
+  return (
+    <section
+      className="space-y-2 border-t border-terminal-border p-3"
+      data-testid="account-fee-schedule"
+    >
+      <h2 className="text-sm font-semibold text-terminal-text">Commission</h2>
+      <p className="text-caption text-terminal-muted">
+        Pays{' '}
+        <span className="text-terminal-text">
+          {current === null ? 'the instruments’ standard rates' : `the ${current.name} schedule`}
+        </span>
+        . Schedules are set under{' '}
+        <Link href="/admin/fees" className="text-terminal-accent hover:underline">
+          Fees
+        </Link>
+        .
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          aria-label="Commission schedule"
+          className={cn(wordInputClass, 'w-auto py-1')}
+          value={choice}
+          onChange={(event) => setChoice(event.target.value)}
+        >
+          <option value="">Standard rates</option>
+          {(schedules.data?.schedules ?? []).map((schedule) => (
+            <option key={schedule.id} value={schedule.id}>
+              {schedule.name}
+            </option>
+          ))}
+        </select>
+        {changed ? (
+          <>
+            <input
+              className={cn(inputClass, 'w-64 py-1 text-xs')}
+              placeholder="Why (kept in the audit log)"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+            <Button
+              variant="neutral"
+              className="px-2 py-1"
+              gate={assign}
+              disabled={reason.trim().length < 3 || assign.isPending}
+              onClick={() =>
+                assign.mutate(
+                  { accountId, scheduleId: choice === '' ? null : choice, reason: reason.trim() },
+                  { onSuccess: () => setReason('') },
+                )
+              }
+            >
+              {assign.isPending ? 'Saving…' : 'Apply'}
+            </Button>
+          </>
+        ) : null}
+      </div>
+      <ErrorLine error={schedules.error ?? assign.error} />
+    </section>
   );
 }

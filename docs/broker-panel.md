@@ -121,27 +121,27 @@ money arriving.
 
 ## 4. The navigation today
 
-| §13 section                                 | State                                                          |
-| ------------------------------------------- | -------------------------------------------------------------- |
-| Dashboard                                   | real queries, and now money as well as counts                  |
-| Users                                       | `/admin/people`                                                |
-| Trading Accounts                            | `/admin/accounts`                                              |
-| Master Accounts                             | `/admin/desks`                                                 |
-| Orders / Positions / Trades / Order history | `/admin/book` — **new this phase**                             |
-| Instruments                                 | `/admin/instruments`                                           |
-| Sessions                                    | on the Instruments screen — **new this phase**                 |
-| Risk / Margin / Exposure                    | `/admin/risk`, five tabs including the ceilings                |
-| Broker Connections                          | `/admin/connections`                                           |
-| Reconciliation                              | `/admin/reconciliation`                                        |
-| Audit                                       | `/admin/audit`                                                 |
-| Security                                    | `/admin/security` — the event feed                             |
-| Developer: API keys                         | `/admin/credentials`                                           |
-| **Fees**                                    | **no section** — commission and swap are edited on Instruments |
-| Reports                                     | `/admin/reports` — **new this phase**                          |
-| **Alerts**                                  | **not built**                                                  |
-| Security: devices, IP rules                 | built — see §5                                                 |
-| **Branding**                                | **not built**                                                  |
-| Developer: webhooks, API docs               | built — see §5                                                 |
+| §13 section                                 | State                                                  |
+| ------------------------------------------- | ------------------------------------------------------ |
+| Dashboard                                   | real queries, and now money as well as counts          |
+| Users                                       | `/admin/people`                                        |
+| Trading Accounts                            | `/admin/accounts`                                      |
+| Master Accounts                             | `/admin/desks`                                         |
+| Orders / Positions / Trades / Order history | `/admin/book` — **new this phase**                     |
+| Instruments                                 | `/admin/instruments`                                   |
+| Sessions                                    | on the Instruments screen — **new this phase**         |
+| Risk / Margin / Exposure                    | `/admin/risk`, five tabs including the ceilings        |
+| Broker Connections                          | `/admin/connections`                                   |
+| Reconciliation                              | `/admin/reconciliation`                                |
+| Audit                                       | `/admin/audit`                                         |
+| Security                                    | `/admin/security` — the event feed                     |
+| Developer: API keys                         | `/admin/credentials`                                   |
+| Fees                                        | `/admin/fees` — commission schedules and fees charged  |
+| Reports                                     | `/admin/reports` — **new this phase**                  |
+| Alerts                                      | `/admin/alerts` — threshold rules and what they raised |
+| Security: devices, IP rules                 | built — see §5                                         |
+| Branding                                    | `/admin/branding` — name, accents, support contact     |
+| Developer: webhooks, API docs               | built — see §5                                         |
 
 ---
 
@@ -155,12 +155,14 @@ did not exist, months after each was built — and a document that under-reports
 what a platform can do gets the work done twice. Corrected below; the items
 that really are absent keep their entry and their reason.
 
-- **Fees as a section.** Commission and swap are editable per instrument on the
-  Instruments screen, which is the only place they can be set. There is no fee
-  schedule, no per-account or per-desk override, no rebate or markup model, and
-  no report of fees charged — though the dashboard now shows commission earned
-  in the last day, and the closed-trades tab shows what each round trip cost.
-  Spread is not configurable at all: it comes from the feed.
+- **~~Fees as a section.~~ Built** (`fees.md`). Named commission schedules —
+  a rate per instrument and a default for the rest — that an account is put on
+  from its own page, with a reason, and the engine charges on both legs; and a
+  report of commission and swap charged, from the ledger, by currency,
+  instrument and account. What is still narrower: commission only (swap and
+  margin stay the instrument's), no rebate model (a rate is never negative),
+  no per-desk assignment — an account at a time — and spread still comes from
+  the feed.
 - **~~Reports.~~ Built** (§13). A job queue, a sealed file store and a retention
   policy, which is what this entry said it would take. `/admin/reports` asks for
   one, the worker produces it, and the file is downloaded once — per kind
@@ -173,11 +175,16 @@ that really are absent keep their entry and their reason.
   and the trader's history stay — they are the right tool for the page on
   screen, and are now the only thing claiming to be that.
 
-- **Alerts.** Price alerts for traders are built — see `price-alerts.md`.
-  Admin alert _rules_ — thresholds that raise something in this panel when a
-  figure moves — do not exist and are not designed. The operational alerts in
-  `docker/observability/alerts.yml` are for whoever runs the deployment, not
-  for the broker, and nothing routes them yet (`operations.md`).
+- **~~Alerts.~~ Built** (`admin-alerts.md`). Price alerts for traders were
+  already built (`price-alerts.md`); admin rules are now too — a threshold on
+  a count the platform keeps (withdrawals or verifications waiting,
+  reconciliation mismatches open, risk events and rejections in the last hour,
+  failing venue connections, sign-ups), read by the worker every minute,
+  raised on the first crossing and again only after a quiet period, and
+  acknowledged with a note. What is still narrower: counts only, no figure that
+  needs a price; shown in the panel and on the overview, not pushed or mailed.
+  The operational alerts in `docker/observability/alerts.yml` remain for
+  whoever runs the deployment.
 - **~~Security: devices and IP rules.~~ Both built.** Tenant IP rules are a
   control (§46), enforced by a guard and audited. Staff can see a person's
   devices and revoke one from their record — and a staff revocation survives
@@ -188,9 +195,12 @@ that really are absent keep their entry and their reason.
   session names no installation, so it is not ended by revoking a device;
   `sign-out` ends everything, and is the control for an account that is
   compromised rather than one lost handset.
-- **Branding / white label.** Nothing exists. The `Tenant` model carries no
-  visual field. Phase 14 lists white label behind a feature flag; the feature
-  it would flag has not been written.
+- **~~Branding.~~ Built** (`branding.md`). A firm's name, an accent per
+  theme — refused below 4.5:1 against its background — and a support address
+  and website, set at `/admin/branding` and worn by every page including the
+  signed-out ones. What is still narrower: no logo upload, the mobile app
+  keeps the platform's look, and a white-label domain is the tenant's
+  `primaryHost`, set by the platform.
 - **~~Webhooks.~~ Built** (§49): registered per firm, signed, retried,
   auto-disabled, SSRF-vetted, with `security.alert` and
   `reconciliation.mismatch` among the events. See `webhooks.md`.

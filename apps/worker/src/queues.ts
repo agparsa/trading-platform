@@ -25,6 +25,8 @@ export const QueueName = {
   WEBHOOK_DELIVERY: 'webhook-delivery',
   /** Produces a requested report: query, CSV, seal, store. */
   REPORTS: 'reports',
+  /** Reads every admin alert rule and raises what crossed its threshold. */
+  ADMIN_ALERTS: 'admin-alerts',
 } as const;
 export type QueueName = (typeof QueueName)[keyof typeof QueueName];
 

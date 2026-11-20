@@ -53,6 +53,18 @@ handler is responsible for scoping the result to that user — which for
 | `GET` | `/accounts/:id/settings` | `settings` | ACCOUNTS_READ |
 | `GET` | `/accounts/:id/ledger`   | `ledger`   | ACCOUNTS_READ |
 
+### `admin-alerts/admin-alerts.controller.ts` — base `/admin/alerts`
+
+| Verb     | Path                            | Handler       | Requires                                              |
+| -------- | ------------------------------- | ------------- | ----------------------------------------------------- |
+| `GET`    | `/admin/alerts/metrics`         | `metrics`     | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS |
+| `GET`    | `/admin/alerts/rules`           | `rules`       | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS |
+| `POST`   | `/admin/alerts/rules`           | `create`      | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS |
+| `PUT`    | `/admin/alerts/rules/:id`       | `update`      | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS |
+| `DELETE` | `/admin/alerts/rules/:id`       | `remove`      | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS |
+| `GET`    | `/admin/alerts`                 | `list`        | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS |
+| `POST`   | `/admin/alerts/:id/acknowledge` | `acknowledge` | SESSION-ONLY (class), SESSION-ONLY, SYSTEM_OPERATIONS |
+
 ### `admin/admin.controller.ts` — base `/admin`
 
 | Verb   | Path                                         | Handler                 | Requires           |
@@ -126,6 +138,19 @@ handler is responsible for scoping the result to that user — which for
 | `POST`   | `/auth/password-reset/confirm` | `resetPassword`           | PUBLIC, throttled       |
 | `POST`   | `/auth/password`               | `changePassword`          | SELF-SERVICE            |
 | `GET`    | `/auth/me`                     | `me`                      | _authenticated only_    |
+
+### `branding/branding.controller.ts` — base `/branding`
+
+| Verb  | Path        | Handler   | Requires |
+| ----- | ----------- | --------- | -------- |
+| `GET` | `/branding` | `current` | PUBLIC   |
+
+### `branding/branding.controller.ts` — base `/admin/branding`
+
+| Verb  | Path              | Handler   | Requires                                                   |
+| ----- | ----------------- | --------- | ---------------------------------------------------------- |
+| `GET` | `/admin/branding` | `current` | SESSION-ONLY (class), SESSION-ONLY, TENANT_SETTINGS_MANAGE |
+| `PUT` | `/admin/branding` | `update`  | SESSION-ONLY (class), SESSION-ONLY, TENANT_SETTINGS_MANAGE |
 
 ### `broker-connections/broker-connections.controller.ts` — base `/admin/broker-connections`
 
@@ -225,6 +250,17 @@ handler is responsible for scoping the result to that user — which for
 | ------ | ---------------------------------- | ------- | -------------------------------------------------- |
 | `GET`  | `/admin/brokers/:id/features`      | `list`  | SESSION-ONLY (class), SESSION-ONLY, TENANTS_READ   |
 | `POST` | `/admin/brokers/:id/features/:key` | `set`   | SESSION-ONLY (class), SESSION-ONLY, TENANTS_MANAGE |
+
+### `fees/fees.controller.ts` — base `/admin/fees`
+
+| Verb     | Path                              | Handler  | Requires                                               |
+| -------- | --------------------------------- | -------- | ------------------------------------------------------ |
+| `GET`    | `/admin/fees/schedules`           | `list`   | SESSION-ONLY (class), SESSION-ONLY, INSTRUMENTS_READ   |
+| `POST`   | `/admin/fees/schedules`           | `create` | SESSION-ONLY (class), SESSION-ONLY, INSTRUMENTS_MANAGE |
+| `PUT`    | `/admin/fees/schedules/:id`       | `update` | SESSION-ONLY (class), SESSION-ONLY, INSTRUMENTS_MANAGE |
+| `DELETE` | `/admin/fees/schedules/:id`       | `remove` | SESSION-ONLY (class), SESSION-ONLY, INSTRUMENTS_MANAGE |
+| `POST`   | `/admin/fees/accounts/:accountId` | `assign` | SESSION-ONLY (class), SESSION-ONLY, ACCOUNTS_MANAGE    |
+| `GET`    | `/admin/fees/report`              | `?`      | SESSION-ONLY (class), SESSION-ONLY, ACCOUNTS_READ_ANY  |
 
 ### `health/health.controller.ts` — base `/`
 
@@ -514,7 +550,7 @@ handler is responsible for scoping the result to that user — which for
 | `POST` | `/withdrawals`            | `request` | WITHDRAWALS_REQUEST |
 | `POST` | `/withdrawals/:id/cancel` | `cancel`  | WITHDRAWALS_REQUEST |
 
-**245 routes:** 127 `GET`, 101 `POST`, 10 `DELETE`, 5 `PATCH`, 2 `PUT`.
+**261 routes:** 134 `GET`, 105 `POST`, 12 `DELETE`, 5 `PUT`, 5 `PATCH`.
 
 <!-- END GENERATED ROUTES -->
 

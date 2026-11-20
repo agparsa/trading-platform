@@ -25,6 +25,8 @@ export const QueueName = {
   WEBHOOK_DELIVERY: 'webhook-delivery',
   /** Produces a requested report: query, CSV, seal, store. */
   REPORTS: 'reports',
+  /** The worker's admin alert sweep. Named here for the same parity test. */
+  ADMIN_ALERTS: 'admin-alerts',
 } as const;
 export type QueueName = (typeof QueueName)[keyof typeof QueueName];
 

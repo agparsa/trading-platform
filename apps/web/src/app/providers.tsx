@@ -6,6 +6,7 @@ import { isWorthRetrying } from '@tp/api-client';
 import { SessionProvider } from '@/lib/session';
 import { ThemeSync } from '@/lib/use-theme';
 import { LocaleSync } from '@/lib/use-locale';
+import { BrandingSync } from '@/lib/branding';
 
 /**
  * Client-side providers.
@@ -51,7 +52,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ThemeSync />
       <LocaleSync />
-      <SessionProvider>{children}</SessionProvider>
+      <SessionProvider>
+        <BrandingSync />
+        {children}
+      </SessionProvider>
     </QueryClientProvider>
   );
 }

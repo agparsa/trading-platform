@@ -31,6 +31,9 @@ import { SecurityModule } from './security/security.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { DeveloperModule } from './developer/developer.module';
 import { FeaturesModule } from './features/features.module';
+import { BrandingModule } from './branding/branding.module';
+import { FeesModule } from './fees/fees.module';
+import { AdminAlertsModule } from './admin-alerts/admin-alerts.module';
 import { BrokerConnectionsModule } from './broker-connections/broker-connections.module';
 import { OutboxModule } from './outbox/outbox.module';
 import { ChartsModule } from './charts/charts.module';
@@ -126,6 +129,9 @@ import { TenantMiddleware } from './tenancy/tenant.middleware';
     WebhooksModule,
     DeveloperModule,
     FeaturesModule,
+    BrandingModule,
+    FeesModule,
+    AdminAlertsModule,
     BrokerConnectionsModule,
     OutboxModule,
     ChartsModule,

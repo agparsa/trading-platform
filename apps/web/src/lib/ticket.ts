@@ -180,7 +180,7 @@ export function estimateCosts(
       accountCurrency: account.currency as SymbolSpec['quoteCurrency'],
       quoteToAccountRate: 1,
     });
-    const commission = toDecimal(spec.commissionPerLot).mul(toDecimal(volume));
+    const commission = toDecimal(commissionPerLotFor(spec, account)).mul(toDecimal(volume));
     // The same formula, rate and rounding the worker posts with, for one night.
     const swap = swapAccrual(
       spec as SymbolSpec,
@@ -353,4 +353,18 @@ export function sizeForRisk(
   if (volume === null) return null;
   // As the lot step writes it: 0.08, not 0.080000.
   return toDecimal(volume).toFixed(Math.max(0, toDecimal(spec.volumeStep).decimalPlaces()));
+}
+
+/**
+ * The commission per lot this account pays on this instrument: its fee
+ * schedule's rate for the instrument, else the schedule's default, else the
+ * instrument's own — the order the server resolves it in (`FeesService`).
+ */
+export function commissionPerLotFor(
+  spec: Pick<SymbolRow, 'code' | 'commissionPerLot'>,
+  account: Pick<AccountSummary, 'commission'> | undefined,
+): string {
+  const schedule = account?.commission ?? null;
+  if (schedule === null) return spec.commissionPerLot;
+  return schedule.bySymbol[spec.code] ?? schedule.default ?? spec.commissionPerLot;
 }

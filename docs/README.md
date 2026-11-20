@@ -46,6 +46,9 @@ Kept as history; several things they call missing now exist.
 - [desks-and-risk-hierarchy.md](./desks-and-risk-hierarchy.md) — master accounts, what a delegation confers, and the four layers of ceilings
 - [external-execution.md](./external-execution.md) — how an order reaches a venue, and what happens when the answer does not come
 - [price-alerts.md](./price-alerts.md) — "tell me when gold reaches 4600", and when it fires
+- [admin-alerts.md](./admin-alerts.md) — thresholds operations set on counts the platform keeps, and what they raised
+- [fees.md](./fees.md) — commission schedules an account can be put on, and the fees charged
+- [branding.md](./branding.md) — a firm's name, accent colours and support contact, and the contrast rule
 
 **Interfaces**
 

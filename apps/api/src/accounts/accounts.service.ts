@@ -18,6 +18,13 @@ export interface AccountSummary {
   balance: string;
   leverage: number;
   createdAt: string;
+  /**
+   * What this account pays in commission when it is on a fee schedule:
+   * per lot, by instrument code, and `default` for instruments the schedule
+   * does not list. `null` — no schedule — means the instrument's own terms.
+   * The order ticket's estimate reads it; the engine charges it either way.
+   */
+  commission: { default: string | null; bySymbol: Record<string, string> } | null;
 }
 
 @Injectable()
@@ -87,6 +94,7 @@ export class AccountsService {
     const accounts = await this.prisma.account.findMany({
       where: { userId },
       orderBy: { createdAt: 'asc' },
+      include: COMMISSION_INCLUDE,
     });
     return accounts.map((account) => this.toSummary(account));
   }
@@ -99,8 +107,13 @@ export class AccountsService {
    * someone else is an information leak, and account ids are enumerable targets.
    */
   async getForUser(userId: string, accountId: string): Promise<AccountSummary> {
-    const { account } = await this.access.resolve(userId, accountId, Permission.ACCOUNTS_READ);
-    return this.toSummary(account);
+    await this.access.resolve(userId, accountId, Permission.ACCOUNTS_READ);
+    return this.toSummary(
+      await this.prisma.account.findUniqueOrThrow({
+        where: { id: accountId },
+        include: COMMISSION_INCLUDE,
+      }),
+    );
   }
 
   async getSettings(userId: string, accountId: string) {
@@ -173,6 +186,10 @@ export class AccountsService {
     balance: Prisma.Decimal;
     leverage: number;
     createdAt: Date;
+    feeSchedule?: {
+      defaultCommissionPerLot: Prisma.Decimal | null;
+      rules: Array<{ commissionPerLot: Prisma.Decimal; symbol: { code: string } }>;
+    } | null;
   }): AccountSummary {
     return {
       id: account.id,
@@ -183,6 +200,28 @@ export class AccountsService {
       balance: Money.of(account.balance.toString(), account.currency).toString(),
       leverage: account.leverage,
       createdAt: account.createdAt.toISOString(),
+      commission:
+        account.feeSchedule === null || account.feeSchedule === undefined
+          ? null
+          : {
+              default: account.feeSchedule.defaultCommissionPerLot?.toString() ?? null,
+              bySymbol: Object.fromEntries(
+                account.feeSchedule.rules.map((rule) => [
+                  rule.symbol.code,
+                  rule.commissionPerLot.toString(),
+                ]),
+              ),
+            },
     };
   }
 }
+
+/** The account's fee schedule, as much of it as the summary shows. */
+const COMMISSION_INCLUDE = {
+  feeSchedule: {
+    select: {
+      defaultCommissionPerLot: true,
+      rules: { select: { commissionPerLot: true, symbol: { select: { code: true } } } },
+    },
+  },
+} as const;

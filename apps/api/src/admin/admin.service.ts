@@ -426,7 +426,9 @@ export class AdminService {
    * there. A forbidden would confirm the account exists, which tells an
    * attacker their guessed id was right.
    */
-  async accountDetail(id: string): Promise<AccountSummaryRow> {
+  async accountDetail(
+    id: string,
+  ): Promise<AccountSummaryRow & { feeSchedule: { id: string; name: string } | null }> {
     const account = await this.prisma.account.findFirst({
       where: { id },
       select: {
@@ -440,6 +442,7 @@ export class AdminService {
         createdAt: true,
         user: { select: { id: true, email: true } },
         _count: { select: { positions: true } },
+        feeSchedule: { select: { id: true, name: true } },
       },
     });
     if (account === null) {
@@ -457,6 +460,7 @@ export class AdminService {
       userId: account.user.id,
       email: account.user.email,
       positions: account._count.positions,
+      feeSchedule: account.feeSchedule,
     };
   }
 

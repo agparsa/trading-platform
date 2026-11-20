@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { cn } from '@tp/ui';
 import { useSession } from '@/lib/session';
 import { NotificationBell } from '@/components/notification-bell';
+import { useBrandName } from '@/lib/branding';
 import { useT } from '@/lib/use-locale';
 import { NavIcon } from './nav-icons';
 import { TRADER_GROUPS } from './sections';
@@ -37,6 +38,7 @@ export function AppShell({
 }) {
   const { user, signOut } = useSession();
   const t = useT();
+  const brandName = useBrandName();
   const initial = (user?.email ?? '?').slice(0, 1).toUpperCase();
 
   return (
@@ -47,7 +49,7 @@ export function AppShell({
             <NavIcon name="terminal" className="h-[18px] w-[18px]" />
           </span>
           <span className="text-sm font-semibold tracking-tight text-terminal-text">
-            {t('shell.brand')}
+            {brandName}
           </span>
         </Link>
       }

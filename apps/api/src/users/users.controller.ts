@@ -13,13 +13,24 @@ import { UsersService } from './users.service';
  */
 export const E164 = /^\+[1-9]\d{6,14}$/;
 
+/** The number as stored: without the spaces, dashes and brackets people type. */
+export function normalisePhone(value: string): string {
+  return value.replace(/[\s()-]/g, '');
+}
+
 export const updateProfileSchema = z
   .object({
     displayName: z.string().trim().min(1).max(120).optional(),
+    /**
+     * Checked here and normalised in the handler (`normalisePhone`), not with
+     * a `.transform`: a transformed string is published in the OpenAPI schema
+     * as something other than a string, and the request-contract check then
+     * read the web's `phone: string | null` as a mismatch.
+     */
     phone: z
       .string()
-      .transform((value) => value.replace(/[\s()-]/g, ''))
-      .refine((value) => E164.test(value), {
+      .max(40)
+      .refine((value) => E164.test(normalisePhone(value)), {
         message: 'A phone number in international form, such as +989121234567',
       })
       .nullable()
@@ -48,7 +59,9 @@ export class UsersController {
   update(@CurrentUser() user: AuthenticatedUser, @Body() body: UpdateProfileDto) {
     return this.users.updateProfile(user.id, {
       ...(body.displayName === undefined ? {} : { displayName: body.displayName }),
-      ...(body.phone === undefined ? {} : { phone: body.phone }),
+      ...(body.phone === undefined
+        ? {}
+        : { phone: body.phone === null ? null : normalisePhone(body.phone) }),
     });
   }
 

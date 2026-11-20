@@ -110,10 +110,11 @@ describe('the broker panel\'s "not built" list, against the code', () => {
   it('reads the code as this test expects (the probe that cannot fail is the one that never checked)', () => {
     const built = FEATURES.filter((feature) => feature.built()).map((feature) => feature.name);
     const absent = FEATURES.filter((feature) => !feature.built()).map((feature) => feature.name);
-    expect(built).toEqual(
-      expect.arrayContaining(['Reports', 'IP rules', 'webhooks', 'admin device management']),
-    );
-    expect(absent.length).toBeGreaterThan(0);
+    // Every feature on the list is built since 20 November 2026; the probes
+    // stay, so one that stops matching the code is caught rather than read
+    // as "still built".
+    expect(built).toEqual(FEATURES.map((feature) => feature.name));
+    expect(absent).toEqual([]);
   });
 
   const documents: Array<[string, RegExp]> = [

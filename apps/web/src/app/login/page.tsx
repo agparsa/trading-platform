@@ -1,5 +1,6 @@
 'use client';
 
+import { SupportLine, useBrandName } from '@/lib/branding';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DomainError } from '@tp/shared-types';
@@ -21,6 +22,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { api, signIn, completeTwoFactor, register, ready, user } = useSession();
   const t = useT();
+  const brandName = useBrandName();
   const { locale } = useLocale();
 
   const [mode, setMode] = useState<'sign-in' | 'register' | 'forgot'>('sign-in');
@@ -117,9 +119,7 @@ export default function LoginPage() {
           <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-terminal-accent text-terminal-bg shadow-lg">
             <NavIcon name="terminal" className="h-6 w-6" />
           </span>
-          <h1 className="text-xl font-semibold tracking-tight text-terminal-text">
-            {t('shell.brand')}
-          </h1>
+          <h1 className="text-xl font-semibold tracking-tight text-terminal-text">{brandName}</h1>
         </div>
         <p className="mt-1 text-center text-sm text-terminal-muted">
           {challengeToken !== null
@@ -297,6 +297,7 @@ export default function LoginPage() {
         <p className="mt-4 text-center text-label leading-relaxed text-terminal-muted">
           {t('login.cookieNote')}
         </p>
+        <SupportLine />
       </div>
     </main>
   );

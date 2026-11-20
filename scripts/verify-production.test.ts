@@ -43,6 +43,7 @@ const SCHEDULES = [
   'broker-health',
   'outbox-relay',
   'webhook-delivery',
+  'admin-alerts',
   'backup',
 ];
 

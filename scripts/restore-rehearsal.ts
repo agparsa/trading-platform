@@ -206,6 +206,8 @@ export const NOT_MONEY: Record<string, string> = {
   symbol_specs: 'instrument reference data: contract sizes and tick sizes',
   broker_instrument_mappings: 'a venue’s name for an instrument, and its multipliers',
   tenant_symbol_terms: 'a firm’s commission and swap terms — configuration, not a balance',
+  fee_schedules: 'a commission schedule’s default rate — configuration, not a balance',
+  fee_rules: 'a commission schedule’s rate per instrument — configuration, not a balance',
   risk_limit_sets: 'ceilings, which are limits rather than holdings',
   account_settings: 'per-account risk settings',
   candles: 'market history, re-derivable from the feed',

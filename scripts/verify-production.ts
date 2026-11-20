@@ -240,6 +240,7 @@ async function main(): Promise<void> {
       'broker-health',
       'outbox-relay',
       'webhook-delivery',
+      'admin-alerts',
       'backup',
     ];
     const absent = EXPECTED.filter((name) => !seen.includes(name));

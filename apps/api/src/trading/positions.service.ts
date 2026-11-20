@@ -30,6 +30,7 @@ import { ConversionService } from '../market/conversion.service';
 import { AccountAccessService } from '../accounts/account-access.service';
 import { KillSwitchService } from '../operations/kill-switch.service';
 import { LedgerService } from '../accounts/ledger.service';
+import { FeesService } from '../fees/fees.service';
 import { AuditService } from '../common/audit/audit.service';
 import { EventsService } from '../realtime/events.service';
 import { TradingThrottle } from './trading-throttle.service';
@@ -114,6 +115,7 @@ export class PositionsService {
     private readonly accountState: AccountStateService,
     private readonly throttle: TradingThrottle,
     private readonly features: FeaturesService,
+    private readonly fees: FeesService,
   ) {}
 
   /**
@@ -404,7 +406,7 @@ export class PositionsService {
         quoteToAccountRate: rate,
       }).round();
       const exitCommission = commissionForLeg(
-        spec,
+        await this.fees.commissionSpec(spec, position.symbolCode, position.accountId),
         effectiveCloseVolume,
         position.accountCurrency,
         rate,

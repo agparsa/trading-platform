@@ -8,6 +8,8 @@ export * from './enums/position';
 export * from './enums/account';
 export * from './permissions';
 export * from './features';
+export * from './branding';
+export * from './admin-alerts';
 export * from './role-seed';
 export * from './notifications';
 export * from './worker-heartbeat';

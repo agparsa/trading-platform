@@ -11,6 +11,7 @@ import { ScheduleLogService } from './jobs/schedule-log.service';
 import { MaintenanceService } from './jobs/maintenance.service';
 import { NotificationsService } from './jobs/notifications.service';
 import { BrokerHealthService } from './jobs/broker-health.service';
+import { AdminAlertsService } from './jobs/admin-alerts.service';
 import { OutboxRelayService } from './jobs/outbox-relay.service';
 import { WebhookDeliveryService } from './jobs/webhook-delivery.service';
 import { ReportsService } from './jobs/reports.service';
@@ -78,6 +79,7 @@ import type { WorkerEnv } from './env';
         ),
     },
     BrokerHealthService,
+    AdminAlertsService,
     OutboxRelayService,
     WebhookDeliveryService,
     ReportsService,

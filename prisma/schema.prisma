@@ -164,6 +164,19 @@ model Tenant {
   /// Where a new account under this tenant executes unless the account says otherwise.
   defaultExecutionMode ExecutionMode @default(INTERNAL) @map("default_execution_mode")
 
+  /// Branding: what a visitor sees this firm called and coloured. Every field
+  /// is optional and falls back to the platform's own look. Set from
+  /// /admin/branding (`tenant.settings.manage`); served without a session at
+  /// `GET /branding`, because the sign-in page wears it. See docs/branding.md.
+  brandName        String? @map("brand_name")
+  /// `#rrggbb`, checked at 4.5:1 against the dark page background.
+  brandAccentDark  String? @map("brand_accent_dark")
+  /// `#rrggbb`, checked at 4.5:1 against the light page background.
+  brandAccentLight String? @map("brand_accent_light")
+  supportEmail     String? @map("support_email")
+  /// https only.
+  websiteUrl       String? @map("website_url")
+
   createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
   users                    User[]
@@ -229,6 +242,10 @@ model Tenant {
   webhookDeliveries        WebhookDelivery[]
   features                 TenantFeature[]
   reports                  Report[]
+  feeSchedules             FeeSchedule[]
+  feeRules                 FeeRule[]
+  adminAlertRules          AdminAlertRule[]
+  adminAlerts              AdminAlert[]
 
   @@map("tenants")
 }
@@ -470,6 +487,10 @@ model Account {
   balance  Decimal @default(0) @db.Decimal(28, 10)
   leverage Int     @default(100)
 
+  /// The commission schedule this account pays, when it is not the firm's
+  /// standard terms. See FeeSchedule.
+  feeScheduleId String? @map("fee_schedule_id") @db.Uuid
+
   version   Int      @default(0)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -490,12 +511,14 @@ model Account {
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   reconciliationItems ReconciliationItem[]
+  feeSchedule         FeeSchedule?         @relation(fields: [feeScheduleId], references: [id], onDelete: Restrict)
 
   /// Account numbers are a tenant's own sequence, and two tenants may reach TP-100001.
   @@unique([tenantId, number])
   @@unique([brokerConnectionId, externalAccountId])
   @@index([userId, status])
   @@index([tenantId])
+  @@index([feeScheduleId])
   @@map("accounts")
 }
 
@@ -546,6 +569,7 @@ model Symbol {
 
   tenantTerms    TenantSymbolTerms[]
   brokerMappings BrokerInstrumentMapping[]
+  feeRules       FeeRule[]
 
   @@map("symbols")
 }
@@ -590,6 +614,122 @@ model TenantSymbolTerms {
   @@unique([tenantId, symbolId])
   @@index([tenantId])
   @@map("tenant_symbol_terms")
+}
+
+/// A named commission schedule: what the accounts assigned to it pay per lot,
+/// instead of the firm's standard terms (TenantSymbolTerms, then the
+/// platform's SymbolSpec). A VIP tier, a desk's rate, an introducing broker's
+/// markup — whatever the firm calls it.
+///
+/// Resolution, per instrument, for an account on a schedule: the schedule's
+/// rule for that instrument; else the schedule's default rate; else the
+/// firm's standard terms. An account on no schedule pays the standard terms.
+/// Only commission: swap and margin stay the instrument's. See docs/fees.md.
+model FeeSchedule {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  name     String
+  note     String?
+
+  /// Per lot, in the instrument's quote currency, for every instrument this
+  /// schedule has no rule for. Null: those instruments pay the standard terms.
+  defaultCommissionPerLot Decimal? @map("default_commission_per_lot") @db.Decimal(28, 10)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  rules    FeeRule[]
+  accounts Account[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("fee_schedules")
+}
+
+/// One instrument's commission on one schedule.
+model FeeRule {
+  id               String  @id @default(uuid()) @db.Uuid
+  tenantId         String  @map("tenant_id") @db.Uuid
+  scheduleId       String  @map("schedule_id") @db.Uuid
+  symbolId         String  @map("symbol_id") @db.Uuid
+  /// Per lot per leg, in the instrument's quote currency. Never negative:
+  /// a rebate is not modelled, and a negative commission would be one.
+  commissionPerLot Decimal @map("commission_per_lot") @db.Decimal(28, 10)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  schedule FeeSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  symbol   Symbol      @relation(fields: [symbolId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, symbolId])
+  @@index([tenantId])
+  @@map("fee_rules")
+}
+
+/// A threshold an administrator wants to hear about: when a count the
+/// platform keeps crosses it, an AdminAlert is raised for the panel. Evaluated
+/// by the worker every minute. See docs/admin-alerts.md and
+/// `ADMIN_ALERT_METRICS` for what can be watched.
+model AdminAlertRule {
+  id              String  @id @default(uuid()) @db.Uuid
+  tenantId        String  @map("tenant_id") @db.Uuid
+  name            String
+  /// One of `AdminAlertMetric`.
+  metric          String
+  /// ABOVE or BELOW; strict.
+  comparator      String
+  threshold       Int
+  enabled         Boolean @default(true)
+  /// While a rule stays breached, raise again no sooner than this.
+  cooldownMinutes Int     @default(60) @map("cooldown_minutes")
+
+  /// The last reading, and whether it breached, so the panel shows where
+  /// each rule stands and the next reading knows whether this is a new breach.
+  lastValue       Int?      @map("last_value")
+  lastEvaluatedAt DateTime? @map("last_evaluated_at") @db.Timestamptz(6)
+  inBreach        Boolean   @default(false) @map("in_breach")
+  lastRaisedAt    DateTime? @map("last_raised_at") @db.Timestamptz(6)
+
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  alerts AdminAlert[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([enabled])
+  @@map("admin_alert_rules")
+}
+
+/// One raising of a rule: what it read and when, until somebody acknowledges it.
+model AdminAlert {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
+  ruleId     String @map("rule_id") @db.Uuid
+  /// Copied from the rule at the moment it fired, so editing the rule later
+  /// does not rewrite what this alert said.
+  ruleName   String @map("rule_name")
+  metric     String
+  comparator String
+  threshold  Int
+  value      Int
+
+  raisedAt         DateTime  @default(now()) @map("raised_at") @db.Timestamptz(6)
+  acknowledgedAt   DateTime? @map("acknowledged_at") @db.Timestamptz(6)
+  acknowledgedById String?   @map("acknowledged_by_id") @db.Uuid
+  note             String?
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  rule   AdminAlertRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, acknowledgedAt, raisedAt(sort: Desc)])
+  @@index([ruleId])
+  @@map("admin_alerts")
 }
 
 model SymbolSpec {

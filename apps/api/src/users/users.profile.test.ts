@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { updateProfileSchema } from './users.controller';
+import { normalisePhone, updateProfileSchema } from './users.controller';
 import { UsersService } from './users.service';
 
 describe('PATCH /users/me — what it accepts', () => {
   it('takes a phone number in international form, without the spaces people type', () => {
-    expect(updateProfileSchema.parse({ phone: '+98 912 123-4567' })).toEqual({
-      phone: '+989121234567',
-    });
+    expect(updateProfileSchema.safeParse({ phone: '+98 912 123-4567' }).success).toBe(true);
+    expect(normalisePhone('+98 912 123-4567')).toBe('+989121234567');
     expect(updateProfileSchema.parse({ phone: null })).toEqual({ phone: null });
   });
 

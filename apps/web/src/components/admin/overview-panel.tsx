@@ -1,9 +1,10 @@
 'use client';
 
+import Link from 'next/link';
 import { isTradingHalted } from '@tp/shared-types';
 import { cn } from '@tp/ui';
 import { Stat } from '@/components/primitives';
-import { useHaltTrading, useOperationsSummary } from '@/lib/admin-queries';
+import { useRaisedAlerts, useHaltTrading, useOperationsSummary } from '@/lib/admin-queries';
 import { utcTime } from '@/lib/format';
 import { ErrorLine, Head, Loading, ReasonedAction, Table } from './shared';
 
@@ -18,6 +19,7 @@ import { ErrorLine, Head, Loading, ReasonedAction, Table } from './shared';
 export function OverviewPanel() {
   const summary = useOperationsSummary();
   const halt = useHaltTrading();
+  const alerts = useRaisedAlerts('open');
 
   if (summary.isLoading) return <Loading>Reading the platform…</Loading>;
   if (summary.error !== null) return <ErrorLine error={summary.error} />;
@@ -29,6 +31,19 @@ export function OverviewPanel() {
 
   return (
     <div className="flex flex-col gap-4 p-3">
+      {(alerts.data?.open ?? 0) === 0 ? null : (
+        <Link
+          href="/admin/alerts"
+          className="flex items-center justify-between gap-3 rounded border border-terminal-warning/50 bg-terminal-warning/10 px-3 py-2 text-caption text-terminal-text transition-colors hover:bg-terminal-warning/15"
+          data-testid="overview-alerts"
+        >
+          <span>
+            <span className="numeric font-semibold text-terminal-warning">{alerts.data?.open}</span>{' '}
+            alert{alerts.data?.open === 1 ? '' : 's'} raised and not yet acknowledged.
+          </span>
+          <span className="text-terminal-muted">Open Alerts →</span>
+        </Link>
+      )}
       {/*
         The kill switch first, because during the incident where it matters
         nobody scrolls. Halting stops new risk; closing stays available, which

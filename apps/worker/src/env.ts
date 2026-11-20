@@ -66,6 +66,8 @@ export const workerEnvSchema = z.object({
   // Webhook deliveries (§49). Every minute like the relay; the backoff between
   // attempts lives on the row. See docs/webhooks.md.
   WEBHOOK_DELIVERY_CRON: cron('* * * * *'),
+  /** Admin alert rules, read once a minute. */
+  ADMIN_ALERTS_CRON: cron('* * * * *'),
   WEBHOOK_BATCH_SIZE: z.coerce.number().int().min(1).max(2000).default(100),
   /** Attempts per delivery, the first included. */
   WEBHOOK_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(8),

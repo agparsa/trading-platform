@@ -2971,6 +2971,135 @@ async function main(): Promise<void> {
       brokersBody.replace(/\s+/g, ' ').slice(0, 200),
     );
 
+    /**
+     * Branding, as the owner sets it: a colour too dark to read is refused with
+     * its ratio before it can be saved, a readable one is saved, and the name
+     * and support address then appear where a signed-out visitor sees them.
+     * Put back afterwards, so the rest of the run sees the default look.
+     */
+    await visit(adminPage, '/admin/branding', { url: '/admin/branding', text: /Accent colour/i });
+    await auditAccessibility(adminPage, 'the branding screen');
+    await adminPage.getByTestId('branding-accent-dark').fill('#1c5bc8');
+    const tooDark = await adminPage.getByText(/Too dark to read on the dark theme/i).isVisible();
+    const saveRefused = await adminPage.getByTestId('branding-save').isDisabled();
+    ok(
+      tooDark && saveRefused,
+      'an unreadable accent is refused with its ratio, and cannot be saved',
+    );
+    await adminPage.getByTestId('branding-accent-dark').fill('#33cc99');
+    await adminPage.getByTestId('branding-name').fill('Smoke Markets');
+    await adminPage.getByTestId('branding-email').fill('help@smoke.example');
+    await adminPage.getByTestId('branding-save').click();
+    const brandSaved = await adminPage
+      .getByText(/Saved\. Every page shows it/i)
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    ok(brandSaved, 'readable branding is saved');
+    {
+      const outsider = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      const visitorPage = await outsider.newPage();
+      await visitorPage.goto(`${WEB}/login`, { waitUntil: 'domcontentloaded' });
+      const named = await visitorPage
+        .getByRole('heading', { name: 'Smoke Markets' })
+        .waitFor({ timeout: 15_000 })
+        .then(
+          () => true,
+          () => false,
+        );
+      const help = await visitorPage
+        .getByTestId('support-line')
+        .innerText()
+        .catch(() => '');
+      const accent = await visitorPage.evaluate(
+        "getComputedStyle(document.documentElement).getPropertyValue('--color-terminal-accent').trim()",
+      );
+      const title = await visitorPage.title();
+      ok(
+        named &&
+          help.includes('help@smoke.example') &&
+          accent === '#33cc99' &&
+          title === 'Smoke Markets',
+        'a signed-out visitor sees the firm’s name, colour and support address',
+        `name ${String(named)}, help "${help}", accent ${String(accent)}, title "${title}"`,
+      );
+      await outsider.close();
+    }
+    {
+      // Back to the default look, through the page: the server's cache is
+      // dropped by its own write, not by a row changed behind its back.
+      for (const id of ['branding-accent-dark', 'branding-name', 'branding-email']) {
+        await adminPage.getByTestId(id).fill('');
+      }
+      await adminPage.getByTestId('branding-save').click();
+      const restored = await adminPage
+        .getByText(/Saved\. Every page shows it/i)
+        .waitFor({ timeout: 10_000 })
+        .then(
+          () => true,
+          () => false,
+        );
+      const audited = await prisma.auditLog.count({ where: { action: 'BRANDING_UPDATED' } });
+      ok(
+        restored && audited >= 2,
+        'clearing the branding restores the default, and both changes are audited',
+      );
+    }
+
+    /**
+     * Fees: a schedule written through the form lands in the list with its
+     * rate, and the report reads the ledger. What the engine charges for a
+     * schedule is `fees.test.ts`; this is that the screen reaches it.
+     */
+    await visit(adminPage, '/admin/fees', { url: '/admin/fees', text: /Commission schedules/i });
+    await auditAccessibility(adminPage, 'the fees screen');
+    await adminPage.getByTestId('fees-new').click();
+    await adminPage.getByTestId('fees-name').fill('Smoke VIP');
+    await adminPage.getByTestId('fees-add-symbol').selectOption('XAUUSD');
+    await adminPage.getByTestId('fees-add').click();
+    await adminPage.getByTestId('fees-rate-XAUUSD').fill('1.5');
+    await adminPage.getByTestId('fees-save').click();
+    const scheduleListed = await adminPage
+      .getByRole('cell', { name: 'Smoke VIP' })
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    ok(scheduleListed, 'a commission schedule written in the form is listed');
+    await adminPage.getByRole('tab', { name: /Fees charged/i }).click();
+    const reportShown = await adminPage
+      .getByText(/From the ledger/i)
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    ok(reportShown, 'the fees report opens, and says it reads the ledger');
+
+    /**
+     * Alerts: a rule written through the form is listed and waits for its
+     * first reading; the worker that reads it is `admin-alerts.test.ts`.
+     */
+    await visit(adminPage, '/admin/alerts', { url: '/admin/alerts', text: /Rules/i });
+    await auditAccessibility(adminPage, 'the alerts screen');
+    await adminPage.getByTestId('alerts-new').click();
+    await adminPage.getByTestId('alerts-name').fill('Smoke sign-ups');
+    await adminPage.getByTestId('alerts-metric').selectOption('REGISTRATIONS_24H');
+    await adminPage.getByTestId('alerts-threshold').fill('1000');
+    await adminPage.getByTestId('alerts-save').click();
+    const ruleListed = await adminPage
+      .getByText('Smoke sign-ups')
+      .first()
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    ok(ruleListed, 'an alert rule written in the form is listed');
+
     console.log('\n  A trader reaching an administrative URL\n');
     await visit(page, '/admin/people', { url: '/admin/people' });
     /**

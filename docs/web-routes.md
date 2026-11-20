@@ -30,6 +30,9 @@ Every screen has an address now. The terminal did not change.
 | `/status`               | build and deployment status                                                                                         |
 | `/admin`                | redirects to `/admin/overview`                                                                                      |
 | `/admin/overview`       | platform figures                                                                                                    |
+| `/admin/alerts`         | threshold rules on counts the platform keeps, and the alerts they raised                                            |
+| `/admin/fees`           | commission schedules, and commission and swap charged                                                               |
+| `/admin/branding`       | the firm's name, accent colours and support contact                                                                 |
 | `/admin/people`         | search people                                                                                                       |
 | `/admin/people/:id`     | one person, their accounts and sessions                                                                             |
 | `/admin/accounts`       | search accounts                                                                                                     |

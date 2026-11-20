@@ -221,15 +221,12 @@ webhooks (Phase 12) and the admin view over a person's devices. A plan that
 under-reports what exists gets the work done twice; `panel-claims.test.ts` now
 reads this paragraph and fails it when it names a feature the code has.
 
-**Not built, and stated as such:** Fees as a section (commission and swap are
-edited per instrument; there is no schedule, override or rebate model, and
-spread comes from the feed); Alerts (price alerts are Phase 8; admin threshold
-rules are not designed); Branding (the `Tenant` model has no visual field;
-Phase 14 flags a feature nobody has written). The OpenAPI reference, once on
-this list, is built: served behind a session in every environment
-(`/developer/openapi.json`); only Swagger's own UI stays development-only, on
-purpose.
-[broker-panel.md](./broker-panel.md).
+**Not built, and stated as such:** nothing on this list any more. The three
+that were — the fee section, admin threshold rules and the firm's look — were
+built on 20 November 2026 and are described in `fees.md`, `admin-alerts.md`
+and `branding.md`. The OpenAPI reference, once on this list, is built: served
+behind a session in every environment (`/developer/openapi.json`); only
+Swagger's own UI stays development-only, on purpose.
 
 ## Phase 6 — Trading terminal UX upgrade · **partly done**
 

@@ -40,13 +40,13 @@ reads as currency.
 <!-- measured:begin -->
 
 **4 applications** (`api`, `web`, `worker`, `mobile`) and
-**21 workspace packages**, on **70 Prisma models**
-with **61 migrations** applied, serving **246 API routes**.
+**21 workspace packages**, on **74 Prisma models**
+with **64 migrations** applied, serving **262 API routes**.
 
-Roughly **191,000 lines** of TypeScript across
-984 files.
+Roughly **195,000 lines** of TypeScript across
+1,009 files.
 
-Counted at `d5c068f` on 2026-11-19 by `pnpm measure`. The
+Counted at `e771657` on 2026-11-20 by `pnpm measure`. The
 structural counts above are checked against the working tree on every build;
 the line and file counts move with every commit and are as old as the date
 beside them.
@@ -103,11 +103,11 @@ code" list named webhooks, KYC, the Security Centre and wallets — each built,
 tested and in production for weeks — and the admin panel was "13 sections"
 with 21 deployed. Nothing compared them to anything.
 
-| §   | Area        | What exists                                                                                                                                                                                                                                                     | What is missing                                                                                                 |
-| --- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| 29  | Admin panel | 22 sections at their own addresses — overview, people, accounts, instruments, market-data, risk, book, desks, brokers, connections, credentials, features, payments, kyc, withdrawals, reconciliation, reports, notifications, security, webhooks, roles, audit | Fees, admin alert rules and Branding — the list `broker-panel.md` §5 keeps, which `panel-claims.test.ts` checks |
-| 6   | KYC         | records and documents, manual review with its own permission, identity re-checked before a withdrawal is approved                                                                                                                                               | an identity-verification provider                                                                               |
-| 35  | Finance     | wallets, transfers bounded by free margin, manual deposits and corrections, freeze, full audit, deposits through a provider port, withdrawals held at request and approved by FINANCE                                                                           | a third-party payment provider (a commercial decision, see below) and a payout rail for withdrawals             |
+| §   | Area        | What exists                                                                                                                                                                                                                                                                             | What is missing                                                                                     |
+| --- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 29  | Admin panel | 25 sections at their own addresses — overview, people, accounts, instruments, market-data, risk, alerts, book, desks, brokers, connections, credentials, branding, features, fees, payments, kyc, withdrawals, reconciliation, reports, notifications, security, webhooks, roles, audit | what each section still does not do — `broker-panel.md` §5, which `panel-claims.test.ts` checks     |
+| 6   | KYC         | records and documents, manual review with its own permission, identity re-checked before a withdrawal is approved                                                                                                                                                                       | an identity-verification provider                                                                   |
+| 35  | Finance     | wallets, transfers bounded by free margin, manual deposits and corrections, freeze, full audit, deposits through a provider port, withdrawals held at request and approved by FINANCE                                                                                                   | a third-party payment provider (a commercial decision, see below) and a payout rail for withdrawals |
 
 ## Does not exist — zero code
 
@@ -393,11 +393,11 @@ Forty-eight new tests. Eight mutations run, seven caught outright; the survivor
 was a real gap — nothing tested the case the cursor's id half exists for, so a
 test now pages through six orders sharing one timestamp and fails without it.
 
-**Not built, named rather than stubbed:** Fees as a section, Alerts (admin
-threshold rules) and Branding. Each is listed in
-[broker-panel.md](./broker-panel.md) with where it belongs. (The OpenAPI
-reference was on this list; it has since been served behind a session in every
-environment.)
+**Not built, named rather than stubbed:** nothing on the panel's list any more.
+The last three were built on 20 November 2026 — see `fees.md`,
+`admin-alerts.md` and `branding.md`; what each still does not do is in
+[broker-panel.md](./broker-panel.md) §5. (The OpenAPI reference was on this
+list; it has since been served behind a session in every environment.)
 
 Reports, IP rules, outbound webhooks and the admin device view were on that
 list long after they shipped; `panel-claims.test.ts` reads the paragraph

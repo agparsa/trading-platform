@@ -15,6 +15,7 @@ import type { WorkerEnv } from './env';
 import { SwapAccrualService } from './jobs/swap-accrual.service';
 import { ReconciliationService } from './jobs/reconciliation.service';
 import { BrokerHealthService } from './jobs/broker-health.service';
+import { AdminAlertsService } from './jobs/admin-alerts.service';
 import { OutboxRelayService } from './jobs/outbox-relay.service';
 import { WebhookDeliveryService } from './jobs/webhook-delivery.service';
 import { ReportsService } from './jobs/reports.service';
@@ -39,6 +40,7 @@ const SCHEDULED: ReadonlyArray<readonly [QueueName, keyof WorkerEnv]> = [
   [QueueName.BROKER_HEALTH, 'BROKER_HEALTH_CRON'],
   [QueueName.OUTBOX_RELAY, 'OUTBOX_RELAY_CRON'],
   [QueueName.WEBHOOK_DELIVERY, 'WEBHOOK_DELIVERY_CRON'],
+  [QueueName.ADMIN_ALERTS, 'ADMIN_ALERTS_CRON'],
 ];
 
 /**
@@ -67,6 +69,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly outbox: OutboxRelayService,
     private readonly webhooks: WebhookDeliveryService,
     private readonly reports: ReportsService,
+    private readonly adminAlerts: AdminAlertsService,
     private readonly scheduleLog: ScheduleLogService,
     private readonly prisma: PrismaService,
   ) {
@@ -137,6 +140,7 @@ export class QueueRegistry implements OnApplicationBootstrap, OnModuleDestroy {
     this.attach(QueueName.BROKER_HEALTH, async () => this.brokerHealth.sweep());
     this.attach(QueueName.OUTBOX_RELAY, async () => this.outbox.relay());
     this.attach(QueueName.WEBHOOK_DELIVERY, async () => this.webhooks.deliverDue());
+    this.attach(QueueName.ADMIN_ALERTS, async () => this.adminAlerts.evaluate());
     this.attach(QueueName.REPORTS, async (job) => ({
       outcome: await this.reports.build(String((job.data as { reportId?: string }).reportId ?? '')),
     }));

@@ -34,9 +34,19 @@ export type NavIconName =
   | 'menu'
   | 'close'
   | 'logout'
-  | 'admin';
+  | 'admin'
+  | 'branding'
+  | 'fees'
+  | 'alerts';
 
 const PATHS: Readonly<Record<NavIconName, string>> = {
+  // A palette: the firm's colours.
+  branding:
+    'M12 3a9 9 0 1 0 0 18c1.1 0 1.5-.8 1.5-1.6 0-.9-.6-1.4-.6-2.2 0-.9.7-1.6 1.6-1.6H17a4 4 0 0 0 4-4C21 6.8 17 3 12 3zM7.5 12.5h.01M9.5 8h.01M14.5 8h.01M17 11.5h.01',
+  // A receipt: what a trade cost.
+  fees: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3',
+  // A bell with a rising line: a figure crossed a threshold.
+  alerts: 'M12 3v2M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21a2 2 0 0 0 4 0',
   dashboard: 'M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z',
   terminal:
     'M4 20V4M4 20h16M7.5 9.5v6M7.5 7v2.5M7.5 15.5V17M12.5 7v5M12.5 5v2M12.5 12v3M17.5 10v4M17.5 8v2M17.5 14v2',

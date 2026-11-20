@@ -136,6 +136,8 @@ export interface AccountSummary {
   balance: string;
   leverage: number;
   createdAt: string;
+  /** The fee schedule's rates when the account is on one; `null` means the instrument's own. */
+  commission?: { default: string | null; bySymbol: Record<string, string> } | null;
 }
 
 export interface AccountStateResponse {

@@ -41,6 +41,7 @@ import { Button, Panel, Tabs } from './primitives';
 import { Watchlist } from './watchlist';
 import { PhoneTerminal } from './phone-terminal';
 import { PHONE_QUERY, useMediaQuery } from '@/lib/use-media-query';
+import { useBrandName } from '@/lib/branding';
 import { useT } from '@/lib/use-locale';
 
 type BottomTab = 'open' | 'pending' | 'alerts' | 'finance' | 'logs' | HistoryTab;
@@ -63,6 +64,7 @@ type BottomTab = 'open' | 'pending' | 'alerts' | 'finance' | 'logs' | HistoryTab
 export function Terminal() {
   const { user, accountId, signOut, accessToken } = useSession();
   const t = useT();
+  const brandName = useBrandName();
   const queryClient = useQueryClient();
 
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
@@ -280,7 +282,7 @@ export function Terminal() {
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-y-2 border-b border-terminal-border px-4 py-2">
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold tracking-tight text-terminal-text">
-            {t('shell.brand')}
+            {brandName}
           </span>
           <ConnectionBadge />
           {/*

@@ -38,6 +38,7 @@ import { Prisma } from '@prisma/client';
 import { OrderTimeline } from './order-timeline';
 import { PrismaService } from '../prisma/prisma.service';
 import { FeaturesService } from '../features/features.service';
+import { FeesService } from '../fees/fees.service';
 import { SymbolsService } from '../symbols/symbols.service';
 import { QuoteService } from '../market/quote.service';
 import { ConversionService } from '../market/conversion.service';
@@ -163,6 +164,7 @@ export class OrdersService {
     private readonly throttle: TradingThrottle,
     @Inject(ConfigService) private readonly config: ConfigService<Env, true>,
     private readonly features: FeaturesService,
+    private readonly fees: FeesService,
   ) {}
 
   /**
@@ -270,7 +272,13 @@ export class OrdersService {
       notionalValue(spec, volume, entryPrice),
       spec.quoteCurrency,
     ).convertTo(account.currency, rate);
-    const commission = commissionForLeg(spec, volume, account.currency, rate);
+    // What this account pays: its fee schedule's rate when it has one.
+    const commission = commissionForLeg(
+      await this.fees.commissionSpec(spec, symbolCode, account.id),
+      volume,
+      account.currency,
+      rate,
+    );
 
     const valuation = await this.accountState.valuate(account.id);
     const context = await this.riskContext.build(valuation, now);
@@ -524,7 +532,13 @@ export class OrdersService {
       notionalValue(spec, volume, entryPrice),
       spec.quoteCurrency,
     ).convertTo(account.currency, rate);
-    const commission = commissionForLeg(spec, volume, account.currency, rate);
+    // What this account pays: its fee schedule's rate when it has one.
+    const commission = commissionForLeg(
+      await this.fees.commissionSpec(spec, symbolCode, account.id),
+      volume,
+      account.currency,
+      rate,
+    );
 
     const proposed: ProposedOrder = {
       symbol: symbolCode,
@@ -1160,7 +1174,12 @@ export class OrdersService {
         notionalValue(spec, volume, fillPrice),
         spec.quoteCurrency,
       ).convertTo(order.account.currency, rate);
-      const commission = commissionForLeg(spec, volume, order.account.currency, rate);
+      const commission = commissionForLeg(
+        await this.fees.commissionSpec(spec, order.symbol.code, order.accountId),
+        volume,
+        order.account.currency,
+        rate,
+      );
 
       const proposed = {
         symbol: symbolCode,

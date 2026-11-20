@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type KillSwitchState, Permission } from '@tp/shared-types';
+import { type Branding, type KillSwitchState, Permission } from '@tp/shared-types';
 import { usePermissions } from './queries';
 import { useSession } from './session';
 
@@ -45,6 +45,8 @@ export interface AdminAccountRow {
   positions: number;
   userId: string;
   email: string;
+  /** Present on the one-account read: the commission schedule it pays, if any. */
+  feeSchedule?: { id: string; name: string } | null;
 }
 
 export interface AdminSessionRow {
@@ -174,6 +176,8 @@ const adminKeys = {
   ipRules: ['admin', 'ip-rules'] as const,
   webhooks: ['admin', 'webhooks'] as const,
   features: ['admin', 'features'] as const,
+  branding: ['admin', 'branding'] as const,
+  feeSchedules: ['admin', 'fees', 'schedules'] as const,
   brokerFeatures: (id: string) => ['admin', 'broker-features', id] as const,
   webhookEvents: ['admin', 'webhook-events'] as const,
   webhookDeliveries: (id: string) => ['admin', 'webhook-deliveries', id] as const,
@@ -2694,6 +2698,257 @@ export function useRequestReport() {
       mutationFn: (input: { kind: string; from: string; to: string; accountId?: string }) =>
         api.post<ReportRow>('/reports', input, { idempotencyKey: crypto.randomUUID() }),
       onSuccess: () => void client.invalidateQueries({ queryKey: ['admin', 'reports'] }),
+    }),
+  );
+}
+
+/** The firm's branding, for editing (`tenant.settings.manage`). */
+export function useAdminBranding() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.branding,
+    queryFn: () => api.get<Branding>('/admin/branding'),
+  });
+}
+
+/** A field left out is unchanged; `null` returns it to the platform's default. */
+export function useSaveBranding() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useGated(
+    Permission.TENANT_SETTINGS_MANAGE,
+    useMutation({
+      mutationFn: (change: Partial<Branding>) =>
+        api.put<Branding>('/admin/branding', change, { idempotencyKey: crypto.randomUUID() }),
+      onSuccess: () => {
+        void client.invalidateQueries({ queryKey: adminKeys.branding });
+        // The public copy every page wears.
+        void client.invalidateQueries({ queryKey: ['branding'] });
+      },
+    }),
+  );
+}
+
+export interface FeeScheduleRow {
+  id: string;
+  name: string;
+  note: string | null;
+  defaultCommissionPerLot: string | null;
+  rules: Array<{ symbol: string; commissionPerLot: string }>;
+  accounts: number;
+  updatedAt: string;
+}
+
+export interface FeeScheduleInput {
+  name: string;
+  note: string | null;
+  defaultCommissionPerLot: string | null;
+  rules: Array<{ symbol: string; commissionPerLot: string }>;
+}
+
+export interface FeeLine {
+  currency: string;
+  commission: string;
+  swap: string;
+}
+
+export interface FeeReport {
+  from: string;
+  to: string;
+  totals: FeeLine[];
+  bySymbol: Array<FeeLine & { symbol: string }>;
+  topAccounts: Array<{
+    accountId: string;
+    number: string;
+    schedule: string | null;
+    currency: string;
+    commission: string;
+  }>;
+  truncated: boolean;
+}
+
+export function useFeeSchedules() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: adminKeys.feeSchedules,
+    queryFn: () => api.get<{ schedules: FeeScheduleRow[] }>('/admin/fees/schedules'),
+  });
+}
+
+export function useSaveFeeSchedule() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useGated(
+    Permission.INSTRUMENTS_MANAGE,
+    useMutation({
+      mutationFn: (input: { id?: string; schedule: FeeScheduleInput }) =>
+        input.id === undefined
+          ? api.post<FeeScheduleRow>('/admin/fees/schedules', input.schedule, {
+              idempotencyKey: crypto.randomUUID(),
+            })
+          : api.put<FeeScheduleRow>(`/admin/fees/schedules/${input.id}`, input.schedule, {
+              idempotencyKey: crypto.randomUUID(),
+            }),
+      onSuccess: () => void client.invalidateQueries({ queryKey: ['admin', 'fees'] }),
+    }),
+  );
+}
+
+export function useDeleteFeeSchedule() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useGated(
+    Permission.INSTRUMENTS_MANAGE,
+    useMutation({
+      mutationFn: (id: string) =>
+        api.delete(`/admin/fees/schedules/${id}`, { idempotencyKey: crypto.randomUUID() }),
+      onSuccess: () => void client.invalidateQueries({ queryKey: ['admin', 'fees'] }),
+    }),
+  );
+}
+
+export function useAssignFeeSchedule() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useGated(
+    Permission.ACCOUNTS_MANAGE,
+    useMutation({
+      mutationFn: (input: { accountId: string; scheduleId: string | null; reason: string }) =>
+        api.post(
+          `/admin/fees/accounts/${input.accountId}`,
+          { scheduleId: input.scheduleId, reason: input.reason },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: () => void client.invalidateQueries({ queryKey: ['admin'] }),
+    }),
+  );
+}
+
+export function useFeeReport(from: string, to: string) {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'fees', 'report', from, to],
+    queryFn: () =>
+      api.get<FeeReport>(
+        `/admin/fees/report?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      ),
+  });
+}
+
+export interface AlertMetricRow {
+  metric: string;
+  label: string;
+  description: string;
+}
+
+export interface AlertRuleRow {
+  id: string;
+  name: string;
+  metric: string;
+  comparator: 'ABOVE' | 'BELOW';
+  threshold: number;
+  enabled: boolean;
+  cooldownMinutes: number;
+  lastValue: number | null;
+  lastEvaluatedAt: string | null;
+  inBreach: boolean;
+  lastRaisedAt: string | null;
+  updatedAt: string;
+}
+
+export interface AlertRuleInput {
+  name: string;
+  metric: string;
+  comparator: 'ABOVE' | 'BELOW';
+  threshold: number;
+  cooldownMinutes: number;
+  enabled: boolean;
+}
+
+export interface RaisedAlertRow {
+  id: string;
+  ruleId: string;
+  ruleName: string;
+  metric: string;
+  comparator: string;
+  threshold: number;
+  value: number;
+  raisedAt: string;
+  acknowledgedAt: string | null;
+  note: string | null;
+}
+
+export function useAlertMetrics() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'alerts', 'metrics'],
+    queryFn: () => api.get<{ metrics: AlertMetricRow[] }>('/admin/alerts/metrics'),
+    staleTime: Infinity,
+  });
+}
+
+export function useAlertRules() {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'alerts', 'rules'],
+    queryFn: () => api.get<{ rules: AlertRuleRow[] }>('/admin/alerts/rules'),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useRaisedAlerts(state: 'open' | 'all') {
+  const { api } = useSession();
+  return useQuery({
+    queryKey: ['admin', 'alerts', 'raised', state],
+    queryFn: () =>
+      api.get<{ open: number; alerts: RaisedAlertRow[] }>(`/admin/alerts?state=${state}&limit=100`),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useSaveAlertRule() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useGated(
+    Permission.SYSTEM_OPERATIONS,
+    useMutation({
+      mutationFn: (input: { id?: string; rule: AlertRuleInput }) =>
+        input.id === undefined
+          ? api.post('/admin/alerts/rules', input.rule, { idempotencyKey: crypto.randomUUID() })
+          : api.put(`/admin/alerts/rules/${input.id}`, input.rule, {
+              idempotencyKey: crypto.randomUUID(),
+            }),
+      onSuccess: () => void client.invalidateQueries({ queryKey: ['admin', 'alerts'] }),
+    }),
+  );
+}
+
+export function useDeleteAlertRule() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useGated(
+    Permission.SYSTEM_OPERATIONS,
+    useMutation({
+      mutationFn: (id: string) =>
+        api.delete(`/admin/alerts/rules/${id}`, { idempotencyKey: crypto.randomUUID() }),
+      onSuccess: () => void client.invalidateQueries({ queryKey: ['admin', 'alerts'] }),
+    }),
+  );
+}
+
+export function useAcknowledgeAlert() {
+  const { api } = useSession();
+  const client = useQueryClient();
+  return useGated(
+    Permission.SYSTEM_OPERATIONS,
+    useMutation({
+      mutationFn: (input: { id: string; note: string }) =>
+        api.post(
+          `/admin/alerts/${input.id}/acknowledge`,
+          { note: input.note.trim() === '' ? null : input.note.trim() },
+          { idempotencyKey: crypto.randomUUID() },
+        ),
+      onSuccess: () => void client.invalidateQueries({ queryKey: ['admin', 'alerts'] }),
     }),
   );
 }

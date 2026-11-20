@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  commissionPerLotFor,
   estimateCosts,
   inlineStartVolume,
   projectedOutcome,
@@ -339,5 +340,20 @@ describe('rewardToRisk', () => {
   it('says nothing when either side is missing', () => {
     expect(rewardToRisk(null, '-372')).toBeNull();
     expect(rewardToRisk('628', null)).toBeNull();
+  });
+});
+
+describe('commissionPerLotFor', () => {
+  const spec = { code: 'XAUUSD', commissionPerLot: '7' };
+  it('is the instrument’s own rate for an account on no schedule', () => {
+    expect(commissionPerLotFor(spec, { commission: null })).toBe('7');
+    expect(commissionPerLotFor(spec, undefined)).toBe('7');
+  });
+  it('is the schedule’s rate for the instrument, then its default, then the instrument’s', () => {
+    expect(
+      commissionPerLotFor(spec, { commission: { default: '3', bySymbol: { XAUUSD: '1.25' } } }),
+    ).toBe('1.25');
+    expect(commissionPerLotFor(spec, { commission: { default: '3', bySymbol: {} } })).toBe('3');
+    expect(commissionPerLotFor(spec, { commission: { default: null, bySymbol: {} } })).toBe('7');
   });
 });

@@ -938,6 +938,7 @@ export const en = {
   'profile.resend': 'Send a new link',
   'profile.resent': 'Sent. Only the newest link works.',
   'dash.check.emailPending': 'Not yet — check your inbox',
+  'brand.help': 'Need help?',
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1867,6 +1868,7 @@ export const fa: Messages = {
   'profile.resend': 'ارسال لینک تازه',
   'profile.resent': 'ارسال شد. فقط تازه‌ترین لینک کار می‌کند.',
   'dash.check.emailPending': 'هنوز نه — صندوق ورودی را ببینید',
+  'brand.help': 'کمک لازم دارید؟',
 };
 
 const TABLES: Record<Locale, Messages> = { en, fa };

@@ -23,6 +23,7 @@ services, not the queues.
 | `broker-health`     | `* * * * *`        | Polls each venue connection and ages its credentials                                                     | an expiry nobody sees coming         |
 | `outbox-relay`      | `* * * * *`        | Moves committed events out of the outbox                                                                 | every event stops leaving            |
 | `webhook-delivery`  | `* * * * *`        | Delivers due webhook attempts                                                                            | deliveries stay due for ever         |
+| `admin-alerts`      | `* * * * *`        | Reads every admin alert rule and raises what crossed its threshold                                       | a threshold crossed unseen           |
 | `reports`           | on demand          | Builds a requested export                                                                                | —                                    |
 | `notifications`     | on demand          | Delivers a push notification                                                                             | —                                    |
 | `account-snapshot`  | —                  | **No processor yet.** Needs live valuation; see below                                                    | —                                    |
