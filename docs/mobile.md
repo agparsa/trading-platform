@@ -34,18 +34,17 @@ would have led to screens of "could not load". Fixed in `token-store.ts`
 keychain, the camera, and native layout details; `secure-store.web.ts` and
 `chart-frame.web.tsx` are the preview's stand-ins.
 
-**The app is bilingual (19 November).** Persian and English, every sentence in
-`src/lib/messages.ts` (a test holds the two to the same keys and placeholders,
-and Persian to Latin digits, as on the web). Persian lays the whole tree out
-right to left with Yoga's `direction: 'rtl'`, so switching needs no restart.
-The phone's language picks the first one; More and the sign-in screen switch
-it, and the choice is remembered. Server refusals are shown by their code in
-the reader's language, with the server's own (English) specifics after it in
-Persian — the web terminal's rule.
+**English only (since 19 November), Persian kept.** Every sentence is in
+`src/lib/messages.ts` in both languages (a test holds the two to the same keys
+and placeholders, and Persian to Latin digits, as on the web), but `OFFERED` in
+`src/lib/i18n.tsx` lists English alone, so no screen offers a choice. When
+Persian is offered again it lays the whole tree out right to left with Yoga's
+`direction: 'rtl'`, and server refusals are shown by their code in the
+reader's language with the server's own specifics after it.
 
 **Five tabs (19 November):** Quotes, Chart, Trade (the account's figures over
 positions and orders), History, More (accounts, account details,
-notifications, profile and security, settings, language, sign out). Eight tabs
+notifications, profile and security, settings, sign out). Eight tabs
 left each one an unreadable label.
 
 **Nothing past the sign-in screen has been verified on a device.** Compiling
@@ -115,6 +114,21 @@ never receive a notification; see notifications.md, "The Android app's half".
 The APK is signed with the React Native template's **debug keystore**, which is
 public. It installs and runs; it is not a store build. A release to Play needs
 an upload key that only its owner should ever hold.
+
+Every APK handed out so far (0.2.0, 0.3.0, 0.4.0) carries that key —
+certificate SHA-256 `fac61745…033b9c` — which is why each installs over the
+last. Two consequences. Anyone can sign an APK with the same public key, so a
+file passed around outside this channel could pose as an update; and moving to
+a private key later means one uninstall-and-reinstall for every phone, because
+Android refuses an update signed by a different key. Do that move before the
+app goes beyond testers, not after.
+
+**Building it in a fresh container (0.4.0, 21 November).** The Android SDK is
+not preinstalled: `commandlinetools-linux` into `/opt/android-sdk`, then
+`sdkmanager "platform-tools" "build-tools;36.0.0" "platforms;android-36"`
+(Gradle fetches the NDK and CMake itself). On a 7 GiB, two-core machine the
+all-architecture build was killed for memory; build what is shipped —
+`./gradlew assembleRelease --max-workers=2 -PreactNativeArchitectures=arm64-v8a`.
 
 ### iOS
 

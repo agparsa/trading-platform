@@ -3,7 +3,7 @@
     "name": "Trading Platform",
     "slug": "trading-platform",
     "scheme": "tradingplatform",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -18,7 +18,7 @@
     "android": {
       "package": "ir.devopss.trading",
       "permissions": ["POST_NOTIFICATIONS", "VIBRATE", "CAMERA"],
-      "versionCode": 3
+      "versionCode": 4
     },
     "plugins": [
       "expo-router",
