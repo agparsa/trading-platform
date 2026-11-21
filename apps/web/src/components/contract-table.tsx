@@ -1,5 +1,7 @@
 'use client';
 
+import { commissionPerLotFor } from '@/lib/ticket';
+import type { AccountSummary } from '@/lib/queries';
 import { Fragment, useState } from 'react';
 import { toneClass, toneOf } from '@/lib/format';
 import { marketNotice } from '@/lib/market-state';
@@ -22,10 +24,13 @@ import { EmptyState } from './primitives';
 export function ContractTable({
   symbols,
   leverage,
+  commission,
 }: {
   symbols: readonly SymbolRow[];
   /** The selected account's leverage; absent, only the instrument's rate is shown. */
   leverage: number | undefined;
+  /** The selected account's fee schedule, when it is on one: its commission is the account's. */
+  commission?: AccountSummary['commission'];
 }) {
   const [open, setOpen] = useState<string | null>(null);
   if (symbols.length === 0) return <EmptyState>No instruments are enabled.</EmptyState>;
@@ -70,36 +75,43 @@ export function ContractTable({
                     {symbol.category ? ` · ${symbol.category}` : ''}
                   </div>
                 </td>
-                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
+                <td className="numeric whitespace-nowrap px-2 py-1.5 text-end text-terminal-text">
                   {plain(symbol.contractSize)}
-                  <div className="text-caption text-terminal-muted">
+                  <div className="font-sans text-caption text-terminal-muted">
                     quoted in {symbol.quoteCurrency}
                   </div>
                 </td>
-                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
+                <td className="numeric whitespace-nowrap px-2 py-1.5 text-end text-terminal-text">
                   {plain(symbol.tickSize)}
-                  <div className="text-caption text-terminal-muted">
+                  <div className="font-sans text-caption text-terminal-muted">
                     {tickValuePerLot(symbol)} {symbol.quoteCurrency} a lot
                   </div>
                 </td>
-                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
+                <td className="numeric whitespace-nowrap px-2 py-1.5 text-end text-terminal-text">
                   {plain(symbol.minVolume)} – {plain(symbol.maxVolume)}
-                  <div className="text-caption text-terminal-muted">
+                  <div className="font-sans text-caption text-terminal-muted">
                     step {plain(symbol.volumeStep)}
                   </div>
                 </td>
-                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
+                <td className="numeric whitespace-nowrap px-2 py-1.5 text-end text-terminal-text">
                   {margin.charged ?? margin.instrument}
                   {margin.leverageBinds ? (
-                    <div className="text-caption text-terminal-muted">
+                    <div className="whitespace-normal font-sans text-caption text-terminal-muted">
                       instrument {margin.instrument}; your leverage sets it
                     </div>
                   ) : null}
                 </td>
-                <td className="numeric px-2 py-1.5 text-end text-terminal-text">
-                  {plain(symbol.commissionPerLot)} {symbol.quoteCurrency}
+                <td className="numeric whitespace-nowrap px-2 py-1.5 text-end text-terminal-text">
+                  {plain(commissionPerLotFor(symbol, { commission: commission ?? null }))}{' '}
+                  {symbol.quoteCurrency}
+                  {commissionPerLotFor(symbol, { commission: commission ?? null }) !==
+                  symbol.commissionPerLot ? (
+                    <div className="font-sans text-caption text-terminal-muted">
+                      your rate; standard {plain(symbol.commissionPerLot)}
+                    </div>
+                  ) : null}
                 </td>
-                <td className="numeric px-2 py-1.5 text-end">
+                <td className="numeric whitespace-nowrap px-2 py-1.5 text-end">
                   <span className={toneClass[toneOf(symbol.swapLongPerLot)]}>
                     {plain(symbol.swapLongPerLot)}
                   </span>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { cn } from '@tp/ui';
 import { Button, type ButtonGate, inputClass } from '@/components/primitives';
 import {
@@ -108,7 +109,14 @@ export function AccountRow({
   return (
     <>
       <tr className="border-t border-terminal-border/60 hover:bg-terminal-raised/30">
-        <td className="numeric px-2 py-1.5 text-terminal-text">{account.number}</td>
+        <td className="numeric px-2 py-1.5">
+          <Link
+            href={`/admin/accounts/${account.id}`}
+            className="text-terminal-text underline-offset-2 hover:text-terminal-accent hover:underline"
+          >
+            {account.number}
+          </Link>
+        </td>
         <td className="px-2 py-1.5 text-terminal-muted">{account.email}</td>
         <td className="px-2 py-1.5 text-terminal-muted">{account.type}</td>
         <td className="px-2 py-1.5">

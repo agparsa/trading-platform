@@ -31,7 +31,7 @@ export default function InstrumentsPage() {
   const enabled = (symbols.data ?? []).filter((symbol) => symbol.enabled);
 
   return (
-    <AppShell title={t('nav.instruments')} description={t('instruments.description')}>
+    <AppShell title={t('nav.instruments')} description={t('instruments.description')} wide>
       {symbols.isLoading ? (
         <EmptyState>{t('common.loading')}</EmptyState>
       ) : symbols.isError ? (
@@ -63,7 +63,11 @@ export default function InstrumentsPage() {
             </p>
           )}
           <Panel className="overflow-auto">
-            <ContractTable symbols={enabled} leverage={account?.leverage} />
+            <ContractTable
+              symbols={enabled}
+              leverage={account?.leverage}
+              commission={account?.commission ?? null}
+            />
           </Panel>
         </div>
       )}

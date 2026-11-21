@@ -99,3 +99,18 @@ describe('the contract specifications', () => {
     expect(screen.getByText('No instruments are enabled.')).toBeTruthy();
   });
 });
+
+describe('the commission column for an account on a fee schedule', () => {
+  it('shows the account’s own rate, and the standard one beside it', () => {
+    render(
+      <ContractTable
+        symbols={[GOLD]}
+        leverage={100}
+        commission={{ default: null, bySymbol: { XAUUSD: '1.25' } }}
+      />,
+    );
+    const text = rowOf('XAUUSD')?.textContent ?? '';
+    expect(text).toMatch(/1\.25 USD/);
+    expect(text).toMatch(/your rate; standard/);
+  });
+});
