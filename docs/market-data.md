@@ -318,6 +318,12 @@ Configuration:
   and never logged. `FASTFOREX_POLL_MS` defaults to 6000. At start-up the month
   (2 calls × one every 6 s = 864,000) is checked against
   `FASTFOREX_MONTHLY_QUOTA`, and a source that would overrun it is not started.
+- **Polled only while an instrument it serves is in session.** Before each
+  round the poll asks whether any of fastFOREX's instruments is inside its
+  trading session; while none is — Friday night to Sunday night — the round is
+  skipped and costs nothing. Production's own usage showed why: about 41,000
+  calls a day went on through the weekend, every answer a price `ingest`
+  discards outside the session, a quarter of the monthly quota for nothing.
 - A 401, 403, 429, 5xx or network failure closes the poll, and the live feed
   reconnects with its 1→30 s pause.
 - Only a quote with **both** a bid and an ask becomes a tick. An FX quote for a

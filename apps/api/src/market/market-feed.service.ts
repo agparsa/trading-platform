@@ -155,6 +155,12 @@ export class MarketFeedService implements OnApplicationBootstrap, OnApplicationS
     this.live.configure(
       (code) => this.symbols.find(code)?.spec.pricePrecision,
       (code) => SIMULATOR_HALF_SPREAD[code],
+      (code, atMs) => {
+        // An instrument the platform does not know is treated as open: a
+        // source is never silenced by a lookup that failed.
+        const instrument = this.symbols.find(code);
+        return instrument === undefined || isSessionOpen(instrument.session, atMs);
+      },
     );
     // Each source's state to Redis, for whichever instance answers the admin,
     // and to the metrics. Best effort: a status that cannot be written is a

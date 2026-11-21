@@ -97,7 +97,16 @@ export class LiveFeedService {
     urls: readonly string[],
     headers: Readonly<Record<string, string>>,
     intervalMs: number,
-  ) => LiveSocket = (urls, headers, intervalMs) => httpPoll(urls, headers, intervalMs);
+    active?: () => boolean,
+  ) => LiveSocket = (urls, headers, intervalMs, active) =>
+    httpPoll(urls, headers, intervalMs, fetch, active);
+
+  /**
+   * Whether an instrument is inside its trading session now. Set by
+   * `configure`; until then every instrument counts as open, so nothing is
+   * skipped by default.
+   */
+  private isOpen: (code: string, atMs: number) => boolean = () => true;
 
   constructor(@Inject(ConfigService) private readonly config: ConfigService<Env, true>) {}
 
@@ -109,8 +118,10 @@ export class LiveFeedService {
   configure(
     precisionOf: (code: string) => number | undefined,
     halfSpreadOf: (code: string) => string | undefined,
+    isOpen: (code: string, atMs: number) => boolean = () => true,
   ): void {
     this.sources.length = 0;
+    this.isOpen = isOpen;
     const known = (map: SymbolMap, source: string): SymbolMap => {
       const kept: Record<string, string> = {};
       for (const [venue, code] of Object.entries(map)) {
@@ -218,7 +229,12 @@ export class LiveFeedService {
       hello: null,
       heartbeat: null,
       parse: (raw, now) => ticksFromFastForexQuotes(raw, fastforex, precisionOf, now, seen),
-      open: () => this.pollFactory(urls, { 'X-API-Key': key }, interval),
+      // Polled only while at least one of its instruments is in session: the
+      // weekend's answers are prices `ingest` would discard, at the quota's cost.
+      open: () =>
+        this.pollFactory(urls, { 'X-API-Key': key }, interval, () =>
+          Object.values(fastforex).some((code) => this.isOpen(code, Date.now())),
+        ),
     });
     this.logger.log(
       `fastforex: ${venues.length} instrument(s), ${urls.length} call(s) every ${interval} ms (about ${month} of ${quota} a month)`,

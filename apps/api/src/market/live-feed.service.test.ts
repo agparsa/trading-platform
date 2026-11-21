@@ -228,6 +228,32 @@ describe('the fastFOREX source', () => {
     live.stop();
   });
 
+  it('polls fastFOREX only while one of its instruments is in session', () => {
+    const { live } = service({
+      MARKET_LIVE_FASTFOREX: 'XAUUSD:XAUUSD,BTCUSD:EURUSD',
+      FASTFOREX_API_KEY: 'k',
+      FASTFOREX_BASE_URL: 'https://api.fastforex.io',
+      FASTFOREX_POLL_MS: 6000 as never,
+      FASTFOREX_MONTHLY_QUOTA: 1_000_000 as never,
+    });
+    const open = new Set<string>();
+    live.configure(
+      (code) => ({ BTCUSD: 2, XAUUSD: 2 })[code],
+      () => undefined,
+      (code) => open.has(code),
+    );
+    let active: (() => boolean) | undefined;
+    live.pollFactory = (_urls, _headers, _interval, isActive) => {
+      active = isActive;
+      return fakeSocket();
+    };
+    live.start(async () => undefined);
+    expect(active?.()).toBe(false);
+    open.add('XAUUSD');
+    expect(active?.()).toBe(true);
+    live.stop();
+  });
+
   it('refuses to start a poll that would spend the month’s quota early', () => {
     const { live } = service({
       MARKET_LIVE_FASTFOREX: 'XAUUSD:XAUUSD',

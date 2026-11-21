@@ -53,6 +53,23 @@ describe('a polled quote endpoint', () => {
     }
   });
 
+  it('spends no call while nothing it serves is in session, and resumes when one opens', async () => {
+    vi.useFakeTimers();
+    let open = false;
+    const fetcher = vi.fn(async () => new Response('{}'));
+    const socket = httpPoll(['https://a'], {}, 6_000, fetcher as never, () => open);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(socket.skipped).toBe(11);
+    open = true;
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    socket.close();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it('counts a month of calls', () => {
     expect(monthlyCalls(2, 6_000)).toBe(864_000);
     expect(monthlyCalls(2, 5_000)).toBe(1_036_800);
