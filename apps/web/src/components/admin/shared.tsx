@@ -103,8 +103,21 @@ export function ReasonedAction({
   const [reason, setReason] = useState('');
 
   if (!open) {
+    /**
+     * A destructive action is quiet until it is reached for: a column of red
+     * outlines down a table of people reads as an alarm on every row. The
+     * confirm button, once the reason is being typed, is the red one.
+     */
     return (
-      <Button variant={variant} className="px-2 py-0.5" gate={gate} onClick={() => setOpen(true)}>
+      <Button
+        variant={variant === 'danger' ? 'ghost' : variant}
+        className={cn(
+          'px-2 py-0.5',
+          variant === 'danger' && 'hover:border-terminal-short/40 hover:text-terminal-short',
+        )}
+        gate={gate}
+        onClick={() => setOpen(true)}
+      >
         {label}
       </Button>
     );

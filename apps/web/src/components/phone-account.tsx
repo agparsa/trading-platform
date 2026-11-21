@@ -1,5 +1,6 @@
 'use client';
 
+import { NavIcon, type NavIconName } from './shell/nav-icons';
 import Link from 'next/link';
 import { useState } from 'react';
 import { cn } from '@tp/ui';
@@ -192,17 +193,17 @@ export function PhoneAccount({
 
       {/* Money and records */}
       <Group>
-        <Row href="/wallet" label="more.deposit" icon="＋" accent />
-        <Row href="/wallet" label="more.withdraw" icon="−" accent />
-        <Row href="/history" label="more.history" icon="⟲" />
-        <Row href="/analytics" label="nav.analytics" icon="▤" />
-        <Row href="/instruments" label="nav.instruments" icon="≡" />
+        <Row href="/wallet" label="more.deposit" icon="deposit" accent />
+        <Row href="/wallet" label="more.withdraw" icon="withdrawals" accent />
+        <Row href="/history" label="more.history" icon="history" />
+        <Row href="/analytics" label="nav.analytics" icon="analytics" />
+        <Row href="/instruments" label="nav.instruments" icon="instruments" />
       </Group>
 
       <Group>
-        <Row href="/security" label="more.security" icon="⚿" />
-        <Row href="/verification" label="nav.verification" icon="✓" />
-        <Row href="/settings" label="more.tradingSettings" icon="⚙" />
+        <Row href="/security" label="more.security" icon="security" />
+        <Row href="/verification" label="nav.verification" icon="verification" />
+        <Row href="/settings" label="more.tradingSettings" icon="settings" />
       </Group>
 
       <section className="space-y-4 rounded-xl bg-terminal-surface p-3">
@@ -211,8 +212,8 @@ export function PhoneAccount({
       </section>
 
       <Group>
-        <Row href="/status" label="more.status" icon="?" />
-        <Row href="/developer" label="nav.developer" icon="</>" />
+        <Row href="/status" label="more.status" icon="help" />
+        <Row href="/developer" label="nav.developer" icon="developer" />
       </Group>
 
       <button
@@ -254,7 +255,7 @@ function Row({
 }: {
   href: string;
   label: MessageKey;
-  icon: string;
+  icon: NavIconName;
   accent?: boolean;
 }) {
   const t = useT();
@@ -267,8 +268,8 @@ function Row({
           accent ? 'text-terminal-accent' : 'text-terminal-text',
         )}
       >
-        <span aria-hidden className="w-5 text-center text-terminal-muted">
-          {icon}
+        <span aria-hidden className={accent ? 'text-terminal-accent' : 'text-terminal-muted'}>
+          <NavIcon name={icon} className="h-[18px] w-[18px]" />
         </span>
         <span className="flex-1">{t(label)}</span>
         <Chevron />

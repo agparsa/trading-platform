@@ -139,12 +139,13 @@ export function TradingSettings({
         type="button"
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          'rounded border px-2 py-1 text-label uppercase tracking-wider transition-colors',
+          'rounded border px-2 py-1 text-caption transition-colors',
           armed
             ? 'border-terminal-warning bg-terminal-warning/15 text-terminal-warning'
             : 'border-terminal-border text-terminal-muted hover:text-terminal-text',
         )}
         title={armed ? t('trade.armedTitle') : t('trade.inputTitle')}
+        aria-expanded={open}
       >
         {armed ? `⚡ ${t('trade.armed')}` : t('trade.input')}
       </button>

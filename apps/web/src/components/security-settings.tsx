@@ -1,5 +1,6 @@
 'use client';
 
+import { NavIcon } from './shell/nav-icons';
 import { useCallback, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { DomainError } from '@tp/shared-types';
@@ -320,10 +321,12 @@ export function SecuritySettings({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="rounded border border-terminal-border px-2 py-1 text-label uppercase tracking-wider text-terminal-muted transition-colors hover:text-terminal-text"
+        className="flex items-center gap-1.5 rounded border border-terminal-border px-2 py-1 text-caption text-terminal-muted transition-colors hover:text-terminal-text"
         title={t('sec.popoverTitle')}
+        aria-expanded={open}
       >
-        {t('nav.security')}
+        <NavIcon name="verification" className="h-3.5 w-3.5" />
+        {t('sec.popoverTitle')}
       </button>
 
       {!open ? null : (

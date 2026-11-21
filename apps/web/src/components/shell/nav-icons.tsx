@@ -37,9 +37,15 @@ export type NavIconName =
   | 'admin'
   | 'branding'
   | 'fees'
-  | 'alerts';
+  | 'alerts'
+  | 'deposit'
+  | 'help';
 
 const PATHS: Readonly<Record<NavIconName, string>> = {
+  // Money arriving: an arrow into a tray.
+  deposit: 'M12 15V4M7.5 8.5 12 4l4.5 4.5M5 20h14',
+  // A question in a circle: help, and how the platform is doing.
+  help: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.2v.3',
   // A palette: the firm's colours.
   branding:
     'M12 3a9 9 0 1 0 0 18c1.1 0 1.5-.8 1.5-1.6 0-.9-.6-1.4-.6-2.2 0-.9.7-1.6 1.6-1.6H17a4 4 0 0 0 4-4C21 6.8 17 3 12 3zM7.5 12.5h.01M9.5 8h.01M14.5 8h.01M17 11.5h.01',

@@ -7,6 +7,7 @@ import { RequireSession } from '@/components/shell/require-session';
 import { NavIcon } from '@/components/shell/nav-icons';
 import { MenuButton, Sidebar, type SidebarGroup } from '@/components/shell/sidebar';
 import { Panel } from '@/components/primitives';
+import { roleLabel } from '@/lib/role-label';
 
 /**
  * Every admin section, grouped by what an operator is doing: looking after
@@ -108,11 +109,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               Terminal
             </Link>
             <div className="flex items-center gap-2.5 px-2">
-              <span className="rounded bg-terminal-raised px-1.5 py-0.5 text-micro uppercase tracking-wider text-terminal-muted">
-                {user?.role ?? '—'}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-caption text-terminal-muted">
-                {user?.email ?? ''}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-caption text-terminal-text">
+                  {user?.email ?? ''}
+                </span>
+                <span className="block text-label text-terminal-muted">
+                  {user === null ? '—' : roleLabel(user.role)}
+                </span>
               </span>
               <button
                 type="button"
