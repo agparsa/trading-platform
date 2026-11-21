@@ -1,10 +1,16 @@
 'use client';
 
 import Link from 'next/link';
+import { feedTrouble } from '@/lib/feed-trouble';
 import { isTradingHalted } from '@tp/shared-types';
 import { cn } from '@tp/ui';
 import { Stat } from '@/components/primitives';
-import { useRaisedAlerts, useHaltTrading, useOperationsSummary } from '@/lib/admin-queries';
+import {
+  useMarketData,
+  useRaisedAlerts,
+  useHaltTrading,
+  useOperationsSummary,
+} from '@/lib/admin-queries';
 import { utcTime } from '@/lib/format';
 import { ErrorLine, Head, Loading, ReasonedAction, Table } from './shared';
 
@@ -20,6 +26,8 @@ export function OverviewPanel() {
   const summary = useOperationsSummary();
   const halt = useHaltTrading();
   const alerts = useRaisedAlerts('open');
+  const market = useMarketData();
+  const trouble = feedTrouble(market.data?.providers ?? []);
 
   if (summary.isLoading) return <Loading>Reading the platform…</Loading>;
   if (summary.error !== null) return <ErrorLine error={summary.error} />;
@@ -31,6 +39,24 @@ export function OverviewPanel() {
 
   return (
     <div className="flex flex-col gap-4 p-3">
+      {trouble.map((source) => (
+        <Link
+          key={source.name}
+          href="/admin/market-data"
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded border border-terminal-short/50 bg-terminal-short/10 px-3 py-2 text-caption text-terminal-text transition-colors hover:bg-terminal-short/15"
+          data-testid="overview-feed-trouble"
+        >
+          <span>
+            <span className="font-semibold text-terminal-short">
+              Prices from {source.name} are not arriving
+            </span>
+            {source.error === null ? '' : ` — ${source.error}`}. {source.symbols.join(', ')} cannot
+            be traded until they return.
+          </span>
+          <span className="text-terminal-muted">Open Market data →</span>
+        </Link>
+      ))}
       {(alerts.data?.open ?? 0) === 0 ? null : (
         <Link
           href="/admin/alerts"
