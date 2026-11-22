@@ -1,9 +1,10 @@
 'use client';
 
+import { PnlValue } from './pnl-value';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@tp/ui';
 import { accountView } from '@/lib/account-view';
-import { price as formatPrice, signedMoney, toneClass, toneOf } from '@/lib/format';
+import { price as formatPrice } from '@/lib/format';
 import {
   useOpenPosition,
   type AccountSummary,
@@ -131,11 +132,8 @@ export function PhoneTerminal({
           </button>
         </div>
         <div className="flex items-center gap-2">
-          <span
-            className={cn('numeric text-sm font-medium', toneClass[toneOf(floating)])}
-            title={t('account.floating')}
-          >
-            {signedMoney(floating, currency)}
+          <span title={t('account.floating')}>
+            <PnlValue value={floating} currency={currency} className="px-1 text-sm font-medium" />
           </span>
           <ConnectionBadge />
         </div>

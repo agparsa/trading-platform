@@ -125,6 +125,41 @@ tap is one order; each request carries its own idempotency key. "Opened …" is
 announced from the server's answer (and its `position.created` frame, under
 the same toast id); a refusal is announced with the server's reason.
 
+## The chart's quick-trade box
+
+A box over the desktop chart (top centre; drag its grip to move it, `–` to
+hide it — both remembered per browser) shows the instrument, Sell at the bid,
+Buy at the ask, a lots stepper on the instrument's grid, the spread and the
+margin the order would hold (the ticket's own estimate).
+
+- **Unarmed** (the default), a press stages the order in the ticket, which
+  states side, volume and instrument and asks before anything is sent.
+- **Armed** with the box's `⚡ 1-click` switch — which asks once before it arms,
+  and is the same preference as the ticket's — one press sends a market order.
+  The box checks what the ticket checks first (permission, account, instrument
+  enabled, session, volume, a price to deal at), mints one idempotency key per
+  press and records the command in the same log. A double click is one order.
+- **Large orders still pause** (§86): `largeOrder` in `lib/ticket.ts` is the one
+  definition both the ticket and the box use; a large press goes to the ticket's
+  confirmation instead of being sent.
+- The box says only "sent — waiting for the server" by itself. A fill is
+  reported from the server's answer; a refusal shows the server's reasons in
+  the box.
+
+Where the firm switches `quick_trading` off, the switch is not offered and
+every press goes to the ticket.
+
+## On the chart: P&L and levels
+
+- Profit is blue (`--color-terminal-profit`), loss red, in both themes. A live
+  P&L figure (`PnlValue`) washes briefly in the direction it just moved; the
+  figure is always the server's — nothing is counted up or interpolated — and
+  the wash is off under `prefers-reduced-motion`.
+- A position's stop and target are drawn 2px with a tag on the line: the level
+  and what the position would make or lose there (the same `outcomeAt` the drag
+  preview uses), and a faint band from the entry to each. The tags let every
+  pointer through, so the lines are dragged exactly as before.
+
 ## How this was verified
 
 The pure decisions — what a keystroke means, when it means nothing, what a stored

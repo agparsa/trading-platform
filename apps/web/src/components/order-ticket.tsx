@@ -8,6 +8,7 @@ import { Permission } from '@tp/shared-types';
 import { price as formatPrice, signedMoney, toneClass, toneOf } from '@/lib/format';
 import {
   estimateCosts,
+  largeOrder as largeOrderCheck,
   projectedOutcome,
   sizeForRisk,
   rewardToRisk,
@@ -485,19 +486,11 @@ export function OrderTicket({
    * threshold would fire constantly on one and never on the other.
    */
   const largeOrder = useMemo(() => {
-    const freeMargin = state.data?.freeMargin;
-    const marginNeeded = estimate.marginAmount;
-    if (freeMargin != null && marginNeeded !== null && Number(freeMargin) > 0) {
-      if (Number(marginNeeded) / Number(freeMargin) >= LARGE_ORDER_MARGIN_SHARE) {
-        return t('ticket.largeMargin', {
-          share: Math.round((Number(marginNeeded) / Number(freeMargin)) * 100),
-        });
-      }
-    }
-    if (riskShare !== null && Number(riskShare) >= LARGE_ORDER_RISK_SHARE * 100) {
-      return t('ticket.largeRisk', { share: riskShare });
-    }
-    return null;
+    const large = largeOrderCheck(estimate.marginAmount, state.data?.freeMargin, riskShare);
+    if (large === null) return null;
+    return large.kind === 'margin'
+      ? t('ticket.largeMargin', { share: large.share })
+      : t('ticket.largeRisk', { share: riskShare ?? large.share });
   }, [state.data?.freeMargin, estimate.marginAmount, riskShare, t]);
 
   if (symbol === undefined) {
@@ -951,14 +944,6 @@ export function OrderTicket({
 }
 
 type OrderType = 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
-/**
- * When an order is large enough to be worth a pause.
- *
- * Shares of the account, not absolute sizes: a fixed lot threshold would fire
- * constantly on a small account and never on a large one.
- */
-const LARGE_ORDER_MARGIN_SHARE = 0.5;
-const LARGE_ORDER_RISK_SHARE = 0.1;
 
 const ORDER_TYPES: readonly OrderType[] = ['MARKET', 'LIMIT', 'STOP', 'STOP_LIMIT'];
 

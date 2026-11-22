@@ -264,7 +264,7 @@ function PositionCard({
               'numeric inline-block rounded px-1.5 py-0.5 text-xs',
               toneClass[toneOf(pnl)],
               toneOf(pnl) === 'profit'
-                ? 'bg-terminal-long/10'
+                ? 'bg-terminal-profit/10'
                 : toneOf(pnl) === 'loss'
                   ? 'bg-terminal-short/10'
                   : '',

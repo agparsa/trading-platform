@@ -368,3 +368,31 @@ export function commissionPerLotFor(
   if (schedule === null) return spec.commissionPerLot;
   return schedule.bySymbol[spec.code] ?? schedule.default ?? spec.commissionPerLot;
 }
+
+/**
+ * When an order is large enough to be worth a pause (§86).
+ *
+ * Shares of the account, not absolute sizes: a fixed lot threshold would fire
+ * constantly on a small account and never on a large one. One definition for
+ * every place an order can start — the ticket and the chart's quick-trade box
+ * — so one-click on either can never skip the pause the other would take.
+ */
+export const LARGE_ORDER_MARGIN_SHARE = 0.5;
+export const LARGE_ORDER_RISK_SHARE = 0.1;
+
+export function largeOrder(
+  marginNeeded: string | null,
+  freeMargin: string | null | undefined,
+  riskShare: string | null,
+): { kind: 'margin' | 'risk'; share: number } | null {
+  if (freeMargin != null && marginNeeded !== null && toDecimal(freeMargin).gt(0)) {
+    const share = toDecimal(marginNeeded).div(toDecimal(freeMargin));
+    if (share.gte(LARGE_ORDER_MARGIN_SHARE)) {
+      return { kind: 'margin', share: Math.round(share.mul(100).toNumber()) };
+    }
+  }
+  if (riskShare !== null && toDecimal(riskShare).gte(LARGE_ORDER_RISK_SHARE * 100)) {
+    return { kind: 'risk', share: Number(riskShare) };
+  }
+  return null;
+}

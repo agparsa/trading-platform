@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PnlValue } from './pnl-value';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CandlestickSeries,
   createChart,
@@ -85,7 +86,10 @@ export function ChartPanel({
   accountId,
   currency,
   compact = false,
+  overlay = null,
 }: {
+  /** Drawn over the chart's plot, such as the quick-trade box. */
+  overlay?: React.ReactNode;
   /**
    * The phone's chart: the screen's own header already names the instrument,
    * so this one shows the range on screen and the timeframes, which scroll,
@@ -218,6 +222,7 @@ export function ChartPanel({
               accountId={accountId}
               currency={currency}
             />
+            {overlay}
             {history.isLoading ? (
               <Overlay>{t('chart.loading')}</Overlay>
             ) : empty ? (
@@ -597,16 +602,23 @@ function Candles({
           ? null
           : outcomeAt(position, spec, level.price, currency);
 
+      // A position's stop and target carry their words in a tag drawn over
+      // the chart (`LevelTags`), so the canvas line keeps only its axis label
+      // — the same words twice, one of them in 11px canvas text, is noise.
+      const tagged = isTaggedLevel(level);
       linesRef.current.set(
         levelIdentity(level),
         series.createPriceLine({
           price: Number(level.price),
           color: levelColour(level.kind, palette),
-          lineWidth: 1,
+          lineWidth: tagged ? 2 : 1,
           lineStyle: level.kind === LevelKind.ENTRY ? LineStyle.Solid : LineStyle.Dashed,
           axisLabelVisible: true,
-          title:
-            outcome === null ? level.title : `${level.title}  ${signedMoney(outcome, currency)}`,
+          title: tagged
+            ? ''
+            : outcome === null
+              ? level.title
+              : `${level.title}  ${signedMoney(outcome, currency)}`,
         }),
       );
     }
@@ -896,6 +908,15 @@ function Candles({
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full touch-none" />
+      <LevelTags
+        chartRef={chartRef}
+        seriesRef={seriesRef}
+        levels={levels}
+        positions={byId}
+        spec={spec}
+        currency={currency}
+        revision={bars}
+      />
       <PositionChips
         chartRef={chartRef}
         seriesRef={seriesRef}
@@ -960,6 +981,133 @@ function toCandlestickData(bar: ChartBar): CandlestickData<UTCTimestamp> {
     low: Number(bar.low),
     close: Number(bar.close),
   };
+}
+
+/** A position's stop or target: drawn with a tag and a zone, not canvas text. */
+function isTaggedLevel(level: ChartLevel): boolean {
+  return (
+    level.positionId !== null &&
+    (level.kind === LevelKind.STOP_LOSS || level.kind === LevelKind.TAKE_PROFIT)
+  );
+}
+
+/**
+ * A position's stop and target, made readable at a glance: a tag on each line
+ * naming the level and what the position would make or lose there — red for
+ * the stop, blue for the target — and a faint band from the entry to each, so
+ * the room the trade has on either side is a shape rather than arithmetic.
+ *
+ * Nothing here can be pressed. The tags and bands let every pointer through
+ * to the chart below, so a line is dragged exactly as before; this layer only
+ * describes what the server says the levels are. The money is the same
+ * `outcomeAt` arithmetic the drag preview uses, so the two never disagree.
+ */
+function LevelTags({
+  chartRef,
+  seriesRef,
+  levels,
+  positions,
+  spec,
+  currency,
+  revision,
+}: {
+  chartRef: React.RefObject<IChartApi | null>;
+  seriesRef: React.RefObject<ISeriesApi<'Candlestick'> | null>;
+  levels: readonly ChartLevel[];
+  positions: Readonly<Record<string, PositionRow>>;
+  spec: SymbolRow;
+  currency: string;
+  /** Changes when the bars do, so the tags follow the rescaled axis. */
+  revision: unknown;
+}) {
+  const tagged = useMemo(() => levels.filter(isTaggedLevel), [levels]);
+  const [places, setPlaces] = useState<{ y: Record<string, number | null>; scale: number }>({
+    y: {},
+    scale: 0,
+  });
+
+  useEffect(() => {
+    const series = seriesRef.current;
+    const chart = chartRef.current;
+    if (series === null || chart === null) return;
+    const place = () => {
+      const y: Record<string, number | null> = {};
+      for (const level of tagged) {
+        y[levelIdentity(level)] = series.priceToCoordinate(Number(level.price));
+        const position = level.positionId === null ? undefined : positions[level.positionId];
+        if (position !== undefined) {
+          y[`entry:${position.id}`] = series.priceToCoordinate(Number(position.entryPrice));
+        }
+      }
+      const next = { y, scale: chart.priceScale('right').width() };
+      setPlaces((now) => (JSON.stringify(now) === JSON.stringify(next) ? now : next));
+    };
+    const frame = requestAnimationFrame(place);
+    const afterData = () => requestAnimationFrame(place);
+    series.subscribeDataChanged(afterData);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(place);
+    chart.subscribeCrosshairMove(place);
+    return () => {
+      cancelAnimationFrame(frame);
+      series.unsubscribeDataChanged(afterData);
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(place);
+      chart.unsubscribeCrosshairMove(place);
+    };
+  }, [chartRef, seriesRef, tagged, positions, revision]);
+
+  if (tagged.length === 0) return null;
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-[5] overflow-hidden"
+      data-testid="level-tags"
+    >
+      {tagged.map((level) => {
+        const id = levelIdentity(level);
+        const y = places.y[id];
+        if (y === null || y === undefined) return null;
+        const position = level.positionId === null ? undefined : positions[level.positionId];
+        const entryY = position === undefined ? undefined : places.y[`entry:${position.id}`];
+        const outcome =
+          position === undefined ? null : outcomeAt(position, spec, level.price, currency);
+        const target = level.kind === LevelKind.TAKE_PROFIT;
+        return (
+          <Fragment key={id}>
+            {entryY === null || entryY === undefined ? null : (
+              <div
+                className={cn(
+                  'absolute left-0',
+                  target ? 'bg-terminal-profit/[0.07]' : 'bg-terminal-short/[0.07]',
+                )}
+                style={{
+                  top: Math.min(y, entryY),
+                  height: Math.abs(y - entryY),
+                  right: places.scale,
+                }}
+              />
+            )}
+            <div
+              className={cn(
+                'absolute left-2 flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-caption font-medium text-terminal-bg shadow-md',
+                target ? 'bg-terminal-profit' : 'bg-terminal-short',
+                level.draft === true && 'opacity-70 ring-1 ring-terminal-text/40',
+              )}
+              style={{ top: y, transform: 'translateY(-50%)' }}
+              data-testid="level-tag"
+              data-kind={level.kind}
+            >
+              <span className="numeric">{level.title}</span>
+              {outcome === null ? null : (
+                <span className="numeric rounded-full bg-terminal-bg/20 px-1.5">
+                  {signedMoney(outcome, currency)}
+                </span>
+              )}
+            </div>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
 }
 
 /**
@@ -1059,11 +1207,6 @@ function PositionChips({
               type="button"
               className="flex items-stretch"
               aria-expanded={editingId === position.id}
-              aria-label={t(
-                'chart.positionDetails',
-                { volume: position.volume, symbol: position.symbol },
-                false,
-              )}
               onClick={() => onOpen(position)}
               data-testid="position-chip-toggle"
             >
@@ -1075,13 +1218,19 @@ function PositionChips({
               >
                 {position.volume}
               </span>
-              <span
-                className={cn(
-                  'numeric border-s border-terminal-border px-2 py-1',
-                  toneClass[toneOf(floating)],
-                )}
-              >
-                {signedMoney(floating, currency)}
+              <span className="border-s border-terminal-border px-1 py-1">
+                <PnlValue
+                  value={floating}
+                  currency={currency}
+                  className="px-1 font-medium"
+                  testId="position-chip-pnl"
+                />
+              </span>
+              {/* Named by what it shows, then what it opens: a name that left
+                  out the visible figures is one a voice user cannot say. */}
+              <span className="sr-only">
+                {' '}
+                {t('chart.positionDetails', { symbol: position.symbol }, false)}
               </span>
             </button>
             {waiting ? (

@@ -17,6 +17,8 @@ export interface ChartPalette {
   readonly down: string;
   readonly pending: string;
   readonly entry: string;
+  /** Money made: a take-profit line and its zone. */
+  readonly profit: string;
 }
 
 export const DARK_FALLBACK: ChartPalette = {
@@ -26,6 +28,7 @@ export const DARK_FALLBACK: ChartPalette = {
   down: '#ef5350',
   pending: '#f0b90b',
   entry: '#8b94a3',
+  profit: '#38bdf8',
 };
 
 export function chartPalette(read: (variable: string) => string): ChartPalette {
@@ -41,6 +44,7 @@ export function chartPalette(read: (variable: string) => string): ChartPalette {
     down: colour('--color-terminal-short', DARK_FALLBACK.down),
     pending: colour('--color-terminal-warning', DARK_FALLBACK.pending),
     entry: muted,
+    profit: colour('--color-terminal-profit', DARK_FALLBACK.profit),
   };
 }
 
@@ -51,13 +55,13 @@ export function documentPalette(): ChartPalette {
   return chartPalette((variable) => style.getPropertyValue(variable));
 }
 
-/** Each kind of line in its colour: a stop red, a target green, a resting order amber. */
+/** Each kind of line in its colour: a stop red, a target blue, a resting order amber. */
 export function levelColour(kind: LevelKind, palette: ChartPalette): string {
   switch (kind) {
     case LevelKind.STOP_LOSS:
       return palette.down;
     case LevelKind.TAKE_PROFIT:
-      return palette.up;
+      return palette.profit;
     case LevelKind.PENDING:
       return palette.pending;
     default:

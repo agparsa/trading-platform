@@ -2025,6 +2025,85 @@ async function main(): Promise<void> {
     await auditAccessibility(page, 'the position editor');
 
     /**
+     * The chart's own trading surface. The stop just set is drawn with a tag
+     * naming it and what it would lose; and the quick-trade box over the
+     * chart, unarmed, hands a press to the ticket to confirm — armed (after
+     * its own question), one double click is exactly one order.
+     */
+    {
+      // The position is in gold; its levels are drawn on gold's chart.
+      await page
+        .getByTestId('watchlist-rows')
+        .locator('tr', { hasText: 'XAUUSD' })
+        .first()
+        .click({ position: { x: 120, y: 10 } });
+      const stopTag = page.locator('[data-testid="level-tag"][data-kind="STOP_LOSS"]').first();
+      const tagged = await stopTag
+        .waitFor({ timeout: 10_000 })
+        .then(() => true)
+        .catch(() => false);
+      const tagText = tagged ? (await stopTag.innerText()).replace(/\s+/g, ' ') : '';
+      ok(
+        tagged && /SL /.test(tagText) && /-\$/.test(tagText),
+        'a position’s stop is tagged on the chart with its level and what it would lose',
+        tagText,
+      );
+
+      const box = page.getByTestId('quick-trade-box');
+      const shown = await box
+        .waitFor({ timeout: 10_000 })
+        .then(() => true)
+        .catch(() => false);
+      const ordersBefore = await prisma.order.count({
+        where: { account: { user: { email: people.trader.email } } },
+      });
+      let staged = false;
+      let armedOne = false;
+      let detail = `box shown ${shown}`;
+      if (shown) {
+        await box.getByTestId('quick-trade-sell').click();
+        staged = await page
+          .getByTestId('ticket-confirm')
+          .waitFor({ timeout: 5_000 })
+          .then(() => true)
+          .catch(() => false);
+        const stagedCount = await prisma.order.count({
+          where: { account: { user: { email: people.trader.email } } },
+        });
+        staged = staged && stagedCount === ordersBefore;
+        await page
+          .getByRole('button', { name: /^Cancel$/ })
+          .first()
+          .click();
+
+        await box.getByTestId('quick-trade-arm').click();
+        await box.getByTestId('quick-trade-arm-yes').click();
+        await screenshot(page, 'terminal quick trade armed');
+        await box.getByTestId('quick-trade-buy').dblclick();
+        let after = ordersBefore;
+        for (let attempt = 0; attempt < 20 && after === ordersBefore; attempt += 1) {
+          await page.waitForTimeout(500);
+          after = await prisma.order.count({
+            where: { account: { user: { email: people.trader.email } } },
+          });
+        }
+        await page.waitForTimeout(1_000);
+        after = await prisma.order.count({
+          where: { account: { user: { email: people.trader.email } } },
+        });
+        armedOne = after === ordersBefore + 1;
+        detail = `unarmed press staged ${staged} · armed double click: orders ${ordersBefore} → ${after}`;
+        // Disarm, so the rest of the walk sees the terminal as it was.
+        await box.getByTestId('quick-trade-arm').click();
+      }
+      ok(
+        shown && staged && armedOne,
+        'the chart’s quick-trade box stages a press for confirmation, and armed sends exactly one order',
+        detail,
+      );
+    }
+
+    /**
      * The terminal on a phone: one screen at a time behind a tab bar, the
      * two prices and a lot size under the chart, the positions as cards.
      * What is checked is what a phone gets wrong: a page wider than the

@@ -1,5 +1,6 @@
 'use client';
 
+import { PnlValue } from './pnl-value';
 import { cn } from '@tp/ui';
 import { accountView } from '@/lib/account-view';
 import { money, percent, signedMoney, toneClass, toneOf } from '@/lib/format';
@@ -95,8 +96,7 @@ export function AccountHeader({
         <Stat label={t('account.equity')} value={money(state?.equity, currency)} />
         <Stat
           label={t('account.floating')}
-          value={signedMoney(state?.floatingPnl, currency)}
-          tone={toneClass[toneOf(state?.floatingPnl)]}
+          value={<PnlValue value={state?.floatingPnl} currency={currency} className="px-0.5" />}
         />
         {/*
         Realized P&L arrives with the REST snapshot and is carried across tick

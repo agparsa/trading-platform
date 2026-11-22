@@ -21,6 +21,13 @@
   --color-terminal-short: #ef5350;
   --color-terminal-warning: #f0b90b;
   /*
+   * Money made: a position in profit, a take-profit line. Blue, apart from the
+   * buy side's green and the accent's blue, so a figure that is up reads as
+   * "up" rather than as "a buy" or "a link" — the trader's own ask, and the
+   * convention of the platforms they come from.
+   */
+  --color-terminal-profit: #38bdf8;
+  /*
    * The one colour that means "selected" or "the primary action", not a
    * direction. Blue, because green and red here are buy and sell, and amber is
    * a warning. 7:1 on the page and readable as dark text on itself.
@@ -64,6 +71,7 @@
   --color-terminal-long: #0a7368;
   --color-terminal-short: #c0282d;
   --color-terminal-warning: #855600;
+  --color-terminal-profit: #0369a1;
   --color-terminal-accent: #1c5bc8;
   color-scheme: light;
 }
@@ -78,7 +86,7 @@
   --tp-text-muted: var(--color-terminal-muted);
   --tp-long: var(--color-terminal-long);
   --tp-short: var(--color-terminal-short);
-  --tp-profit: var(--color-terminal-long);
+  --tp-profit: var(--color-terminal-profit);
   --tp-loss: var(--color-terminal-short);
   --tp-warning: var(--color-terminal-warning);
   --tp-font-numeric: var(--font-mono);
@@ -174,5 +182,39 @@ summary {
 @layer base {
   th {
     text-align: start;
+  }
+}
+
+/*
+ * A figure that just moved: a short wash of its new direction behind it, so
+ * an eye on the chart sees the P&L change without reading it. Not for anyone
+ * who has asked for less motion — the colour of the figure still says it.
+ */
+@keyframes tp-flash-profit {
+  from {
+    background-color: rgb(56 189 248 / 0.28);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@keyframes tp-flash-loss {
+  from {
+    background-color: rgb(239 83 80 / 0.28);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.tp-flash-profit {
+  animation: tp-flash-profit 0.7s ease-out;
+}
+.tp-flash-loss {
+  animation: tp-flash-loss 0.7s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tp-flash-profit,
+  .tp-flash-loss {
+    animation: none;
   }
 }

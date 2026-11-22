@@ -100,7 +100,7 @@ export function toneOf(value: string | null | undefined): Tone {
 }
 
 export const toneClass: Record<Tone, string> = {
-  profit: 'text-terminal-long',
+  profit: 'text-terminal-profit',
   loss: 'text-terminal-short',
   flat: 'text-terminal-muted',
 };

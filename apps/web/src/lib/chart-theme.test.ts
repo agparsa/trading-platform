@@ -10,6 +10,7 @@ describe('the chart palette', () => {
       '--color-terminal-long': '#0a7368',
       '--color-terminal-short': '#c0282d',
       '--color-terminal-warning': '#855600',
+      '--color-terminal-profit': '#0369a1',
     };
     expect(chartPalette((name) => light[name] ?? '')).toEqual({
       text: '#556070',
@@ -18,6 +19,7 @@ describe('the chart palette', () => {
       down: '#c0282d',
       pending: '#855600',
       entry: '#556070',
+      profit: '#0369a1',
     });
   });
 
@@ -27,7 +29,7 @@ describe('the chart palette', () => {
 
   it('colours each kind of line', () => {
     expect(levelColour(LevelKind.STOP_LOSS, DARK_FALLBACK)).toBe(DARK_FALLBACK.down);
-    expect(levelColour(LevelKind.TAKE_PROFIT, DARK_FALLBACK)).toBe(DARK_FALLBACK.up);
+    expect(levelColour(LevelKind.TAKE_PROFIT, DARK_FALLBACK)).toBe(DARK_FALLBACK.profit);
     expect(levelColour(LevelKind.PENDING, DARK_FALLBACK)).toBe(DARK_FALLBACK.pending);
     expect(levelColour(LevelKind.ENTRY, DARK_FALLBACK)).toBe(DARK_FALLBACK.entry);
   });

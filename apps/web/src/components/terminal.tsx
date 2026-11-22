@@ -22,6 +22,7 @@ import { useTradingPreferences } from '@/lib/use-trading-preferences';
 import { useTradingShortcuts } from '@/lib/use-trading-shortcuts';
 import { AccountHeader } from './account-header';
 import { ChartPanel } from './chart-panel';
+import { QuickTradeBox } from './quick-trade-box';
 import { ConnectionBadge } from './connection-badge';
 import { HistoryPanel, type HistoryTab } from './history-panel';
 import { PendingPanel } from './pending-panel';
@@ -409,6 +410,20 @@ export function Terminal() {
               pendingOrders={pending}
               accountId={accountId}
               currency={currency}
+              overlay={
+                activeSymbol === undefined ? null : (
+                  <QuickTradeBox
+                    key={activeSymbol.code}
+                    symbol={activeSymbol}
+                    account={account}
+                    accountId={accountId}
+                    preferences={preferences}
+                    oneClickAllowed={oneClickAllowed}
+                    onPreferencesChange={updatePreferences}
+                    onStage={(side, volume) => setStaged({ side, at: Date.now(), volume })}
+                  />
+                )
+              }
             />
           </Panel>
 

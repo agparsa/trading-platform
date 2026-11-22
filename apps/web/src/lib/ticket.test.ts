@@ -10,6 +10,7 @@ import {
   validateStopLimitPrices,
   validateTicket,
   volumeProblem,
+  largeOrder,
 } from './ticket';
 import type { AccountSummary, SymbolRow } from './queries';
 
@@ -355,5 +356,22 @@ describe('commissionPerLotFor', () => {
     ).toBe('1.25');
     expect(commissionPerLotFor(spec, { commission: { default: '3', bySymbol: {} } })).toBe('3');
     expect(commissionPerLotFor(spec, { commission: { default: null, bySymbol: {} } })).toBe('7');
+  });
+});
+
+describe('largeOrder', () => {
+  it('pauses an order that commits half the free margin or more', () => {
+    expect(largeOrder('500.00', '1000.00', null)).toEqual({ kind: 'margin', share: 50 });
+    expect(largeOrder('499.99', '1000.00', null)).toBeNull();
+  });
+
+  it('pauses an order that risks a tenth of equity or more at its stop', () => {
+    expect(largeOrder('10.00', '1000.00', '10.00')).toEqual({ kind: 'risk', share: 10 });
+    expect(largeOrder('10.00', '1000.00', '9.99')).toBeNull();
+  });
+
+  it('has nothing to measure against with no free margin and no stop', () => {
+    expect(largeOrder('10.00', '0', null)).toBeNull();
+    expect(largeOrder(null, undefined, null)).toBeNull();
   });
 });

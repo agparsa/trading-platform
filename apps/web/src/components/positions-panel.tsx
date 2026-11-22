@@ -1,5 +1,6 @@
 'use client';
 
+import { PnlValue } from './pnl-value';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@tp/ui';
 import { DomainError } from '@tp/shared-types';
@@ -451,8 +452,8 @@ export function PositionsPanel({
                     >
                       {money(position.swap, currency)}
                     </td>
-                    <td className={cn('numeric px-2 py-1.5 text-end', toneClass[toneOf(pnl)])}>
-                      {signedMoney(pnl, currency)}
+                    <td className="px-2 py-1.5 text-end">
+                      <PnlValue value={pnl} currency={currency} className="px-1" />
                     </td>
                     <td
                       className={cn('numeric px-2 py-1.5 text-end', toneClass[toneOf(netPnl)])}
@@ -495,11 +496,8 @@ export function PositionsPanel({
       </div>
       {snapshot === undefined ? null : (
         <p className="border-t border-terminal-border/60 px-3 py-1.5 text-label text-terminal-muted">
-          {t('pos.totals.floating')}{' '}
-          <span className={cn('numeric', toneClass[toneOf(snapshot.floatingPnl)])}>
-            {signedMoney(snapshot.floatingPnl, currency)}
-          </span>{' '}
-          · {t('pos.totals.used')}{' '}
+          {t('pos.totals.floating')} <PnlValue value={snapshot.floatingPnl} currency={currency} /> ·{' '}
+          {t('pos.totals.used')}{' '}
           <span className="numeric">{money(snapshot.usedMargin, currency)}</span> —{' '}
           {t('pos.totals.note')}
         </p>
