@@ -39,9 +39,14 @@ typed, with its ratio, and by the server whatever sent it
   theme and sets the tab title; `useBrandName` is where every “Trading
   Platform” on screen now comes from.
 - Every change is audited (`BRANDING_UPDATED`, before and after).
+- **The mobile app** (from 0.5.0) reads the same `GET /branding`: the sign-in
+  screen shows the firm's name and, when set, "Need help?" with its support
+  address (`src/lib/branding.ts`). Not its colours: the app's theme is compiled
+  in, and a colour the server could change under a running app is one nobody
+  checked against the app's own backgrounds.
 
 ## Not covered
 
 No logo upload (the mark is the platform's). The mobile app keeps the
-platform's look. A firm's own domain is its `primaryHost`, set by the platform
+platform's colours. A firm's own domain is its `primaryHost`, set by the platform
 when the broker is created.

@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../components/icons';
 import { Button, ErrorNote, Segmented } from '../components/ui';
 import { useT } from '../lib/i18n';
+import { brandName, useBranding } from '../lib/branding';
 import { useSession } from '../lib/session';
 import { signInErrorText } from '../lib/sign-in-error';
 import { theme } from '../lib/theme';
@@ -29,6 +30,7 @@ import { theme } from '../lib/theme';
 export default function Login(): React.ReactElement {
   const t = useT();
   const { api, signIn, completeTwoFactor } = useSession();
+  const branding = useBranding(api);
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -86,7 +88,7 @@ export default function Login(): React.ReactElement {
           <View style={styles.logo}>
             <Icon name="chart" color="#FFFFFF" size={30} />
           </View>
-          <Text style={styles.title}>{t('app.name')}</Text>
+          <Text style={styles.title}>{brandName(branding, t('app.name'))}</Text>
           <Text style={styles.subtitle}>{t('login.welcome')}</Text>
         </View>
 
@@ -245,6 +247,9 @@ export default function Login(): React.ReactElement {
             )}
           </View>
         )}
+        {branding?.supportEmail === null || branding?.supportEmail === undefined ? null : (
+          <Text style={styles.support}>{t('login.help', { email: branding.supportEmail })}</Text>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -294,4 +299,10 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing(1.5),
   },
   noticeText: { color: theme.colors.positive, fontSize: 14 },
+  support: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: theme.spacing(2),
+  },
 });

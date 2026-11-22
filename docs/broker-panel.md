@@ -199,7 +199,7 @@ that really are absent keep their entry and their reason.
   theme — refused below 4.5:1 against its background — and a support address
   and website, set at `/admin/branding` and worn by every page including the
   signed-out ones. What is still narrower: no logo upload, the mobile app
-  keeps the platform's look, and a white-label domain is the tenant's
+  takes the name and support address but keeps the platform's colours, and a white-label domain is the tenant's
   `primaryHost`, set by the platform.
 - **~~Webhooks.~~ Built** (§49): registered per firm, signed, retried,
   auto-disabled, SSRF-vetted, with `security.alert` and
