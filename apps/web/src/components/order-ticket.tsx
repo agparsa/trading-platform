@@ -80,7 +80,14 @@ export function OrderTicket({
    * `volume` is there when the row's own ticket chose one for that
    * instrument; without it the order takes this ticket's volume.
    */
-  staged?: { side: 'BUY' | 'SELL'; at: number; volume?: string } | null;
+  staged?: {
+    side: 'BUY' | 'SELL';
+    at: number;
+    volume?: string;
+    /** Set by the chart's quick-trade box: the levels it worked out, as prices. */
+    stopLoss?: string | null;
+    takeProfit?: string | null;
+  } | null;
   onStagedHandled?: () => void;
 }) {
   const t = useT();
@@ -467,6 +474,8 @@ export function OrderTicket({
     setOrderType('MARKET');
     setSide(staged.side);
     if (staged.volume !== undefined) setVolume(staged.volume);
+    if (staged.stopLoss !== undefined) setStopLoss(staged.stopLoss ?? '');
+    if (staged.takeProfit !== undefined) setTakeProfit(staged.takeProfit ?? '');
     setSubmitError([]);
     setStagedMarket(true);
     setPendingConfirm(staged.side);

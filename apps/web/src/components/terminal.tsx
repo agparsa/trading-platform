@@ -150,6 +150,8 @@ export function Terminal() {
     side: 'BUY' | 'SELL';
     at: number;
     volume?: string;
+    stopLoss?: string | null;
+    takeProfit?: string | null;
   } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -420,7 +422,9 @@ export function Terminal() {
                     preferences={preferences}
                     oneClickAllowed={oneClickAllowed}
                     onPreferencesChange={updatePreferences}
-                    onStage={(side, volume) => setStaged({ side, at: Date.now(), volume })}
+                    onStage={(side, volume, levels) =>
+                      setStaged({ side, at: Date.now(), volume, ...levels })
+                    }
                   />
                 )
               }

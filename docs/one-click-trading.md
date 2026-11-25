@@ -142,6 +142,16 @@ margin the order would hold (the ticket's own estimate).
 - **Large orders still pause** (§86): `largeOrder` in `lib/ticket.ts` is the one
   definition both the ticket and the box use; a large press goes to the ticket's
   confirmation instead of being sent.
+- **SL / TP / Risk.** Stop and target are entered in whole points from the
+  price the order opens at (a market order's fill is not known at the press;
+  "500 points behind" means the same at any fill, either side). Risk is a
+  percent of equity: with a stop set, the lots are sized so the stop costs that
+  share (`resolveQuickOrder` in `lib/quick-order.ts`, on the same
+  `@tp/trading-core` arithmetic as the ticket). Under each field: what the stop
+  and target would come to, and the sized lots. The levels are resolved to
+  prices at the instant of the press and sent as prices; the server checks them
+  as it checks every level. Unarmed, the ticket is staged with those prices
+  filled in.
 - The box says only "sent — waiting for the server" by itself. A fill is
   reported from the server's answer; a refusal shows the server's reasons in
   the box.

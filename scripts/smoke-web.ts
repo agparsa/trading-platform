@@ -2078,6 +2078,9 @@ async function main(): Promise<void> {
 
         await box.getByTestId('quick-trade-arm').click();
         await box.getByTestId('quick-trade-arm-yes').click();
+        // A stop and a target in points from the fill, sent with the order.
+        await box.getByTestId('quick-trade-sl').fill('500');
+        await box.getByTestId('quick-trade-tp').fill('1000');
         await screenshot(page, 'terminal quick trade armed');
         await box.getByTestId('quick-trade-buy').dblclick();
         let after = ordersBefore;
@@ -2092,6 +2095,29 @@ async function main(): Promise<void> {
           where: { account: { user: { email: people.trader.email } } },
         });
         armedOne = after === ordersBefore + 1;
+        const sent = await prisma.position.findFirst({
+          where: { account: { user: { email: people.trader.email } }, status: 'OPEN' },
+          orderBy: { openedAt: 'desc' },
+          select: { entryPrice: true, stopLoss: true, takeProfit: true },
+        });
+        const entry = Number(String(sent?.entryPrice));
+        // Both levels come from the price at the press, so their gap is exact
+        // (15.00 = 1500 points) even if the fill moved a tick from it.
+        const sl = Number(String(sent?.stopLoss));
+        const tp = Number(String(sent?.takeProfit));
+        const levelsOk =
+          sent?.stopLoss != null &&
+          sent.takeProfit != null &&
+          sl < entry &&
+          entry < tp &&
+          Math.abs(tp - sl - 15) < 0.001;
+        ok(
+          levelsOk,
+          'the quick-trade box sends its stop and target, 500 and 1000 points from the fill',
+          `entry ${String(sent?.entryPrice)} · SL ${String(sent?.stopLoss)} · TP ${String(sent?.takeProfit)}`,
+        );
+        await box.getByTestId('quick-trade-sl').fill('');
+        await box.getByTestId('quick-trade-tp').fill('');
         detail = `unarmed press staged ${staged} · armed double click: orders ${ordersBefore} → ${after}`;
         // Disarm, so the rest of the walk sees the terminal as it was.
         await box.getByTestId('quick-trade-arm').click();

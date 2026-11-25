@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { entrySideOf } from '@tp/financial-core';
 import { cn } from '@tp/ui';
 import { Permission } from '@tp/shared-types';
-import { price as formatPrice } from '@/lib/format';
+import { price as formatPrice, signedMoney } from '@/lib/format';
+import { resolveQuickOrder, type QuickOrder, type QuickOrderProblem } from '@/lib/quick-order';
 import { CommandState, rejectionLines, settlementFromResponse } from '@/lib/order-commands';
 import {
   useAccountState,
@@ -17,6 +19,7 @@ import {
   estimateCosts,
   inlineStartVolume,
   largeOrder,
+  riskPercent as riskShareOf,
   stepVolume,
   validateTicket,
 } from '@/lib/ticket';
@@ -57,7 +60,11 @@ export function QuickTradeBox({
   oneClickAllowed: boolean;
   onPreferencesChange: (patch: Partial<TradingPreferences>) => void;
   /** Hand the order to the ticket, which confirms it before sending. */
-  onStage: (side: 'BUY' | 'SELL', volume: string) => void;
+  onStage: (
+    side: 'BUY' | 'SELL',
+    volume: string,
+    levels: { stopLoss: string | null; takeProfit: string | null },
+  ) => void;
 }) {
   const t = useT();
   const quote = useRealtime((state) => state.quotes[symbol.code]);
@@ -66,6 +73,11 @@ export function QuickTradeBox({
   const { data: permissions } = usePermissions();
   const [volume, setVolume] = useState(() => inlineStartVolume(symbol, preferences.defaultVolume));
   const [asking, setAsking] = useState(false);
+  /** Whole points from the fill; empty for none. Reset with the instrument. */
+  const [stopPoints, setStopPoints] = useState('');
+  const [takePoints, setTakePoints] = useState('');
+  /** Percent of equity the stop may cost; empty sizes nothing. */
+  const [riskPct, setRiskPct] = useState('');
   const [note, setNote] = useState<{ tone: 'info' | 'danger' | 'warning'; lines: string[] } | null>(
     null,
   );
@@ -79,13 +91,45 @@ export function QuickTradeBox({
   /** Set on the press itself: a double click is one order. */
   const inFlight = useRef(false);
 
-  const validation = useMemo(
-    () => validateTicket(symbol, 'BUY', volume, '', '', quote?.ask ?? null),
-    [symbol, volume, quote?.ask],
-  );
-  const estimate = useMemo(
-    () => estimateCosts(symbol, account, 'BUY', volume, quote?.ask ?? null, validation.volumeOk),
-    [symbol, account, volume, quote?.ask, validation.volumeOk],
+  const words: Record<QuickOrderProblem, string> = {
+    noPrice: t('wl.noPrice'),
+    stopPoints: t('qt.badStop'),
+    takePoints: t('qt.badTake'),
+    riskNeedsStop: t('qt.riskNeedsStop'),
+    riskPercent: t('qt.badRisk'),
+    riskTooSmall: t('qt.riskTooSmall'),
+  };
+  /**
+   * The order each side would send, from the price that side opens at. Both
+   * are worked out so the box can show what the stop and target come to
+   * before anything is pressed; a press re-resolves at that instant's price.
+   */
+  const resolveFor = (side: 'BUY' | 'SELL', at = quote): QuickOrder =>
+    resolveQuickOrder(
+      {
+        spec: symbol,
+        account,
+        equity: state.data?.equity,
+        side,
+        entry: at === undefined ? null : at[entrySideOf(side)],
+        volume,
+        stopPoints,
+        takePoints,
+        riskPercent: riskPct,
+      },
+      words,
+    );
+  const preview = resolveFor('BUY');
+  const sizing = riskPct.trim() !== '';
+  // The lots that would go: the typed ones, or the ones the risk sizes.
+  const validation = validateTicket(symbol, 'BUY', preview.volume, '', '', quote?.ask ?? null);
+  const estimate = estimateCosts(
+    symbol,
+    account,
+    'BUY',
+    preview.volume,
+    quote?.ask ?? null,
+    validation.volumeOk,
   );
 
   /** Why a press cannot send, checked in the ticket's order; `null` if it can. */
@@ -102,9 +146,16 @@ export function QuickTradeBox({
   };
 
   const press = (side: 'BUY' | 'SELL') => {
-    const lots = volume.trim();
+    // Resolved now, at the price this press would open at.
+    const order = resolveFor(side, useRealtime.getState().quotes[symbol.code]);
+    if (order.error !== null) {
+      setNote({ tone: 'danger', lines: [order.error] });
+      return;
+    }
+    const lots = order.volume;
+    const levels = { stopLoss: order.stopLoss, takeProfit: order.takeProfit };
     if (!armed) {
-      onStage(side, lots);
+      onStage(side, lots, levels);
       return;
     }
     if (inFlight.current || open.isPending || accountId === null) return;
@@ -113,11 +164,12 @@ export function QuickTradeBox({
       setNote({ tone: 'danger', lines: [reason] });
       return;
     }
-    const executable = side === 'BUY' ? (quote?.ask ?? null) : (quote?.bid ?? null);
+    const executable = quote === undefined ? null : quote[entrySideOf(side)];
     const cost = estimateCosts(symbol, account, side, lots, executable, true);
-    if (largeOrder(cost.marginAmount, state.data?.freeMargin, null) !== null) {
+    const riskShare = riskShareOf(order.ifStopped, account, state.data?.equity);
+    if (largeOrder(cost.marginAmount, state.data?.freeMargin, riskShare) !== null) {
       setNote({ tone: 'warning', lines: [t('qt.large')] });
-      onStage(side, lots);
+      onStage(side, lots, levels);
       return;
     }
 
@@ -142,8 +194,7 @@ export function QuickTradeBox({
         symbol: symbol.code,
         side,
         volume: lots,
-        stopLoss: null,
-        takeProfit: null,
+        ...levels,
       })
       .then((response) => {
         useRealtime
@@ -278,6 +329,7 @@ export function QuickTradeBox({
             <button
               type="button"
               className="px-2 py-1 text-terminal-text"
+              disabled={sizing}
               onClick={() => setVolume(stepVolume(symbol, volume, -1))}
               aria-label={t('ticket.decrease')}
             >
@@ -290,7 +342,9 @@ export function QuickTradeBox({
                   inputClass,
                   'border-0 bg-transparent px-0 py-0 text-center text-sm focus:border-0',
                 )}
-                value={volume}
+                value={sizing ? preview.volume : volume}
+                readOnly={sizing}
+                title={sizing ? t('qt.sizedTitle') : undefined}
                 inputMode="decimal"
                 aria-invalid={validation.error !== null}
                 onChange={(event) => setVolume(event.target.value)}
@@ -300,6 +354,7 @@ export function QuickTradeBox({
             <button
               type="button"
               className="px-2 py-1 text-terminal-text"
+              disabled={sizing}
               onClick={() => setVolume(stepVolume(symbol, volume, 1))}
               aria-label={t('ticket.increase')}
             >
@@ -317,6 +372,46 @@ export function QuickTradeBox({
           disabled={!ready}
           armed={armed}
           onClick={() => press('BUY')}
+        />
+      </div>
+
+      {/* The levels, in the trader's unit for a market order: points from
+          wherever it fills. Empty is "none". */}
+      <div dir="ltr" className="grid grid-cols-3 gap-1.5 px-2 pb-1.5">
+        <LevelField
+          label={t('qt.sl')}
+          tone="loss"
+          value={stopPoints}
+          onChange={setStopPoints}
+          placeholder={t('qt.points')}
+          outcome={
+            preview.ifStopped === null
+              ? null
+              : signedMoney(preview.ifStopped, account?.currency ?? 'USD')
+          }
+          testId="quick-trade-sl"
+        />
+        <LevelField
+          label={t('qt.tp')}
+          tone="profit"
+          value={takePoints}
+          onChange={setTakePoints}
+          placeholder={t('qt.points')}
+          outcome={
+            preview.ifTargeted === null
+              ? null
+              : signedMoney(preview.ifTargeted, account?.currency ?? 'USD')
+          }
+          testId="quick-trade-tp"
+        />
+        <LevelField
+          label={t('qt.risk')}
+          tone="warning"
+          value={riskPct}
+          onChange={setRiskPct}
+          placeholder="%"
+          outcome={sizing && preview.error === null ? `${preview.volume} ${t('pos.lots')}` : null}
+          testId="quick-trade-risk"
         />
       </div>
 
@@ -347,9 +442,9 @@ export function QuickTradeBox({
             <li key={line}>{line}</li>
           ))}
         </ul>
-      ) : validation.error !== null ? (
+      ) : (preview.error ?? validation.error) !== null && quote !== undefined ? (
         <p className="border-t border-terminal-border px-2.5 py-1 text-caption text-terminal-short">
-          {validation.error}
+          {preview.error ?? validation.error}
         </p>
       ) : stale ? (
         <p className="border-t border-terminal-border px-2.5 py-1 text-caption text-terminal-warning">
@@ -357,6 +452,66 @@ export function QuickTradeBox({
         </p>
       ) : null}
     </div>
+  );
+}
+
+function LevelField({
+  label,
+  tone,
+  value,
+  onChange,
+  placeholder,
+  outcome,
+  testId,
+}: {
+  label: string;
+  tone: 'loss' | 'profit' | 'warning';
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  outcome: string | null;
+  testId: string;
+}) {
+  const on = value.trim() !== '';
+  return (
+    <label
+      className={cn(
+        'flex min-w-0 flex-col rounded-md border px-1.5 py-1 transition-colors',
+        !on
+          ? 'border-terminal-border'
+          : tone === 'loss'
+            ? 'border-terminal-short/70 bg-terminal-short/10'
+            : tone === 'profit'
+              ? 'border-terminal-profit/70 bg-terminal-profit/10'
+              : 'border-terminal-warning/70 bg-terminal-warning/10',
+      )}
+    >
+      <span
+        className={cn(
+          'text-micro font-semibold uppercase tracking-wider',
+          !on
+            ? 'text-terminal-muted'
+            : tone === 'loss'
+              ? 'text-terminal-short'
+              : tone === 'profit'
+                ? 'text-terminal-profit'
+                : 'text-terminal-warning',
+        )}
+      >
+        {label}
+      </span>
+      <input
+        className={cn(inputClass, 'border-0 bg-transparent px-0 py-0 text-sm focus:border-0')}
+        value={value}
+        placeholder={placeholder}
+        inputMode="decimal"
+        onChange={(event) => onChange(event.target.value)}
+        data-testid={testId}
+      />
+      <span className="numeric min-h-[1em] truncate text-micro text-terminal-muted">
+        {outcome ?? ''}
+      </span>
+    </label>
   );
 }
 
