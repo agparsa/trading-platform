@@ -50,8 +50,8 @@ export function PnlText({
           color: value === null ? theme.colors.textMuted : signColor(value),
           writingDirection: NUMERIC_DIRECTION,
           backgroundColor,
-          borderRadius: 4,
-          paddingHorizontal: 2,
+          borderRadius: theme.radius.xs,
+          paddingHorizontal: 4,
         },
       ]}
     >

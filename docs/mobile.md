@@ -439,6 +439,21 @@ symbol, a coin by its sign), so one added tomorrow is marked too.
   (`login.unreachableHost`), which tells "the server is down" from "this network
   cannot see it".
 
+## One scale for everything (1.0.0)
+
+Sizes come from `lib/theme.ts`, not from the screen:
+
+- **Type:** seven sizes — caption 11, label 12, small 13, body 15, title 17,
+  heading 20, display 28 (`theme.type`).
+- **Space:** `theme.spacing(n)` snaps to a 4-point grid, so 4, 8, 12, 16, 24…
+  whatever fraction a style asks for; raw paddings and gaps are multiples of 4.
+- **Controls:** chips and segments 36, tiles and inputs 44, buttons and steppers
+  52 (`theme.control`).
+- **Corners:** 6, 8, 12, 16 and pill (`theme.radius`).
+
+A labelled figure keeps its label whole and wraps a long value (an email) under
+itself, right-aligned, instead of over the label.
+
 ## Trading from the chart and the list (0.9.0)
 
 - **One-tap** (`lib/one-tap.tsx`): off by default; switched on in Settings or

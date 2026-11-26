@@ -160,13 +160,13 @@ const styles = StyleSheet.create({
   warning: {
     fontFamily: theme.font.regular,
     color: theme.colors.warning,
-    fontSize: 13,
+    fontSize: theme.type.small,
     marginTop: theme.spacing(0.5),
   },
   note: {
     fontFamily: theme.font.regular,
     color: theme.colors.textMuted,
-    fontSize: 13,
+    fontSize: theme.type.small,
     marginVertical: theme.spacing(0.75),
   },
   slot: {
@@ -178,11 +178,19 @@ const styles = StyleSheet.create({
   slotTitle: {
     fontFamily: theme.font.regular,
     color: theme.colors.text,
-    fontSize: 15,
+    fontSize: theme.type.body,
     flexShrink: 1,
   },
-  sent: { fontFamily: theme.font.regular, color: theme.colors.positive, fontSize: 13 },
-  notSent: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 13 },
+  sent: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.positive,
+    fontSize: theme.type.small,
+  },
+  notSent: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: theme.type.small,
+  },
   actions: { flexDirection: 'row', gap: theme.spacing(1), marginTop: theme.spacing(0.75) },
   action: { flex: 1 },
 });

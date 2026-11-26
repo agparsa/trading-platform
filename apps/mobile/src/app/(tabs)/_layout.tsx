@@ -42,18 +42,18 @@ export default function TabsLayout(): React.ReactElement {
         headerStyle: { backgroundColor: theme.colors.background },
         headerTintColor: theme.colors.text,
         headerShadowVisible: false,
-        headerTitleStyle: { fontFamily: theme.font.heavy, fontSize: 20 },
+        headerTitleStyle: { fontFamily: theme.font.heavy, fontSize: theme.type.heading },
         headerTitleAlign: 'left',
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border,
           height: 64,
-          paddingTop: 6,
+          paddingTop: 8,
           paddingBottom: 8,
         },
         tabBarActiveTintColor: theme.colors.accent,
         tabBarInactiveTintColor: theme.colors.textFaint,
-        tabBarLabelStyle: { fontFamily: theme.font.semibold, fontSize: 11 },
+        tabBarLabelStyle: { fontFamily: theme.font.semibold, fontSize: theme.type.caption },
         sceneStyle: { backgroundColor: theme.colors.background },
       }}
     >

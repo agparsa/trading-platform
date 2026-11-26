@@ -55,10 +55,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
   },
   active: { backgroundColor: theme.colors.surface, borderColor: theme.colors.accent },
   pressed: { opacity: 0.6 },
-  label: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 12 },
+  label: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: theme.type.label,
+  },
   activeLabel: { fontFamily: theme.font.semibold, color: theme.colors.text },
 });

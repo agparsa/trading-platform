@@ -167,18 +167,18 @@ const styles = StyleSheet.create({
   heroLabel: {
     fontFamily: theme.font.bold,
     color: theme.colors.textMuted,
-    fontSize: 11,
+    fontSize: theme.type.caption,
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
   heroValue: {
     fontFamily: theme.font.monoHeavy,
     color: theme.colors.text,
-    fontSize: 30,
+    fontSize: theme.type.display,
     marginTop: 4,
   },
   pnlBox: { alignItems: 'flex-end' },
-  pnl: { fontFamily: theme.font.monoHeavy, fontSize: 20, marginTop: 4 },
+  pnl: { fontFamily: theme.font.monoHeavy, fontSize: theme.type.heading, marginTop: 4 },
   bar: {
     height: 6,
     borderRadius: 3,
@@ -189,12 +189,16 @@ const styles = StyleSheet.create({
   barFill: { height: 6, borderRadius: 3 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.spacing(1) },
   cell: { width: '50%', paddingVertical: theme.spacing(0.75) },
-  label: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 12 },
+  label: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: theme.type.label,
+  },
   value: {
     fontFamily: theme.font.monoBold,
     color: theme.colors.text,
-    fontSize: 15,
-    marginTop: 2,
+    fontSize: theme.type.body,
+    marginTop: 4,
   },
   switch: { marginHorizontal: theme.spacing(2), marginTop: theme.spacing(1.5) },
 });

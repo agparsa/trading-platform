@@ -37,8 +37,24 @@ export const theme = {
     profitTint: 'rgba(56, 189, 248, 0.14)',
     warningTint: 'rgba(240, 167, 10, 0.14)',
   },
-  spacing: (units: number) => units * 8,
-  radius: { sm: 8, md: 12, lg: 18, pill: 999 },
+  /**
+   * Space in eighths of 8, snapped to a 4-point grid: every gap, pad and margin
+   * in the app lands on 4, 8, 12, 16, 24… whatever fraction a screen asked for.
+   */
+  spacing: (units: number) => Math.max(0, Math.round((units * 8) / 4) * 4),
+  radius: { xs: 6, sm: 8, md: 12, lg: 16, pill: 999 },
+  /** The type scale. Seven sizes; no screen picks its own. */
+  type: {
+    caption: 11,
+    label: 12,
+    small: 13,
+    body: 15,
+    title: 17,
+    heading: 20,
+    display: 28,
+  },
+  /** Control heights: chips and segments, tiles and inputs, buttons. */
+  control: { sm: 36, md: 44, lg: 52 },
   /**
    * Families by weight. Android picks a face by family, not by `fontWeight`,
    * so each weight is its own family and styles name one rather than a

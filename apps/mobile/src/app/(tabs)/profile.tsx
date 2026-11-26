@@ -317,10 +317,14 @@ const styles = StyleSheet.create({
   pendingText: {
     fontFamily: theme.font.regular,
     color: theme.colors.warning,
-    fontSize: 13,
+    fontSize: theme.type.small,
     marginBottom: theme.spacing(1),
   },
-  sentText: { fontFamily: theme.font.regular, color: theme.colors.positive, fontSize: 13 },
+  sentText: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.positive,
+    fontSize: theme.type.small,
+  },
   entry: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -328,18 +332,26 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing(0.75),
     gap: theme.spacing(1),
   },
-  entryTitle: { fontFamily: theme.font.regular, color: theme.colors.text, fontSize: 15 },
-  entryDetail: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 12 },
+  entryTitle: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.text,
+    fontSize: theme.type.body,
+  },
+  entryDetail: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: theme.type.label,
+  },
   warning: {
     fontFamily: theme.font.regular,
     color: theme.colors.warning,
-    fontSize: 13,
+    fontSize: theme.type.small,
     marginTop: theme.spacing(0.5),
   },
   note: {
     fontFamily: theme.font.regular,
     color: theme.colors.textMuted,
-    fontSize: 13,
+    fontSize: theme.type.small,
     marginTop: theme.spacing(0.5),
   },
 });

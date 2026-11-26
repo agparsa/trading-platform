@@ -195,8 +195,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 48,
+    minHeight: theme.control.md,
   },
-  label: { fontFamily: theme.font.regular, color: theme.colors.text, fontSize: 15 },
-  hint: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 12 },
+  label: { fontFamily: theme.font.regular, color: theme.colors.text, fontSize: theme.type.body },
+  hint: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: theme.type.label,
+  },
 });

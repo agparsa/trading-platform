@@ -74,10 +74,10 @@ export function InstrumentBadge({
             { width: small, height: small, borderRadius: small / 2 },
           ]}
         >
-          <Text style={{ fontSize: small * 0.62, lineHeight: small * 0.9 }}>{mark.flags[1]}</Text>
+          <Text style={{ fontSize: small * 0.82, lineHeight: small }}>{mark.flags[1]}</Text>
         </View>
         <View style={[styles.flag, { width: big, height: big, borderRadius: big / 2 }]}>
-          <Text style={{ fontSize: big * 0.62, lineHeight: big * 0.9 }}>{mark.flags[0]}</Text>
+          <Text style={{ fontSize: big * 0.82, lineHeight: big }}>{mark.flags[0]}</Text>
         </View>
       </View>
     );
@@ -431,13 +431,13 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
-    padding: 3,
-    gap: 3,
+    padding: 4,
+    gap: 4,
   },
   segment: {
     flex: 1,
-    minHeight: 38,
-    borderRadius: theme.radius.sm + 1,
+    minHeight: theme.control.sm,
+    borderRadius: theme.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -446,7 +446,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.borderStrong,
   },
-  segmentLabel: { fontFamily: theme.font.semibold, color: theme.colors.textMuted, fontSize: 14 },
+  segmentLabel: {
+    fontFamily: theme.font.semibold,
+    color: theme.colors.textMuted,
+    fontSize: theme.type.body,
+  },
   segmentLabelActive: { fontFamily: theme.font.bold, color: theme.colors.text },
   screen: { flex: 1, backgroundColor: theme.colors.background, padding: theme.spacing(2) },
   card: {
@@ -466,7 +470,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontFamily: theme.font.bold,
     color: theme.colors.textMuted,
-    fontSize: 11,
+    fontSize: theme.type.caption,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
   },
@@ -474,20 +478,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: theme.spacing(1.5),
     paddingVertical: theme.spacing(0.9),
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
   },
-  figureLabel: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 14 },
+  figureLabel: {
+    flexShrink: 0,
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: theme.type.body,
+  },
   figureValue: {
     fontFamily: theme.font.mono,
     color: theme.colors.text,
-    fontSize: 15,
+    fontSize: theme.type.body,
+    // A long value — an email address — wraps under itself, never over its label.
+    flexShrink: 1,
+    textAlign: 'right',
   },
   button: {
     // 48pt: the smallest target a thumb hits reliably, and the one thing worth
     // being strict about on a screen where a mistap places an order.
-    minHeight: 50,
+    minHeight: theme.control.lg,
     borderRadius: theme.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -495,7 +508,12 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing(1),
   },
   buttonOutline: { borderWidth: 1, borderColor: theme.colors.borderStrong },
-  buttonLabel: { fontFamily: theme.font.bold, color: '#FFFFFF', fontSize: 16, letterSpacing: 0.2 },
+  buttonLabel: {
+    fontFamily: theme.font.bold,
+    color: '#FFFFFF',
+    fontSize: theme.type.body,
+    letterSpacing: 0.2,
+  },
   flag: {
     position: 'absolute',
     top: 0,
@@ -511,21 +529,21 @@ const styles = StyleSheet.create({
   tile: {
     flex: 1,
     overflow: 'hidden',
-    minHeight: 50,
+    minHeight: theme.control.lg,
     borderRadius: theme.radius.md,
     borderWidth: 1,
     paddingHorizontal: theme.spacing(1),
-    paddingVertical: 6,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tileCompact: { minHeight: 44, paddingVertical: 4 },
-  tileLabel: { fontFamily: theme.font.heavy, fontSize: 10, letterSpacing: 1 },
-  tilePrice: { fontFamily: theme.font.monoBold, fontSize: 17, marginTop: 1 },
-  tilePriceCompact: { fontFamily: theme.font.regular, fontSize: 15 },
+  tileCompact: { minHeight: theme.control.md, paddingVertical: 4 },
+  tileLabel: { fontFamily: theme.font.heavy, fontSize: theme.type.caption, letterSpacing: 1 },
+  tilePrice: { fontFamily: theme.font.monoBold, fontSize: theme.type.title, marginTop: 4 },
+  tilePriceCompact: { fontFamily: theme.font.regular, fontSize: theme.type.body },
   chip: {
     paddingHorizontal: theme.spacing(1.75),
-    minHeight: 34,
+    minHeight: theme.control.sm,
     justifyContent: 'center',
     borderRadius: theme.radius.pill,
     borderWidth: 1,
@@ -533,15 +551,19 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
   },
   chipActive: { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentTint },
-  chipLabel: { fontFamily: theme.font.semibold, color: theme.colors.textMuted, fontSize: 13 },
+  chipLabel: {
+    fontFamily: theme.font.semibold,
+    color: theme.colors.textMuted,
+    fontSize: theme.type.small,
+  },
   chipLabelActive: { color: theme.colors.text },
-  sideTag: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
-  sideTagLabel: { fontFamily: theme.font.monoHeavy, fontSize: 12 },
+  sideTag: { borderRadius: theme.radius.xs, paddingHorizontal: 8, paddingVertical: 4 },
+  sideTagLabel: { fontFamily: theme.font.monoHeavy, fontSize: theme.type.label },
   empty: { padding: theme.spacing(5), alignItems: 'center' },
   emptyText: {
     fontFamily: theme.font.regular,
     color: theme.colors.textMuted,
-    fontSize: 14,
+    fontSize: theme.type.body,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -553,5 +575,9 @@ const styles = StyleSheet.create({
     padding: theme.spacing(1.5),
     marginBottom: theme.spacing(1.5),
   },
-  errorText: { fontFamily: theme.font.regular, color: theme.colors.negative, fontSize: 14 },
+  errorText: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.negative,
+    fontSize: theme.type.body,
+  },
 });
