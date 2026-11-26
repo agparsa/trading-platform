@@ -13,6 +13,7 @@ const theme = {
   grid: '#252D38',
   up: '#16C784',
   down: '#EA3943',
+  profit: '#38BDF8',
 };
 
 const bar: ChartBar = {

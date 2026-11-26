@@ -157,17 +157,32 @@ export function KycCard({
 }
 
 const styles = StyleSheet.create({
-  warning: { color: theme.colors.warning, fontSize: 13, marginTop: theme.spacing(0.5) },
-  note: { color: theme.colors.textMuted, fontSize: 13, marginVertical: theme.spacing(0.75) },
+  warning: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.warning,
+    fontSize: 13,
+    marginTop: theme.spacing(0.5),
+  },
+  note: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    marginVertical: theme.spacing(0.75),
+  },
   slot: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.colors.border,
     paddingVertical: theme.spacing(1),
   },
   slotHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  slotTitle: { color: theme.colors.text, fontSize: 15, flexShrink: 1 },
-  sent: { color: theme.colors.positive, fontSize: 13 },
-  notSent: { color: theme.colors.textMuted, fontSize: 13 },
+  slotTitle: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.text,
+    fontSize: 15,
+    flexShrink: 1,
+  },
+  sent: { fontFamily: theme.font.regular, color: theme.colors.positive, fontSize: 13 },
+  notSent: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 13 },
   actions: { flexDirection: 'row', gap: theme.spacing(1), marginTop: theme.spacing(0.75) },
   action: { flex: 1 },
 });

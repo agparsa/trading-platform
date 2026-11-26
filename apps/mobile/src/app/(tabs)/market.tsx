@@ -17,6 +17,7 @@ import { Chip, Empty, ErrorNote, InstrumentBadge, PriceTile, Screen } from '../.
 import { instrumentMark, type InstrumentFamily } from '../../lib/instrument-mark';
 import { changeColor, theme } from '../../lib/theme';
 import { useT } from '../../lib/i18n';
+import { useOneTap } from '../../lib/one-tap';
 
 interface Quote {
   symbol: string;
@@ -59,6 +60,12 @@ export default function Market(): React.ReactElement {
    * first frame arrives.
    */
   const { quotes: live, status } = useRealtimeQuotes();
+  const oneTap = useOneTap();
+  /** One-tap armed: the order goes now. Otherwise the ticket, to review it. */
+  const press = (code: string, side: 'BUY' | 'SELL') => {
+    if (oneTap.armed) void oneTap.send(code, side);
+    else router.push(`/trade/${code}?side=${side}`);
+  };
 
   const loadQuotes = useCallback(async () => {
     try {
@@ -193,7 +200,9 @@ export default function Market(): React.ReactElement {
                   price={quote?.bid ?? null}
                   {...(tick === undefined ? {} : { tone: tick })}
                   accessibilityLabel={`${t('common.sell')} ${item.code} ${quote?.bid ?? ''}`}
-                  onPress={() => router.push(`/trade/${item.code}?side=SELL`)}
+                  armed={oneTap.armed}
+                  busy={oneTap.busy === `${item.code}:SELL`}
+                  onPress={() => press(item.code, 'SELL')}
                 />
                 <PriceTile
                   compact
@@ -202,7 +211,9 @@ export default function Market(): React.ReactElement {
                   price={quote?.ask ?? null}
                   {...(tick === undefined ? {} : { tone: tick })}
                   accessibilityLabel={`${t('common.buy')} ${item.code} ${quote?.ask ?? ''}`}
-                  onPress={() => router.push(`/trade/${item.code}?side=BUY`)}
+                  armed={oneTap.armed}
+                  busy={oneTap.busy === `${item.code}:BUY`}
+                  onPress={() => press(item.code, 'BUY')}
                 />
               </View>
             </Pressable>
@@ -217,6 +228,7 @@ const FAMILIES: ReadonlyArray<InstrumentFamily | 'all'> = ['all', 'fx', 'metal',
 
 const styles = StyleSheet.create({
   search: {
+    fontFamily: theme.font.regular,
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
@@ -247,10 +259,21 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.75 },
   instrument: { flex: 1, alignItems: 'flex-start', minWidth: 0 },
-  code: { color: theme.colors.text, fontSize: 16, fontWeight: '800', letterSpacing: 0.3 },
-  name: { color: theme.colors.textMuted, fontSize: 12, marginTop: 3 },
+  code: {
+    fontFamily: theme.font.heavy,
+    color: theme.colors.text,
+    fontSize: 16,
+    letterSpacing: 0.3,
+  },
+  name: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    marginTop: 3,
+  },
   tiles: { flexDirection: 'row', gap: 6, width: 196 },
   status: {
+    fontFamily: theme.font.regular,
     color: theme.colors.warning,
     fontSize: 12,
     marginBottom: theme.spacing(1),

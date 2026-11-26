@@ -112,7 +112,17 @@ const styles = StyleSheet.create({
   unread: { backgroundColor: theme.colors.surfaceRaised },
   stripe: { width: 3 },
   content: { flex: 1, padding: theme.spacing(1.5) },
-  title: { color: theme.colors.text, fontSize: 15, fontWeight: '600' },
-  body: { color: theme.colors.textMuted, fontSize: 13, marginTop: theme.spacing(0.25) },
-  when: { color: theme.colors.textMuted, fontSize: 11, marginTop: theme.spacing(0.5) },
+  title: { fontFamily: theme.font.semibold, color: theme.colors.text, fontSize: 15 },
+  body: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    marginTop: theme.spacing(0.25),
+  },
+  when: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    marginTop: theme.spacing(0.5),
+  },
 });

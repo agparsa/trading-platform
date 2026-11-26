@@ -1,10 +1,11 @@
-import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Icon } from './icons';
 import { useLocale } from '../lib/i18n';
 import { NUMERIC_DIRECTION } from '../lib/direction';
-import { theme } from '../lib/theme';
+import { moved, theme } from '../lib/theme';
+import { useReducedMotion } from '../lib/use-reduced-motion';
 import { instrumentMark } from '../lib/instrument-mark';
 import { PnlText } from './pnl-text';
 
@@ -55,6 +56,32 @@ export function InstrumentBadge({
   size?: number;
 }): React.ReactElement {
   const mark = instrumentMark(code);
+  if (mark.flags !== undefined) {
+    // A pair: the base's flag, and the quote's tucked under its corner.
+    const big = Math.round(size * 0.7);
+    const small = Math.round(size * 0.54);
+    return (
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={{ width: size, height: size }}
+      >
+        {/* The quote's flag first, so the base's sits over it, in front. */}
+        <View
+          style={[
+            styles.flag,
+            styles.flagQuote,
+            { width: small, height: small, borderRadius: small / 2 },
+          ]}
+        >
+          <Text style={{ fontSize: small * 0.62, lineHeight: small * 0.9 }}>{mark.flags[1]}</Text>
+        </View>
+        <View style={[styles.flag, { width: big, height: big, borderRadius: big / 2 }]}>
+          <Text style={{ fontSize: big * 0.62, lineHeight: big * 0.9 }}>{mark.flags[0]}</Text>
+        </View>
+      </View>
+    );
+  }
   return (
     <View
       accessibilityElementsHidden
@@ -72,8 +99,8 @@ export function InstrumentBadge({
     >
       <Text
         style={{
+          fontFamily: theme.font.heavy,
           color: mark.color,
-          fontWeight: '800',
           fontSize: mark.glyph.length > 1 ? size * 0.34 : size * 0.44,
         }}
       >
@@ -92,52 +119,105 @@ export function PriceTile({
   side,
   label,
   price,
-  tone,
   onPress,
   accessibilityLabel,
   compact = false,
+  armed = false,
+  busy = false,
 }: {
   side: 'BUY' | 'SELL';
   label: string;
   price: string | null;
-  /** The colour of the last move, if the price just changed. */
+  /** Kept for callers that colour by the last move; the tile now works it out. */
   tone?: string;
   onPress: () => void;
   accessibilityLabel: string;
   compact?: boolean;
+  /** One-tap is on: a press sends the order, so the tile says so. */
+  armed?: boolean;
+  /** An order from this tile is on its way; the tile waits. */
+  busy?: boolean;
 }): React.ReactElement {
   const buy = side === 'BUY';
+  const still = useReducedMotion();
+  const previous = useRef(price);
+  const wash = useRef(new Animated.Value(0)).current;
+  const [direction, setDirection] = useState<'up' | 'down' | null>(null);
+
+  // Each new price: the digits take the colour of the move, and the tile
+  // washes in it for a moment — the figure itself is never animated, only lit.
+  useEffect(() => {
+    const move = moved(previous.current, price);
+    previous.current = price;
+    if (move === null) return;
+    setDirection(move);
+    if (still) return;
+    wash.setValue(1);
+    Animated.timing(wash, { toValue: 0, duration: 600, useNativeDriver: false }).start();
+  }, [price, still, wash]);
+
+  const flash = wash.interpolate({
+    inputRange: [0, 1],
+    outputRange: [
+      'rgba(0,0,0,0)',
+      direction === 'down' ? 'rgba(234,57,67,0.24)' : 'rgba(22,199,132,0.24)',
+    ],
+  });
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ busy, disabled: busy }}
+      disabled={busy}
       onPress={onPress}
       style={({ pressed }) => [
         styles.tile,
         compact ? styles.tileCompact : null,
         {
           backgroundColor: buy ? theme.colors.buyTint : theme.colors.sellTint,
-          borderColor: buy ? 'rgba(22,199,132,0.35)' : 'rgba(234,57,67,0.35)',
-          opacity: pressed ? 0.75 : 1,
+          borderColor: armed
+            ? theme.colors.warning
+            : buy
+              ? 'rgba(22,199,132,0.35)'
+              : 'rgba(234,57,67,0.35)',
+          opacity: busy ? 0.55 : pressed ? 0.75 : 1,
+          transform: [{ scale: pressed ? 0.97 : 1 }],
         },
       ]}
     >
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { backgroundColor: flash, borderRadius: theme.radius.md }]}
+      />
       <Text
         style={[styles.tileLabel, { color: buy ? theme.colors.positive : theme.colors.negative }]}
       >
-        {label}
+        {armed ? `⚡ ${label}` : label}
       </Text>
-      <Text
-        style={[
-          styles.tilePrice,
-          compact ? styles.tilePriceCompact : null,
-          { color: tone ?? theme.colors.text, writingDirection: NUMERIC_DIRECTION },
-        ]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-      >
-        {price ?? '—'}
-      </Text>
+      {busy ? (
+        <ActivityIndicator color={theme.colors.text} size="small" />
+      ) : (
+        <Text
+          style={[
+            styles.tilePrice,
+            compact ? styles.tilePriceCompact : null,
+            {
+              color:
+                direction === 'up'
+                  ? theme.colors.positive
+                  : direction === 'down'
+                    ? theme.colors.negative
+                    : theme.colors.text,
+              writingDirection: NUMERIC_DIRECTION,
+            },
+          ]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {price ?? '—'}
+        </Text>
+      )}
     </Pressable>
   );
 }
@@ -366,8 +446,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.borderStrong,
   },
-  segmentLabel: { color: theme.colors.textMuted, fontSize: 14, fontWeight: '600' },
-  segmentLabelActive: { color: theme.colors.text, fontWeight: '700' },
+  segmentLabel: { fontFamily: theme.font.semibold, color: theme.colors.textMuted, fontSize: 14 },
+  segmentLabelActive: { fontFamily: theme.font.bold, color: theme.colors.text },
   screen: { flex: 1, backgroundColor: theme.colors.background, padding: theme.spacing(2) },
   card: {
     backgroundColor: theme.colors.surface,
@@ -384,9 +464,9 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing(1),
   },
   cardTitle: {
+    fontFamily: theme.font.bold,
     color: theme.colors.textMuted,
     fontSize: 11,
-    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1.2,
   },
@@ -398,12 +478,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
   },
-  figureLabel: { color: theme.colors.textMuted, fontSize: 14 },
+  figureLabel: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 14 },
   figureValue: {
+    fontFamily: theme.font.mono,
     color: theme.colors.text,
     fontSize: 15,
-    fontWeight: '600',
-    fontFamily: theme.font.mono,
   },
   button: {
     // 48pt: the smallest target a thumb hits reliably, and the one thing worth
@@ -416,9 +495,22 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing(1),
   },
   buttonOutline: { borderWidth: 1, borderColor: theme.colors.borderStrong },
-  buttonLabel: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
+  buttonLabel: { fontFamily: theme.font.bold, color: '#FFFFFF', fontSize: 16, letterSpacing: 0.2 },
+  flag: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.surfaceRaised,
+    borderWidth: 1.5,
+    borderColor: theme.colors.surface,
+  },
+  flagQuote: { top: undefined, left: undefined, right: 0, bottom: 0 },
   tile: {
     flex: 1,
+    overflow: 'hidden',
     minHeight: 50,
     borderRadius: theme.radius.md,
     borderWidth: 1,
@@ -428,9 +520,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tileCompact: { minHeight: 44, paddingVertical: 4 },
-  tileLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  tilePrice: { fontSize: 17, fontWeight: '700', fontFamily: theme.font.mono, marginTop: 1 },
-  tilePriceCompact: { fontSize: 15 },
+  tileLabel: { fontFamily: theme.font.heavy, fontSize: 10, letterSpacing: 1 },
+  tilePrice: { fontFamily: theme.font.monoBold, fontSize: 17, marginTop: 1 },
+  tilePriceCompact: { fontFamily: theme.font.regular, fontSize: 15 },
   chip: {
     paddingHorizontal: theme.spacing(1.75),
     minHeight: 34,
@@ -441,12 +533,18 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
   },
   chipActive: { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentTint },
-  chipLabel: { color: theme.colors.textMuted, fontSize: 13, fontWeight: '600' },
+  chipLabel: { fontFamily: theme.font.semibold, color: theme.colors.textMuted, fontSize: 13 },
   chipLabelActive: { color: theme.colors.text },
   sideTag: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
-  sideTagLabel: { fontSize: 12, fontWeight: '800', fontFamily: theme.font.mono },
+  sideTagLabel: { fontFamily: theme.font.monoHeavy, fontSize: 12 },
   empty: { padding: theme.spacing(5), alignItems: 'center' },
-  emptyText: { color: theme.colors.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  emptyText: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
   error: {
     backgroundColor: theme.colors.sellTint,
     borderRadius: theme.radius.md,
@@ -455,5 +553,5 @@ const styles = StyleSheet.create({
     padding: theme.spacing(1.5),
     marginBottom: theme.spacing(1.5),
   },
-  errorText: { color: theme.colors.negative, fontSize: 14 },
+  errorText: { fontFamily: theme.font.regular, color: theme.colors.negative, fontSize: 14 },
 });

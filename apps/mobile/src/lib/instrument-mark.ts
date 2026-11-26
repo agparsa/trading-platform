@@ -13,7 +13,21 @@ export interface InstrumentMark {
   readonly family: InstrumentFamily;
   readonly glyph: string;
   readonly color: string;
+  /** A pair's two currencies as flags, base first — drawn as two discs. */
+  readonly flags?: readonly [string, string];
 }
+
+/** A currency's flag, as the emoji every phone already draws in colour. */
+const FLAGS: Readonly<Record<string, string>> = {
+  EUR: '🇪🇺',
+  USD: '🇺🇸',
+  GBP: '🇬🇧',
+  JPY: '🇯🇵',
+  AUD: '🇦🇺',
+  NZD: '🇳🇿',
+  CAD: '🇨🇦',
+  CHF: '🇨🇭',
+};
 
 const METALS: Readonly<Record<string, { glyph: string; color: string }>> = {
   XAU: { glyph: 'Au', color: '#D4A72C' },
@@ -48,8 +62,17 @@ export function instrumentMark(code: string): InstrumentMark {
   const coin = COINS[base];
   if (coin !== undefined) return { family: 'crypto', ...coin };
   const currency = CURRENCIES[base];
-  if (currency !== undefined && CURRENCIES[upper.slice(3, 6)] !== undefined) {
-    return { family: 'fx', ...currency };
+  const quote = upper.slice(3, 6);
+  if (currency !== undefined && CURRENCIES[quote] !== undefined) {
+    const baseFlag = FLAGS[base];
+    const quoteFlag = FLAGS[quote];
+    return {
+      family: 'fx',
+      ...currency,
+      ...(baseFlag === undefined || quoteFlag === undefined
+        ? {}
+        : { flags: [baseFlag, quoteFlag] as const }),
+    };
   }
   return { family: 'other', glyph: upper.slice(0, 2), color: '#64748B' };
 }

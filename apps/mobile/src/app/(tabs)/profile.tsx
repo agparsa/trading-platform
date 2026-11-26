@@ -314,8 +314,13 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.sm,
     backgroundColor: 'rgba(240, 167, 10, 0.10)',
   },
-  pendingText: { color: theme.colors.warning, fontSize: 13, marginBottom: theme.spacing(1) },
-  sentText: { color: theme.colors.positive, fontSize: 13 },
+  pendingText: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.warning,
+    fontSize: 13,
+    marginBottom: theme.spacing(1),
+  },
+  sentText: { fontFamily: theme.font.regular, color: theme.colors.positive, fontSize: 13 },
   entry: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -323,8 +328,18 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing(0.75),
     gap: theme.spacing(1),
   },
-  entryTitle: { color: theme.colors.text, fontSize: 15 },
-  entryDetail: { color: theme.colors.textMuted, fontSize: 12 },
-  warning: { color: theme.colors.warning, fontSize: 13, marginTop: theme.spacing(0.5) },
-  note: { color: theme.colors.textMuted, fontSize: 13, marginTop: theme.spacing(0.5) },
+  entryTitle: { fontFamily: theme.font.regular, color: theme.colors.text, fontSize: 15 },
+  entryDetail: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 12 },
+  warning: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.warning,
+    fontSize: 13,
+    marginTop: theme.spacing(0.5),
+  },
+  note: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    marginTop: theme.spacing(0.5),
+  },
 });

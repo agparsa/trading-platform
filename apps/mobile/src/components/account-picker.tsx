@@ -59,6 +59,6 @@ const styles = StyleSheet.create({
   },
   active: { backgroundColor: theme.colors.surface, borderColor: theme.colors.accent },
   pressed: { opacity: 0.6 },
-  label: { color: theme.colors.textMuted, fontSize: 12 },
-  activeLabel: { color: theme.colors.text, fontWeight: '600' },
+  label: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 12 },
+  activeLabel: { fontFamily: theme.font.semibold, color: theme.colors.text },
 });

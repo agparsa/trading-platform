@@ -6,10 +6,21 @@ import { SessionProvider } from '../lib/session';
 import { AccountsProvider } from '../lib/accounts';
 import { FeaturesProvider } from '../lib/features';
 import { LiveProvider } from '../lib/live';
+import { OneTapProvider } from '../lib/one-tap';
+import { OneTapNotice } from '../components/one-tap';
 import { LocaleProvider, useT } from '../lib/i18n';
+import { useFonts } from 'expo-font';
+import { View } from 'react-native';
+import { FONT_FILES } from '../lib/fonts';
 import { theme } from '../lib/theme';
 
 export default function RootLayout(): React.ReactElement {
+  // A dark screen for the instant the faces load, rather than a flash of the
+  // system font. A face that fails to load falls back to the system's.
+  const [fontsLoaded, fontsFailed] = useFonts(FONT_FILES);
+  if (!fontsLoaded && fontsFailed === null) {
+    return <View style={{ flex: 1, backgroundColor: theme.colors.background }} />;
+  }
   return (
     <SafeAreaProvider>
       {/* Outermost after the safe area: every screen, the sign-in form
@@ -23,8 +34,13 @@ export default function RootLayout(): React.ReactElement {
             <AccountsProvider>
               {/* One socket for every screen: the tabs and the ticket read it. */}
               <LiveProvider>
-                <StatusBar style="light" />
-                <AppStack />
+                {/* Under the socket and the account: a one-tap order goes to
+                    the account on screen, and sounds like any other fill. */}
+                <OneTapProvider>
+                  <StatusBar style="light" />
+                  <AppStack />
+                  <OneTapNotice />
+                </OneTapProvider>
               </LiveProvider>
             </AccountsProvider>
           </FeaturesProvider>
@@ -42,7 +58,7 @@ function AppStack(): React.ReactElement {
         headerStyle: { backgroundColor: theme.colors.background },
         headerTintColor: theme.colors.text,
         headerShadowVisible: false,
-        headerTitleStyle: { fontWeight: '700' },
+        headerTitleStyle: { fontFamily: theme.font.bold },
         contentStyle: { backgroundColor: theme.colors.background },
       }}
     >

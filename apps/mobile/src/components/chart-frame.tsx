@@ -2,7 +2,13 @@ import React, { useEffect, useRef } from 'react';
 import { StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import type { ChartBar } from '@tp/chart-core';
-import { setBarsScript, setLevelsScript, type ChartLevel } from '../lib/chart-html';
+import {
+  CLEAR_PREVIEW_SCRIPT,
+  setBarsScript,
+  setLevelsScript,
+  type ChartLevel,
+} from '../lib/chart-html';
+import type { DraggedLevel } from '../lib/chart-drag';
 import { theme } from '../lib/theme';
 
 /**
@@ -16,7 +22,13 @@ export function ChartFrame({
   ready,
   onReady,
   onError,
+  onLevel,
+  clearPreview = 0,
 }: {
+  /** A line dropped by the trader: a stop or target to ask about. */
+  onLevel?: (level: DraggedLevel) => void;
+  /** Bumped to take the drag preview away once the trader has answered. */
+  clearPreview?: number;
   html: string;
   bars: readonly ChartBar[] | null;
   /** The open positions' entry, stop and target lines. */
@@ -42,6 +54,10 @@ export function ChartFrame({
     webview.current?.injectJavaScript(setLevelsScript(JSON.parse(levelsKey) as ChartLevel[]));
   }, [ready, bars, levelsKey]);
 
+  useEffect(() => {
+    if (clearPreview > 0) webview.current?.injectJavaScript(CLEAR_PREVIEW_SCRIPT);
+  }, [clearPreview]);
+
   return (
     <WebView
       ref={webview}
@@ -62,6 +78,15 @@ export function ChartFrame({
           const message = JSON.parse(event.nativeEvent.data) as { type?: string };
           if (message.type === 'ready') onReady();
           if (message.type === 'error') onError();
+          const dropped = message as Partial<DraggedLevel> & { type?: string };
+          if (
+            dropped.type === 'level' &&
+            typeof dropped.positionId === 'string' &&
+            (dropped.kind === 'STOP_LOSS' || dropped.kind === 'TAKE_PROFIT') &&
+            typeof dropped.price === 'string'
+          ) {
+            onLevel?.({ positionId: dropped.positionId, kind: dropped.kind, price: dropped.price });
+          }
         } catch {
           // A message we do not understand is not worth crashing over.
         }

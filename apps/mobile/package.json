@@ -12,6 +12,8 @@
     "build:android": "./scripts/build-android.sh"
   },
   "dependencies": {
+    "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "@expo-google-fonts/vazirmatn": "^0.4.1",
     "@tp/api-client": "workspace:*",
     "@tp/chart-core": "workspace:*",
     "@tp/financial-core": "workspace:*",
@@ -25,6 +27,7 @@
     "expo-build-properties": "~57.0.22",
     "expo-constants": "~57.0.22",
     "expo-device": "~57.0.2",
+    "expo-font": "~57.0.4",
     "expo-image-picker": "~57.0.20",
     "expo-localization": "~57.0.2",
     "expo-notifications": "~57.0.24",

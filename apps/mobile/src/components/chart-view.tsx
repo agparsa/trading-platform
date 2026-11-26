@@ -19,7 +19,9 @@ import { applyPnl, type MarkedRow } from '../lib/live-book';
 type BookRow = LevelSource & MarkedRow;
 import { theme } from '../lib/theme';
 import { ChartFrame } from './chart-frame';
-import { ErrorNote } from './ui';
+import { Button, ErrorNote } from './ui';
+import { dragPatch, type DraggedLevel } from '../lib/chart-drag';
+import { refusalText } from '../lib/messages';
 
 interface Instrument {
   code: string;
@@ -58,6 +60,39 @@ export function ChartView({ symbol }: { symbol: string }): React.ReactElement {
   const { selected: account } = useAccounts();
   const live = useLiveBook();
   const [book, setBook] = useState<readonly BookRow[] | null>(null);
+  /** Bumped after a level is saved, so the lines are the server's at once. */
+  const [refetch, setRefetch] = useState(0);
+  /** A line the trader dropped, waiting for their yes. */
+  const [dropped, setDropped] = useState<DraggedLevel | null>(null);
+  const [clearPreview, setClearPreview] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [levelError, setLevelError] = useState<string | null>(null);
+
+  const answer = async (send: boolean) => {
+    const level = dropped;
+    if (level === null) return;
+    if (!send) {
+      setDropped(null);
+      setClearPreview((n) => n + 1);
+      return;
+    }
+    setSaving(true);
+    setLevelError(null);
+    try {
+      const patch = dragPatch(level);
+      await api.patch(`/positions/${level.positionId}`, patch, {
+        idempotencyKey: `levels:${level.positionId}:${JSON.stringify(patch)}`,
+      });
+      setRefetch((n) => n + 1);
+    } catch (caught) {
+      // The confirmed line is where it always was; the reason is the server's.
+      setLevelError(refusalText(caught, 'positions.levelsFailed', t));
+    } finally {
+      setSaving(false);
+      setDropped(null);
+      setClearPreview((n) => n + 1);
+    }
+  };
   useEffect(() => {
     if (account === null) {
       setBook([]);
@@ -75,7 +110,7 @@ export function ChartView({ symbol }: { symbol: string }): React.ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [api, account, live.versions.positions]);
+  }, [api, account, live.versions.positions, refetch]);
   const marked = applyPnl(book, account === null ? undefined : live.pnl[account.id]);
   const levels = useMemo(() => levelsFor(marked ?? [], symbol), [marked, symbol]);
   /**
@@ -134,6 +169,7 @@ export function ChartView({ symbol }: { symbol: string }): React.ReactElement {
           grid: theme.colors.border,
           up: theme.colors.positive,
           down: theme.colors.negative,
+          profit: theme.colors.profit,
         },
         // The instrument's own precision: drawing EURUSD to two decimals
         // flattens every move it makes.
@@ -176,8 +212,52 @@ export function ChartView({ symbol }: { symbol: string }): React.ReactElement {
           ready={ready}
           onReady={() => setReady(true)}
           onError={() => setError(t('chart.offline'))}
+          onLevel={(level) => {
+            setLevelError(null);
+            setDropped(level);
+          }}
+          clearPreview={clearPreview}
         />
       </View>
+      {levelError === null ? null : <ErrorNote message={levelError} />}
+      {dropped === null ? (
+        levels.some((level) => level.drag !== undefined) ? (
+          <Text style={styles.dragHint}>{t('chart.dragHint')}</Text>
+        ) : null
+      ) : (
+        <View
+          style={[
+            styles.ask,
+            {
+              borderColor:
+                dropped.kind === 'STOP_LOSS' ? theme.colors.negative : theme.colors.profit,
+            },
+          ]}
+        >
+          <Text style={styles.askText}>
+            {t(dropped.kind === 'STOP_LOSS' ? 'chart.setStop' : 'chart.setTarget', {
+              price: dropped.price,
+            })}
+          </Text>
+          <View style={styles.askButtons}>
+            <View style={{ flex: 1 }}>
+              <Button
+                label={t('chart.set')}
+                variant={dropped.kind === 'STOP_LOSS' ? 'danger' : 'primary'}
+                busy={saving}
+                onPress={() => void answer(true)}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button
+                label={t('common.cancel')}
+                variant="quiet"
+                onPress={() => void answer(false)}
+              />
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -192,7 +272,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   chipActive: { backgroundColor: theme.colors.accent },
-  chipLabel: { color: theme.colors.textMuted, fontSize: 13 },
-  chipLabelActive: { color: '#FFFFFF', fontWeight: '600' },
+  chipLabel: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 13 },
+  chipLabelActive: { fontFamily: theme.font.semibold, color: '#FFFFFF' },
+  dragHint: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textFaint,
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  ask: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    padding: theme.spacing(1.25),
+    marginTop: theme.spacing(1),
+  },
+  askText: { fontFamily: theme.font.semibold, color: theme.colors.text, fontSize: 14 },
+  askButtons: { flexDirection: 'row', gap: theme.spacing(1) },
   chart: { flex: 1, borderRadius: theme.radius.md, overflow: 'hidden' },
 });

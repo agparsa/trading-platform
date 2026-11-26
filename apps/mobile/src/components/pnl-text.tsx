@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, type StyleProp, type TextStyle } from 'react-native';
+import { Animated, type StyleProp, type TextStyle } from 'react-native';
+import { useReducedMotion } from '../lib/use-reduced-motion';
 import { NUMERIC_DIRECTION } from '../lib/direction';
 import { formatSigned, moved, signColor, theme } from '../lib/theme';
 
@@ -22,21 +23,7 @@ export function PnlText({
   const previous = useRef(value);
   const wash = useRef(new Animated.Value(0)).current;
   const [tone, setTone] = useState<'up' | 'down'>('up');
-  const [still, setStill] = useState(false);
-
-  useEffect(() => {
-    let live = true;
-    void AccessibilityInfo.isReduceMotionEnabled()
-      .then((on) => {
-        if (live) setStill(on);
-      })
-      .catch(() => undefined);
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setStill);
-    return () => {
-      live = false;
-      subscription.remove();
-    };
-  }, []);
+  const still = useReducedMotion();
 
   useEffect(() => {
     const direction = moved(previous.current, value);

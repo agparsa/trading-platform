@@ -129,10 +129,10 @@ export default tseslint.config(
      * React Native resolves bundled assets through `require` with a literal
      * path — Metro rewrites those at build time, and an `import` of a `.wav`
      * resolves to nothing at runtime with no error. The rule is right
-     * everywhere else, so it is turned off for the one file that has to break
-     * it rather than for the app.
+     * everywhere else, so it is turned off for the two files that have to
+     * break it (the sounds and the font faces) rather than for the app.
      */
-    files: ['apps/mobile/src/lib/sound-player.ts'],
+    files: ['apps/mobile/src/lib/sound-player.ts', 'apps/mobile/src/lib/fonts.ts'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
     },

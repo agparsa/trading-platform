@@ -14,6 +14,17 @@ const gold: LevelSource = {
 };
 
 describe('the position lines on a chart', () => {
+  it('lets a position’s lines be dragged, each saying what a drag may change', () => {
+    const levels = levelsFor([{ ...gold, id: 'p1' }], 'XAUUSD');
+    expect(levels.map((level) => level.drag?.kind)).toEqual(['ENTRY', 'STOP_LOSS', 'TAKE_PROFIT']);
+    expect(levels[0]?.drag).toEqual({
+      positionId: 'p1',
+      kind: 'ENTRY',
+      side: 'BUY',
+      entry: '2000.00',
+    });
+  });
+
   it('draws the entry, a red stop and a blue target, the levels heavier', () => {
     expect(levelsFor([gold], 'XAUUSD')).toEqual([
       {

@@ -13,12 +13,13 @@ import type { SoundPlayerPort } from './sound-player';
  * from the lock screen. Both describe the same occurrence and carry the same
  * `eventId`, so both come through here and the first one wins.
  *
- * The socket frame for the same fill is **not** a third route, though this
- * said it was and typed `source: 'socket'` for it. Nothing ever sent a frame
- * here. It does not now either, on purpose: the frame carries no word from the
- * server on whether this notification should sound, and a frame claiming the
- * event first would make the push that does carry it a duplicate. Frames
- * refresh the screens instead — see `LiveProvider`.
+ * The socket frame is a third route only on a phone with no push: an APK built
+ * without the firm's Firebase config, or a trader who refused notifications.
+ * There a frame (and the app's own "your order filled") is the only word that
+ * a trade opened or closed, so it sounds — through this same handler, keyed by
+ * the position (`trade-sound.ts`), with the trader's own sound settings. Where
+ * push works the frame stays silent, so the push that carries the server's
+ * decision is never made a duplicate.
  *
  * ## Why this is not in a React component
  *
@@ -43,7 +44,7 @@ export interface IncomingTradingEvent {
   readonly accountId: string | null;
   /** What the server decided about the sound for this specific notification. */
   readonly playSound: boolean;
-  readonly source: 'push-foreground' | 'push-tapped';
+  readonly source: 'push-foreground' | 'push-tapped' | 'socket';
 }
 
 /**

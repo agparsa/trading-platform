@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
@@ -49,6 +50,7 @@ interface Position {
 export default function Positions(): React.ReactElement {
   const t = useT();
   const { api } = useSession();
+  const router = useRouter();
   // The account whose book this is — the one the trader chose, as on every tab.
   const { selected: account } = useAccounts();
   const live = useLiveBook();
@@ -307,7 +309,13 @@ export default function Positions(): React.ReactElement {
               },
             ]}
           >
-            <View style={styles.rowTop}>
+            {/* The position's own chart, with its lines, a tap away. */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${t('quotes.chart')} ${item.symbol}`}
+              onPress={() => router.push(`/(tabs)/chart?symbol=${item.symbol}`)}
+              style={({ pressed }) => [styles.rowTop, pressed ? { opacity: 0.7 } : null]}
+            >
               <InstrumentBadge code={item.symbol} size={32} />
               <View style={{ flex: 1 }}>
                 <View style={styles.titleLine}>
@@ -324,7 +332,7 @@ export default function Positions(): React.ReactElement {
               {/* An em-dash, not a zero. A trader cannot tell a genuine flat
                   from a missing price, and one of those is a reason to act. */}
               <PnlText value={item.floatingPnl} style={styles.pnl} />
-            </View>
+            </Pressable>
             {item.stale === true ? (
               <Text style={styles.staleNote}>{t('positions.stale')}</Text>
             ) : null}
@@ -507,9 +515,9 @@ const styles = StyleSheet.create({
   titleLine: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(0.75) },
   levels: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: theme.spacing(1) },
   level: {
+    fontFamily: theme.font.mono,
     color: theme.colors.textMuted,
     fontSize: 12,
-    fontFamily: theme.font.mono,
     backgroundColor: theme.colors.surfaceRaised,
     borderRadius: 6,
     paddingHorizontal: 8,
@@ -524,23 +532,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: theme.spacing(0.5),
   },
-  symbol: { color: theme.colors.text, fontSize: 16, fontWeight: '800' },
-  side: { fontSize: 14, fontFamily: theme.font.mono },
+  symbol: { fontFamily: theme.font.heavy, color: theme.colors.text, fontSize: 16 },
+  side: { fontFamily: theme.font.mono, fontSize: 14 },
   detail: {
+    fontFamily: theme.font.mono,
     color: theme.colors.textMuted,
     fontSize: 13,
-    fontFamily: theme.font.mono,
     marginTop: 3,
   },
-  pnl: { fontSize: 18, fontFamily: theme.font.mono, fontWeight: '800' },
-  protection: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.spacing(0.5) },
+  pnl: { fontFamily: theme.font.monoHeavy, fontSize: 18 },
+  protection: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    marginTop: theme.spacing(0.5),
+  },
   confirm: {
     marginTop: theme.spacing(1),
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.colors.border,
     paddingTop: theme.spacing(1),
   },
-  confirmText: { color: theme.colors.text, fontSize: 14 },
+  confirmText: { fontFamily: theme.font.regular, color: theme.colors.text, fontSize: 14 },
   bookBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -565,16 +578,21 @@ const styles = StyleSheet.create({
     minHeight: 36,
     justifyContent: 'center',
   },
-  closeLabel: { color: theme.colors.textMuted, fontSize: 13 },
+  closeLabel: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 13 },
   actions: { flexDirection: 'row', gap: theme.spacing(1) },
-  staleNote: { color: theme.colors.warning, fontSize: 11, marginTop: theme.spacing(0.5) },
+  staleNote: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.warning,
+    fontSize: 11,
+    marginTop: theme.spacing(0.5),
+  },
   levelField: { marginBottom: theme.spacing(1) },
-  levelLabel: { color: theme.colors.textMuted, fontSize: 12 },
+  levelLabel: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 12 },
   levelInput: {
+    fontFamily: theme.font.mono,
     backgroundColor: theme.colors.surfaceRaised,
     borderRadius: theme.radius.sm,
     color: theme.colors.text,
-    fontFamily: theme.font.mono,
     fontSize: 15,
     minHeight: 44,
     paddingHorizontal: theme.spacing(1),

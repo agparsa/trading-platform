@@ -10,6 +10,7 @@ import { useSession } from '../../lib/session';
 import { Button, Card, Empty, ErrorNote, Screen } from '../../components/ui';
 import { theme } from '../../lib/theme';
 import { MESSAGES, type MessageKey, type Translate } from '../../lib/messages';
+import { OneTapSwitch } from '../../components/one-tap';
 import { useT } from '../../lib/i18n';
 
 function label(category: string, t: Translate): string {
@@ -75,6 +76,8 @@ export default function Settings(): React.ReactElement {
     <Screen>
       <ScrollView>
         {error === null ? null : <ErrorNote message={error} />}
+
+        <OneTapSwitch />
 
         <Card title={t('settings.notifications')}>
           <Row
@@ -194,6 +197,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     minHeight: 48,
   },
-  label: { color: theme.colors.text, fontSize: 15 },
-  hint: { color: theme.colors.textMuted, fontSize: 12 },
+  label: { fontFamily: theme.font.regular, color: theme.colors.text, fontSize: 15 },
+  hint: { fontFamily: theme.font.regular, color: theme.colors.textMuted, fontSize: 12 },
 });

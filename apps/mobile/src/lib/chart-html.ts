@@ -31,6 +31,8 @@ export interface ChartTheme {
   grid: string;
   up: string;
   down: string;
+  /** A take-profit's colour, for the drag preview. */
+  profit: string;
 }
 
 /**
@@ -54,6 +56,7 @@ export function chartHtml(options: {
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <style>
   html, body, #chart { margin: 0; padding: 0; height: 100%; width: 100%; background: ${theme.background}; }
+  #chart { touch-action: none; }
   #empty { color: ${theme.text}; font: 13px -apple-system, system-ui, sans-serif; opacity: 0.6;
            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
 </style>
@@ -70,6 +73,7 @@ export function chartHtml(options: {
 
     function post(message) {
       if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(message));
+      else if (window.parent !== window) window.parent.postMessage(JSON.stringify(message), '*');
     }
 
     function ensure() {
@@ -156,6 +160,7 @@ export function chartHtml(options: {
           };
         },
       });
+      current = levels;
       for (var j = 0; j < levels.length; j++) {
         var level = levels[j];
         lines.push(series.createPriceLine({
@@ -167,6 +172,98 @@ export function chartHtml(options: {
           title: level.title,
         }));
       }
+    };
+
+    /**
+     * Dragging a position's line to set its stop or target.
+     *
+     * A touch within a finger's width of a position's line takes it: the chart
+     * stops panning, a preview line follows the finger, and the release says
+     * where to the app, which asks before anything is sent. A touch anywhere
+     * else is the chart's, as before. The preview stays until the app clears
+     * it — after the trader's answer — so the price being asked about is the
+     * one on screen.
+     */
+    var current = [];
+    var grab = null;
+    var preview = null;
+    var GRAB_PX = 22;
+    var precision = ${pricePrecision};
+    var tick = Number(${scriptSafeJson(minMove)});
+    var colours = { STOP_LOSS: ${scriptSafeJson(theme.down)}, TAKE_PROFIT: ${scriptSafeJson(theme.profit)} };
+
+    function snap(price) {
+      var stepped = tick > 0 ? Math.round(price / tick) * tick : price;
+      return stepped.toFixed(precision);
+    }
+    function kindAt(level, price) {
+      if (level.drag.kind !== 'ENTRY') return level.drag.kind;
+      var below = Number(price) < Number(level.drag.entry);
+      if (Number(price) === Number(level.drag.entry)) return null;
+      return (level.drag.side === 'BUY') === below ? 'STOP_LOSS' : 'TAKE_PROFIT';
+    }
+    function drawPreview(kind, price) {
+      if (preview !== null) { series.removePriceLine(preview); preview = null; }
+      if (kind === null) return;
+      preview = series.createPriceLine({
+        price: Number(price),
+        color: colours[kind],
+        lineWidth: 2,
+        lineStyle: 3,
+        axisLabelVisible: true,
+        title: (kind === 'STOP_LOSS' ? 'SL ' : 'TP ') + price,
+      });
+    }
+    function yOf(event) {
+      var box = document.getElementById('chart').getBoundingClientRect();
+      return event.clientY - box.top;
+    }
+    var host = document.getElementById('chart');
+    host.addEventListener('pointerdown', function (event) {
+      if (series === null) return;
+      var y = yOf(event);
+      var best = null;
+      for (var i = 0; i < current.length; i++) {
+        var level = current[i];
+        if (!level.drag) continue;
+        var at = series.priceToCoordinate(Number(level.price));
+        if (at === null) continue;
+        var distance = Math.abs(at - y);
+        if (distance <= GRAB_PX && (best === null || distance < best.distance)) {
+          best = { level: level, distance: distance };
+        }
+      }
+      if (best === null) return;
+      grab = { level: best.level, kind: null, price: null };
+      chart.applyOptions({ handleScroll: false, handleScale: false });
+      event.stopPropagation();
+      event.preventDefault();
+    }, true);
+    host.addEventListener('pointermove', function (event) {
+      if (grab === null) return;
+      var price = series.coordinateToPrice(yOf(event));
+      if (price === null) return;
+      grab.price = snap(price);
+      grab.kind = kindAt(grab.level, grab.price);
+      drawPreview(grab.kind, grab.price);
+      event.stopPropagation();
+      event.preventDefault();
+    }, true);
+    function release(event) {
+      if (grab === null) return;
+      var done = grab;
+      grab = null;
+      chart.applyOptions({ handleScroll: true, handleScale: true });
+      event.stopPropagation();
+      if (done.kind === null || done.price === null) { drawPreview(null, null); return; }
+      post({ type: 'level', positionId: done.level.drag.positionId, kind: done.kind, price: done.price });
+    }
+    host.addEventListener('pointerup', release, true);
+    host.addEventListener('pointercancel', release, true);
+    window.__clearPreview = function () { drawPreview(null, null); };
+    /** Where a price sits on screen — for the walk that drags a line in a test. */
+    window.__coordinate = function (price) {
+      return series === null ? null : series.priceToCoordinate(Number(price));
     };
 
     /** One bar, for the in-progress candle arriving on the socket. */
@@ -230,9 +327,19 @@ export interface ChartLevel {
   readonly width: 1 | 2;
   readonly dashed: boolean;
   readonly title: string;
+  /** Set on a position's lines: what a drag of this line may change. */
+  readonly drag?: {
+    readonly positionId: string;
+    readonly kind: 'ENTRY' | 'STOP_LOSS' | 'TAKE_PROFIT';
+    readonly side: 'BUY' | 'SELL';
+    readonly entry: string;
+  };
 }
 
 /** The call injected to redraw the position lines. */
 export function setLevelsScript(levels: readonly ChartLevel[]): string {
   return `window.__setLevels(${scriptSafeJson(levels)}); true;`;
 }
+
+/** The call injected to take the drag preview away, after the trader answered. */
+export const CLEAR_PREVIEW_SCRIPT = 'window.__clearPreview && window.__clearPreview(); true;';

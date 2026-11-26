@@ -39,9 +39,21 @@ export const theme = {
   },
   spacing: (units: number) => units * 8,
   radius: { sm: 8, md: 12, lg: 18, pill: 999 },
+  /**
+   * Families by weight. Android picks a face by family, not by `fontWeight`,
+   * so each weight is its own family and styles name one rather than a
+   * weight (see `lib/fonts.ts`).
+   */
   font: {
+    regular: 'Vazirmatn_400Regular',
+    medium: 'Vazirmatn_500Medium',
+    semibold: 'Vazirmatn_600SemiBold',
+    bold: 'Vazirmatn_700Bold',
+    heavy: 'Vazirmatn_800ExtraBold',
     /** Prices and P&L. Tabular figures stop the numbers dancing as they tick. */
-    mono: 'monospace',
+    mono: 'JetBrainsMono_500Medium',
+    monoBold: 'JetBrainsMono_700Bold',
+    monoHeavy: 'JetBrainsMono_800ExtraBold',
   },
 } as const;
 

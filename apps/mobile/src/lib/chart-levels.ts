@@ -3,6 +3,8 @@ import { formatSigned, theme } from './theme';
 
 /** What the chart needs of an open position. */
 export interface LevelSource {
+  /** The position's id, when known: its lines can then be dragged. */
+  readonly id?: string;
   readonly symbol: string;
   readonly side: 'BUY' | 'SELL';
   readonly volume: string;
@@ -26,7 +28,19 @@ export function levelsFor(positions: readonly LevelSource[], symbol: string): Ch
   const levels: ChartLevel[] = [];
   for (const position of positions) {
     if (position.symbol !== symbol) continue;
+    const drag = (kind: 'ENTRY' | 'STOP_LOSS' | 'TAKE_PROFIT') =>
+      position.id === undefined
+        ? {}
+        : {
+            drag: {
+              positionId: position.id,
+              kind,
+              side: position.side,
+              entry: position.entryPrice,
+            },
+          };
     levels.push({
+      ...drag('ENTRY'),
       price: position.entryPrice,
       color: theme.colors.textMuted,
       width: 1,
@@ -38,6 +52,7 @@ export function levelsFor(positions: readonly LevelSource[], symbol: string): Ch
     });
     if (position.stopLoss !== null) {
       levels.push({
+        ...drag('STOP_LOSS'),
         price: position.stopLoss,
         color: theme.colors.negative,
         width: 2,
@@ -47,6 +62,7 @@ export function levelsFor(positions: readonly LevelSource[], symbol: string): Ch
     }
     if (position.takeProfit !== null) {
       levels.push({
+        ...drag('TAKE_PROFIT'),
         price: position.takeProfit,
         color: theme.colors.profit,
         width: 2,

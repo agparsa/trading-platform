@@ -14,6 +14,7 @@ import * as Localization from 'expo-localization';
 import type { ApiClient } from '@tp/api-client';
 import {
   isTwoFactorChallenge,
+  type NotificationCategory,
   type AuthTokenResponse,
   type NotificationSettingsDto,
   type SignInResponse,
@@ -54,6 +55,11 @@ interface SessionValue {
   /** Everything the settings screen shows, refreshed on demand. */
   readonly preferences: NotificationSettingsDto | null;
   refreshPreferences(): Promise<void>;
+  /**
+   * A trade this phone has no push to hear about: sounded here, once per
+   * occurrence, with the trader's settings. Does nothing where push works.
+   */
+  tradeSound(eventId: string, category: NotificationCategory): void;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -99,9 +105,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
   const api = useMemo(() => createApi(tokens), [tokens]);
 
   /** Registers this installation and uploads the push token, if permitted. */
+  /** Whether this phone has a push token; if not, frames carry the sounds. */
+  const pushActiveRef = useRef(false);
   const registerDevice = useCallback(async () => {
     const installationId = await installationIdentifier();
     const pushToken = await requestPushToken();
+    pushActiveRef.current = pushToken !== null;
     try {
       await api.post(
         '/devices',
@@ -269,6 +278,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
     setSignedIn(false);
   }, [tokens]);
 
+  const tradeSound = useCallback((eventId: string, category: NotificationCategory) => {
+    if (pushActiveRef.current) return;
+    eventsRef.current.handle(
+      { eventId, category, accountId: null, playSound: true, source: 'socket' },
+      appActiveRef.current,
+    );
+  }, []);
+
   const value = useMemo<SessionValue>(
     () => ({
       api,
@@ -280,6 +297,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
       accessToken,
       preferences,
       refreshPreferences,
+      tradeSound,
     }),
     [
       api,
@@ -291,6 +309,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }): Re
       accessToken,
       preferences,
       refreshPreferences,
+      tradeSound,
     ],
   );
 

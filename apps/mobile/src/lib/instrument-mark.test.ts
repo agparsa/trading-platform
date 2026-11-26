@@ -9,6 +9,11 @@ describe('marking an instrument', () => {
     expect(instrumentMark('btcusd')).toMatchObject({ family: 'crypto', glyph: '₿' });
   });
 
+  it('draws a pair as its two flags, base first', () => {
+    expect(instrumentMark('EURUSD').flags).toEqual(['🇪🇺', '🇺🇸']);
+    expect(instrumentMark('XAUUSD').flags).toBeUndefined();
+  });
+
   it('marks something it does not know plainly, never as a pair', () => {
     expect(instrumentMark('US500')).toMatchObject({ family: 'other', glyph: 'US' });
     expect(instrumentMark('EURXYZ').family).toBe('other');

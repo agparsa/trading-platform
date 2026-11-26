@@ -439,6 +439,37 @@ symbol, a coin by its sign), so one added tomorrow is marked too.
   (`login.unreachableHost`), which tells "the server is down" from "this network
   cannot see it".
 
+## Trading from the chart and the list (0.9.0)
+
+- **One-tap** (`lib/one-tap.tsx`): off by default; switched on in Settings or
+  under the chart, after a sentence saying a press will now send a market order
+  with no review. Offered only where the firm allows `quick_trading` and
+  `mobile_trading`. Armed, SELL/BUY on Quotes and the chart send at once with the
+  lots shown under the chart (kept on this device, stepped on the instrument's
+  grid). One idempotency key per press, one order in flight at a time; the
+  server checks margin, risk and session as for every order. "Opened … at …" is
+  said from the server's answer; a refusal is said in the server's words.
+- **Prices move visibly:** a SELL/BUY tile takes the colour of the last move and
+  washes in it briefly (`PriceTile`); off under reduced motion.
+- **A position opens its chart:** tapping a position card goes to that
+  instrument's chart, where its lines are drawn.
+- **Stops and targets by dragging** (`lib/chart-drag.ts`, `__setLevels` in the
+  WebView): touch a position's entry line and drag — below a buy's entry (above
+  a sell's) is a stop, the other side a target — or drag an existing stop or
+  target. A preview line follows the finger; the release asks "Set the stop loss
+  at …?" and only Set sends the PATCH. The confirmed lines move when the server
+  answers; a refusal leaves them, with its reason.
+- **Sounds for opened and closed trades without push:** a phone with no push
+  token (an APK built without the firm's Firebase config) sounds trades from the
+  socket frames and its own fills (`trade-sound.ts`), keyed by the position so a
+  fill sounds once, with the trader's sound settings. Where push works, push
+  stays the only route.
+- **Marks:** a currency pair shows its two flags, base in front; metals and
+  coins their discs.
+- **Type:** Vazirmatn for words — Persian and Latin from one family — and
+  JetBrains Mono for figures, bundled (`lib/fonts.ts`), each weight its own
+  family because Android chooses a face by family, not by weight.
+
 ## Profit is blue
 
 Money made is blue (`theme.colors.profit`, the web's `--color-terminal-profit`),

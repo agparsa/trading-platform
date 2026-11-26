@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { ChartBar } from '@tp/chart-core';
 import type { ChartLevel } from '../lib/chart-html';
+import type { DraggedLevel } from '../lib/chart-drag';
 
 /**
  * The browser preview's chart: the same page in an iframe. The phone uses
@@ -12,7 +13,11 @@ export function ChartFrame({
   levels = [],
   ready,
   onReady,
+  onLevel,
+  clearPreview = 0,
 }: {
+  onLevel?: (level: DraggedLevel) => void;
+  clearPreview?: number;
   html: string;
   bars: readonly ChartBar[] | null;
   /** The open positions' lines — the native frame's, drawn the same way. */
@@ -37,6 +42,35 @@ export function ChartFrame({
       (Window & { __setLevels?: (l: readonly ChartLevel[]) => void }) | null | undefined;
     target?.__setLevels?.(JSON.parse(levelsKey) as ChartLevel[]);
   }, [ready, bars, levelsKey]);
+
+  // The page posts to its parent when it is not inside a native WebView.
+  useEffect(() => {
+    const listen = (event: MessageEvent) => {
+      if (event.source !== frame.current?.contentWindow || typeof event.data !== 'string') return;
+      try {
+        const dropped = JSON.parse(event.data) as Partial<DraggedLevel> & { type?: string };
+        if (
+          dropped.type === 'level' &&
+          typeof dropped.positionId === 'string' &&
+          (dropped.kind === 'STOP_LOSS' || dropped.kind === 'TAKE_PROFIT') &&
+          typeof dropped.price === 'string'
+        ) {
+          onLevel?.({ positionId: dropped.positionId, kind: dropped.kind, price: dropped.price });
+        }
+      } catch {
+        // Not ours.
+      }
+    };
+    window.addEventListener('message', listen);
+    return () => window.removeEventListener('message', listen);
+  }, [onLevel]);
+
+  useEffect(() => {
+    if (clearPreview === 0) return;
+    const target = frame.current?.contentWindow as
+      (Window & { __clearPreview?: () => void }) | null | undefined;
+    target?.__clearPreview?.();
+  }, [clearPreview]);
 
   return (
     <iframe

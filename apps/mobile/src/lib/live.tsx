@@ -4,6 +4,7 @@ import { RealtimeClient, type ConnectionStatus, type Frame } from './realtime';
 import { SeenEvents } from './seen-events';
 import { apiBaseUrl } from './api';
 import { useSession } from './session';
+import { frameSound } from './trade-sound';
 import { LIVE_TOPICS, NO_VERSIONS, bump, topicsOf, type LiveVersions } from './live-book';
 
 /**
@@ -81,7 +82,11 @@ const BookContext = createContext<BookValue>({
  * So the socket keeps its own memory, for its own duplicates.
  */
 export function LiveProvider({ children }: { children: React.ReactNode }): React.ReactElement {
-  const { accessToken, signedIn } = useSession();
+  const { accessToken, signedIn, tradeSound } = useSession();
+  // Read through a ref: the socket is opened once, and must not reconnect
+  // because the session handed out a new function.
+  const soundRef = useRef(tradeSound);
+  soundRef.current = tradeSound;
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [quotes, setQuotes] = useState<Record<string, LiveQuote>>({});
   const [accounts, setAccounts] = useState<Record<string, LiveAccountFigures>>({});
@@ -149,8 +154,11 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
               }));
               return;
             }
-            default:
+            default: {
+              const sound = frameSound(frame.event, frame.data);
+              if (sound !== null) soundRef.current(sound.eventId, sound.category);
               setVersions((current) => bump(current, topicsOf(frame.event)));
+            }
           }
         },
       });

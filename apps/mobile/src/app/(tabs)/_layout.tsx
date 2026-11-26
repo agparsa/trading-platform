@@ -42,7 +42,7 @@ export default function TabsLayout(): React.ReactElement {
         headerStyle: { backgroundColor: theme.colors.background },
         headerTintColor: theme.colors.text,
         headerShadowVisible: false,
-        headerTitleStyle: { fontWeight: '800', fontSize: 20 },
+        headerTitleStyle: { fontFamily: theme.font.heavy, fontSize: 20 },
         headerTitleAlign: 'left',
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
@@ -53,7 +53,7 @@ export default function TabsLayout(): React.ReactElement {
         },
         tabBarActiveTintColor: theme.colors.accent,
         tabBarInactiveTintColor: theme.colors.textFaint,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: { fontFamily: theme.font.semibold, fontSize: 11 },
         sceneStyle: { backgroundColor: theme.colors.background },
       }}
     >
