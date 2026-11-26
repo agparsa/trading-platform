@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import type { ChartBar } from '@tp/chart-core';
-import { setBarsScript } from '../lib/chart-html';
+import { setBarsScript, setLevelsScript, type ChartLevel } from '../lib/chart-html';
 import { theme } from '../lib/theme';
 
 /**
@@ -12,12 +12,15 @@ import { theme } from '../lib/theme';
 export function ChartFrame({
   html,
   bars,
+  levels = [],
   ready,
   onReady,
   onError,
 }: {
   html: string;
   bars: readonly ChartBar[] | null;
+  /** The open positions' entry, stop and target lines. */
+  levels?: readonly ChartLevel[];
   ready: boolean;
   onReady: () => void;
   onError: () => void;
@@ -30,6 +33,14 @@ export function ChartFrame({
     if (!ready || bars === null) return;
     webview.current?.injectJavaScript(setBarsScript(bars));
   }, [ready, bars]);
+
+  // After the bars, so the lines land on a series that exists. Keyed by the
+  // lines' content, so a P&L tick that changes nothing drawn sends nothing.
+  const levelsKey = JSON.stringify(levels);
+  useEffect(() => {
+    if (!ready || bars === null) return;
+    webview.current?.injectJavaScript(setLevelsScript(JSON.parse(levelsKey) as ChartLevel[]));
+  }, [ready, bars, levelsKey]);
 
   return (
     <WebView

@@ -392,6 +392,21 @@ renderer and the same datafeed boundary as the web terminal. See
 [charting.md](charting.md) for why, and for what `scriptSafeJson` is protecting
 against.
 
+From 0.6.0 the chart draws the selected account's open positions on the
+instrument shown: the entry (with the server's current P&L), the stop in red and
+the target in blue, both 2px and dashed (`lib/chart-levels.ts`, injected as
+`__setLevels`). The list is the Positions tab's own `/positions` read, refetched
+when a frame says it changed; nothing on the chart can be dragged — levels are
+changed from the position's row.
+
+## Profit is blue
+
+Money made is blue (`theme.colors.profit`, the web's `--color-terminal-profit`),
+money lost red; a price change stays green/red (`changeColor`) because a market
+rising is not money made. A live P&L figure (`PnlText`) washes briefly in the
+direction it moved — compared as exact decimal strings (`moved`), never through
+a double — and does not animate when the phone asks for reduced motion.
+
 ## Three states, two boxes
 
 `protective-levels.ts` is a whole tested module for what looks like form

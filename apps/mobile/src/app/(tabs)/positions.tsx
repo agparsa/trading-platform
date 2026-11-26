@@ -24,8 +24,8 @@ import {
   type CloseAllOutcome,
   type CloseAllReport,
 } from '../../lib/close-all';
-import { NUMERIC_DIRECTION } from '../../lib/direction';
-import { formatSigned, signColor, theme } from '../../lib/theme';
+import { PnlText } from '../../components/pnl-text';
+import { formatSigned, theme } from '../../lib/theme';
 import { useT } from '../../lib/i18n';
 import { refusalText, type Translate } from '../../lib/messages';
 
@@ -318,20 +318,7 @@ export default function Positions(): React.ReactElement {
               </Text>
               {/* An em-dash, not a zero. A trader cannot tell a genuine flat
                   from a missing price, and one of those is a reason to act. */}
-              <Text
-                style={[
-                  styles.pnl,
-                  {
-                    color:
-                      item.floatingPnl === null
-                        ? theme.colors.textMuted
-                        : signColor(item.floatingPnl),
-                    writingDirection: NUMERIC_DIRECTION,
-                  },
-                ]}
-              >
-                {item.floatingPnl === null ? '—' : formatSigned(item.floatingPnl)}
-              </Text>
+              <PnlText value={item.floatingPnl} style={styles.pnl} />
             </View>
             {item.stale === true ? (
               <Text style={styles.staleNote}>{t('positions.stale')}</Text>

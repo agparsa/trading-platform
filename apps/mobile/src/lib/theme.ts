@@ -14,8 +14,14 @@ export const theme = {
     border: '#252D38',
     text: '#E6EAF0',
     textMuted: '#8A94A6',
-    /** Up, profit, buy. */
+    /** Up, buy — a price that rose, a buy button. */
     positive: '#16C784',
+    /**
+     * Money made: a position in profit, a take-profit line. Blue, so a figure
+     * that is up reads as "up" rather than as "a buy" — the web terminal's
+     * `--color-terminal-profit`.
+     */
+    profit: '#38BDF8',
     /** Down, loss, sell. */
     negative: '#EA3943',
     warning: '#F0A70A',
@@ -29,11 +35,53 @@ export const theme = {
   },
 } as const;
 
-/** Colour for a signed number: green above zero, red below, muted at zero. */
+/** Colour for a signed money figure: blue above zero, red below, muted at zero. */
 export function signColor(value: string | number): string {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric) || numeric === 0) return theme.colors.textMuted;
+  return numeric > 0 ? theme.colors.profit : theme.colors.negative;
+}
+
+/** Colour for a price change: green up, red down — a market moving, not money made. */
+export function changeColor(value: string | number): string {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric === 0) return theme.colors.textMuted;
   return numeric > 0 ? theme.colors.positive : theme.colors.negative;
+}
+
+/**
+ * Which way a money figure moved, compared as exact decimal strings — never
+ * through a double, which can lose the last cent of a large figure. `null`
+ * for a first value, an unchanged one, or something that is not a number.
+ */
+export function moved(before: string | null, after: string | null): 'up' | 'down' | null {
+  if (before === null || after === null || before === after) return null;
+  const order = compareDecimal(before.trim(), after.trim());
+  return order === null || order === 0 ? null : order < 0 ? 'up' : 'down';
+}
+
+function compareDecimal(a: string, b: string): number | null {
+  const parse = (text: string) => {
+    const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(text);
+    if (match === null) return null;
+    const whole = (match[2] ?? '0').replace(/^0+(?=\d)/, '');
+    const fraction = (match[3] ?? '').replace(/0+$/, '');
+    const zero = /^0*$/.test(whole) && fraction === '';
+    return { negative: match[1] === '-' && !zero, whole, fraction };
+  };
+  const x = parse(a);
+  const y = parse(b);
+  if (x === null || y === null) return null;
+  if (x.negative !== y.negative) return x.negative ? -1 : 1;
+  const magnitude = (() => {
+    if (x.whole.length !== y.whole.length) return x.whole.length < y.whole.length ? -1 : 1;
+    if (x.whole !== y.whole) return x.whole < y.whole ? -1 : 1;
+    const width = Math.max(x.fraction.length, y.fraction.length);
+    const fx = x.fraction.padEnd(width, '0');
+    const fy = y.fraction.padEnd(width, '0');
+    return fx === fy ? 0 : fx < fy ? -1 : 1;
+  })();
+  return x.negative ? -magnitude : magnitude;
 }
 
 /**

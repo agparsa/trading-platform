@@ -15,7 +15,7 @@ import { useSession } from '../../lib/session';
 import { useRealtimeQuotes } from '../../lib/use-realtime-quotes';
 import { Empty, ErrorNote, Screen } from '../../components/ui';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
-import { signColor, theme } from '../../lib/theme';
+import { changeColor, theme } from '../../lib/theme';
 import { useT } from '../../lib/i18n';
 
 interface Quote {
@@ -145,7 +145,7 @@ export default function Market(): React.ReactElement {
           const before = previous[item.code];
           const change =
             quote === undefined || before === undefined ? 0 : Number(quote.bid) - Number(before);
-          const tick = signColor(change);
+          const tick = changeColor(change);
 
           return (
             <Pressable

@@ -4,7 +4,8 @@ import { useRouter } from 'expo-router';
 import { Icon } from './icons';
 import { useLocale } from '../lib/i18n';
 import { NUMERIC_DIRECTION } from '../lib/direction';
-import { formatSigned, signColor, theme } from '../lib/theme';
+import { theme } from '../lib/theme';
+import { PnlText } from './pnl-text';
 
 /**
  * The handful of pieces every screen needs.
@@ -52,15 +53,11 @@ export function Figure({
   return (
     <View style={styles.figure}>
       <Text style={styles.figureLabel}>{label}</Text>
-      <Text
-        style={[
-          styles.figureValue,
-          { writingDirection: NUMERIC_DIRECTION },
-          signed ? { color: signColor(value) } : null,
-        ]}
-      >
-        {signed ? formatSigned(value) : value}
-      </Text>
+      {signed ? (
+        <PnlText value={/\d/.test(value) ? value : null} style={styles.figureValue} />
+      ) : (
+        <Text style={[styles.figureValue, { writingDirection: NUMERIC_DIRECTION }]}>{value}</Text>
+      )}
     </View>
   );
 }

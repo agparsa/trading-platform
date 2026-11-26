@@ -11,6 +11,12 @@ import {
 import { useSession } from '../lib/session';
 import { useT } from '../lib/i18n';
 import { chartHtml } from '../lib/chart-html';
+import { levelsFor, type LevelSource } from '../lib/chart-levels';
+import { useAccounts } from '../lib/accounts';
+import { useLiveBook } from '../lib/live';
+import { applyPnl, type MarkedRow } from '../lib/live-book';
+
+type BookRow = LevelSource & MarkedRow;
 import { theme } from '../lib/theme';
 import { ChartFrame } from './chart-frame';
 import { ErrorNote } from './ui';
@@ -43,6 +49,35 @@ export function ChartView({ symbol }: { symbol: string }): React.ReactElement {
   const [ready, setReady] = useState(false);
 
   const datafeed = useMemo(() => createPlatformDatafeed(api), [api]);
+
+  /**
+   * The selected account's open positions, for their lines on this chart —
+   * the same list the Positions tab reads, refetched when a frame says it
+   * changed, with each row's P&L following the server's newest mark.
+   */
+  const { selected: account } = useAccounts();
+  const live = useLiveBook();
+  const [book, setBook] = useState<readonly BookRow[] | null>(null);
+  useEffect(() => {
+    if (account === null) {
+      setBook([]);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .get<BookRow[]>('/positions', { query: { accountId: account.id } })
+      .then((rows) => {
+        if (!cancelled) setBook(rows);
+      })
+      // No lines is the honest picture of a book that could not be read; the
+      // Positions tab says why.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [api, account, live.versions.positions]);
+  const marked = applyPnl(book, account === null ? undefined : live.pnl[account.id]);
+  const levels = useMemo(() => levelsFor(marked ?? [], symbol), [marked, symbol]);
   /**
    * The row of timeframes is what this deployment serves, asked once. Until it
    * answers, the platform's vocabulary — a chip that may then disappear is
@@ -137,6 +172,7 @@ export function ChartView({ symbol }: { symbol: string }): React.ReactElement {
           key={symbol}
           html={html}
           bars={bars}
+          levels={levels}
           ready={ready}
           onReady={() => setReady(true)}
           onError={() => setError(t('chart.offline'))}

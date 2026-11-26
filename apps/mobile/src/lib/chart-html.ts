@@ -127,6 +127,29 @@ export function chartHtml(options: {
       }));
     };
 
+    /**
+     * The open positions' lines: entry, stop and target. Rebuilt whole — a
+     * price line has no movable price, and a handful is nothing to redraw.
+     */
+    var lines = [];
+    window.__setLevels = function (levels) {
+      ensure();
+      if (series === null) return;
+      for (var i = 0; i < lines.length; i++) series.removePriceLine(lines[i]);
+      lines = [];
+      for (var j = 0; j < levels.length; j++) {
+        var level = levels[j];
+        lines.push(series.createPriceLine({
+          price: Number(level.price),
+          color: level.color,
+          lineWidth: level.width,
+          lineStyle: level.dashed ? 2 : 0,
+          axisLabelVisible: true,
+          title: level.title,
+        }));
+      }
+    };
+
     /** One bar, for the in-progress candle arriving on the socket. */
     window.__updateBar = function (bar) {
       ensure();
@@ -179,4 +202,18 @@ export function setBarsScript(bars: readonly ChartBar[]): string {
 /** The call injected for a single live bar. */
 export function updateBarScript(bar: ChartBar): string {
   return `window.__updateBar(${scriptSafeJson(bar)}); true;`;
+}
+
+/** One line on the chart: a position's entry, stop or target. */
+export interface ChartLevel {
+  readonly price: string;
+  readonly color: string;
+  readonly width: 1 | 2;
+  readonly dashed: boolean;
+  readonly title: string;
+}
+
+/** The call injected to redraw the position lines. */
+export function setLevelsScript(levels: readonly ChartLevel[]): string {
+  return `window.__setLevels(${scriptSafeJson(levels)}); true;`;
 }
