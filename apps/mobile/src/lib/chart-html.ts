@@ -137,6 +137,25 @@ export function chartHtml(options: {
       if (series === null) return;
       for (var i = 0; i < lines.length; i++) series.removePriceLine(lines[i]);
       lines = [];
+      // The scale stretches to show every level: a stop just off the top of
+      // the screen is a stop the trader cannot see, which is the same as not
+      // knowing where it is.
+      var prices = levels.map(function (level) { return Number(level.price); })
+        .filter(function (price) { return isFinite(price); });
+      series.applyOptions({
+        autoscaleInfoProvider: function (original) {
+          var base = original();
+          if (prices.length === 0) return base;
+          var all = prices.slice();
+          if (base !== null && base.priceRange !== null) {
+            all.push(base.priceRange.minValue, base.priceRange.maxValue);
+          }
+          return {
+            priceRange: { minValue: Math.min.apply(null, all), maxValue: Math.max.apply(null, all) },
+            margins: base === null ? undefined : base.margins,
+          };
+        },
+      });
       for (var j = 0; j < levels.length; j++) {
         var level = levels[j];
         lines.push(series.createPriceLine({

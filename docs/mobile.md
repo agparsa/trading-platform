@@ -408,7 +408,9 @@ instrument shown: the entry (with the server's current P&L), the stop in red and
 the target in blue, both 2px and dashed (`lib/chart-levels.ts`, injected as
 `__setLevels`). The list is the Positions tab's own `/positions` read, refetched
 when a frame says it changed; nothing on the chart can be dragged — levels are
-changed from the position's row.
+changed from the position's row. The price scale stretches to include every level
+(0.7.1), so a stop or target off the visible range is still on screen; the web
+build's frame draws the same lines.
 
 ## Profit is blue
 

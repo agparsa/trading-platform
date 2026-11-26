@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import type { ChartBar } from '@tp/chart-core';
+import type { ChartLevel } from '../lib/chart-html';
 
 /**
  * The browser preview's chart: the same page in an iframe. The phone uses
@@ -8,11 +9,14 @@ import type { ChartBar } from '@tp/chart-core';
 export function ChartFrame({
   html,
   bars,
+  levels = [],
   ready,
   onReady,
 }: {
   html: string;
   bars: readonly ChartBar[] | null;
+  /** The open positions' lines — the native frame's, drawn the same way. */
+  levels?: readonly ChartLevel[];
   ready: boolean;
   onReady: () => void;
   onError: () => void;
@@ -25,6 +29,14 @@ export function ChartFrame({
       (Window & { __setBars?: (b: readonly ChartBar[]) => void }) | null | undefined;
     target?.__setBars?.(bars);
   }, [ready, bars]);
+
+  const levelsKey = JSON.stringify(levels);
+  useEffect(() => {
+    if (!ready || bars === null) return;
+    const target = frame.current?.contentWindow as
+      (Window & { __setLevels?: (l: readonly ChartLevel[]) => void }) | null | undefined;
+    target?.__setLevels?.(JSON.parse(levelsKey) as ChartLevel[]);
+  }, [ready, bars, levelsKey]);
 
   return (
     <iframe
