@@ -14,9 +14,11 @@
   "dependencies": {
     "@tp/api-client": "workspace:*",
     "@tp/chart-core": "workspace:*",
+    "@tp/financial-core": "workspace:*",
     "@tp/kyc-core": "workspace:*",
     "@tp/push-core": "workspace:*",
     "@tp/shared-types": "workspace:*",
+    "@tp/trading-core": "workspace:*",
     "expo": "~57.0.31",
     "expo-application": "~57.0.3",
     "expo-audio": "~57.0.5",

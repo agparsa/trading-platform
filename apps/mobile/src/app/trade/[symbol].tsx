@@ -1,6 +1,8 @@
 import { AccountPicker } from '../../components/account-picker';
 import { useAccounts } from '../../lib/accounts';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { entrySideOf } from '@tp/financial-core';
+import { priceFromPoints } from '../../lib/level-points';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { OrderSide } from '@tp/shared-types';
@@ -85,8 +87,23 @@ export default function OrderTicket(): React.ReactElement {
   const { selected: account, error: accountError } = useAccounts();
   const [side, setSide] = useState<OrderSide>(askedSide === 'SELL' ? 'SELL' : 'BUY');
   const [volume, setVolume] = useState('0.10');
-  const [stopLoss, setStopLoss] = useState('');
-  const [takeProfit, setTakeProfit] = useState('');
+  const [typedStopLoss, setStopLoss] = useState('');
+  const [typedTakeProfit, setTakeProfit] = useState('');
+  /**
+   * How the stop and target are typed: as prices, or as whole points from the
+   * price the order opens at — the market's for a market order, the resting
+   * price for one that waits.
+   */
+  const [levelUnit, setLevelUnit] = useState<'price' | 'points'>('price');
+  const [stopPoints, setStopPoints] = useState('');
+  const [takePoints, setTakePoints] = useState('');
+  const [fromPoints, setFromPoints] = useState<{
+    stopLoss: string | null;
+    takeProfit: string | null;
+  }>({
+    stopLoss: null,
+    takeProfit: null,
+  });
   const [trailing, setTrailing] = useState('');
   const features = useFeatures();
   const trailingOffered = offersTrailing(features);
@@ -101,6 +118,39 @@ export default function OrderTicket(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+
+  /**
+   * Points resolved to prices when the points, the side or the order's own
+   * price change — not on every quote. Re-resolving on each tick would change
+   * the request each tick, and the preview below would become a poll. The
+   * price used is shown beside the field, and the server checks the level it
+   * receives as it checks every level.
+   */
+  const reference =
+    kind === 'MARKET'
+      ? preview === null
+        ? null
+        : preview[entrySideOf(side)]
+      : restingPrice.trim() === ''
+        ? null
+        : restingPrice.trim();
+  const referenceRef = useRef(reference);
+  referenceRef.current = reference;
+  const decimals = (() => {
+    const at = reference ?? preview?.bid ?? '';
+    const dot = at.indexOf('.');
+    return dot === -1 ? 0 : at.length - dot - 1;
+  })();
+  const haveReference = reference !== null;
+  useEffect(() => {
+    const from = referenceRef.current;
+    setFromPoints({
+      stopLoss: priceFromPoints(stopPoints, from, decimals, side, 'STOP_LOSS'),
+      takeProfit: priceFromPoints(takePoints, from, decimals, side, 'TAKE_PROFIT'),
+    });
+  }, [stopPoints, takePoints, side, kind, restingPrice, haveReference, decimals]);
+  const stopLoss = levelUnit === 'points' ? (fromPoints.stopLoss ?? '') : typedStopLoss;
+  const takeProfit = levelUnit === 'points' ? (fromPoints.takeProfit ?? '') : typedTakeProfit;
 
   const request = useMemo(
     () =>
@@ -319,20 +369,56 @@ export default function OrderTicket(): React.ReactElement {
               ))}
             </View>
           )}
-          <Field
-            label={t('positions.stopLoss')}
-            value={stopLoss}
-            onChange={setStopLoss}
-            keyboard="decimal-pad"
-            placeholder={t('common.optional')}
-          />
-          <Field
-            label={t('positions.takeProfit')}
-            value={takeProfit}
-            onChange={setTakeProfit}
-            keyboard="decimal-pad"
-            placeholder={t('common.optional')}
-          />
+          <View style={styles.sides} accessibilityRole="tablist">
+            {(['price', 'points'] as const).map((unit) => (
+              <View key={unit} style={styles.kind}>
+                <Button
+                  label={unit === 'price' ? t('ticket.unitPrice') : t('ticket.unitPoints')}
+                  variant={unit === levelUnit ? 'primary' : 'quiet'}
+                  onPress={() => setLevelUnit(unit)}
+                />
+              </View>
+            ))}
+          </View>
+          {levelUnit === 'price' ? (
+            <>
+              <Field
+                label={t('positions.stopLoss')}
+                value={typedStopLoss}
+                onChange={setStopLoss}
+                keyboard="decimal-pad"
+                placeholder={t('common.optional')}
+              />
+              <Field
+                label={t('positions.takeProfit')}
+                value={typedTakeProfit}
+                onChange={setTakeProfit}
+                keyboard="decimal-pad"
+                placeholder={t('common.optional')}
+              />
+            </>
+          ) : (
+            <>
+              <Field
+                label={`${t('positions.stopLoss')} (${t('ticket.unitPoints')})`}
+                value={stopPoints}
+                onChange={setStopPoints}
+                keyboard="decimal-pad"
+                placeholder={t('common.optional')}
+                hint={pointsHint(stopPoints, fromPoints.stopLoss, reference, t)}
+                tone="loss"
+              />
+              <Field
+                label={`${t('positions.takeProfit')} (${t('ticket.unitPoints')})`}
+                value={takePoints}
+                onChange={setTakePoints}
+                keyboard="decimal-pad"
+                placeholder={t('common.optional')}
+                hint={pointsHint(takePoints, fromPoints.takeProfit, reference, t)}
+                tone="profit"
+              />
+            </>
+          )}
           {/*
             A trail from the fill onward, in price units: the stop follows the
             best exit price seen at this distance and never moves back. The
@@ -436,18 +522,36 @@ export default function OrderTicket(): React.ReactElement {
   );
 }
 
+/** What a points field resolves to, or why it resolves to nothing yet. */
+function pointsHint(
+  points: string,
+  price: string | null,
+  reference: string | null,
+  t: ReturnType<typeof useT>,
+): string | undefined {
+  if (points.trim() === '') return undefined;
+  if (reference === null) return t('ticket.pointsNoPrice');
+  if (price === null) return t('ticket.pointsBad');
+  return t('ticket.pointsAt', { price, from: reference });
+}
+
 function Field({
   label,
   value,
   onChange,
   keyboard,
   placeholder,
+  hint,
+  tone,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   keyboard?: 'decimal-pad';
   placeholder?: string;
+  /** A line under the field: what a points entry resolves to. */
+  hint?: string | undefined;
+  tone?: 'loss' | 'profit';
 }): React.ReactElement {
   return (
     <View style={styles.field}>
@@ -461,6 +565,20 @@ function Field({
         placeholder={placeholder ?? ''}
         placeholderTextColor={theme.colors.textMuted}
       />
+      {hint === undefined ? null : (
+        <Text
+          style={[
+            styles.fieldHint,
+            tone === 'loss'
+              ? { color: theme.colors.negative }
+              : tone === 'profit'
+                ? { color: theme.colors.profit }
+                : null,
+          ]}
+        >
+          {hint}
+        </Text>
+      )}
     </View>
   );
 }
@@ -476,6 +594,7 @@ const styles = StyleSheet.create({
   kind: { flex: 1, marginHorizontal: theme.spacing(0.25) },
   field: { marginBottom: theme.spacing(1) },
   fieldLabel: { color: theme.colors.textMuted, fontSize: 13, marginBottom: theme.spacing(0.5) },
+  fieldHint: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.spacing(0.5) },
   input: {
     backgroundColor: theme.colors.surfaceRaised,
     borderRadius: theme.radius.sm,

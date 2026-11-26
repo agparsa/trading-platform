@@ -360,6 +360,17 @@ What the phone does not have that the terminal does: levels entered as a
 distance, points, money or percent (it takes prices), and the filter/export on
 positions.
 
+### Stop and target in points (0.7.0)
+
+The ticket's stop and target can be typed as prices or as whole points from the
+price the order opens at — the preview's ask or bid for a market order, the
+order's own price for one that waits. Points are turned into a price with
+`@tp/trading-core`'s `priceAtPoints` (`lib/level-points.ts`), and the price used
+is shown under the field. They are resolved when the points, the side or the
+order's price change, not on every quote — re-resolving per tick would change
+the request per tick and turn the preview into a poll. What is sent is a price;
+the server checks it as it checks every level.
+
 ## Guessing an API shape is how a screen lies
 
 Half the screens were written against field names I assumed. Checking them

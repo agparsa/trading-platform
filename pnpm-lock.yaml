@@ -428,6 +428,9 @@ importers:
       '@tp/chart-core':
         specifier: workspace:*
         version: link:../../packages/chart-core
+      '@tp/financial-core':
+        specifier: workspace:*
+        version: link:../../packages/financial-core
       '@tp/kyc-core':
         specifier: workspace:*
         version: link:../../packages/kyc-core
@@ -437,6 +440,9 @@ importers:
       '@tp/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      '@tp/trading-core':
+        specifier: workspace:*
+        version: link:../../packages/trading-core
       expo:
         specifier: ~57.0.31
         version: 57.0.31(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.18)(expo-router@57.0.29)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.4(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-webview@13.16.1(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.2.3))(react@19.2.3))(react-native-worklets@0.10.4(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.2.3))(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.87.1(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
