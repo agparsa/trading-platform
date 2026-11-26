@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { httpPoll, monthlyCalls } from './http-poll';
+import { httpPoll, monthlyCalls, refusalOf } from './http-poll';
 
 afterEach(() => vi.useRealTimers());
 
@@ -73,5 +73,52 @@ describe('a polled quote endpoint', () => {
   it('counts a month of calls', () => {
     expect(monthlyCalls(2, 6_000)).toBe(864_000);
     expect(monthlyCalls(2, 5_000)).toBe(1_036_800);
+  });
+});
+
+describe('a provider’s refusal, as an operator reads it', () => {
+  it('carries the provider’s own reason into the error', async () => {
+    vi.useFakeTimers();
+    const socket = httpPoll(
+      ['https://a'],
+      {},
+      6_000,
+      (async () =>
+        new Response(
+          JSON.stringify({ error: 'No active subscription. Visit the console now to upgrade' }),
+          { status: 401 },
+        )) as never,
+    );
+    let said: unknown = null;
+    socket.onerror = (error) => void (said = error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(String((said as Error).message)).toBe(
+      'HTTP 401: No active subscription. Visit the console now to upgrade',
+    );
+    socket.close();
+  });
+
+  it('reads JSON error, message, nested message, and plain text', () => {
+    expect(refusalOf('{"error":"Quota exceeded"}')).toBe('Quota exceeded');
+    expect(refusalOf('{"message":"Invalid key"}')).toBe('Invalid key');
+    expect(refusalOf('{"error":{"message":"Bad plan"}}')).toBe('Bad plan');
+    expect(refusalOf('  Too many\n requests ')).toBe('Too many requests');
+  });
+
+  it('says nothing for an empty body, an HTML page, or JSON with no reason', () => {
+    expect(refusalOf('')).toBeNull();
+    expect(refusalOf('<html><body>502</body></html>')).toBeNull();
+    expect(refusalOf('{"code":401}')).toBeNull();
+  });
+
+  it('never carries a credential the provider echoed back', () => {
+    expect(refusalOf('{"error":"bad api_key=abc123secret"}')).toBe('bad api_key=***');
+    expect(refusalOf('{"error":"key 9f8e7d6c5b4a39281706f5e4d3c2b1a0 is revoked"}')).toBe(
+      'key *** is revoked',
+    );
+  });
+
+  it('keeps a long reason to one short line', () => {
+    expect(refusalOf(`{"error":"${'word '.repeat(60)}"}`)?.length).toBe(160);
   });
 });

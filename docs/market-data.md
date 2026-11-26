@@ -369,7 +369,10 @@ every 5 s and has two tables:
   disconnected), since when, its instruments, ticks, the time of the last tick,
   the source lag (how old the tick's own time was on arrival), reconnections,
   and the last error. The error is kept as a short reason with any address
-  replaced by `<url>`, so no key can appear.
+  replaced by `<url>`, so no key can appear. A polled source that is refused
+  keeps the provider's own reason beside the status — `HTTP 401: No active
+subscription…` rather than `HTTP 401` — on one line, at most 160 characters,
+  with anything shaped like a key masked (`refusalOf` in `http-poll.ts`).
 - **Instruments.** Every instrument with the source pricing it,
   **simulator** when no live source covers it, or **none** when it has no price at
   all (an instrument just added, before its source is configured). Its bid, ask, age, its own age

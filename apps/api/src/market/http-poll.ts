@@ -69,7 +69,12 @@ export function httpPoll(
       }
       socket.lastStatus = response.status;
       if (!response.ok) {
-        finish(new Error(`HTTP ${response.status}`));
+        // The provider's own words, when it gave any: "HTTP 401" alone sends
+        // an operator hunting, where "No active subscription" says what to do.
+        const said = refusalOf(await response.text().catch(() => ''));
+        finish(
+          new Error(said === null ? `HTTP ${response.status}` : `HTTP ${response.status}: ${said}`),
+        );
         return;
       }
       const body = await response.text().catch(() => null);
@@ -96,4 +101,35 @@ export function httpPoll(
  */
 export function monthlyCalls(calls: number, intervalMs: number): number {
   return Math.ceil((calls * 30 * 24 * 60 * 60 * 1000) / intervalMs);
+}
+
+/**
+ * A provider's reason for refusing a call, fit to show an operator: its JSON
+ * `error` or `message` (or the plain text it sent), on one line, at most 160
+ * characters, with anything that looks like a key or token masked — a refusal
+ * that echoed the credential back must not carry it into the admin panel.
+ */
+export function refusalOf(body: string): string | null {
+  let text = body.trim();
+  if (text === '') return null;
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    const said = parsed['error'] ?? parsed['message'];
+    if (typeof said === 'string') text = said;
+    else if (said !== null && typeof said === 'object') {
+      const inner = (said as Record<string, unknown>)['message'];
+      if (typeof inner !== 'string') return null;
+      text = inner;
+    } else return null;
+  } catch {
+    // Not JSON: a plain-text refusal, or an HTML error page.
+    if (/^\s*</.test(text)) return null;
+  }
+  text = text
+    .replace(/\s+/g, ' ')
+    .replace(/(api[_-]?key|token|key|secret)=\S+/gi, '$1=***')
+    .replace(/\b[A-Za-z0-9_-]{24,}\b/g, '***')
+    .trim();
+  if (text === '') return null;
+  return text.length > 160 ? `${text.slice(0, 159)}…` : text;
 }
