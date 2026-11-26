@@ -48,7 +48,9 @@ export default function More(): React.ReactElement {
       onPress={() => router.push(href)}
       style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
     >
-      <Icon name={icon} color={theme.colors.textMuted} />
+      <View style={styles.iconBox}>
+        <Icon name={icon} color={theme.colors.accent} size={19} />
+      </View>
       <Text style={styles.rowLabel}>{t(label)}</Text>
       <Icon name="chevron" color={theme.colors.textMuted} size={18} />
     </Pressable>
@@ -147,23 +149,35 @@ const styles = StyleSheet.create({
     gap: theme.spacing(1.5),
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
     padding: theme.spacing(2),
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: theme.colors.surfaceRaised,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: theme.colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { color: theme.colors.text, fontSize: 16, fontWeight: '700' },
-  name: { color: theme.colors.text, fontSize: 16, fontWeight: '700' },
+  avatarText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
+  name: { color: theme.colors.text, fontSize: 17, fontWeight: '800' },
   email: { color: theme.colors.textMuted, fontSize: 13, marginTop: 2 },
   group: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
     overflow: 'hidden',
+  },
+  iconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: theme.colors.accentTint,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   groupTitle: {
     color: theme.colors.textMuted,
@@ -177,12 +191,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing(1.5),
-    minHeight: 52,
+    minHeight: 56,
     paddingHorizontal: theme.spacing(2),
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border,
   },
   rowActive: { backgroundColor: theme.colors.surfaceRaised },
   pressed: { opacity: 0.7 },
-  rowLabel: { flex: 1, color: theme.colors.text, fontSize: 15 },
+  rowLabel: { flex: 1, color: theme.colors.text, fontSize: 15, fontWeight: '600' },
   balance: { color: theme.colors.text, fontFamily: theme.font.mono, fontSize: 14 },
   check: { color: theme.colors.accent, fontSize: 16 },
   badge: { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },

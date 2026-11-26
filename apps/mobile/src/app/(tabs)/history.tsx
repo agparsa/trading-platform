@@ -4,7 +4,7 @@ import { useLiveBook } from '../../lib/live';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useSession } from '../../lib/session';
-import { Empty, ErrorNote, Screen } from '../../components/ui';
+import { Empty, ErrorNote, InstrumentBadge, Screen, SideTag } from '../../components/ui';
 import { useT } from '../../lib/i18n';
 import { MESSAGES, type MessageKey, type Translate } from '../../lib/messages';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
@@ -102,9 +102,14 @@ export default function History(): React.ReactElement {
         renderItem={({ item }) => (
           <View style={styles.row}>
             <View style={styles.top}>
-              <Text style={styles.symbol}>
-                {item.symbol} {t(item.side === 'BUY' ? 'common.BUY' : 'common.SELL')} {item.volume}
-              </Text>
+              <View style={styles.title}>
+                <InstrumentBadge code={item.symbol} size={28} />
+                <Text style={styles.symbol}>{item.symbol}</Text>
+                <SideTag
+                  side={item.side}
+                  label={`${t(item.side === 'BUY' ? 'common.BUY' : 'common.SELL')} ${item.volume}`}
+                />
+              </View>
               <Text
                 style={[
                   styles.net,
@@ -174,7 +179,7 @@ function Summary({ input }: { input: PerformanceSummaryInput }): React.ReactElem
 const styles = StyleSheet.create({
   summary: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     padding: theme.spacing(1.5),
@@ -185,20 +190,21 @@ const styles = StyleSheet.create({
   summaryValue: { fontSize: 14, fontFamily: theme.font.mono },
   row: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
     padding: theme.spacing(1.5),
     marginBottom: theme.spacing(1),
   },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  symbol: { color: theme.colors.text, fontSize: 15, fontWeight: '600' },
-  net: { fontSize: 16, fontFamily: theme.font.mono, fontWeight: '600' },
+  title: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(0.75), flex: 1 },
+  symbol: { color: theme.colors.text, fontSize: 15, fontWeight: '800' },
+  net: { fontSize: 17, fontFamily: theme.font.mono, fontWeight: '800' },
   detail: {
     color: theme.colors.textMuted,
     fontSize: 13,
     fontFamily: theme.font.mono,
-    marginTop: theme.spacing(0.25),
+    marginTop: theme.spacing(0.75),
   },
   costs: {
     color: theme.colors.textMuted,

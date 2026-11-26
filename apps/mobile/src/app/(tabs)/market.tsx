@@ -13,8 +13,8 @@ import {
 import { useRouter } from 'expo-router';
 import { useSession } from '../../lib/session';
 import { useRealtimeQuotes } from '../../lib/use-realtime-quotes';
-import { Empty, ErrorNote, Screen } from '../../components/ui';
-import { NUMERIC_DIRECTION } from '../../lib/direction';
+import { Chip, Empty, ErrorNote, InstrumentBadge, PriceTile, Screen } from '../../components/ui';
+import { instrumentMark, type InstrumentFamily } from '../../lib/instrument-mark';
 import { changeColor, theme } from '../../lib/theme';
 import { useT } from '../../lib/i18n';
 
@@ -42,6 +42,7 @@ export default function Market(): React.ReactElement {
   const t = useT();
   const { api } = useSession();
   const [search, setSearch] = useState('');
+  const [family, setFamily] = useState<InstrumentFamily | 'all'>('all');
   const router = useRouter();
   const [instruments, setInstruments] = useState<Instrument[] | null>(null);
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
@@ -97,6 +98,7 @@ export default function Market(): React.ReactElement {
   const rows = (instruments ?? []).filter(
     (instrument) =>
       instrument.enabled &&
+      (family === 'all' || instrumentMark(instrument.code).family === family) &&
       (needle === '' ||
         instrument.code.includes(needle) ||
         instrument.description.toUpperCase().includes(needle)),
@@ -114,23 +116,36 @@ export default function Market(): React.ReactElement {
         value={search}
         onChangeText={setSearch}
         placeholder={t('quotes.search')}
-        placeholderTextColor={theme.colors.textMuted}
+        placeholderTextColor={theme.colors.textFaint}
         autoCapitalize="characters"
         autoCorrect={false}
         style={styles.search}
         accessibilityLabel={t('quotes.search')}
       />
-      <View style={styles.head}>
-        <Text style={[styles.headLabel, { flex: 1 }]}>{t('ticket.symbol')}</Text>
-        <Text style={[styles.headLabel, styles.headPrice]}>{t('quotes.bid')}</Text>
-        <Text style={[styles.headLabel, styles.headPrice]}>{t('quotes.ask')}</Text>
+      <View style={styles.families}>
+        {FAMILIES.filter(
+          (value) =>
+            value === 'all' ||
+            (instruments ?? []).some(
+              (row) => row.enabled && instrumentMark(row.code).family === value,
+            ),
+        ).map((value) => (
+          <Chip
+            key={value}
+            label={t(`quotes.family.${value}`)}
+            active={family === value}
+            onPress={() => setFamily(value)}
+          />
+        ))}
       </View>
       <FlatList
         data={rows}
         keyExtractor={(item) => item.code}
+        contentContainerStyle={{ paddingBottom: theme.spacing(2) }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
+            tintColor={theme.colors.textMuted}
             onRefresh={() => {
               setRefreshing(true);
               void loadQuotes().finally(() => setRefreshing(false));
@@ -145,7 +160,7 @@ export default function Market(): React.ReactElement {
           const before = previous[item.code];
           const change =
             quote === undefined || before === undefined ? 0 : Number(quote.bid) - Number(before);
-          const tick = changeColor(change);
+          const tick = change === 0 ? undefined : changeColor(change);
 
           return (
             <Pressable
@@ -154,9 +169,13 @@ export default function Market(): React.ReactElement {
               onPress={() => router.push(`/(tabs)/chart?symbol=${item.code}`)}
               style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
             >
+              <InstrumentBadge code={item.code} />
               <View style={styles.instrument}>
                 <Text style={styles.code}>{item.code}</Text>
-                <Text style={styles.name} numberOfLines={1}>
+                <Text
+                  style={[styles.name, item.sessionOpen ? null : { color: theme.colors.warning }]}
+                  numberOfLines={1}
+                >
                   {item.sessionOpen
                     ? quote === undefined
                       ? item.description
@@ -166,34 +185,26 @@ export default function Market(): React.ReactElement {
                       : marketLabel(item.market, t)}
                 </Text>
               </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${t('common.sell')} ${item.code} ${quote?.bid ?? ''}`}
-                onPress={() => router.push(`/trade/${item.code}?side=SELL`)}
-                style={({ pressed }) => [styles.price, pressed ? styles.pressed : null]}
-              >
-                <Text
-                  style={[styles.priceText, { color: tick, writingDirection: NUMERIC_DIRECTION }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {quote?.bid ?? '—'}
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${t('common.buy')} ${item.code} ${quote?.ask ?? ''}`}
-                onPress={() => router.push(`/trade/${item.code}?side=BUY`)}
-                style={({ pressed }) => [styles.price, pressed ? styles.pressed : null]}
-              >
-                <Text
-                  style={[styles.priceText, { color: tick, writingDirection: NUMERIC_DIRECTION }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {quote?.ask ?? '—'}
-                </Text>
-              </Pressable>
+              <View style={styles.tiles}>
+                <PriceTile
+                  compact
+                  side="SELL"
+                  label={t('common.SELL')}
+                  price={quote?.bid ?? null}
+                  {...(tick === undefined ? {} : { tone: tick })}
+                  accessibilityLabel={`${t('common.sell')} ${item.code} ${quote?.bid ?? ''}`}
+                  onPress={() => router.push(`/trade/${item.code}?side=SELL`)}
+                />
+                <PriceTile
+                  compact
+                  side="BUY"
+                  label={t('common.BUY')}
+                  price={quote?.ask ?? null}
+                  {...(tick === undefined ? {} : { tone: tick })}
+                  accessibilityLabel={`${t('common.buy')} ${item.code} ${quote?.ask ?? ''}`}
+                  onPress={() => router.push(`/trade/${item.code}?side=BUY`)}
+                />
+              </View>
             </Pressable>
           );
         }}
@@ -202,48 +213,43 @@ export default function Market(): React.ReactElement {
   );
 }
 
+const FAMILIES: ReadonlyArray<InstrumentFamily | 'all'> = ['all', 'fx', 'metal', 'crypto', 'other'];
+
 const styles = StyleSheet.create({
   search: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
     color: theme.colors.text,
-    minHeight: 40,
-    paddingHorizontal: theme.spacing(1.5),
-    marginBottom: theme.spacing(1),
-    fontSize: 14,
+    minHeight: 44,
+    paddingHorizontal: theme.spacing(1.75),
+    marginBottom: theme.spacing(1.25),
+    fontSize: 15,
   },
-  head: {
+  families: {
     flexDirection: 'row',
-    paddingHorizontal: theme.spacing(1.5),
-    paddingBottom: theme.spacing(0.5),
+    flexWrap: 'wrap',
+    gap: theme.spacing(0.75),
+    marginBottom: theme.spacing(1.5),
   },
-  headLabel: { color: theme.colors.textMuted, fontSize: 11 },
-  headPrice: { width: 104, textAlign: 'center' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing(0.75),
+    gap: theme.spacing(1.25),
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    paddingVertical: theme.spacing(1),
+    borderRadius: theme.radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+    paddingVertical: theme.spacing(1.25),
     paddingHorizontal: theme.spacing(1.5),
-    marginBottom: theme.spacing(0.75),
-    minHeight: 60,
+    marginBottom: theme.spacing(1),
   },
-  pressed: { opacity: 0.7 },
-  instrument: { flex: 1, alignItems: 'flex-start' },
-  code: { color: theme.colors.text, fontSize: 16, fontWeight: '700' },
-  name: { color: theme.colors.textMuted, fontSize: 11, marginTop: 2 },
-  price: {
-    width: 104,
-    minHeight: 40,
-    borderRadius: theme.radius.sm,
-    backgroundColor: theme.colors.surfaceRaised,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  priceText: { fontSize: 16, fontFamily: theme.font.mono, fontWeight: '700' },
+  pressed: { opacity: 0.75 },
+  instrument: { flex: 1, alignItems: 'flex-start', minWidth: 0 },
+  code: { color: theme.colors.text, fontSize: 16, fontWeight: '800', letterSpacing: 0.3 },
+  name: { color: theme.colors.textMuted, fontSize: 12, marginTop: 3 },
+  tiles: { flexDirection: 'row', gap: 6, width: 196 },
   status: {
     color: theme.colors.warning,
     fontSize: 12,

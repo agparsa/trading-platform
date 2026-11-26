@@ -39,17 +39,21 @@ export default function TabsLayout(): React.ReactElement {
     <Tabs
       initialRouteName="market"
       screenOptions={{
-        headerStyle: { backgroundColor: theme.colors.surface },
+        headerStyle: { backgroundColor: theme.colors.background },
         headerTintColor: theme.colors.text,
         headerShadowVisible: false,
-        headerTitleStyle: { fontWeight: '700' },
+        headerTitleStyle: { fontWeight: '800', fontSize: 20 },
+        headerTitleAlign: 'left',
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border,
+          height: 64,
+          paddingTop: 6,
+          paddingBottom: 8,
         },
         tabBarActiveTintColor: theme.colors.accent,
-        tabBarInactiveTintColor: theme.colors.textMuted,
-        tabBarLabelStyle: { fontSize: 11 },
+        tabBarInactiveTintColor: theme.colors.textFaint,
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         sceneStyle: { backgroundColor: theme.colors.background },
       }}
     >

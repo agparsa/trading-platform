@@ -8,12 +8,16 @@
  */
 export const theme = {
   colors: {
-    background: '#0B0E11',
-    surface: '#151A21',
-    surfaceRaised: '#1C232C',
-    border: '#252D38',
-    text: '#E6EAF0',
-    textMuted: '#8A94A6',
+    background: '#07090D',
+    surface: '#10141B',
+    surfaceRaised: '#181D26',
+    /** Inputs and tiles sunk into a card. */
+    surfaceSunken: '#0C1016',
+    border: '#212835',
+    borderStrong: '#2F3847',
+    text: '#EEF1F6',
+    textMuted: '#8590A3',
+    textFaint: '#566074',
     /** Up, buy — a price that rose, a buy button. */
     positive: '#16C784',
     /**
@@ -26,9 +30,15 @@ export const theme = {
     negative: '#EA3943',
     warning: '#F0A70A',
     accent: '#3B82F6',
+    /** The sides and the accent at a wash, for tiles and selected states. */
+    buyTint: 'rgba(22, 199, 132, 0.14)',
+    sellTint: 'rgba(234, 57, 67, 0.14)',
+    accentTint: 'rgba(59, 130, 246, 0.16)',
+    profitTint: 'rgba(56, 189, 248, 0.14)',
+    warningTint: 'rgba(240, 167, 10, 0.14)',
   },
   spacing: (units: number) => units * 8,
-  radius: { sm: 6, md: 10, lg: 16 },
+  radius: { sm: 8, md: 12, lg: 18, pill: 999 },
   font: {
     /** Prices and P&L. Tabular figures stop the numbers dancing as they tick. */
     mono: 'monospace',

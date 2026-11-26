@@ -412,6 +412,33 @@ changed from the position's row. The price scale stretches to include every leve
 (0.7.1), so a stop or target off the visible range is still on screen; the web
 build's frame draws the same lines.
 
+## The look (0.8.0)
+
+A trading terminal's: near-black (`#07090D`) with cards on a hairline edge,
+prices in tabular figures, buy and sell as tinted tiles (`PriceTile`), money
+made in blue. The kit is `components/ui.tsx` — `Card`, `PriceTile`, `Chip`,
+`SideTag`, `InstrumentBadge`, `Segmented`, `Button` — and every screen is built
+from it. An instrument wears a mark derived from its code alone
+(`lib/instrument-mark.ts`: a pair by its base currency's sign, a metal by its
+symbol, a coin by its sign), so one added tomorrow is marked too.
+
+- **Quotes:** search, family chips (Forex, Metals, Crypto), and per row the mark,
+  the spread or the session, and SELL/BUY tiles that open that side's ticket.
+- **Chart:** the instrument's mark, bid and spread above the chart; SELL/BUY
+  tiles below it with the live prices.
+- **Trade:** equity large with floating P&L beside it, a bar of margin used
+  against equity, then balance, margin, free margin and level; positions as cards
+  with a side stripe, the mark, a side tag and SL/TP chips (red/blue).
+- **Ticket:** the chosen side fills its tile; order kind and price/points are
+  segmented controls; lots on a stepper that walks the instrument's grid
+  (`stepLots`, exact decimals). Points are measured with the instrument's own
+  price precision from `/symbols/:code` — not counted from a price string, which
+  the server writes without trailing zeros (0.7.x made 500 points on gold 50.0).
+- **Sign-in:** the firm's name over a glow, three plain facts as pills. A sign-in
+  that never reached the server names the address it tried
+  (`login.unreachableHost`), which tells "the server is down" from "this network
+  cannot see it".
+
 ## Profit is blue
 
 Money made is blue (`theme.colors.profit`, the web's `--color-terminal-profit`),

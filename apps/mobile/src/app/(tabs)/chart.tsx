@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChartView } from '../../components/chart-view';
-import { Empty, Screen } from '../../components/ui';
+import { Chip, Empty, InstrumentBadge, PriceTile, Screen } from '../../components/ui';
+import { NUMERIC_DIRECTION } from '../../lib/direction';
+import { useRealtimeQuotes } from '../../lib/use-realtime-quotes';
 import { useT } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
 import { theme } from '../../lib/theme';
@@ -38,6 +40,9 @@ export default function ChartTab(): React.ReactElement {
 
   const current = symbol ?? instruments?.[0] ?? null;
 
+  const { quotes } = useRealtimeQuotes();
+  const quote = current === null ? undefined : quotes[current];
+
   return (
     <Screen>
       <ScrollView
@@ -47,39 +52,41 @@ export default function ChartTab(): React.ReactElement {
         contentContainerStyle={styles.symbols}
       >
         {(instruments ?? []).map((code) => (
-          <Pressable
-            key={code}
-            accessibilityRole="button"
-            accessibilityState={{ selected: code === current }}
-            onPress={() => setSymbol(code)}
-            style={[styles.symbol, code === current ? styles.symbolActive : null]}
-          >
-            <Text style={[styles.symbolLabel, code === current ? styles.symbolLabelActive : null]}>
-              {code}
-            </Text>
-          </Pressable>
+          <Chip key={code} label={code} active={code === current} onPress={() => setSymbol(code)} />
         ))}
       </ScrollView>
       {current === null ? (
         <Empty message={instruments === null ? t('common.loading') : t('quotes.none')} />
       ) : (
         <>
+          <View style={styles.head}>
+            <InstrumentBadge code={current} size={34} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.code}>{current}</Text>
+              <Text style={styles.sub}>
+                {quote === undefined ? '—' : t('quotes.spread', { spread: quote.spread })}
+              </Text>
+            </View>
+            <Text style={[styles.last, { writingDirection: NUMERIC_DIRECTION }]}>
+              {quote?.bid ?? '—'}
+            </Text>
+          </View>
           <ChartView symbol={current} />
           <View style={styles.actions}>
-            <Pressable
-              accessibilityRole="button"
-              style={[styles.action, { backgroundColor: theme.colors.negative }]}
+            <PriceTile
+              side="SELL"
+              label={t('common.SELL')}
+              price={quote?.bid ?? null}
+              accessibilityLabel={`${t('common.sell')} ${current}`}
               onPress={() => router.push(`/trade/${current}?side=SELL`)}
-            >
-              <Text style={styles.actionLabel}>{t('common.sell')}</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              style={[styles.action, { backgroundColor: theme.colors.positive }]}
+            />
+            <PriceTile
+              side="BUY"
+              label={t('common.BUY')}
+              price={quote?.ask ?? null}
+              accessibilityLabel={`${t('common.buy')} ${current}`}
               onPress={() => router.push(`/trade/${current}?side=BUY`)}
-            >
-              <Text style={styles.actionLabel}>{t('common.buy')}</Text>
-            </Pressable>
+            />
           </View>
         </>
       )}
@@ -88,25 +95,15 @@ export default function ChartTab(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  symbols: { gap: theme.spacing(0.75), paddingBottom: theme.spacing(1) },
-  symbol: {
-    paddingHorizontal: theme.spacing(1.5),
-    minHeight: 34,
-    justifyContent: 'center',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  symbolActive: { borderColor: theme.colors.accent, backgroundColor: theme.colors.surface },
-  symbolLabel: { color: theme.colors.textMuted, fontSize: 13, fontWeight: '600' },
-  symbolLabelActive: { color: theme.colors.text },
-  actions: { flexDirection: 'row', gap: theme.spacing(1), marginTop: theme.spacing(1) },
-  action: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: theme.radius.md,
+  symbols: { gap: theme.spacing(0.75), paddingBottom: theme.spacing(1.25) },
+  head: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: theme.spacing(1.25),
+    marginBottom: theme.spacing(1),
   },
-  actionLabel: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  code: { color: theme.colors.text, fontSize: 18, fontWeight: '800' },
+  sub: { color: theme.colors.textMuted, fontSize: 12, marginTop: 2 },
+  last: { color: theme.colors.text, fontSize: 22, fontWeight: '800', fontFamily: theme.font.mono },
+  actions: { flexDirection: 'row', gap: theme.spacing(1), marginTop: theme.spacing(1.25) },
 });

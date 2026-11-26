@@ -16,6 +16,7 @@ import { useT } from '../lib/i18n';
 import { brandName, useBranding } from '../lib/branding';
 import { useSession } from '../lib/session';
 import { signInErrorText } from '../lib/sign-in-error';
+import { apiBaseUrl } from '../lib/api';
 import { theme } from '../lib/theme';
 
 /**
@@ -52,7 +53,7 @@ export default function Login(): React.ReactElement {
       await run();
     } catch (caught) {
       // The server's message when it answered; otherwise what went wrong.
-      setError(signInErrorText(caught, t));
+      setError(signInErrorText(caught, t, apiHost()));
     } finally {
       setBusy(false);
     }
@@ -70,7 +71,7 @@ export default function Login(): React.ReactElement {
       onChangeText={onChange}
       accessibilityLabel={label}
       placeholder={label}
-      placeholderTextColor={theme.colors.textMuted}
+      placeholderTextColor={theme.colors.textFaint}
       {...extra}
     />
   );
@@ -80,16 +81,35 @@ export default function Login(): React.ReactElement {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={{ flex: 1, backgroundColor: theme.colors.background }}
     >
+      {/* Light behind the mark: two washes of the accent, decoration only. */}
+      <View pointerEvents="none" style={styles.glowA} />
+      <View pointerEvents="none" style={styles.glowB} />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingTop: insets.top + theme.spacing(2) }]}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.brand}>
-          <View style={styles.logo}>
-            <Icon name="chart" color="#FFFFFF" size={30} />
+          <View style={styles.logoRing}>
+            <View style={styles.logo}>
+              <Icon name="chart" color="#FFFFFF" size={32} />
+            </View>
           </View>
           <Text style={styles.title}>{brandName(branding, t('app.name'))}</Text>
           <Text style={styles.subtitle}>{t('login.welcome')}</Text>
+          <View style={styles.features}>
+            {(
+              [
+                ['quotes', 'login.feature.prices'],
+                ['shield', 'login.feature.secure'],
+                ['trade', 'login.feature.fast'],
+              ] as const
+            ).map(([icon, key]) => (
+              <View key={key} style={styles.feature}>
+                <Icon name={icon} color={theme.colors.accent} size={16} />
+                <Text style={styles.featureText}>{t(key)}</Text>
+              </View>
+            ))}
+          </View>
         </View>
 
         {challengeToken !== null ? (
@@ -257,18 +277,65 @@ export default function Login(): React.ReactElement {
 
 const styles = StyleSheet.create({
   content: { padding: theme.spacing(2.5), paddingBottom: theme.spacing(6) },
-  brand: { alignItems: 'center', marginTop: theme.spacing(7), marginBottom: theme.spacing(4) },
+  brand: { alignItems: 'center', marginTop: theme.spacing(6), marginBottom: theme.spacing(3.5) },
+  glowA: {
+    position: 'absolute',
+    top: -220,
+    alignSelf: 'center',
+    width: 520,
+    height: 520,
+    borderRadius: 260,
+    backgroundColor: 'rgba(59, 130, 246, 0.07)',
+  },
+  glowB: {
+    position: 'absolute',
+    top: -120,
+    alignSelf: 'center',
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: 'rgba(59, 130, 246, 0.07)',
+  },
+  logoRing: {
+    padding: 6,
+    borderRadius: 28,
+    backgroundColor: theme.colors.accentTint,
+    marginBottom: theme.spacing(2.5),
+  },
   logo: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
+    width: 72,
+    height: 72,
+    borderRadius: 22,
     backgroundColor: theme.colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: theme.spacing(2),
   },
-  title: { color: theme.colors.text, fontSize: 24, fontWeight: '800' },
-  subtitle: { color: theme.colors.textMuted, fontSize: 14, marginTop: theme.spacing(0.75) },
+  title: { color: theme.colors.text, fontSize: 28, fontWeight: '800', letterSpacing: 0.2 },
+  subtitle: {
+    color: theme.colors.textMuted,
+    fontSize: 15,
+    marginTop: theme.spacing(0.75),
+    textAlign: 'center',
+  },
+  features: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: theme.spacing(1),
+    marginTop: theme.spacing(2.5),
+  },
+  feature: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  featureText: { color: theme.colors.textMuted, fontSize: 12, fontWeight: '600' },
   card: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.lg,
@@ -281,7 +348,7 @@ const styles = StyleSheet.create({
   rule: { marginTop: -theme.spacing(0.75), marginBottom: theme.spacing(1.5) },
   ruleShort: { color: theme.colors.warning },
   input: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.surfaceSunken,
     borderRadius: theme.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
@@ -306,3 +373,13 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing(2),
   },
 });
+
+/** The host the app talks to, for an error that says which one it could not reach. */
+function apiHost(): string | undefined {
+  // Parsed by hand: React Native's URL leaves `host` unimplemented.
+  try {
+    return /^[a-z]+:\/\/([^/?#]+)/i.exec(apiBaseUrl())?.[1];
+  } catch {
+    return undefined;
+  }
+}

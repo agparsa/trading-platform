@@ -12,7 +12,7 @@ import { useSession } from '../../lib/session';
 import { useAccounts } from '../../lib/accounts';
 import { useLiveBook } from '../../lib/live';
 import { applyPnl } from '../../lib/live-book';
-import { Button, Empty, ErrorNote, Screen } from '../../components/ui';
+import { Button, Empty, ErrorNote, InstrumentBadge, Screen, SideTag } from '../../components/ui';
 import { describePatch, protectionLine, protectivePatch } from '../../lib/protective-levels';
 import {
   closeAllBody,
@@ -298,24 +298,29 @@ export default function Positions(): React.ReactElement {
           <Empty message={positions === null ? t('common.loading') : t('positions.none')} />
         }
         renderItem={({ item }) => (
-          <View style={styles.row}>
+          <View
+            style={[
+              styles.row,
+              {
+                borderLeftColor:
+                  item.side === 'BUY' ? theme.colors.positive : theme.colors.negative,
+              },
+            ]}
+          >
             <View style={styles.rowTop}>
-              <Text style={styles.symbol}>{item.symbol}</Text>
-              <Text
-                style={[
-                  styles.side,
-                  {
-                    color: item.side === 'BUY' ? theme.colors.positive : theme.colors.negative,
-                  },
-                ]}
-              >
-                {t(item.side === 'BUY' ? 'common.BUY' : 'common.SELL')} {item.volume}
-              </Text>
-            </View>
-            <View style={styles.rowBottom}>
-              <Text style={styles.detail}>
-                {item.entryPrice} → {item.currentPrice ?? '—'}
-              </Text>
+              <InstrumentBadge code={item.symbol} size={32} />
+              <View style={{ flex: 1 }}>
+                <View style={styles.titleLine}>
+                  <Text style={styles.symbol}>{item.symbol}</Text>
+                  <SideTag
+                    side={item.side}
+                    label={`${t(item.side === 'BUY' ? 'common.BUY' : 'common.SELL')} ${item.volume}`}
+                  />
+                </View>
+                <Text style={styles.detail}>
+                  {item.entryPrice} → {item.currentPrice ?? '—'}
+                </Text>
+              </View>
               {/* An em-dash, not a zero. A trader cannot tell a genuine flat
                   from a missing price, and one of those is a reason to act. */}
               <PnlText value={item.floatingPnl} style={styles.pnl} />
@@ -323,8 +328,28 @@ export default function Positions(): React.ReactElement {
             {item.stale === true ? (
               <Text style={styles.staleNote}>{t('positions.stale')}</Text>
             ) : null}
-            {protectionLine(item, t) === null ? null : (
-              <Text style={styles.protection}>{protectionLine(item, t)}</Text>
+            {item.stopLoss === null && item.takeProfit === null ? (
+              protectionLine(item, t) === null ? null : (
+                <Text style={styles.protection}>{protectionLine(item, t)}</Text>
+              )
+            ) : (
+              <View style={styles.levels}>
+                {item.stopLoss === null ? null : (
+                  <Text style={[styles.level, styles.levelSl]}>
+                    {t('levels.sl', { price: item.stopLoss })}
+                  </Text>
+                )}
+                {item.takeProfit === null ? null : (
+                  <Text style={[styles.level, styles.levelTp]}>
+                    {t('levels.tp', { price: item.takeProfit })}
+                  </Text>
+                )}
+                {item.trailingStopDistance === null ? null : (
+                  <Text style={styles.level}>
+                    {t('levels.trail', { distance: item.trailingStopDistance })}
+                  </Text>
+                )}
+              </View>
             )}
 
             {closing === item.id ? (
@@ -471,23 +496,43 @@ function LevelField({
 const styles = StyleSheet.create({
   row: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
+    borderRadius: theme.radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
+    borderLeftWidth: 3,
     padding: theme.spacing(1.5),
     marginBottom: theme.spacing(1),
   },
-  rowTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(1.25) },
+  titleLine: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(0.75) },
+  levels: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: theme.spacing(1) },
+  level: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontFamily: theme.font.mono,
+    backgroundColor: theme.colors.surfaceRaised,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    overflow: 'hidden',
+  },
+  levelSl: { color: theme.colors.negative, backgroundColor: theme.colors.sellTint },
+  levelTp: { color: theme.colors.profit, backgroundColor: theme.colors.profitTint },
   rowBottom: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: theme.spacing(0.5),
   },
-  symbol: { color: theme.colors.text, fontSize: 16, fontWeight: '600' },
+  symbol: { color: theme.colors.text, fontSize: 16, fontWeight: '800' },
   side: { fontSize: 14, fontFamily: theme.font.mono },
-  detail: { color: theme.colors.textMuted, fontSize: 13, fontFamily: theme.font.mono },
-  pnl: { fontSize: 16, fontFamily: theme.font.mono, fontWeight: '600' },
+  detail: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    fontFamily: theme.font.mono,
+    marginTop: 3,
+  },
+  pnl: { fontSize: 18, fontFamily: theme.font.mono, fontWeight: '800' },
   protection: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.spacing(0.5) },
   confirm: {
     marginTop: theme.spacing(1),

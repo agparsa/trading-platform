@@ -15,8 +15,21 @@ import { english, serverWords, type Translate } from './messages';
  * `isDomainError` rather than `instanceof`: a class checked across two
  * bundled copies of a package is not the same class.
  */
-export function signInErrorText(caught: unknown, t: Translate = english): string {
-  if (isDomainError(caught)) return serverWords(caught.code, caught.message, t);
+export function signInErrorText(
+  caught: unknown,
+  t: Translate = english,
+  /** The server's address, named when the phone could not reach it at all. */
+  host?: string,
+): string {
+  if (isDomainError(caught)) {
+    // No answer at all — offline, blocked, a timeout. Naming the address the
+    // phone tried is what tells "the server is down" from "this network
+    // cannot see it", which the words alone do not.
+    if (caught.code === 'SERVICE_UNAVAILABLE' && host !== undefined) {
+      return t('login.unreachableHost', { host, detail: caught.message.trim().slice(0, 120) });
+    }
+    return serverWords(caught.code, caught.message, t);
+  }
   const detail =
     caught instanceof Error && caught.message.trim() !== ''
       ? caught.message.trim().slice(0, 160)

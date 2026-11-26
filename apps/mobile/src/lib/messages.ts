@@ -45,6 +45,9 @@ const en = {
 
   // --- sign in
   'login.welcome': 'Trade the markets from your phone.',
+  'login.feature.prices': 'Live prices',
+  'login.feature.secure': 'Two-factor security',
+  'login.feature.fast': 'Forex, metals, crypto',
   'login.email': 'Email',
   'login.password': 'Password',
   'login.name': 'Your name',
@@ -72,6 +75,8 @@ const en = {
   'login.verify': 'Verify',
   'login.unreachable': 'Could not reach the server. Try again.',
   'login.unreachableDetail': 'Could not reach the server. Try again. ({detail})',
+  'login.unreachableHost':
+    'Could not reach {host}. Check the connection or VPN and try again. ({detail})',
 
   // --- quotes
   'quotes.loadFailed': 'Prices could not be loaded.',
@@ -85,6 +90,11 @@ const en = {
   'quotes.search': 'Search',
   'quotes.trade': 'Trade',
   'quotes.chart': 'Chart',
+  'quotes.family.all': 'All',
+  'quotes.family.fx': 'Forex',
+  'quotes.family.metal': 'Metals',
+  'quotes.family.crypto': 'Crypto',
+  'quotes.family.other': 'Other',
 
   // --- market state
   'market.open': 'open',
@@ -218,6 +228,8 @@ const en = {
   'ticket.day': 'Today only',
   'ticket.trailing': 'Trailing distance',
   'ticket.unitPrice': 'Price',
+  'ticket.decrease': 'Fewer lots',
+  'ticket.increase': 'More lots',
   'ticket.unitPoints': 'Points',
   'ticket.pointsAt': '→ {price} (from {from})',
   'ticket.pointsBad': 'A whole number of points, closer than the price itself.',
@@ -435,6 +447,9 @@ const fa: Messages = {
   'common.SELL': 'فروش',
 
   'login.welcome': 'از گوشی در بازارها معامله کن.',
+  'login.feature.prices': 'قیمت لحظه‌ای',
+  'login.feature.secure': 'امنیت دومرحله‌ای',
+  'login.feature.fast': 'فارکس، فلزات، کریپتو',
   'login.email': 'ایمیل',
   'login.password': 'رمز عبور',
   'login.name': 'نام شما',
@@ -461,6 +476,8 @@ const fa: Messages = {
   'login.verify': 'تأیید',
   'login.unreachable': 'به سرور دسترسی نیست. دوباره امتحان کن.',
   'login.unreachableDetail': 'به سرور دسترسی نیست. دوباره امتحان کن. ({detail})',
+  'login.unreachableHost':
+    'اتصال به {host} برقرار نشد. اینترنت یا VPN را بررسی کنید و دوباره تلاش کنید. ({detail})',
 
   'quotes.loadFailed': 'قیمت‌ها بارگذاری نشد.',
   'quotes.instrumentsFailed': 'نمادها بارگذاری نشد.',
@@ -473,6 +490,11 @@ const fa: Messages = {
   'quotes.search': 'جست‌وجو',
   'quotes.trade': 'معامله',
   'quotes.chart': 'نمودار',
+  'quotes.family.all': 'همه',
+  'quotes.family.fx': 'فارکس',
+  'quotes.family.metal': 'فلزات',
+  'quotes.family.crypto': 'کریپتو',
+  'quotes.family.other': 'سایر',
 
   'market.open': 'باز',
   'market.halted': 'معاملات متوقف',
@@ -598,6 +620,8 @@ const fa: Messages = {
   'ticket.day': 'فقط امروز',
   'ticket.trailing': 'فاصله‌ی دنباله‌دار',
   'ticket.unitPrice': 'قیمت',
+  'ticket.decrease': 'لات کمتر',
+  'ticket.increase': 'لات بیشتر',
   'ticket.unitPoints': 'پوینت',
   'ticket.pointsAt': '← {price} (از {from})',
   'ticket.pointsBad': 'یک عدد صحیح پوینت، کمتر از خود قیمت.',

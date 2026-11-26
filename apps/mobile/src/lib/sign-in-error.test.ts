@@ -31,4 +31,16 @@ describe('the sign-in error text', () => {
       'Could not reach the server. Try again. ()'.length + 160,
     );
   });
+
+  it('names the address it tried when the server never answered', () => {
+    expect(
+      signInErrorText(
+        new DomainError(TradingErrorCode.SERVICE_UNAVAILABLE, 'Network request failed'),
+        undefined,
+        'devopss.ir',
+      ),
+    ).toBe(
+      'Could not reach devopss.ir. Check the connection or VPN and try again. (Network request failed)',
+    );
+  });
 });

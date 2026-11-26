@@ -2,8 +2,8 @@ import { AccountPicker } from '../../components/account-picker';
 import { useAccounts } from '../../lib/accounts';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { entrySideOf } from '@tp/financial-core';
-import { priceFromPoints } from '../../lib/level-points';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { priceFromPoints, stepLots } from '../../lib/level-points';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { OrderSide } from '@tp/shared-types';
 import { useSession } from '../../lib/session';
@@ -17,7 +17,7 @@ import {
   restingSummary,
   type OrderKind,
 } from '../../lib/order-request';
-import { Button, Card, ErrorNote, Figure, Screen } from '../../components/ui';
+import { Button, Card, ErrorNote, Figure, Screen, Segmented } from '../../components/ui';
 import { theme } from '../../lib/theme';
 import { useT } from '../../lib/i18n';
 import { refusalText } from '../../lib/messages';
@@ -100,9 +100,12 @@ export default function OrderTicket(): React.ReactElement {
   const [fromPoints, setFromPoints] = useState<{
     stopLoss: string | null;
     takeProfit: string | null;
+    /** The price the points were measured from — shown, so the hint is true. */
+    from: string | null;
   }>({
     stopLoss: null,
     takeProfit: null,
+    from: null,
   });
   const [trailing, setTrailing] = useState('');
   const features = useFeatures();
@@ -136,17 +139,38 @@ export default function OrderTicket(): React.ReactElement {
         : restingPrice.trim();
   const referenceRef = useRef(reference);
   referenceRef.current = reference;
-  const decimals = (() => {
-    const at = reference ?? preview?.bid ?? '';
-    const dot = at.indexOf('.');
-    return dot === -1 ? 0 : at.length - dot - 1;
-  })();
-  const haveReference = reference !== null;
+  /**
+   * The instrument's own price precision, asked of the server. Not inferred
+   * from a price string: the server writes 4584.40 as "4584.4", and counting
+   * its decimals made 500 points on gold 50.0 instead of 5.00.
+   */
+  const [decimals, setDecimals] = useState<number | null>(null);
+  /** The lot grid, for the stepper; the server checks the volume either way. */
+  const [step, setStep] = useState<{ step: string; min: string } | null>(null);
   useEffect(() => {
-    const from = referenceRef.current;
+    let cancelled = false;
+    void api
+      .get<{ pricePrecision: number; volumeStep: string; minVolume: string }>(
+        `/symbols/${String(symbol)}`,
+      )
+      .then((row) => {
+        if (cancelled) return;
+        setDecimals(row.pricePrecision);
+        setStep({ step: row.volumeStep, min: row.minVolume });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [api, symbol]);
+  const haveReference = reference !== null && decimals !== null;
+  useEffect(() => {
+    const from = decimals === null ? null : referenceRef.current;
+    const places = decimals ?? 0;
     setFromPoints({
-      stopLoss: priceFromPoints(stopPoints, from, decimals, side, 'STOP_LOSS'),
-      takeProfit: priceFromPoints(takePoints, from, decimals, side, 'TAKE_PROFIT'),
+      stopLoss: priceFromPoints(stopPoints, from, places, side, 'STOP_LOSS'),
+      takeProfit: priceFromPoints(takePoints, from, places, side, 'TAKE_PROFIT'),
+      from,
     });
   }, [stopPoints, takePoints, side, kind, restingPrice, haveReference, decimals]);
   const stopLoss = levelUnit === 'points' ? (fromPoints.stopLoss ?? '') : typedStopLoss;
@@ -288,46 +312,98 @@ export default function OrderTicket(): React.ReactElement {
         {error === null ? null : <ErrorNote message={error} />}
         {accountError === null ? null : <ErrorNote message={accountError} />}
 
+        {/* Sell at the bid on the left, buy at the ask on the right — the
+            ladder every terminal shares. The chosen side fills. */}
         <View style={styles.sides}>
-          <View style={{ flex: 1 }}>
-            <Button
-              label={`${t('common.sell')} ${preview?.bid ?? ''}`}
-              variant={side === 'SELL' ? 'danger' : 'quiet'}
-              onPress={() => setSide('SELL')}
-            />
-          </View>
-          <View style={{ width: theme.spacing(1) }} />
-          <View style={{ flex: 1 }}>
-            <Button
-              label={`${t('common.buy')} ${preview?.ask ?? ''}`}
-              variant={side === 'BUY' ? 'buy' : 'quiet'}
-              onPress={() => setSide('BUY')}
-            />
-          </View>
+          {(['SELL', 'BUY'] as const).map((value) => {
+            const chosen = side === value;
+            const buy = value === 'BUY';
+            const price = preview === null ? null : preview[entrySideOf(value)];
+            return (
+              <Pressable
+                key={value}
+                accessibilityRole="button"
+                accessibilityState={{ selected: chosen }}
+                accessibilityLabel={`${buy ? t('common.buy') : t('common.sell')} ${price ?? ''}`}
+                onPress={() => setSide(value)}
+                style={[
+                  styles.sideTile,
+                  {
+                    backgroundColor: chosen
+                      ? buy
+                        ? theme.colors.positive
+                        : theme.colors.negative
+                      : buy
+                        ? theme.colors.buyTint
+                        : theme.colors.sellTint,
+                    borderColor: buy ? theme.colors.positive : theme.colors.negative,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.sideLabel,
+                    {
+                      color: chosen
+                        ? '#FFFFFF'
+                        : buy
+                          ? theme.colors.positive
+                          : theme.colors.negative,
+                    },
+                  ]}
+                >
+                  {buy ? t('common.BUY') : t('common.SELL')}
+                </Text>
+                <Text
+                  style={[styles.sidePrice, { color: chosen ? '#FFFFFF' : theme.colors.text }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  {price ?? '—'}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
-        <View style={styles.sides} accessibilityRole="tablist">
-          {kinds.map((value) => (
-            <View key={value} style={styles.kind}>
-              <Button
-                label={t(`orders.kind.${value}`)}
-                variant={value === kind ? 'primary' : 'quiet'}
-                onPress={() => {
-                  setKind(value);
-                  setConfirming(false);
-                }}
-              />
-            </View>
-          ))}
+        <View style={styles.block}>
+          <Segmented
+            value={kind}
+            onChange={(value) => {
+              setKind(value);
+              setConfirming(false);
+            }}
+            options={kinds.map((value) => ({ value, label: t(`orders.kind.${value}`) }))}
+          />
         </View>
 
         <Card title={t('ticket.order')}>
-          <Field
-            label={t('ticket.volume')}
-            value={volume}
-            onChange={setVolume}
-            keyboard="decimal-pad"
-          />
+          <Text style={styles.fieldLabel}>{t('ticket.volume')}</Text>
+          <View style={styles.stepper}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('ticket.decrease')}
+              onPress={() => setVolume((current) => stepLots(current, step, -1))}
+              style={styles.stepButton}
+            >
+              <Text style={styles.stepGlyph}>−</Text>
+            </Pressable>
+            <TextInput
+              style={styles.stepInput}
+              value={volume}
+              onChangeText={setVolume}
+              keyboardType="decimal-pad"
+              accessibilityLabel={t('ticket.volume')}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('ticket.increase')}
+              onPress={() => setVolume((current) => stepLots(current, step, 1))}
+              style={styles.stepButton}
+            >
+              <Text style={styles.stepGlyph}>+</Text>
+            </Pressable>
+          </View>
           {kind === 'STOP_LIMIT' ? (
             <Field
               label={t('ticket.stopActivates')}
@@ -369,16 +445,15 @@ export default function OrderTicket(): React.ReactElement {
               ))}
             </View>
           )}
-          <View style={styles.sides} accessibilityRole="tablist">
-            {(['price', 'points'] as const).map((unit) => (
-              <View key={unit} style={styles.kind}>
-                <Button
-                  label={unit === 'price' ? t('ticket.unitPrice') : t('ticket.unitPoints')}
-                  variant={unit === levelUnit ? 'primary' : 'quiet'}
-                  onPress={() => setLevelUnit(unit)}
-                />
-              </View>
-            ))}
+          <View style={styles.block}>
+            <Segmented
+              value={levelUnit}
+              onChange={setLevelUnit}
+              options={[
+                { value: 'price', label: t('ticket.unitPrice') },
+                { value: 'points', label: t('ticket.unitPoints') },
+              ]}
+            />
           </View>
           {levelUnit === 'price' ? (
             <>
@@ -405,7 +480,7 @@ export default function OrderTicket(): React.ReactElement {
                 onChange={setStopPoints}
                 keyboard="decimal-pad"
                 placeholder={t('common.optional')}
-                hint={pointsHint(stopPoints, fromPoints.stopLoss, reference, t)}
+                hint={pointsHint(stopPoints, fromPoints.stopLoss, fromPoints.from, t)}
                 tone="loss"
               />
               <Field
@@ -414,7 +489,7 @@ export default function OrderTicket(): React.ReactElement {
                 onChange={setTakePoints}
                 keyboard="decimal-pad"
                 placeholder={t('common.optional')}
-                hint={pointsHint(takePoints, fromPoints.takeProfit, reference, t)}
+                hint={pointsHint(takePoints, fromPoints.takeProfit, fromPoints.from, t)}
                 tone="profit"
               />
             </>
@@ -512,7 +587,8 @@ export default function OrderTicket(): React.ReactElement {
           </Card>
         ) : (
           <Button
-            label={t('ticket.review')}
+            label={`${t('ticket.review')} · ${side === 'BUY' ? t('common.BUY') : t('common.SELL')}`}
+            variant={side === 'BUY' ? 'buy' : 'danger'}
             disabled={!reviewable}
             onPress={() => setConfirming(true)}
           />
@@ -590,19 +666,63 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: theme.spacing(1),
   },
-  sides: { flexDirection: 'row', marginBottom: theme.spacing(1) },
+  sides: { flexDirection: 'row', gap: theme.spacing(1), marginBottom: theme.spacing(1.5) },
+  sideTile: {
+    flex: 1,
+    minHeight: 68,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing(1),
+  },
+  sideLabel: { fontSize: 12, fontWeight: '800', letterSpacing: 1.2 },
+  sidePrice: { fontSize: 22, fontWeight: '800', fontFamily: theme.font.mono, marginTop: 2 },
+  block: { marginBottom: theme.spacing(1.5) },
   kind: { flex: 1, marginHorizontal: theme.spacing(0.25) },
-  field: { marginBottom: theme.spacing(1) },
-  fieldLabel: { color: theme.colors.textMuted, fontSize: 13, marginBottom: theme.spacing(0.5) },
+  field: { marginBottom: theme.spacing(1.25) },
+  fieldLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: theme.spacing(0.75),
+  },
   fieldHint: { color: theme.colors.textMuted, fontSize: 12, marginTop: theme.spacing(0.5) },
   input: {
-    backgroundColor: theme.colors.surfaceRaised,
-    borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.surfaceSunken,
+    borderRadius: theme.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
     color: theme.colors.text,
     fontSize: 16,
     fontFamily: theme.font.mono,
-    minHeight: 48,
+    minHeight: 50,
     paddingHorizontal: theme.spacing(1.5),
+  },
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surfaceSunken,
+    borderRadius: theme.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+    marginBottom: theme.spacing(1.5),
+  },
+  stepButton: {
+    width: 56,
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepGlyph: { color: theme.colors.text, fontSize: 24, fontWeight: '500' },
+  stepInput: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 20,
+    fontWeight: '700',
+    fontFamily: theme.font.mono,
+    textAlign: 'center',
+    minHeight: 52,
   },
   confirm: { color: theme.colors.text, fontSize: 15, lineHeight: 22 },
 });

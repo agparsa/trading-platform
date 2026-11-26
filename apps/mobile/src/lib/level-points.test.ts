@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { priceFromPoints } from './level-points';
+import { priceFromPoints, stepLots } from './level-points';
 
 describe('a level typed in points', () => {
   it('puts a buy’s stop below and target above, a sell’s the other way', () => {
@@ -16,5 +16,22 @@ describe('a level typed in points', () => {
     expect(priceFromPoints('500', null, 2, 'BUY', 'STOP_LOSS')).toBeNull();
     // A stop further than the price itself.
     expect(priceFromPoints('300000', '2000.00', 2, 'BUY', 'STOP_LOSS')).toBeNull();
+  });
+});
+
+describe('stepping lots on the grid', () => {
+  const grid = { step: '0.01', min: '0.01' };
+  it('steps up and down, never below the minimum', () => {
+    expect(stepLots('0.10', grid, 1)).toBe('0.11');
+    expect(stepLots('0.10', grid, -1)).toBe('0.09');
+    expect(stepLots('0.01', grid, -1)).toBe('0.01');
+  });
+  it('snaps a value off the grid, and starts a half-typed one from the minimum', () => {
+    expect(stepLots('0.104', grid, 1)).toBe('0.11');
+    expect(stepLots('', grid, 1)).toBe('0.02');
+    expect(stepLots('1.', grid, 1)).toBe('0.02');
+  });
+  it('leaves the value alone until the grid is known', () => {
+    expect(stepLots('0.10', null, 1)).toBe('0.10');
   });
 });
