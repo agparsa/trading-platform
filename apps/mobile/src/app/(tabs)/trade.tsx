@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { AccountPicker } from '../../components/account-picker';
 import { Segmented } from '../../components/ui';
 import { PnlText } from '../../components/pnl-text';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAccounts } from '../../lib/accounts';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
 import { useT } from '../../lib/i18n';
@@ -87,7 +88,12 @@ export default function Trade(): React.ReactElement {
   return (
     <View style={styles.screen}>
       <AccountPicker />
-      <View style={styles.hero}>
+      <LinearGradient
+        colors={['#16264A', '#111827', theme.colors.surface]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.hero}
+      >
         <View style={styles.heroTop}>
           <View style={{ flex: 1 }}>
             <Text style={styles.heroLabel}>
@@ -136,7 +142,7 @@ export default function Trade(): React.ReactElement {
                 : `${state.marginLevel}%`,
           )}
         </View>
-      </View>
+      </LinearGradient>
       <View style={styles.switch}>
         <Segmented
           value={view}
@@ -157,11 +163,11 @@ const styles = StyleSheet.create({
   hero: {
     marginHorizontal: theme.spacing(2),
     marginTop: theme.spacing(1.5),
-    backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.border,
+    borderColor: 'rgba(59,130,246,0.35)',
     padding: theme.spacing(2),
+    overflow: 'hidden',
   },
   heroTop: { flexDirection: 'row', alignItems: 'flex-end', gap: theme.spacing(1) },
   heroLabel: {

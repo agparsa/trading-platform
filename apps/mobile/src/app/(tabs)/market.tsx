@@ -15,7 +15,9 @@ import { useSession } from '../../lib/session';
 import { useRealtimeQuotes } from '../../lib/use-realtime-quotes';
 import { Chip, Empty, ErrorNote, InstrumentBadge, PriceTile, Screen } from '../../components/ui';
 import { instrumentMark, type InstrumentFamily } from '../../lib/instrument-mark';
-import { changeColor, theme } from '../../lib/theme';
+import { Sparkline, useDayBars } from '../../components/sparkline';
+import { changePercent } from '../../lib/spark';
+import { theme } from '../../lib/theme';
 import { useT } from '../../lib/i18n';
 import { useOneTap } from '../../lib/one-tap';
 
@@ -47,7 +49,6 @@ export default function Market(): React.ReactElement {
   const router = useRouter();
   const [instruments, setInstruments] = useState<Instrument[] | null>(null);
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
-  const [previous, setPrevious] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -61,6 +62,9 @@ export default function Market(): React.ReactElement {
    */
   const { quotes: live, status } = useRealtimeQuotes();
   const oneTap = useOneTap();
+  const dayBars = useDayBars(
+    (instruments ?? []).filter((row) => row.enabled).map((row) => row.code),
+  );
   /** One-tap armed: the order goes now. Otherwise the ticket, to review it. */
   const press = (code: string, side: 'BUY' | 'SELL') => {
     if (oneTap.armed) void oneTap.send(code, side);
@@ -89,14 +93,6 @@ export default function Market(): React.ReactElement {
   }, [api, loadQuotes, t]);
 
   useEffect(() => {
-    setPrevious((current) => {
-      const carried = { ...current };
-      for (const [symbol, quote] of Object.entries(live)) {
-        const known = quotes[symbol]?.bid;
-        if (known !== undefined && known !== quote.bid) carried[symbol] = known;
-      }
-      return carried;
-    });
     setQuotes((current) => ({ ...current, ...live }));
     // `live` is the only trigger that matters; including `quotes` would loop.
   }, [live]);
@@ -164,10 +160,15 @@ export default function Market(): React.ReactElement {
         }
         renderItem={({ item }) => {
           const quote = quotes[item.code];
-          const before = previous[item.code];
-          const change =
-            quote === undefined || before === undefined ? 0 : Number(quote.bid) - Number(before);
-          const tick = change === 0 ? undefined : changeColor(change);
+          const day = dayBars[item.code];
+          const pct = changePercent(day?.first ?? null, quote?.bid ?? null);
+          const up = pct === null || !pct.startsWith('-');
+          const closes =
+            day === undefined
+              ? []
+              : quote === undefined
+                ? day.closes
+                : [...day.closes, Number(quote.bid)];
 
           return (
             <Pressable
@@ -176,40 +177,56 @@ export default function Market(): React.ReactElement {
               onPress={() => router.push(`/(tabs)/chart?symbol=${item.code}`)}
               style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
             >
-              <InstrumentBadge code={item.code} />
-              <View style={styles.instrument}>
-                <Text style={styles.code}>{item.code}</Text>
-                <Text
-                  style={[styles.name, item.sessionOpen ? null : { color: theme.colors.warning }]}
-                  numberOfLines={1}
-                >
-                  {item.sessionOpen
-                    ? quote === undefined
+              <View style={styles.rowTop}>
+                <InstrumentBadge code={item.code} size={40} />
+                <View style={styles.instrument}>
+                  <Text style={styles.code}>{item.code}</Text>
+                  <Text
+                    style={[styles.name, item.sessionOpen ? null : { color: theme.colors.warning }]}
+                    numberOfLines={1}
+                  >
+                    {item.sessionOpen
                       ? item.description
-                      : t('quotes.spread', { spread: quote.spread })
-                    : item.market === undefined
-                      ? t('market.closed')
-                      : marketLabel(item.market, t)}
-                </Text>
+                      : item.market === undefined
+                        ? t('market.closed')
+                        : marketLabel(item.market, t)}
+                  </Text>
+                </View>
+                <Sparkline closes={closes} up={up} />
+                <View
+                  style={[
+                    styles.change,
+                    { backgroundColor: up ? theme.colors.buyTint : theme.colors.sellTint },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.changeText,
+                      { color: up ? theme.colors.positive : theme.colors.negative },
+                    ]}
+                  >
+                    {pct ?? '—'}
+                  </Text>
+                </View>
               </View>
               <View style={styles.tiles}>
                 <PriceTile
-                  compact
                   side="SELL"
                   label={t('common.SELL')}
                   price={quote?.bid ?? null}
-                  {...(tick === undefined ? {} : { tone: tick })}
                   accessibilityLabel={`${t('common.sell')} ${item.code} ${quote?.bid ?? ''}`}
                   armed={oneTap.armed}
                   busy={oneTap.busy === `${item.code}:SELL`}
                   onPress={() => press(item.code, 'SELL')}
                 />
+                <View style={styles.spread}>
+                  <Text style={styles.spreadLabel}>{t('ticket.spread')}</Text>
+                  <Text style={styles.spreadValue}>{quote?.spread ?? '—'}</Text>
+                </View>
                 <PriceTile
-                  compact
                   side="BUY"
                   label={t('common.BUY')}
                   price={quote?.ask ?? null}
-                  {...(tick === undefined ? {} : { tone: tick })}
                   accessibilityLabel={`${t('common.buy')} ${item.code} ${quote?.ask ?? ''}`}
                   armed={oneTap.armed}
                   busy={oneTap.busy === `${item.code}:BUY`}
@@ -246,32 +263,44 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing(1.5),
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing(1.25),
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
-    paddingVertical: theme.spacing(1.25),
-    paddingHorizontal: theme.spacing(1.5),
+    padding: theme.spacing(1.5),
     marginBottom: theme.spacing(1),
+    gap: theme.spacing(1.5),
   },
-  pressed: { opacity: 0.75 },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(1.5) },
+  pressed: { opacity: 0.8 },
   instrument: { flex: 1, alignItems: 'flex-start', minWidth: 0 },
-  code: {
-    fontFamily: theme.font.heavy,
-    color: theme.colors.text,
-    fontSize: theme.type.body,
-    letterSpacing: 0.3,
-  },
+  code: { fontFamily: theme.font.heavy, color: theme.colors.text, fontSize: theme.type.title },
   name: {
     fontFamily: theme.font.regular,
     color: theme.colors.textMuted,
     fontSize: theme.type.label,
-    marginTop: 4,
+    marginTop: 2,
   },
-  tiles: { flexDirection: 'row', gap: 8, width: 196 },
+  change: {
+    borderRadius: theme.radius.xs,
+    paddingHorizontal: theme.spacing(1),
+    paddingVertical: theme.spacing(0.5),
+    minWidth: 68,
+    alignItems: 'center',
+  },
+  changeText: { fontFamily: theme.font.monoBold, fontSize: theme.type.label },
+  tiles: { flexDirection: 'row', alignItems: 'stretch', gap: theme.spacing(1) },
+  spread: { justifyContent: 'center', alignItems: 'center', minWidth: 52 },
+  spreadLabel: {
+    fontFamily: theme.font.medium,
+    color: theme.colors.textFaint,
+    fontSize: theme.type.caption,
+  },
+  spreadValue: {
+    fontFamily: theme.font.mono,
+    color: theme.colors.textMuted,
+    fontSize: theme.type.label,
+  },
   status: {
     fontFamily: theme.font.regular,
     color: theme.colors.warning,

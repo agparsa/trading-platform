@@ -8,6 +8,8 @@ import { useRealtimeQuotes } from '../../lib/use-realtime-quotes';
 import { useOneTap } from '../../lib/one-tap';
 import { OneTapSwitch } from '../../components/one-tap';
 import { stepLots } from '../../lib/level-points';
+import { useDayBars } from '../../components/sparkline';
+import { changePercent } from '../../lib/spark';
 import { useT } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
 import { theme } from '../../lib/theme';
@@ -61,6 +63,9 @@ export default function ChartTab(): React.ReactElement {
     else router.push(`/trade/${code}?side=${side}`);
   };
   const quote = current === null ? undefined : quotes[current];
+  const day = useDayBars(current === null ? [] : [current]);
+  const dayChange =
+    current === null ? null : changePercent(day[current]?.first ?? null, quote?.bid ?? null);
 
   return (
     <Screen>
@@ -86,9 +91,25 @@ export default function ChartTab(): React.ReactElement {
                 {quote === undefined ? '—' : t('quotes.spread', { spread: quote.spread })}
               </Text>
             </View>
-            <Text style={[styles.last, { writingDirection: NUMERIC_DIRECTION }]}>
-              {quote?.bid ?? '—'}
-            </Text>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={[styles.last, { writingDirection: NUMERIC_DIRECTION }]}>
+                {quote?.bid ?? '—'}
+              </Text>
+              {dayChange === null ? null : (
+                <Text
+                  style={[
+                    styles.dayChange,
+                    {
+                      color: dayChange.startsWith('-')
+                        ? theme.colors.negative
+                        : theme.colors.positive,
+                    },
+                  ]}
+                >
+                  {dayChange}
+                </Text>
+              )}
+            </View>
           </View>
           <ChartView symbol={current} />
           <View style={styles.lotsRow}>
@@ -164,6 +185,7 @@ const styles = StyleSheet.create({
     fontSize: theme.type.label,
     marginTop: 4,
   },
+  dayChange: { fontFamily: theme.font.monoBold, fontSize: theme.type.label, marginTop: 2 },
   last: {
     fontFamily: theme.font.monoHeavy,
     color: theme.colors.text,

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
+import { View } from 'react-native';
 import { Icon, type IconName } from '../../components/icons';
 import { BackButton } from '../../components/ui';
 import { useT } from '../../lib/i18n';
@@ -47,7 +48,7 @@ export default function TabsLayout(): React.ReactElement {
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border,
-          height: 64,
+          height: 68,
           paddingTop: 8,
           paddingBottom: 8,
         },
@@ -63,7 +64,22 @@ export default function TabsLayout(): React.ReactElement {
           name={tab.name}
           options={{
             title: t(tab.title),
-            tabBarIcon: ({ color }) => <Icon name={tab.icon} color={String(color)} />,
+            // The active tab sits on a pill of the accent, so where you are is
+            // a shape, not only a colour.
+            tabBarIcon: ({ color, focused }) => (
+              <View
+                style={{
+                  width: 52,
+                  height: 30,
+                  borderRadius: 15,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: focused ? theme.colors.accentTint : 'transparent',
+                }}
+              >
+                <Icon name={tab.icon} color={String(color)} />
+              </View>
+            ),
           }}
         />
       ))}

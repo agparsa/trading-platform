@@ -439,6 +439,18 @@ symbol, a coin by its sign), so one added tomorrow is marked too.
   (`login.unreachableHost`), which tells "the server is down" from "this network
   cannot see it".
 
+## Depth (1.1.0)
+
+- **Quotes** are two-line cards: the mark, the name, a day's sparkline (hourly
+  closes from the platform's bars with the live bid as the last point,
+  `components/sparkline.tsx`) and the day's move as a percent (`lib/spark.ts`,
+  decimals, for the eye only); below, SELL and BUY tiles with the spread
+  between them. The bars are fetched once when the list opens — no poll.
+- **Chart** shows the day's move under the price.
+- **Trade**'s account card sits on a dark-blue gradient (`expo-linear-gradient`);
+  the sign-in screen has the same light above its mark.
+- **Tab bar:** the active tab's icon sits on an accent pill.
+
 ## One scale for everything (1.0.0)
 
 Sizes come from `lib/theme.ts`, not from the screen:

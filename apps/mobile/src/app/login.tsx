@@ -16,6 +16,7 @@ import { useT } from '../lib/i18n';
 import { brandName, useBranding } from '../lib/branding';
 import { useSession } from '../lib/session';
 import { signInErrorText } from '../lib/sign-in-error';
+import { LinearGradient } from 'expo-linear-gradient';
 import { apiBaseUrl } from '../lib/api';
 import { theme } from '../lib/theme';
 
@@ -82,7 +83,12 @@ export default function Login(): React.ReactElement {
       style={{ flex: 1, backgroundColor: theme.colors.background }}
     >
       {/* Light behind the mark: two washes of the accent, decoration only. */}
-      <View pointerEvents="none" style={styles.glowA} />
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(59,130,246,0.28)', 'rgba(56,189,248,0.06)', 'rgba(7,9,13,0)']}
+        locations={[0, 0.45, 1]}
+        style={styles.backdrop}
+      />
       <View pointerEvents="none" style={styles.glowB} />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingTop: insets.top + theme.spacing(2) }]}
@@ -278,6 +284,7 @@ export default function Login(): React.ReactElement {
 const styles = StyleSheet.create({
   content: { padding: theme.spacing(2.5), paddingBottom: theme.spacing(6) },
   brand: { alignItems: 'center', marginTop: theme.spacing(6), marginBottom: theme.spacing(3.5) },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, height: 460 },
   glowA: {
     position: 'absolute',
     top: -220,
