@@ -439,6 +439,20 @@ symbol, a coin by its sign), so one added tomorrow is marked too.
   (`login.unreachableHost`), which tells "the server is down" from "this network
   cannot see it".
 
+## gotrade.io (1.3.0)
+
+The app is **gotrade.io**: the launcher label, the default name on the sign-in
+screen (`app.name`; a firm's branding name still replaces it), the icon and the
+splash. The mark is a G drawn as one white stroke with a rising arrow leaving
+it at the top right, on a navy-to-blue square (`assets/images/logo.svg`, drawn
+in-app by `components/logo.tsx` so app and icon agree). Android gets an
+adaptive icon (`adaptive-foreground.png` on `adaptive-background.png`, the glyph
+inside the safe zone) and the splash from `expo-splash-screen`. The wordmark
+sets ".io" in the arrow's teal.
+
+After changing an icon or the name, run `expo prebuild` (as `build-android.sh`
+does) — the native resources are generated from `app.json`.
+
 ## Closer to TradeLocker (1.2.0)
 
 - **SELL/BUY tiles** in the list and under the chart are compact (40 high, the

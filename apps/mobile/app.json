@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "Trading Platform",
+    "name": "gotrade.io",
     "slug": "trading-platform",
     "scheme": "tradingplatform",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -18,7 +18,12 @@
     "android": {
       "package": "ir.devopss.trading",
       "permissions": ["POST_NOTIFICATIONS", "VIBRATE", "CAMERA"],
-      "versionCode": 13
+      "versionCode": 14,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-foreground.png",
+        "backgroundImage": "./assets/images/adaptive-background.png",
+        "backgroundColor": "#1739A8"
+      }
     },
     "plugins": [
       "expo-router",
@@ -58,6 +63,15 @@
             "useLegacyPackaging": true
           }
         }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 140,
+          "resizeMode": "contain",
+          "backgroundColor": "#07090D"
+        }
       ]
     ],
     "experiments": {
@@ -65,6 +79,7 @@
     },
     "extra": {
       "apiBaseUrl": "https://devopss.ir"
-    }
+    },
+    "icon": "./assets/images/icon.png"
   }
 }

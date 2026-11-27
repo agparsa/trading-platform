@@ -16,6 +16,7 @@ import { useT } from '../lib/i18n';
 import { brandName, useBranding } from '../lib/branding';
 import { useSession } from '../lib/session';
 import { signInErrorText } from '../lib/sign-in-error';
+import { Logo, Wordmark } from '../components/logo';
 import { LinearGradient } from 'expo-linear-gradient';
 import { apiBaseUrl } from '../lib/api';
 import { theme } from '../lib/theme';
@@ -96,11 +97,9 @@ export default function Login(): React.ReactElement {
       >
         <View style={styles.brand}>
           <View style={styles.logoRing}>
-            <View style={styles.logo}>
-              <Icon name="chart" color="#FFFFFF" size={32} />
-            </View>
+            <Logo size={76} />
           </View>
-          <Text style={styles.title}>{brandName(branding, t('app.name'))}</Text>
+          <Wordmark name={brandName(branding, t('app.name'))} size={30} />
           <Text style={styles.subtitle}>{t('login.welcome')}</Text>
           <View style={styles.features}>
             {(

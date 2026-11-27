@@ -11,7 +11,7 @@
  */
 const en = {
   // --- the frame
-  'app.name': 'Trading Platform',
+  'app.name': 'gotrade.io',
   'tab.quotes': 'Quotes',
   'tab.chart': 'Chart',
   'tab.trade': 'Trade',
@@ -433,7 +433,7 @@ export type MessageKey = keyof typeof en;
 export type Messages = Readonly<Record<MessageKey, string>>;
 
 const fa: Messages = {
-  'app.name': 'پلتفرم معاملاتی',
+  'app.name': 'gotrade.io',
   'tab.quotes': 'قیمت‌ها',
   'tab.chart': 'نمودار',
   'tab.trade': 'معامله',
