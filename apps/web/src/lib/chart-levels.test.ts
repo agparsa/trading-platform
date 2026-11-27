@@ -8,6 +8,7 @@ import {
   pendingLevelsFor,
   priceFromDrag,
   priceFromPendingDrag,
+  positionNumbers,
 } from './chart-levels';
 import type { PendingOrderRow, PositionRow, SymbolRow } from './queries';
 
@@ -383,5 +384,17 @@ describe('levelIdentity', () => {
     const [order] = pendingLevelsFor([pending()], 'XAUUSD', XAUUSD, QUOTE);
     expect(levelIdentity(entry!)).toBe('p1:ENTRY');
     expect(levelIdentity(order!)).toBe('o1:PENDING');
+  });
+});
+
+describe('numbering trades that share a chart', () => {
+  it('numbers oldest first, and leaves a lone trade unnumbered', () => {
+    expect(
+      positionNumbers([
+        { id: 'b', openedAt: '2026-11-27T10:05:00Z' },
+        { id: 'a', openedAt: '2026-11-27T10:00:00Z' },
+      ]),
+    ).toEqual({ a: 1, b: 2 });
+    expect(positionNumbers([{ id: 'a', openedAt: '2026-11-27T10:00:00Z' }])).toEqual({});
   });
 });

@@ -36,6 +36,7 @@ import {
   riskReward,
   showsSimulatedBars,
   stackChips,
+  positionNumbers,
   outcomeAt,
   pendingLevelsFor,
   priceFromDrag,
@@ -614,11 +615,15 @@ function Candles({
           lineWidth: tagged ? 2 : 1,
           lineStyle: level.kind === LevelKind.ENTRY ? LineStyle.Solid : LineStyle.Dashed,
           axisLabelVisible: true,
-          title: tagged
-            ? ''
-            : outcome === null
-              ? level.title
-              : `${level.title}  ${signedMoney(outcome, currency)}`,
+          // A position's entry is named by its chip; its stop and target by
+          // their tags — canvas titles of nearby trades would print over each
+          // other, so these lines keep only their exact axis price.
+          title:
+            tagged || (level.kind === LevelKind.ENTRY && level.positionId !== null)
+              ? ''
+              : outcome === null
+                ? level.title
+                : `${level.title}  ${signedMoney(outcome, currency)}`,
         }),
       );
     }
@@ -1021,6 +1026,9 @@ function LevelTags({
   revision: unknown;
 }) {
   const tagged = useMemo(() => levels.filter(isTaggedLevel), [levels]);
+  const numbers = useMemo(() => positionNumbers(Object.values(positions)), [positions]);
+  /** Bands only for a lone trade: several overlapping bands say nothing. */
+  const banded = Object.keys(numbers).length === 0;
   const [places, setPlaces] = useState<{ y: Record<string, number | null>; scale: number }>({
     y: {},
     scale: 0,
@@ -1039,6 +1047,11 @@ function LevelTags({
           y[`entry:${position.id}`] = series.priceToCoordinate(Number(position.entryPrice));
         }
       }
+      // The tags spread apart where lines are close; the lines stay exact.
+      const tags: Record<string, number | null> = {};
+      for (const level of tagged) tags[levelIdentity(level)] = y[levelIdentity(level)] ?? null;
+      const stacked = stackChips(tags, TAG_GAP_PX);
+      for (const [id, at] of Object.entries(stacked)) y[`tag:${id}`] = at;
       const next = { y, scale: chart.priceScale('right').width() };
       setPlaces((now) => (JSON.stringify(now) === JSON.stringify(next) ? now : next));
     };
@@ -1073,7 +1086,7 @@ function LevelTags({
         const target = level.kind === LevelKind.TAKE_PROFIT;
         return (
           <Fragment key={id}>
-            {entryY === null || entryY === undefined ? null : (
+            {!banded || entryY === null || entryY === undefined ? null : (
               <div
                 className={cn(
                   'absolute left-0',
@@ -1086,17 +1099,34 @@ function LevelTags({
                 }}
               />
             )}
+            {Math.abs((places.y[`tag:${id}`] ?? y) - y) < 1 ? null : (
+              <div
+                className={cn(
+                  'absolute left-2 w-px',
+                  target ? 'bg-terminal-profit' : 'bg-terminal-short',
+                )}
+                style={{
+                  top: Math.min(y, places.y[`tag:${id}`] ?? y),
+                  height: Math.abs((places.y[`tag:${id}`] ?? y) - y),
+                }}
+              />
+            )}
             <div
               className={cn(
                 'absolute left-2 flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-caption font-medium text-terminal-bg shadow-md',
                 target ? 'bg-terminal-profit' : 'bg-terminal-short',
                 level.draft === true && 'opacity-70 ring-1 ring-terminal-text/40',
               )}
-              style={{ top: y, transform: 'translateY(-50%)' }}
+              style={{ top: places.y[`tag:${id}`] ?? y, transform: 'translateY(-50%)' }}
               data-testid="level-tag"
               data-kind={level.kind}
             >
-              <span className="numeric">{level.title}</span>
+              <span className="numeric">
+                {level.positionId !== null && numbers[level.positionId] !== undefined
+                  ? `#${numbers[level.positionId]} `
+                  : ''}
+                {level.title}
+              </span>
               {outcome === null ? null : (
                 <span className="numeric rounded-full bg-terminal-bg/20 px-1.5">
                   {signedMoney(outcome, currency)}
@@ -1148,6 +1178,9 @@ function PositionChips({
   const [asking, setAsking] = useState<string | null>(null);
   const [scale, setScale] = useState(0);
   const closer = useCloser(accountId, t);
+  const numbers = useMemo(() => positionNumbers(positions), [positions]);
+  /** Each entry's exact height, for the leader of a chip moved off it. */
+  const [exact, setExact] = useState<Record<string, number | null>>({});
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -1160,6 +1193,7 @@ function PositionChips({
       }
       const next = stackChips(raw, CHIP_GAP_PX);
       setPlaces((now) => (JSON.stringify(now) === JSON.stringify(next) ? now : next));
+      setExact((now) => (JSON.stringify(now) === JSON.stringify(raw) ? now : raw));
       setScale(chart.priceScale('right').width());
     };
     const frame = requestAnimationFrame(place);
@@ -1192,88 +1226,101 @@ function PositionChips({
         const floating = pnl[position.id]?.floatingPnl ?? null;
         const confirming = asking === position.id;
         const waiting = closer.closing.has(position.id);
+        const at = exact[position.id];
         return (
-          <div
-            key={position.id}
-            className={cn(
-              'pointer-events-auto absolute flex items-stretch overflow-hidden rounded border bg-terminal-surface text-caption shadow',
-              editingId === position.id ? 'border-terminal-accent' : 'border-terminal-border',
-            )}
-            style={{ top: y, right: scale + 8, transform: 'translateY(-50%)' }}
-            data-testid="position-chip"
-            data-position-id={position.id}
-          >
-            <button
-              type="button"
-              className="flex items-stretch"
-              aria-expanded={editingId === position.id}
-              onClick={() => onOpen(position)}
-              data-testid="position-chip-toggle"
-            >
-              <span
+          <Fragment key={position.id}>
+            {at === null || at === undefined || Math.abs(at - y) < 1 ? null : (
+              // The chip moved off its line to stay readable; this joins them.
+              <div
                 className={cn(
-                  'numeric px-2 py-1 font-medium',
-                  position.side === 'BUY' ? 'text-terminal-long' : 'text-terminal-short',
+                  'absolute w-px',
+                  position.side === 'BUY' ? 'bg-terminal-long' : 'bg-terminal-short',
                 )}
-              >
-                {position.volume}
-              </span>
-              <span className="border-s border-terminal-border px-1 py-1">
-                <PnlValue
-                  value={floating}
-                  currency={currency}
-                  className="px-1 font-medium"
-                  testId="position-chip-pnl"
-                />
-              </span>
-              {/* Named by what it shows, then what it opens: a name that left
-                  out the visible figures is one a voice user cannot say. */}
-              <span className="sr-only">
-                {' '}
-                {t('chart.positionDetails', { symbol: position.symbol }, false)}
-              </span>
-            </button>
-            {waiting ? (
-              <span
-                className="border-s border-terminal-border px-2 py-1 text-terminal-muted"
-                role="status"
-              >
-                {t('chart.closing')}
-              </span>
-            ) : confirming ? (
-              <>
-                <button
-                  type="button"
-                  className="border-s border-terminal-border bg-terminal-short px-2 font-medium text-terminal-bg"
-                  onClick={() => {
-                    setAsking(null);
-                    closer.close(position, null);
-                  }}
-                >
-                  {t('pos.close')}
-                </button>
-                <button
-                  type="button"
-                  className="border-s border-terminal-border px-2 text-terminal-muted"
-                  onClick={() => setAsking(null)}
-                >
-                  {t('wallet.cancel')}
-                </button>
-              </>
-            ) : (
+                style={{ top: Math.min(at, y), height: Math.abs(at - y), right: scale + 4 }}
+              />
+            )}
+            <div
+              className={cn(
+                'pointer-events-auto absolute flex items-stretch overflow-hidden rounded border bg-terminal-surface text-caption shadow',
+                editingId === position.id ? 'border-terminal-accent' : 'border-terminal-border',
+              )}
+              style={{ top: y, right: scale + 8, transform: 'translateY(-50%)' }}
+              data-testid="position-chip"
+              data-position-id={position.id}
+            >
               <button
                 type="button"
-                className="border-s border-terminal-border px-2 text-terminal-muted hover:text-terminal-short"
-                aria-label={t('chart.closePosition', {
-                  volume: position.volume,
-                  symbol: position.symbol,
-                })}
-                onClick={() => setAsking(position.id)}
+                className="flex items-stretch"
+                aria-expanded={editingId === position.id}
+                onClick={() => onOpen(position)}
+                data-testid="position-chip-toggle"
               >
-                ×
+                <span
+                  className={cn(
+                    'numeric px-2 py-1 font-medium',
+                    position.side === 'BUY' ? 'text-terminal-long' : 'text-terminal-short',
+                  )}
+                >
+                  {numbers[position.id] === undefined ? '' : `#${numbers[position.id]} `}
+                  {position.volume}
+                </span>
+                <span className="border-s border-terminal-border px-1 py-1">
+                  <PnlValue
+                    value={floating}
+                    currency={currency}
+                    className="px-1 font-medium"
+                    testId="position-chip-pnl"
+                  />
+                </span>
+                {/* Named by what it shows, then what it opens: a name that left
+                  out the visible figures is one a voice user cannot say. */}
+                <span className="sr-only">
+                  {' '}
+                  {t('chart.positionDetails', { symbol: position.symbol }, false)}
+                </span>
               </button>
-            )}
-          </div>
+              {waiting ? (
+                <span
+                  className="border-s border-terminal-border px-2 py-1 text-terminal-muted"
+                  role="status"
+                >
+                  {t('chart.closing')}
+                </span>
+              ) : confirming ? (
+                <>
+                  <button
+                    type="button"
+                    className="border-s border-terminal-border bg-terminal-short px-2 font-medium text-terminal-bg"
+                    onClick={() => {
+                      setAsking(null);
+                      closer.close(position, null);
+                    }}
+                  >
+                    {t('pos.close')}
+                  </button>
+                  <button
+                    type="button"
+                    className="border-s border-terminal-border px-2 text-terminal-muted"
+                    onClick={() => setAsking(null)}
+                  >
+                    {t('wallet.cancel')}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="border-s border-terminal-border px-2 text-terminal-muted hover:text-terminal-short"
+                  aria-label={t('chart.closePosition', {
+                    volume: position.volume,
+                    symbol: position.symbol,
+                  })}
+                  onClick={() => setAsking(position.id)}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </Fragment>
         );
       })}
     </div>
@@ -1555,3 +1602,5 @@ function LevelEditor({
 
 /** Chips closer than this are spread apart; about one chip's height. */
 const CHIP_GAP_PX = 28;
+/** Tags on stops and targets are shorter than chips. */
+const TAG_GAP_PX = 24;

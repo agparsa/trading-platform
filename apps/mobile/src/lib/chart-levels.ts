@@ -13,6 +13,8 @@ export interface LevelSource {
   readonly takeProfit: string | null;
   /** The server's mark; `null` when no fresh price exists. */
   readonly floatingPnl: string | null;
+  /** When it opened — numbers several positions on one chart oldest first. */
+  readonly openedAt?: string;
 }
 
 /**
@@ -26,8 +28,15 @@ export interface LevelSource {
  */
 export function levelsFor(positions: readonly LevelSource[], symbol: string): ChartLevel[] {
   const levels: ChartLevel[] = [];
-  for (const position of positions) {
-    if (position.symbol !== symbol) continue;
+  // Several trades on one instrument are told apart by number, oldest #1, and
+  // each one's stop and target carry the same number as its entry.
+  const here = positions
+    .filter((position) => position.symbol === symbol)
+    .slice()
+    .sort((a, b) => (a.openedAt ?? '').localeCompare(b.openedAt ?? ''));
+  const numbered = here.length > 1;
+  here.forEach((position, index) => {
+    const n = numbered ? `#${index + 1} ` : '';
     const drag = (kind: 'ENTRY' | 'STOP_LOSS' | 'TAKE_PROFIT') =>
       position.id === undefined
         ? {}
@@ -39,16 +48,18 @@ export function levelsFor(positions: readonly LevelSource[], symbol: string): Ch
               entry: position.entryPrice,
             },
           };
+    const pnl = position.floatingPnl === null ? '' : `  ${formatSigned(position.floatingPnl)}`;
     levels.push({
       ...drag('ENTRY'),
       price: position.entryPrice,
-      color: theme.colors.textMuted,
+      color: position.side === 'BUY' ? theme.colors.positive : theme.colors.negative,
       width: 1,
       dashed: false,
-      title:
-        position.floatingPnl === null
-          ? `${position.side} ${position.volume}`
-          : `${position.side} ${position.volume}  ${formatSigned(position.floatingPnl)}`,
+      title: `${n}${position.side} ${position.volume}${pnl}`,
+      tag: {
+        text: `${n}${position.side} ${position.volume} · ${position.entryPrice}${pnl}`,
+        tone: position.side === 'BUY' ? 'buy' : 'sell',
+      },
     });
     if (position.stopLoss !== null) {
       levels.push({
@@ -57,7 +68,8 @@ export function levelsFor(positions: readonly LevelSource[], symbol: string): Ch
         color: theme.colors.negative,
         width: 2,
         dashed: true,
-        title: `SL ${position.stopLoss}`,
+        title: `${n}SL ${position.stopLoss}`,
+        tag: { text: `${n}SL ${position.stopLoss}`, tone: 'sl' },
       });
     }
     if (position.takeProfit !== null) {
@@ -67,9 +79,10 @@ export function levelsFor(positions: readonly LevelSource[], symbol: string): Ch
         color: theme.colors.profit,
         width: 2,
         dashed: true,
-        title: `TP ${position.takeProfit}`,
+        title: `${n}TP ${position.takeProfit}`,
+        tag: { text: `${n}TP ${position.takeProfit}`, tone: 'tp' },
       });
     }
-  }
+  });
   return levels;
 }

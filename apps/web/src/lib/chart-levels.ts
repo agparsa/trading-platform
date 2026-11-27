@@ -573,3 +573,18 @@ export function editChanges(
 export function showsSimulatedBars(bars: ReadonlyArray<{ source?: string }>): boolean {
   return bars.some((bar) => bar.source === 'internal-simulator' || bar.source === 'mixed');
 }
+
+/**
+ * Each open position's number on its chart, oldest first — `#1`, `#2` — so a
+ * stop or target tag can be matched to its entry when several trades share an
+ * instrument. Empty when there is one or none: a lone trade needs no number.
+ */
+export function positionNumbers(
+  positions: ReadonlyArray<{ id: string; openedAt: string }>,
+): Record<string, number> {
+  if (positions.length < 2) return {};
+  const ordered = [...positions].sort(
+    (a, b) => a.openedAt.localeCompare(b.openedAt) || (a.id < b.id ? -1 : 1),
+  );
+  return Object.fromEntries(ordered.map((position, index) => [position.id, index + 1]));
+}

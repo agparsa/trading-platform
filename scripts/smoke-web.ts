@@ -2095,6 +2095,18 @@ async function main(): Promise<void> {
           where: { account: { user: { email: people.trader.email } } },
         });
         armedOne = after === ordersBefore + 1;
+        await page.waitForTimeout(1_500);
+        // Two trades on one chart now: each numbered, each line its own.
+        const numbered = await page
+          .getByTestId('position-chip')
+          .allInnerTexts()
+          .then((texts) => texts.filter((text) => /#\d /.test(text)).length);
+        ok(
+          numbered >= 2,
+          'several trades on one chart are numbered, each chip on its own line',
+          `${numbered} numbered chip(s)`,
+        );
+        await screenshot(page, 'terminal two positions on one chart');
         const sent = await prisma.position.findFirst({
           where: { account: { user: { email: people.trader.email } }, status: 'OPEN' },
           orderBy: { openedAt: 'desc' },

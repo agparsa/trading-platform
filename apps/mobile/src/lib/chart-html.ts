@@ -57,6 +57,12 @@ export function chartHtml(options: {
 <style>
   html, body, #chart { margin: 0; padding: 0; height: 100%; width: 100%; background: ${theme.background}; }
   #chart { touch-action: none; }
+  #tags { position: absolute; inset: 0; z-index: 10; pointer-events: none; overflow: hidden; }
+  .tag { position: absolute; transform: translateY(-50%); white-space: nowrap; font: 600 10px ui-monospace, Menlo, monospace;
+         padding: 2px 6px; border-radius: 4px; color: #fff; }
+  .tag.buy { background: ${theme.up}; color: #04140d; } .tag.sell { background: ${theme.down}; }
+  .tag.sl { background: ${theme.down}; } .tag.tp { background: ${theme.profit}; color: #04141c; }
+  .leader { position: absolute; width: 1px; }
   #empty { color: ${theme.text}; font: 13px -apple-system, system-ui, sans-serif; opacity: 0.6;
            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
 </style>
@@ -64,6 +70,7 @@ export function chartHtml(options: {
 </head>
 <body>
 <div id="chart"></div>
+<div id="tags"></div>
 <div id="empty">Loading chart…</div>
 <script>
   (function () {
@@ -163,15 +170,18 @@ export function chartHtml(options: {
       current = levels;
       for (var j = 0; j < levels.length; j++) {
         var level = levels[j];
+        // A tagged line keeps no canvas label: the tag beside the scale says
+        // it, and canvas labels of nearby lines would print over each other.
         lines.push(series.createPriceLine({
           price: Number(level.price),
           color: level.color,
           lineWidth: level.width,
           lineStyle: level.dashed ? 2 : 0,
-          axisLabelVisible: true,
-          title: level.title,
+          axisLabelVisible: !level.tag,
+          title: level.tag ? '' : level.title,
         }));
       }
+      placeTags();
     };
 
     /**
@@ -266,6 +276,52 @@ export function chartHtml(options: {
       return series === null ? null : series.priceToCoordinate(Number(price));
     };
 
+    /**
+     * The tags of the positions' lines, beside the price scale. Each sits at
+     * its line's exact height unless that would cover another; then it moves
+     * just far enough, and a thin leader joins it to its line. Re-placed on
+     * every frame the scale may have moved — cheaply, by comparing first.
+     */
+    var tagLayer = document.getElementById('tags');
+    var lastLayout = '';
+    var TAG_GAP = 18;
+    function placeTags() {
+      if (series === null || chart === null) return;
+      var items = [];
+      for (var i = 0; i < current.length; i++) {
+        var level = current[i];
+        if (!level.tag) continue;
+        var y = series.priceToCoordinate(Number(level.price));
+        if (y === null) continue;
+        items.push({ y: y, at: y, tag: level.tag, color: level.color });
+      }
+      items.sort(function (a, b) { return a.y - b.y; });
+      for (var k = 1; k < items.length; k++) {
+        if (items[k].at < items[k - 1].at + TAG_GAP) items[k].at = items[k - 1].at + TAG_GAP;
+      }
+      var height = tagLayer.clientHeight;
+      for (var m = items.length - 1; m >= 0; m--) {
+        var limit = m === items.length - 1 ? height - 10 : items[m + 1].at - TAG_GAP;
+        if (items[m].at > limit) items[m].at = limit;
+      }
+      var scale = chart.priceScale('right').width();
+      var layout = JSON.stringify([scale, items.map(function (t) { return [Math.round(t.y), Math.round(t.at), t.tag.text]; })]);
+      if (layout === lastLayout) return;
+      lastLayout = layout;
+      var html = '';
+      for (var n = 0; n < items.length; n++) {
+        var t = items[n];
+        var text = String(t.tag.text).replace(/[&<>]/g, function (c) { return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'; });
+        if (Math.abs(t.at - t.y) > 1) {
+          html += '<div class="leader" style="right:' + (scale + 2) + 'px;top:' + Math.min(t.y, t.at) + 'px;height:' +
+            Math.abs(t.at - t.y) + 'px;background:' + t.color + '"></div>';
+        }
+        html += '<div class="tag ' + t.tag.tone + '" style="right:' + (scale + 4) + 'px;top:' + t.at + 'px">' + text + '</div>';
+      }
+      tagLayer.innerHTML = html;
+    }
+    (function frame() { placeTags(); requestAnimationFrame(frame); })();
+
     /** One bar, for the in-progress candle arriving on the socket. */
     window.__updateBar = function (bar) {
       ensure();
@@ -327,6 +383,12 @@ export interface ChartLevel {
   readonly width: 1 | 2;
   readonly dashed: boolean;
   readonly title: string;
+  /**
+   * A position's label, drawn beside the price scale instead of on the canvas:
+   * labels of several trades at nearby prices are spread apart so none hides
+   * another, while each line stays at its exact price.
+   */
+  readonly tag?: { readonly text: string; readonly tone: 'buy' | 'sell' | 'sl' | 'tp' };
   /** Set on a position's lines: what a drag of this line may change. */
   readonly drag?: {
     readonly positionId: string;

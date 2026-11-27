@@ -439,6 +439,20 @@ symbol, a coin by its sign), so one added tomorrow is marked too.
   (`login.unreachableHost`), which tells "the server is down" from "this network
   cannot see it".
 
+## Several trades on one chart (1.4.0)
+
+Trades opened one after another on the same symbol each keep their own lines:
+entry in the side's colour, and that trade's stop and target. When there is more
+than one, they are numbered oldest first (`#1`, `#2`…) and every tag carries the
+number — `#2 BUY 0.1 · 4582.76 -4.60`, `#2 SL 4579.52`. The lines sit at the exact
+price; only the tags move. Tags that would cover each other are stacked just far
+enough apart, and a thin leader joins a moved tag to its line (`placeTags()` in
+`chart-html.ts`, re-placed each frame the scale moves). The tag layer sits above
+the chart's canvases (`z-index`) — without it the tags render underneath. The web
+terminal does the same (`positionNumbers()` in `lib/chart-levels.ts`); its risk
+bands are drawn only when one trade is on the chart, since overlapping bands of
+several trades say nothing.
+
 ## gotrade.io (1.3.0)
 
 The app is **gotrade.io**: the launcher label, the default name on the sign-in
