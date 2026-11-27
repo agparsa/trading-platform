@@ -3,13 +3,11 @@ import { StyleSheet, Text, View } from 'react-native';
 import { AccountPicker } from '../../components/account-picker';
 import { Segmented } from '../../components/ui';
 import { PnlText } from '../../components/pnl-text';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAccounts } from '../../lib/accounts';
 import { NUMERIC_DIRECTION } from '../../lib/direction';
 import { useT } from '../../lib/i18n';
 import { useLiveBook } from '../../lib/live';
 import { applyAccount } from '../../lib/live-book';
-import type { MessageKey } from '../../lib/messages';
 import { useSession } from '../../lib/session';
 import { theme } from '../../lib/theme';
 import Orders from './orders';
@@ -61,88 +59,51 @@ export default function Trade(): React.ReactElement {
     selected === null ? undefined : live.accounts[selected.id],
   );
 
-  const figure = (label: MessageKey, value: string | undefined) => (
-    <View style={styles.cell} key={label}>
-      <Text style={styles.label}>{t(label)}</Text>
-      <Text
-        style={[styles.value, { writingDirection: NUMERIC_DIRECTION }]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-      >
-        {value === undefined ? '—' : value}
-      </Text>
-    </View>
-  );
-
-  /**
-   * How much of equity the open positions hold as margin, as a bar. A share
-   * for the eye only — the figures beside it are the server's, unrounded.
-   */
-  const usage = (() => {
-    const used = Number(state?.usedMargin);
-    const equity = Number(state?.equity);
-    if (!Number.isFinite(used) || !Number.isFinite(equity) || equity <= 0) return 0;
-    return Math.max(0, Math.min(1, used / equity));
-  })();
-
   return (
     <View style={styles.screen}>
       <AccountPicker />
-      <LinearGradient
-        colors={['#16264A', '#111827', theme.colors.surface]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.hero}
-      >
-        <View style={styles.heroTop}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.heroLabel}>
-              {t('account.equity')}
-              {selected === null ? '' : `  ·  #${selected.number}`}
-            </Text>
-            <Text
-              style={[styles.heroValue, { writingDirection: NUMERIC_DIRECTION }]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {state?.equity ?? '—'}
-            </Text>
-          </View>
-          <View style={styles.pnlBox}>
-            <Text style={styles.heroLabel}>{t('account.floating')}</Text>
-            <PnlText value={state?.floatingPnl ?? null} style={styles.pnl} />
-          </View>
+      {/* Three figures across, as a terminal shows them: what the account is
+          worth, what the positions hold, what is left to trade with — each
+          with the number that explains it underneath. */}
+      <View style={styles.strip}>
+        <View style={styles.tile}>
+          <Text style={styles.label}>{t('account.equity')}</Text>
+          <Text
+            style={[styles.value, { writingDirection: NUMERIC_DIRECTION }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            {state?.equity ?? '—'}
+          </Text>
+          <PnlText value={state?.floatingPnl ?? null} style={styles.sub} />
         </View>
-        <View style={styles.bar} accessibilityElementsHidden>
-          <View
-            style={[
-              styles.barFill,
-              {
-                width: `${Math.round(usage * 100)}%`,
-                backgroundColor:
-                  usage > 0.8
-                    ? theme.colors.negative
-                    : usage > 0.5
-                      ? theme.colors.warning
-                      : theme.colors.accent,
-              },
-            ]}
-          />
+        <View style={styles.tile}>
+          <Text style={styles.label}>{t('account.margin')}</Text>
+          <Text
+            style={[styles.value, { writingDirection: NUMERIC_DIRECTION }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            {state?.usedMargin ?? '—'}
+          </Text>
+          <Text style={styles.subMuted} numberOfLines={1}>
+            {state === undefined || state.marginLevel === null ? '—' : `${state.marginLevel}%`}
+          </Text>
         </View>
-        <View style={styles.grid}>
-          {figure('account.balance', state?.balance ?? selected?.balance)}
-          {figure('account.margin', state?.usedMargin)}
-          {figure('account.freeMargin', state?.freeMargin)}
-          {figure(
-            'account.marginLevel',
-            state === undefined
-              ? undefined
-              : state.marginLevel === null
-                ? '—'
-                : `${state.marginLevel}%`,
-          )}
+        <View style={styles.tile}>
+          <Text style={styles.label}>{t('account.freeMargin')}</Text>
+          <Text
+            style={[styles.value, { writingDirection: NUMERIC_DIRECTION }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            {state?.freeMargin ?? '—'}
+          </Text>
+          <Text style={styles.subMuted} numberOfLines={1}>
+            {t('account.balance')} {state?.balance ?? selected?.balance ?? '—'}
+          </Text>
         </View>
-      </LinearGradient>
+      </View>
       <View style={styles.switch}>
         <Segmented
           value={view}
@@ -160,50 +121,42 @@ export default function Trade(): React.ReactElement {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.colors.background },
-  hero: {
+  strip: {
+    flexDirection: 'row',
+    gap: theme.spacing(1),
     marginHorizontal: theme.spacing(2),
     marginTop: theme.spacing(1.5),
-    borderRadius: theme.radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(59,130,246,0.35)',
-    padding: theme.spacing(2),
-    overflow: 'hidden',
   },
-  heroTop: { flexDirection: 'row', alignItems: 'flex-end', gap: theme.spacing(1) },
-  heroLabel: {
-    fontFamily: theme.font.bold,
+  tile: {
+    flex: 1,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+    paddingHorizontal: theme.spacing(1.25),
+    paddingVertical: theme.spacing(1),
+  },
+  label: {
+    fontFamily: theme.font.medium,
     color: theme.colors.textMuted,
     fontSize: theme.type.caption,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  heroValue: {
-    fontFamily: theme.font.monoHeavy,
-    color: theme.colors.text,
-    fontSize: theme.type.display,
-    marginTop: 4,
-  },
-  pnlBox: { alignItems: 'flex-end' },
-  pnl: { fontFamily: theme.font.monoHeavy, fontSize: theme.type.heading, marginTop: 4 },
-  bar: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.colors.surfaceSunken,
-    marginTop: theme.spacing(1.75),
-    overflow: 'hidden',
-  },
-  barFill: { height: 6, borderRadius: 3 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: theme.spacing(1) },
-  cell: { width: '50%', paddingVertical: theme.spacing(0.75) },
-  label: {
-    fontFamily: theme.font.regular,
-    color: theme.colors.textMuted,
-    fontSize: theme.type.label,
   },
   value: {
     fontFamily: theme.font.monoBold,
     color: theme.colors.text,
     fontSize: theme.type.body,
+    marginTop: 4,
+  },
+  sub: {
+    fontFamily: theme.font.monoBold,
+    fontSize: theme.type.caption,
+    marginTop: 2,
+    alignSelf: 'flex-start',
+  },
+  subMuted: {
+    fontFamily: theme.font.mono,
+    color: theme.colors.textFaint,
+    fontSize: theme.type.caption,
     marginTop: 4,
   },
   switch: { marginHorizontal: theme.spacing(2), marginTop: theme.spacing(1.5) },

@@ -439,6 +439,23 @@ symbol, a coin by its sign), so one added tomorrow is marked too.
   (`login.unreachableHost`), which tells "the server is down" from "this network
   cannot see it".
 
+## Closer to TradeLocker (1.2.0)
+
+- **SELL/BUY tiles** in the list and under the chart are compact (40 high, the
+  price at 13); under the chart the lots stepper sits between them.
+- **The tab bar sits above the phone's navigation bar:** the app draws edge to
+  edge, so the bar adds the bottom inset itself instead of a fixed height.
+- **One-tap** is switched only in Settings now. The first press after arming
+  opens a sheet — "One-tap trading is on" — naming what this press will send;
+  "Send … and don't ask again" sends it and is remembered until one-tap is
+  switched off.
+- **Trade:** three compact figures across — equity (with floating P&L under
+  it), margin (with margin level), free margin (with balance) — and positions as
+  TradeLocker's cards: the mark, the symbol and a P&L pill on one line; side,
+  lots, entry → current and SL/TP chips (lit when set) on the next. A tap opens
+  the card's actions (Chart, Select, SL/TP, Close); "Close all (n)" floats at
+  the bottom.
+
 ## Depth (1.1.0)
 
 - **Quotes** are two-line cards: the mark, the name, a day's sparkline (hourly

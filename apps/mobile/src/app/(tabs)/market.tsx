@@ -178,7 +178,7 @@ export default function Market(): React.ReactElement {
               style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}
             >
               <View style={styles.rowTop}>
-                <InstrumentBadge code={item.code} size={40} />
+                <InstrumentBadge code={item.code} size={34} />
                 <View style={styles.instrument}>
                   <Text style={styles.code}>{item.code}</Text>
                   <Text
@@ -192,7 +192,7 @@ export default function Market(): React.ReactElement {
                         : marketLabel(item.market, t)}
                   </Text>
                 </View>
-                <Sparkline closes={closes} up={up} />
+                <Sparkline closes={closes} up={up} width={60} height={26} />
                 <View
                   style={[
                     styles.change,
@@ -211,6 +211,7 @@ export default function Market(): React.ReactElement {
               </View>
               <View style={styles.tiles}>
                 <PriceTile
+                  compact
                   side="SELL"
                   label={t('common.SELL')}
                   price={quote?.bid ?? null}
@@ -224,6 +225,7 @@ export default function Market(): React.ReactElement {
                   <Text style={styles.spreadValue}>{quote?.spread ?? '—'}</Text>
                 </View>
                 <PriceTile
+                  compact
                   side="BUY"
                   label={t('common.BUY')}
                   price={quote?.ask ?? null}
@@ -267,9 +269,9 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
-    padding: theme.spacing(1.5),
+    padding: theme.spacing(1.25),
     marginBottom: theme.spacing(1),
-    gap: theme.spacing(1.5),
+    gap: theme.spacing(1),
   },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(1.5) },
   pressed: { opacity: 0.8 },

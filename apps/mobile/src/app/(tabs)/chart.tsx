@@ -6,7 +6,6 @@ import { Chip, Empty, InstrumentBadge, PriceTile, Screen } from '../../component
 import { NUMERIC_DIRECTION } from '../../lib/direction';
 import { useRealtimeQuotes } from '../../lib/use-realtime-quotes';
 import { useOneTap } from '../../lib/one-tap';
-import { OneTapSwitch } from '../../components/one-tap';
 import { stepLots } from '../../lib/level-points';
 import { useDayBars } from '../../components/sparkline';
 import { changePercent } from '../../lib/spark';
@@ -112,8 +111,17 @@ export default function ChartTab(): React.ReactElement {
             </View>
           </View>
           <ChartView symbol={current} />
-          <View style={styles.lotsRow}>
-            {/* The lots a one-tap order sends, on this instrument's grid. */}
+          <View style={styles.actions}>
+            <PriceTile
+              compact
+              side="SELL"
+              label={t('common.SELL')}
+              price={quote?.bid ?? null}
+              armed={oneTap.armed}
+              busy={oneTap.busy === `${current}:SELL`}
+              accessibilityLabel={`${t('common.sell')} ${current}`}
+              onPress={() => press(current, 'SELL')}
+            />
             <View style={styles.lots}>
               <Pressable
                 accessibilityRole="button"
@@ -142,18 +150,8 @@ export default function ChartTab(): React.ReactElement {
                 <Text style={styles.lotsGlyph}>+</Text>
               </Pressable>
             </View>
-          </View>
-          <View style={styles.actions}>
             <PriceTile
-              side="SELL"
-              label={t('common.SELL')}
-              price={quote?.bid ?? null}
-              armed={oneTap.armed}
-              busy={oneTap.busy === `${current}:SELL`}
-              accessibilityLabel={`${t('common.sell')} ${current}`}
-              onPress={() => press(current, 'SELL')}
-            />
-            <PriceTile
+              compact
               side="BUY"
               label={t('common.BUY')}
               price={quote?.ask ?? null}
@@ -163,7 +161,6 @@ export default function ChartTab(): React.ReactElement {
               onPress={() => press(current, 'BUY')}
             />
           </View>
-          <OneTapSwitch />
         </>
       )}
     </Screen>
@@ -198,7 +195,6 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing(0.75),
     marginBottom: theme.spacing(1),
   },
-  lotsRow: { alignItems: 'center', marginTop: theme.spacing(1) },
   lots: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -208,7 +204,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
   },
   lotsButton: {
-    width: 44,
+    width: 28,
     minHeight: theme.control.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -216,14 +212,14 @@ const styles = StyleSheet.create({
   lotsGlyph: {
     fontFamily: theme.font.medium,
     color: theme.colors.text,
-    fontSize: theme.type.heading,
+    fontSize: theme.type.title,
   },
   lotsInput: {
     fontFamily: theme.font.monoBold,
     color: theme.colors.text,
     fontSize: theme.type.body,
     textAlign: 'center',
-    minWidth: 48,
+    width: 46,
     padding: 0,
   },
   lotsLabel: {

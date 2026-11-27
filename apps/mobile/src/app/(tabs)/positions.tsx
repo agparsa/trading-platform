@@ -66,6 +66,8 @@ export default function Positions(): React.ReactElement {
   /** The position awaiting a second press. §43: closing is irreversible. */
   const [closing, setClosing] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  /** The card opened to its actions; one at a time. */
+  const [open, setOpen] = useState<string | null>(null);
   const [form, setForm] = useState({ stopLoss: '', takeProfit: '' });
   const [busy, setBusy] = useState(false);
   /**
@@ -239,28 +241,6 @@ export default function Positions(): React.ReactElement {
               <Text style={styles.closeLabel}>{t('positions.clear')}</Text>
             </Pressable>
           )}
-          <Pressable
-            accessibilityRole="button"
-            style={styles.closeAffordance}
-            onPress={() => {
-              setAllReport(null);
-              setClosingAll({
-                key: closeAllKey(
-                  account?.id ?? 'none',
-                  Date.now(),
-                  Math.random().toString(36).slice(2),
-                ),
-                count: selected.length === 0 ? (positions ?? []).length : selected.length,
-                positionIds: selected.length === 0 ? null : selected,
-              });
-            }}
-          >
-            <Text style={styles.closeLabel}>
-              {selected.length === 0
-                ? t('positions.closeAllCount', { n: (positions ?? []).length })
-                : t('positions.closeCount', { n: selected.length })}
-            </Text>
-          </Pressable>
         </View>
       ) : (
         <View style={styles.confirm}>
@@ -286,6 +266,7 @@ export default function Positions(): React.ReactElement {
       )}
       <FlatList
         data={positions ?? []}
+        contentContainerStyle={{ paddingBottom: 72 }}
         keyExtractor={(item) => item.id}
         refreshControl={
           <RefreshControl
@@ -300,65 +281,90 @@ export default function Positions(): React.ReactElement {
           <Empty message={positions === null ? t('common.loading') : t('positions.none')} />
         }
         renderItem={({ item }) => (
-          <View
-            style={[
-              styles.row,
-              {
-                borderLeftColor:
-                  item.side === 'BUY' ? theme.colors.positive : theme.colors.negative,
-              },
-            ]}
-          >
-            {/* The position's own chart, with its lines, a tap away. */}
+          <View style={styles.row}>
+            {/* TradeLocker's card: the instrument and what it is making on one
+                line; side, size and the move on the next, the levels beside.
+                A tap opens what can be done with it. */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`${t('quotes.chart')} ${item.symbol}`}
-              onPress={() => router.push(`/(tabs)/chart?symbol=${item.symbol}`)}
-              style={({ pressed }) => [styles.rowTop, pressed ? { opacity: 0.7 } : null]}
+              accessibilityState={{ expanded: open === item.id }}
+              accessibilityLabel={`${item.symbol} ${item.side} ${item.volume}`}
+              onPress={() => setOpen(open === item.id ? null : item.id)}
+              style={({ pressed }) => [pressed ? { opacity: 0.75 } : null]}
             >
-              <InstrumentBadge code={item.symbol} size={32} />
-              <View style={{ flex: 1 }}>
-                <View style={styles.titleLine}>
-                  <Text style={styles.symbol}>{item.symbol}</Text>
-                  <SideTag
-                    side={item.side}
-                    label={`${t(item.side === 'BUY' ? 'common.BUY' : 'common.SELL')} ${item.volume}`}
-                  />
+              <View style={styles.rowTop}>
+                <InstrumentBadge code={item.symbol} size={22} />
+                <Text style={styles.symbol}>{item.symbol}</Text>
+                <View style={{ flex: 1 }} />
+                <View
+                  style={[
+                    styles.pnlPill,
+                    {
+                      backgroundColor:
+                        item.floatingPnl === null
+                          ? theme.colors.surfaceRaised
+                          : item.floatingPnl.startsWith('-')
+                            ? theme.colors.sellTint
+                            : theme.colors.profitTint,
+                    },
+                  ]}
+                >
+                  {/* An em-dash, not a zero: a missing price is not a flat. */}
+                  <PnlText value={item.floatingPnl} style={styles.pnl} />
                 </View>
-                <Text style={styles.detail}>
-                  {item.entryPrice} → {item.currentPrice ?? '—'}
+                <Text style={styles.chevron}>{open === item.id ? '⌃' : '⌄'}</Text>
+              </View>
+              <View style={styles.rowBottom}>
+                <SideTag
+                  side={item.side}
+                  label={t(item.side === 'BUY' ? 'common.BUY' : 'common.SELL')}
+                />
+                <Text style={styles.volume}>{item.volume}</Text>
+                <Text style={styles.lotsWord}>{t('oneTap.lots')}</Text>
+                <Text style={styles.detail} numberOfLines={1}>
+                  {item.entryPrice} →{' '}
+                </Text>
+                <Text
+                  style={[
+                    styles.detail,
+                    {
+                      color:
+                        item.floatingPnl === null
+                          ? theme.colors.textMuted
+                          : item.floatingPnl.startsWith('-')
+                            ? theme.colors.negative
+                            : theme.colors.profit,
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {item.currentPrice ?? '—'}
+                </Text>
+                <View style={{ flex: 1 }} />
+                <Text
+                  style={[
+                    styles.levelChip,
+                    item.stopLoss === null ? styles.levelOff : styles.levelSl,
+                  ]}
+                >
+                  SL
+                </Text>
+                <Text
+                  style={[
+                    styles.levelChip,
+                    item.takeProfit === null ? styles.levelOff : styles.levelTp,
+                  ]}
+                >
+                  TP
                 </Text>
               </View>
-              {/* An em-dash, not a zero. A trader cannot tell a genuine flat
-                  from a missing price, and one of those is a reason to act. */}
-              <PnlText value={item.floatingPnl} style={styles.pnl} />
             </Pressable>
             {item.stale === true ? (
               <Text style={styles.staleNote}>{t('positions.stale')}</Text>
             ) : null}
-            {item.stopLoss === null && item.takeProfit === null ? (
-              protectionLine(item, t) === null ? null : (
-                <Text style={styles.protection}>{protectionLine(item, t)}</Text>
-              )
-            ) : (
-              <View style={styles.levels}>
-                {item.stopLoss === null ? null : (
-                  <Text style={[styles.level, styles.levelSl]}>
-                    {t('levels.sl', { price: item.stopLoss })}
-                  </Text>
-                )}
-                {item.takeProfit === null ? null : (
-                  <Text style={[styles.level, styles.levelTp]}>
-                    {t('levels.tp', { price: item.takeProfit })}
-                  </Text>
-                )}
-                {item.trailingStopDistance === null ? null : (
-                  <Text style={styles.level}>
-                    {t('levels.trail', { distance: item.trailingStopDistance })}
-                  </Text>
-                )}
-              </View>
-            )}
+            {open === item.id && protectionLine(item, t) !== null ? (
+              <Text style={styles.protection}>{protectionLine(item, t)}</Text>
+            ) : null}
 
             {closing === item.id ? (
               <View style={styles.confirm}>
@@ -414,8 +420,15 @@ export default function Positions(): React.ReactElement {
                   onPress={() => setEditing(null)}
                 />
               </View>
-            ) : (
+            ) : open !== item.id ? null : (
               <View style={styles.actions}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push(`/(tabs)/chart?symbol=${item.symbol}`)}
+                  style={styles.closeAffordance}
+                >
+                  <Text style={styles.closeLabel}>{t('quotes.chart')}</Text>
+                </Pressable>
                 {(positions ?? []).length < 2 ? null : (
                   <Pressable
                     accessibilityRole="checkbox"
@@ -458,6 +471,30 @@ export default function Positions(): React.ReactElement {
           </View>
         )}
       />
+      {(positions ?? []).length < 2 || closingAll !== null ? null : (
+        <Pressable
+          accessibilityRole="button"
+          style={styles.closeAllFloat}
+          onPress={() => {
+            setAllReport(null);
+            setClosingAll({
+              key: closeAllKey(
+                account?.id ?? 'none',
+                Date.now(),
+                Math.random().toString(36).slice(2),
+              ),
+              count: selected.length === 0 ? (positions ?? []).length : selected.length,
+              positionIds: selected.length === 0 ? null : selected,
+            });
+          }}
+        >
+          <Text style={styles.closeAllLabel}>
+            {selected.length === 0
+              ? t('positions.closeAllCount', { n: (positions ?? []).length })
+              : t('positions.closeCount', { n: selected.length })}
+          </Text>
+        </Pressable>
+      )}
     </Screen>
   );
 }
@@ -504,43 +541,55 @@ function LevelField({
 const styles = StyleSheet.create({
   row: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
-    borderLeftWidth: 3,
-    padding: theme.spacing(1.5),
+    paddingHorizontal: theme.spacing(1.5),
+    paddingVertical: theme.spacing(1.25),
     marginBottom: theme.spacing(1),
   },
-  rowTop: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(1.25) },
-  titleLine: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(0.75) },
-  levels: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: theme.spacing(1) },
-  level: {
-    fontFamily: theme.font.mono,
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(1) },
+  pnlPill: { borderRadius: theme.radius.xs, paddingHorizontal: 8, paddingVertical: 2 },
+  chevron: {
+    fontFamily: theme.font.bold,
     color: theme.colors.textMuted,
-    fontSize: theme.type.label,
-    backgroundColor: theme.colors.surfaceRaised,
-    borderRadius: theme.radius.xs,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    fontSize: theme.type.title,
+    width: 16,
+    textAlign: 'center',
+  },
+  volume: { fontFamily: theme.font.monoBold, color: theme.colors.text, fontSize: theme.type.small },
+  lotsWord: {
+    fontFamily: theme.font.regular,
+    color: theme.colors.textMuted,
+    fontSize: theme.type.caption,
+  },
+  levelChip: {
+    fontFamily: theme.font.bold,
+    fontSize: theme.type.caption,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
     overflow: 'hidden',
   },
+  levelOff: { color: theme.colors.textFaint, backgroundColor: theme.colors.surfaceRaised },
   levelSl: { color: theme.colors.negative, backgroundColor: theme.colors.sellTint },
   levelTp: { color: theme.colors.profit, backgroundColor: theme.colors.profitTint },
   rowBottom: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: theme.spacing(0.5),
+    gap: 6,
+    marginTop: theme.spacing(1),
   },
   symbol: { fontFamily: theme.font.heavy, color: theme.colors.text, fontSize: theme.type.body },
+  titleLine: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing(0.75) },
+  levels: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: theme.spacing(1) },
   side: { fontFamily: theme.font.mono, fontSize: theme.type.body },
   detail: {
     fontFamily: theme.font.mono,
     color: theme.colors.textMuted,
     fontSize: theme.type.small,
-    marginTop: 4,
   },
-  pnl: { fontFamily: theme.font.monoHeavy, fontSize: theme.type.title },
+  pnl: { fontFamily: theme.font.monoBold, fontSize: theme.type.small },
   protection: {
     fontFamily: theme.font.regular,
     color: theme.colors.textMuted,
@@ -581,6 +630,25 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceRaised,
     minHeight: theme.control.sm,
     justifyContent: 'center',
+  },
+  closeAllFloat: {
+    position: 'absolute',
+    bottom: theme.spacing(2),
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: theme.colors.borderStrong,
+    borderRadius: theme.radius.md,
+    paddingHorizontal: theme.spacing(2),
+    minHeight: theme.control.md,
+    elevation: 6,
+  },
+  closeAllLabel: {
+    fontFamily: theme.font.bold,
+    color: theme.colors.text,
+    fontSize: theme.type.body,
   },
   closeLabel: {
     fontFamily: theme.font.regular,

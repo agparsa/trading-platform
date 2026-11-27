@@ -57,7 +57,8 @@ export function OneTapSwitch(): React.ReactElement | null {
  * A success fades after a few seconds; a refusal stays until dismissed.
  */
 export function OneTapNotice(): React.ReactElement | null {
-  const { notice, dismiss } = useOneTap();
+  const t = useT();
+  const { notice, dismiss, firstPress, confirmFirst, cancelFirst, lots } = useOneTap();
   const insets = useSafeAreaInsets();
   const [shown, setShown] = useState(notice);
   useEffect(() => {
@@ -66,6 +67,29 @@ export function OneTapNotice(): React.ReactElement | null {
     const timer = setTimeout(dismiss, 4_000);
     return () => clearTimeout(timer);
   }, [notice, dismiss]);
+  if (firstPress !== null) {
+    const buy = firstPress.side === 'BUY';
+    return (
+      <View style={styles.scrim}>
+        <View style={styles.sheet} accessibilityRole="alert">
+          <Text style={styles.sheetTitle}>⚡ {t('oneTap.firstTitle')}</Text>
+          <Text style={styles.sheetText}>
+            {t('oneTap.firstBody', {
+              side: t(buy ? 'common.BUY' : 'common.SELL'),
+              lots,
+              symbol: firstPress.symbol,
+            })}
+          </Text>
+          <Button
+            label={t('oneTap.firstSend', { side: t(buy ? 'common.BUY' : 'common.SELL') })}
+            variant={buy ? 'buy' : 'danger'}
+            onPress={confirmFirst}
+          />
+          <Button label={t('common.cancel')} variant="quiet" onPress={cancelFirst} />
+        </View>
+      </View>
+    );
+  }
   if (shown === null) return null;
   const tone =
     shown.tone === 'ok'
@@ -125,7 +149,38 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     elevation: 8,
   },
-  dot: { width: 8, height: 8, borderRadius: theme.radius.xs },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  scrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 200,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: theme.colors.surface,
+    borderTopLeftRadius: theme.radius.lg,
+    borderTopRightRadius: theme.radius.lg,
+    borderTopWidth: 1,
+    borderColor: theme.colors.warning,
+    padding: theme.spacing(2),
+    paddingBottom: theme.spacing(4),
+  },
+  sheetTitle: {
+    fontFamily: theme.font.heavy,
+    color: theme.colors.warning,
+    fontSize: theme.type.title,
+  },
+  sheetText: {
+    fontFamily: theme.font.medium,
+    color: theme.colors.text,
+    fontSize: theme.type.body,
+    lineHeight: 22,
+    marginTop: theme.spacing(1),
+  },
   noticeText: {
     flex: 1,
     fontFamily: theme.font.semibold,

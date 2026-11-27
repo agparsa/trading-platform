@@ -537,10 +537,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tileCompact: { minHeight: theme.control.md, paddingVertical: 4 },
+  tileCompact: { minHeight: 40, paddingVertical: 4, borderRadius: theme.radius.sm },
   tileLabel: { fontFamily: theme.font.heavy, fontSize: theme.type.caption, letterSpacing: 1 },
   tilePrice: { fontFamily: theme.font.monoBold, fontSize: theme.type.title, marginTop: 4 },
-  tilePriceCompact: { fontFamily: theme.font.regular, fontSize: theme.type.body },
+  tilePriceCompact: { fontFamily: theme.font.monoBold, fontSize: theme.type.small, marginTop: 0 },
   chip: {
     paddingHorizontal: theme.spacing(1.75),
     minHeight: theme.control.sm,

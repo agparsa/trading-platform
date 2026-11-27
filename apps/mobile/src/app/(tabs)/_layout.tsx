@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, type IconName } from '../../components/icons';
 import { BackButton } from '../../components/ui';
 import { useT } from '../../lib/i18n';
@@ -36,6 +37,7 @@ const HIDDEN: ReadonlyArray<{ name: string; title: MessageKey }> = [
 
 export default function TabsLayout(): React.ReactElement {
   const t = useT();
+  const insets = useSafeAreaInsets();
   return (
     <Tabs
       initialRouteName="market"
@@ -48,9 +50,11 @@ export default function TabsLayout(): React.ReactElement {
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border,
-          height: 68,
-          paddingTop: 8,
-          paddingBottom: 8,
+          // Above the phone's own navigation bar, not under it: the app draws
+          // edge to edge, so the bar adds the system inset itself.
+          height: 60 + insets.bottom,
+          paddingTop: 6,
+          paddingBottom: Math.max(insets.bottom, 6),
         },
         tabBarActiveTintColor: theme.colors.accent,
         tabBarInactiveTintColor: theme.colors.textFaint,

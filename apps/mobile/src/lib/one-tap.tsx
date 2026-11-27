@@ -42,10 +42,18 @@ interface OneTapValue {
   send(symbol: string, side: OrderSide): Promise<void>;
   readonly notice: OneTapNotice | null;
   dismiss(): void;
+  /**
+   * The first one-tap press on this device, held for a yes: the trader is
+   * told, once, that a press now sends an order, and what this one will send.
+   */
+  readonly firstPress: { symbol: string; side: OrderSide } | null;
+  confirmFirst(): void;
+  cancelFirst(): void;
 }
 
 const ARMED_KEY = 'tp.oneTap.armed';
 const LOTS_KEY = 'tp.oneTap.lots';
+const ACK_KEY = 'tp.oneTap.acknowledged';
 
 interface OrderAck {
   positionId?: string | null;
@@ -69,11 +77,14 @@ export function OneTapProvider({ children }: { children: React.ReactNode }): Rea
   const [lots, setLotsState] = useState('0.10');
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<OneTapNotice | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [firstPress, setFirstPress] = useState<{ symbol: string; side: OrderSide } | null>(null);
 
   useEffect(() => {
     void (async () => {
       try {
         setOn((await secureStore.get(ARMED_KEY)) === '1');
+        setAcknowledged((await secureStore.get(ACK_KEY)) === '1');
         const stored = await secureStore.get(LOTS_KEY);
         if (stored !== null && /^\d+(\.\d+)?$/.test(stored)) setLotsState(stored);
       } catch {
@@ -85,6 +96,11 @@ export function OneTapProvider({ children }: { children: React.ReactNode }): Rea
   const setArmed = useCallback((next: boolean) => {
     setOn(next);
     void secureStore.set(ARMED_KEY, next ? '1' : '0').catch(() => undefined);
+    if (!next) {
+      // Switched off and on again is a new decision: the first press asks again.
+      setAcknowledged(false);
+      void secureStore.set(ACK_KEY, '0').catch(() => undefined);
+    }
   }, []);
 
   const setLots = useCallback((next: string) => {
@@ -94,7 +110,7 @@ export function OneTapProvider({ children }: { children: React.ReactNode }): Rea
     }
   }, []);
 
-  const send = useCallback(
+  const place = useCallback(
     async (symbol: string, side: OrderSide) => {
       if (selected === null || busy !== null) return;
       const key = `${symbol}:${side}`;
@@ -151,6 +167,25 @@ export function OneTapProvider({ children }: { children: React.ReactNode }): Rea
     [api, selected, busy, lots, t, tradeSound],
   );
 
+  const send = useCallback(
+    async (symbol: string, side: OrderSide) => {
+      if (!acknowledged) {
+        setFirstPress({ symbol, side });
+        return;
+      }
+      await place(symbol, side);
+    },
+    [acknowledged, place],
+  );
+
+  const confirmFirst = useCallback(() => {
+    const press = firstPress;
+    setFirstPress(null);
+    setAcknowledged(true);
+    void secureStore.set(ACK_KEY, '1').catch(() => undefined);
+    if (press !== null) void place(press.symbol, press.side);
+  }, [firstPress, place]);
+
   const value = useMemo<OneTapValue>(
     () => ({
       armed: allowed && on,
@@ -162,8 +197,11 @@ export function OneTapProvider({ children }: { children: React.ReactNode }): Rea
       send,
       notice,
       dismiss: () => setNotice(null),
+      firstPress,
+      confirmFirst,
+      cancelFirst: () => setFirstPress(null),
     }),
-    [allowed, on, setArmed, lots, setLots, busy, send, notice],
+    [allowed, on, setArmed, lots, setLots, busy, send, notice, firstPress, confirmFirst],
   );
   return <OneTapContext.Provider value={value}>{children}</OneTapContext.Provider>;
 }

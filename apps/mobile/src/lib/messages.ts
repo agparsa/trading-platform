@@ -100,6 +100,10 @@ const en = {
   'oneTap.ask':
     'Turn on one-tap trading? Each press of SELL or BUY will send a market order straight away, with no review. The server still checks margin and risk on every order.',
   'oneTap.turnOn': 'Turn on one-tap',
+  'oneTap.firstTitle': 'One-tap trading is on',
+  'oneTap.firstBody':
+    'This press sends {side} {lots} {symbol} at market now, with no review — and so will every SELL and BUY after it. You can turn one-tap off in Settings.',
+  'oneTap.firstSend': 'Send {side} and don’t ask again',
   'oneTap.lots': 'Lots',
   'oneTap.sending': 'Sending {side} {lots} {symbol}…',
   'oneTap.opened': 'Opened {side} {lots} {symbol} at {price}',
@@ -514,6 +518,10 @@ const fa: Messages = {
   'oneTap.ask':
     'معامله تک‌لمسی روشن شود؟ هر لمس روی فروش یا خرید بدون بررسی یک سفارش بازار ارسال می‌کند. سرور همچنان مارجین و ریسک هر سفارش را بررسی می‌کند.',
   'oneTap.turnOn': 'روشن کردن تک‌لمسی',
+  'oneTap.firstTitle': 'معامله تک‌لمسی فعال است',
+  'oneTap.firstBody':
+    'این لمس همین حالا {side} {lots} {symbol} را بدون بررسی به قیمت بازار ارسال می‌کند — و از این به بعد هر لمس فروش و خرید هم همین‌طور. می‌توانید تک‌لمسی را در تنظیمات خاموش کنید.',
+  'oneTap.firstSend': 'ارسال {side} و دیگر نپرس',
   'oneTap.lots': 'لات',
   'oneTap.sending': 'در حال ارسال {side} {lots} {symbol}…',
   'oneTap.opened': '{side} {lots} {symbol} در {price} باز شد',
