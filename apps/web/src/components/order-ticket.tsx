@@ -39,6 +39,7 @@ import { ShortcutAction } from '@/lib/shortcuts';
 import { needsConfirmation } from '@/lib/shortcuts';
 import type { TradingPreferences } from '@/lib/trading-preferences';
 import { Button, EmptyState, Field, inputClass } from './primitives';
+import { PriceFigure } from './price-figure';
 import type { MessageKey } from '@/lib/messages';
 import { useT } from '@/lib/use-locale';
 
@@ -547,14 +548,20 @@ export function OrderTicket({
           where it expects. */}
       <div dir="ltr" className="grid grid-cols-2 gap-2">
         <SideButton active={side === 'SELL'} side="SELL" onClick={() => setSide('SELL')}>
-          <span className="numeric block text-sm">
-            {quote === undefined ? '—' : formatPrice(quote.bid, symbol.pricePrecision)}
-          </span>
+          <PriceFigure
+            className="block"
+            size="lg"
+            precision={symbol.pricePrecision}
+            value={quote === undefined ? '—' : formatPrice(quote.bid, symbol.pricePrecision)}
+          />
         </SideButton>
         <SideButton active={side === 'BUY'} side="BUY" onClick={() => setSide('BUY')}>
-          <span className="numeric block text-sm">
-            {quote === undefined ? '—' : formatPrice(quote.ask, symbol.pricePrecision)}
-          </span>
+          <PriceFigure
+            className="block"
+            size="lg"
+            precision={symbol.pricePrecision}
+            value={quote === undefined ? '—' : formatPrice(quote.ask, symbol.pricePrecision)}
+          />
         </SideButton>
       </div>
 

@@ -14,8 +14,8 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { cn } from '@tp/ui';
-import { currencySymbol, markClasses, markFor } from '@/lib/instrument-marks';
-import { price as formatPrice, signedMoney, toneClass, toneOf } from '@/lib/format';
+import { markClasses, markFor } from '@/lib/instrument-marks';
+import { signedMoney, toneClass, toneOf } from '@/lib/format';
 import {
   RESOLUTIONS,
   RESOLUTION_LABEL,
@@ -58,6 +58,8 @@ import {
 } from '@/lib/queries';
 import { barKey, useRealtime } from '@/lib/realtime-store';
 import { EmptyState, inputClass } from './primitives';
+import { BarLegend } from './bar-legend';
+import { InstrumentStats } from './instrument-stats';
 import { useT } from '@/lib/use-locale';
 import { useExplain } from '@/lib/error-words';
 import { useStale } from '@/lib/use-stale';
@@ -150,7 +152,7 @@ export function ChartPanel({
             {simulatedBadge === null ? null : <> {simulatedBadge}</>}
           </span>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             {symbol === undefined ? null : (
               <span
                 aria-hidden
@@ -169,11 +171,7 @@ export function ChartPanel({
                 {markFor(symbol.code).label}
               </span>
             )}
-            <span className="numeric text-xs text-terminal-muted">
-              {quote === undefined || symbol === undefined
-                ? ''
-                : `${currencySymbol(symbol.quoteCurrency)} ${formatPrice(quote.bid, symbol.pricePrecision)}`}
-            </span>
+            {symbol === undefined ? null : <InstrumentStats symbol={symbol} quote={quote} />}
             {simulatedBadge}
             {stale ? (
               <span
@@ -913,6 +911,7 @@ function Candles({
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full touch-none" />
+      <BarLegend chartRef={chartRef} bars={bars} precision={spec.pricePrecision} />
       <LevelTags
         chartRef={chartRef}
         seriesRef={seriesRef}
