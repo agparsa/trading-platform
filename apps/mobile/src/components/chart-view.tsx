@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   RESOLUTIONS,
@@ -13,7 +13,8 @@ import { useT } from '../lib/i18n';
 import { chartHtml } from '../lib/chart-html';
 import { levelsFor, type LevelSource } from '../lib/chart-levels';
 import { useAccounts } from '../lib/accounts';
-import { useLiveBook } from '../lib/live';
+import { useLiveBook, useLiveCandles } from '../lib/live';
+import { liveBarFor } from '../lib/live-candle';
 import { applyPnl, type MarkedRow } from '../lib/live-book';
 
 type BookRow = LevelSource & MarkedRow;
@@ -160,6 +161,31 @@ export function ChartView({ symbol }: { symbol: string }): React.ReactElement {
     void load();
   }, [load]);
 
+  /**
+   * The candle being built, live: the server sends it on every tick for the
+   * instrument and timeframe on screen, so the last bar moves as the price
+   * does instead of waiting for the next history load.
+   */
+  const candles = useLiveCandles();
+  const [liveBar, setLiveBar] = useState<ChartBar | null>(null);
+  useEffect(() => {
+    setLiveBar(null);
+    const watch = { symbol, resolution };
+    return candles.follow(watch, (data) => {
+      const bar = liveBarFor(data, watch);
+      if (bar !== null) setLiveBar(bar);
+    });
+  }, [candles, symbol, resolution]);
+
+  // Back from a dropped connection: the bars missed meanwhile come from the
+  // history, then the live bar carries on from there.
+  const lastStatus = useRef(live.status);
+  useEffect(() => {
+    const before = lastStatus.current;
+    lastStatus.current = live.status;
+    if (live.status === 'live' && before === 'reconnecting') void load();
+  }, [live.status, load]);
+
   const html = useMemo(
     () =>
       chartHtml({
@@ -217,6 +243,7 @@ export function ChartView({ symbol }: { symbol: string }): React.ReactElement {
             setDropped(level);
           }}
           clearPreview={clearPreview}
+          liveBar={liveBar}
         />
       </View>
       {levelError === null ? null : <ErrorNote message={levelError} />}

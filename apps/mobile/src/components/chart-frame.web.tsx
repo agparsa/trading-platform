@@ -15,7 +15,9 @@ export function ChartFrame({
   onReady,
   onLevel,
   clearPreview = 0,
+  liveBar = null,
 }: {
+  liveBar?: ChartBar | null;
   onLevel?: (level: DraggedLevel) => void;
   clearPreview?: number;
   html: string;
@@ -42,6 +44,13 @@ export function ChartFrame({
       (Window & { __setLevels?: (l: readonly ChartLevel[]) => void }) | null | undefined;
     target?.__setLevels?.(JSON.parse(levelsKey) as ChartLevel[]);
   }, [ready, bars, levelsKey]);
+
+  useEffect(() => {
+    if (!ready || bars === null || liveBar === null) return;
+    const target = frame.current?.contentWindow as
+      (Window & { __updateBar?: (b: ChartBar) => void }) | null | undefined;
+    target?.__updateBar?.(liveBar);
+  }, [ready, bars, liveBar]);
 
   // The page posts to its parent when it is not inside a native WebView.
   useEffect(() => {

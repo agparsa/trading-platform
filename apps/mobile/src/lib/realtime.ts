@@ -1,5 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import { WsChannel, type WsChannel as Channel, type WsFrame } from '@tp/shared-types';
+import type { CandleWatch } from './live-candle';
 import type { SeenEvents } from './seen-events';
 
 /**
@@ -55,6 +56,8 @@ const CHANNELS: readonly Channel[] = [
 export class RealtimeClient {
   private socket: Socket | null = null;
   private lastSeq: number | null = null;
+  /** The chart's candles, re-asked for on every (re)connect. */
+  private candles: CandleWatch | null = null;
 
   constructor(
     private readonly url: string,
@@ -82,6 +85,7 @@ export class RealtimeClient {
       this.lastSeq = null;
       handlers.onStatus('live');
       for (const channel of CHANNELS) socket.emit('subscribe', { channel });
+      this.sendCandleWatch();
       handlers.onResnapshot();
     });
 
@@ -109,6 +113,29 @@ export class RealtimeClient {
   /** Follows the chart or watchlist. Replaces rather than accumulating. */
   watch(symbols: readonly string[]): void {
     this.socket?.emit('subscribe', { channel: WsChannel.QUOTES, symbols });
+  }
+
+  /**
+   * Follows one chart's in-progress candle: the server then sends it on every
+   * tick. Replaces the previous chart's subscription; null stops it.
+   */
+  watchCandles(watch: CandleWatch | null): void {
+    this.candles = watch;
+    this.sendCandleWatch();
+  }
+
+  private sendCandleWatch(): void {
+    const socket = this.socket;
+    if (socket === null || !socket.connected) return;
+    if (this.candles === null) {
+      socket.emit('unsubscribe', { channel: WsChannel.CANDLES });
+      return;
+    }
+    socket.emit('subscribe', {
+      channel: WsChannel.CANDLES,
+      symbols: [this.candles.symbol],
+      resolutions: [this.candles.resolution],
+    });
   }
 
   disconnect(): void {

@@ -439,6 +439,21 @@ symbol, a coin by its sign), so one added tomorrow is marked too.
   (`login.unreachableHost`), which tells "the server is down" from "this network
   cannot see it".
 
+## The last candle is live (1.4.1)
+
+Until 1.4.1 the chart loaded its history once and drew nothing more: the
+in-progress candle stood still until the screen was reopened. The chart now
+subscribes to the `candles` channel for the instrument and timeframe on screen
+(`RealtimeClient.watchCandles`, re-sent on every reconnect) and draws each
+`candle.update` frame — the server sends one per tick — with `__updateBar`
+(`live-candle.ts` decides whether a frame belongs to the chart). After a dropped
+connection the history is reloaded, then the live bar carries on. Only the
+chart listens; the frames do not re-render the other screens.
+
+A candle moves only when its instrument's price does: over the weekend forex and
+metals are closed and stand still, and an instrument whose source is down
+(fastFOREX without an active subscription) has no ticks to draw.
+
 ## Several trades on one chart (1.4.0)
 
 Trades opened one after another on the same symbol each keep their own lines:

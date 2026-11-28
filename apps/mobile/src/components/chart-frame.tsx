@@ -6,6 +6,7 @@ import {
   CLEAR_PREVIEW_SCRIPT,
   setBarsScript,
   setLevelsScript,
+  updateBarScript,
   type ChartLevel,
 } from '../lib/chart-html';
 import type { DraggedLevel } from '../lib/chart-drag';
@@ -24,7 +25,10 @@ export function ChartFrame({
   onError,
   onLevel,
   clearPreview = 0,
+  liveBar = null,
 }: {
+  /** The in-progress bar from the socket, drawn over the loaded history. */
+  liveBar?: ChartBar | null;
   /** A line dropped by the trader: a stop or target to ask about. */
   onLevel?: (level: DraggedLevel) => void;
   /** Bumped to take the drag preview away once the trader has answered. */
@@ -53,6 +57,13 @@ export function ChartFrame({
     if (!ready || bars === null) return;
     webview.current?.injectJavaScript(setLevelsScript(JSON.parse(levelsKey) as ChartLevel[]));
   }, [ready, bars, levelsKey]);
+
+  // After the history, and again whenever it is reloaded: the live bar is newer
+  // than anything the history holds.
+  useEffect(() => {
+    if (!ready || bars === null || liveBar === null) return;
+    webview.current?.injectJavaScript(updateBarScript(liveBar));
+  }, [ready, bars, liveBar]);
 
   useEffect(() => {
     if (clearPreview > 0) webview.current?.injectJavaScript(CLEAR_PREVIEW_SCRIPT);

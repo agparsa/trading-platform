@@ -5,6 +5,7 @@ import { SeenEvents } from './seen-events';
 import { apiBaseUrl } from './api';
 import { useSession } from './session';
 import { frameSound } from './trade-sound';
+import type { CandleWatch } from './live-candle';
 import { LIVE_TOPICS, NO_VERSIONS, bump, topicsOf, type LiveVersions } from './live-book';
 
 /**
@@ -54,6 +55,17 @@ interface BookValue {
  * up to ten times a second; a screen that only shows the book must not render
  * on every one of them.
  */
+/**
+ * The chart's live candle. A listener, not state: the bar moves on every tick,
+ * and only the chart page needs to hear it — not every screen under the
+ * provider.
+ */
+type CandleListener = (data: unknown) => void;
+interface CandlesValue {
+  follow(watch: CandleWatch, listener: CandleListener): () => void;
+}
+const CandlesContext = createContext<CandlesValue>({ follow: () => () => undefined });
+
 const QuotesContext = createContext<QuotesValue>({ quotes: {}, status: 'idle' });
 const BookContext = createContext<BookValue>({
   status: 'idle',
@@ -93,6 +105,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
   const [pnl, setPnl] = useState<Record<string, readonly PnlUpdatePayload[]>>({});
   const [versions, setVersions] = useState<LiveVersions>(NO_VERSIONS);
   const clientRef = useRef<RealtimeClient | null>(null);
+  const candleRef = useRef<{ watch: CandleWatch; listener: CandleListener } | null>(null);
 
   useEffect(() => {
     if (!signedIn) {
@@ -120,6 +133,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
 
       const client = new RealtimeClient(apiBaseUrl(), new SeenEvents(200));
       clientRef.current = client;
+      client.watchCandles(candleRef.current?.watch ?? null);
       client.connect(token, {
         onStatus: setStatus,
         // Whatever happened while disconnected was never delivered: every list
@@ -138,6 +152,10 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
                 for (const quote of moved) next[quote.symbol] = quote;
                 return next;
               });
+              return;
+            }
+            case 'candle.update': {
+              candleRef.current?.listener(frame.data);
               return;
             }
             case 'account.updated': {
@@ -171,6 +189,22 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
     };
   }, [accessToken, signedIn]);
 
+  const candlesValue = useMemo<CandlesValue>(
+    () => ({
+      follow: (watch, listener) => {
+        const entry = { watch, listener };
+        candleRef.current = entry;
+        clientRef.current?.watchCandles(watch);
+        return () => {
+          if (candleRef.current !== entry) return;
+          candleRef.current = null;
+          clientRef.current?.watchCandles(null);
+        };
+      },
+    }),
+    [],
+  );
+
   const quotesValue = useMemo(() => ({ quotes, status }), [quotes, status]);
   const bookValue = useMemo(
     () => ({ status, accounts, pnl, versions }),
@@ -179,7 +213,9 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
 
   return (
     <QuotesContext.Provider value={quotesValue}>
-      <BookContext.Provider value={bookValue}>{children}</BookContext.Provider>
+      <BookContext.Provider value={bookValue}>
+        <CandlesContext.Provider value={candlesValue}>{children}</CandlesContext.Provider>
+      </BookContext.Provider>
     </QuotesContext.Provider>
   );
 }
@@ -192,4 +228,13 @@ export function useLiveQuotes(): QuotesValue {
 /** The live book: account figures, P&L, and which lists are stale. */
 export function useLiveBook(): BookValue {
   return useContext(BookContext);
+}
+
+/**
+ * Follows one chart's in-progress candle while the calling screen is mounted.
+ * `listener` receives each raw `candle.update` payload; `liveBarFor` decides
+ * whether it belongs to the chart.
+ */
+export function useLiveCandles(): CandlesValue {
+  return useContext(CandlesContext);
 }

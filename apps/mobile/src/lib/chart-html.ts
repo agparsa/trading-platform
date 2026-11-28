@@ -327,11 +327,17 @@ export function chartHtml(options: {
       ensure();
       if (series === null) return;
       empty.style.display = 'none';
-      series.update({
-        time: Math.floor(bar.time / 1000),
-        open: Number(bar.open), high: Number(bar.high),
-        low: Number(bar.low), close: Number(bar.close),
-      });
+      // Counted, so a check can see that the chart is being fed live.
+      window.__liveBars = (window.__liveBars || 0) + 1;
+      // A bar older than the newest drawn (a frame overtaken by a reload) is
+      // refused by the library; it is simply not drawn.
+      try {
+        series.update({
+          time: Math.floor(bar.time / 1000),
+          open: Number(bar.open), high: Number(bar.high),
+          low: Number(bar.low), close: Number(bar.close),
+        });
+      } catch (e) {}
     };
 
     ensure();
