@@ -28,6 +28,8 @@ import type { TradingPreferences } from '@/lib/trading-preferences';
 import { useT } from '@/lib/use-locale';
 import { useStale } from '@/lib/use-stale';
 import { inputClass } from './primitives';
+import { PriceFigure } from './price-figure';
+import { distanceInPoints } from '@/lib/points';
 
 /**
  * The quick-trade box floating over the chart: the instrument, the bid to
@@ -120,6 +122,8 @@ export function QuickTradeBox({
       words,
     );
   const preview = resolveFor('BUY');
+  const spreadPoints =
+    quote === undefined ? null : distanceInPoints(quote.ask, quote.bid, symbol.pricePrecision);
   const sizing = riskPct.trim() !== '';
   // The lots that would go: the typed ones, or the ones the risk sizes.
   const validation = validateTicket(symbol, 'BUY', preview.volume, '', '', quote?.ask ?? null);
@@ -320,6 +324,7 @@ export function QuickTradeBox({
           side="SELL"
           label={t('ticket.side.SELL')}
           price={quote === undefined ? null : formatPrice(quote.bid, symbol.pricePrecision)}
+          precision={symbol.pricePrecision}
           disabled={!ready}
           armed={armed}
           onClick={() => press('SELL')}
@@ -369,6 +374,7 @@ export function QuickTradeBox({
           side="BUY"
           label={t('ticket.side.BUY')}
           price={quote === undefined ? null : formatPrice(quote.ask, symbol.pricePrecision)}
+          precision={symbol.pricePrecision}
           disabled={!ready}
           armed={armed}
           onClick={() => press('BUY')}
@@ -418,7 +424,11 @@ export function QuickTradeBox({
       <div className="flex items-center justify-between gap-2 px-2.5 pb-1.5 text-micro text-terminal-muted">
         <span>
           {t('qt.spread')}{' '}
-          <span className="numeric text-terminal-text">{quote?.spread ?? '—'}</span>
+          {/* In points, as dealing screens quote it: "12" reads the same on
+              EURUSD and on gold, where 0.00012 and 0.12 do not. */}
+          <span className="numeric text-terminal-text">
+            {spreadPoints === null ? '—' : `${spreadPoints} ${t('chart.pt')}`}
+          </span>
         </span>
         <span>
           {t('qt.margin')} <span className="numeric text-terminal-text">{estimate.margin}</span>
@@ -519,6 +529,7 @@ function SideButton({
   side,
   label,
   price,
+  precision,
   disabled,
   armed,
   onClick,
@@ -526,6 +537,8 @@ function SideButton({
   side: 'BUY' | 'SELL';
   label: string;
   price: string | null;
+  /** The instrument's price precision, so the pips can be picked out. */
+  precision: number;
   disabled: boolean;
   armed: boolean;
   onClick: () => void;
@@ -543,7 +556,9 @@ function SideButton({
       data-testid={`quick-trade-${side.toLowerCase()}`}
     >
       <span className="block text-label uppercase tracking-wider">{label}</span>
-      <span className="numeric block text-sm">{price ?? '—'}</span>
+      <span className="block">
+        <PriceFigure value={price ?? '—'} precision={precision} />
+      </span>
     </button>
   );
 }

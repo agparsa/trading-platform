@@ -660,7 +660,7 @@ function PriceButton({
  * the server did not. It clears itself: a stale green row would suggest the
  * market is still moving up when it has stopped.
  */
-function useTickDirection(value: string | undefined): 'up' | 'down' | null {
+export function useTickDirection(value: string | undefined): 'up' | 'down' | null {
   const previous = useRef<string | undefined>(undefined);
   const [direction, setDirection] = useState<'up' | 'down' | null>(null);
 

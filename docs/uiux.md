@@ -469,6 +469,27 @@ or an arbitrary `p-[13px]`, fails there, so a new gap is a decision made in
 that file rather than a value typed into a component. Type has the same
 arrangement (`--text-*`, above).
 
+**Quoted like a dealing screen.** Three things the leading terminals put in
+front of a trader and this one did not:
+
+- **The pips, large.** The ticket's and the quick-trade box's Sell and Buy
+  prices print the two digits that move large, the lead small and a fractional
+  pip small and raised: `1.08` `75` `3` (`apps/web/src/lib/price-parts.ts`,
+  `apps/web/src/components/price-figure.tsx`). The text is the formatted price unchanged,
+  so a screen reader and a test still read `1.08753`.
+- **The instrument's figures over the chart.** The chart header showed the
+  bid alone, in grey. It now shows bid (coloured by the last tick) and ask,
+  then, as the panel widens, the spread in points, the day's change and the
+  day's high and low — the server's figures from `GET /market/stats`, the same
+  ones the watchlist's change column shows (`apps/web/src/components/instrument-stats.tsx`).
+- **The bar under the cursor.** Open, high, low and close of the hovered bar,
+  and its change, in the chart's top-left corner; with the cursor off the
+  chart, the bar in progress (`apps/web/src/components/bar-legend.tsx`). It does not catch
+  the pointer, so dragging a level still works through it.
+
+The quick-trade box's spread is in points now too, as the header's is: twelve
+points reads the same on a currency pair and on gold.
+
 ## 5. What Phase 6 does not deliver
 
 Stated rather than stubbed. None of this is built:
