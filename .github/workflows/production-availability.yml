@@ -1,0 +1,41 @@
+name: Production availability
+
+# Run after a deployment from Actions > Production availability > Run workflow.
+# This verifies the public HTTP/TLS path, not the deployed commit or business flows.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: production-availability
+  cancel-in-progress: false
+
+jobs:
+  public-site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify HTTPS homepage
+        env:
+          TARGET_URL: ${{ vars.PRODUCTION_URL || 'https://devopss.ir/' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$TARGET_URL" =~ ^https://[^/[:space:]]+(/[^[:space:]]*)?$ ]]; then
+            echo 'Set the repository variable PRODUCTION_URL to the production HTTPS homepage.' >&2
+            exit 1
+          fi
+          result=$(curl --silent --show-error --fail --location \
+            --proto '=https' --proto-redir '=https' \
+            --connect-timeout 10 --max-time 30 --max-redirs 5 \
+            --retry 2 --retry-delay 3 --retry-all-errors \
+            --output /dev/null --write-out '%{http_code} %{time_total}' \
+            "$TARGET_URL")
+          read -r status duration <<< "$result"
+          if [[ "$status" != "200" ]]; then
+            echo "Expected final HTTP 200, received $status" >&2
+            exit 1
+          fi
+          printf '### Production availability\n\nURL: %s\n\nHTTP: %s\n\nDuration: %s seconds\n' \
+            "$TARGET_URL" "$status" "$duration" >> "$GITHUB_STEP_SUMMARY"
